@@ -9,7 +9,7 @@ Debugger::Debugger(Engine *vm) : _vm(vm) {
 	DCmd_Register("setBackdrop", WRAP_METHOD(Debugger, cmd_setBackdrop));
 	DCmd_Register("paintText", WRAP_METHOD(Debugger, cmd_paintText));
 
-	DVar_Register("currentRoom", &(vm->logic()->_currentRoom), DVAR_INT);
+	DVar_Register("currentRoom", &(vm->logic()->_currentRoom), DVAR_INT, 0);
 }
 
 bool Debugger::cmd_setBackdrop(int argc, const char **argv) {
