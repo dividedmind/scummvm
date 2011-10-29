@@ -63,8 +63,9 @@ public:
 	virtual bool hasFeature(MetaEngineFeature f) const;
 	virtual GameList getSupportedGames() const;
 	virtual GameDescriptor findGame(const char *gameid) const;
-	virtual GameList detectGames(const FSList &fslist) const;
+	virtual GameList detectGames(const Common::FSList &fslist) const;
 	virtual SaveStateList listSaves(const char *target) const;
+	virtual void removeSaveState(const char *target, int slot) const;
 
 	virtual PluginError createInstance(OSystem *syst, Engine **engine) const;
 };
@@ -98,11 +99,11 @@ GameDescriptor QueenMetaEngine::findGame(const char *gameid) const {
 	return GameDescriptor();
 }
 
-GameList QueenMetaEngine::detectGames(const FSList &fslist) const {
+GameList QueenMetaEngine::detectGames(const Common::FSList &fslist) const {
 	GameList detectedGames;
 
 	// Iterate over all files in the given directory
-	for (FSList::const_iterator file = fslist.begin(); file != fslist.end(); ++file) {
+	for (Common::FSList::const_iterator file = fslist.begin(); file != fslist.end(); ++file) {
 		if (file->isDirectory()) {
 			continue;
 		}
@@ -159,6 +160,16 @@ SaveStateList QueenMetaEngine::listSaves(const char *target) const {
 	}
 
 	return saveList;
+}
+
+void QueenMetaEngine::removeSaveState(const char *target, int slot) const {
+	char extension[6];
+	snprintf(extension, sizeof(extension), ".s%02d", slot);
+
+	Common::String filename = target;
+	filename += extension;
+
+	g_system->getSavefileManager()->removeSavefile(filename.c_str());
 }
 
 PluginError QueenMetaEngine::createInstance(OSystem *syst, Engine **engine) const {
@@ -444,7 +455,7 @@ int QueenEngine::go() {
 			update(true);
 		}
 	}
-	return _eventMan->shouldRTL();
+	return 0;
 }
 
 int QueenEngine::init() {

@@ -304,7 +304,7 @@ int KyraEngine_LoK::go() {
 			setGameFlag(0xEF);
 			seq_intro();
 			if (quit())
-				return _eventMan->shouldRTL();
+				return 0;
 			if (_skipIntroFlag && _abortIntroFlag)
 				resetGameFlag(0xEF);
 		}
@@ -312,7 +312,7 @@ int KyraEngine_LoK::go() {
 		resetGameFlag(0xEF);
 		mainLoop();
 	}
-	return _eventMan->shouldRTL();
+	return 0;
 }
 
 
@@ -405,6 +405,8 @@ void KyraEngine_LoK::mainLoop() {
 	while (!quit()) {
 		int32 frameTime = (int32)_system->getMillis();
 		_skipFlag = false;
+
+		checkAutosave();
 
 		if (_currentCharacter->sceneId == 210) {
 			updateKyragemFading();

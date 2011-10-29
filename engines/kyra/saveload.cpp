@@ -43,6 +43,7 @@ KyraEngine_v1::kReadSaveHeaderError KyraEngine_v1::readSaveHeader(Common::Seekab
 	header.originalSave = false;
 	header.oldHeader = false;
 	header.flags = 0;
+	header.thumbnail = 0;
 
 	if (type == MKID_BE('KYRA') || type == MKID_BE('ARYK')) { // old Kyra1 header ID
 		header.gameID = GI_KYRA1;
@@ -215,15 +216,17 @@ Common::WriteStream *KyraEngine_v1::openSaveForWriting(const char *filename, con
 
 const char *KyraEngine_v1::getSavegameFilename(int num) {
 	static Common::String filename;
+	filename = getSavegameFilename(_targetName, num);
+	return filename.c_str();
+}
 
+Common::String KyraEngine_v1::getSavegameFilename(const Common::String &target, int num) {
 	assert(num >= 0 && num <= 999);
 
 	char extension[5];
-	sprintf(extension, "%.3d", num);
+	sprintf(extension, "%03d", num);
 
-	filename = _targetName + "." + extension;
-
-	return filename.c_str();
+	return target + "." + extension;
 }
 
 bool KyraEngine_v1::saveFileLoadable(int slot) {
@@ -239,6 +242,13 @@ bool KyraEngine_v1::saveFileLoadable(int slot) {
 	}
 
 	return false;
+}
+
+void KyraEngine_v1::checkAutosave() {
+	if (shouldPerformAutoSave(_lastAutosave)) {
+		saveGame(getSavegameFilename(999), "Autosave", 0);
+		_lastAutosave = _system->getMillis();
+	}
 }
 
 } // end of namespace Kyra

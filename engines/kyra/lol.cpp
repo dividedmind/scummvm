@@ -241,27 +241,21 @@ void LoLEngine::resetSkipFlag(bool removeEvent) {
 
 void LoLEngine::setupPrologueData(bool load) {
 	static const char * const fileList[] = {
-		"xxx/general.pak",
-		"xxx/introvoc.pak",
-		"xxx/startup.pak",
-		"xxx/intro1.pak",
-		"xxx/intro2.pak",
-		"xxx/intro3.pak",
-		"xxx/intro4.pak",
-		"xxx/intro5.pak",
-		"xxx/intro6.pak",
-		"xxx/intro7.pak",
-		"xxx/intro8.pak",
-		"xxx/intro9.pak"
+		"GENERAL.PAK", "INTROVOC.PAK", "STARTUP.PAK", "INTRO1.PAK",
+		"INTRO2.PAK", "INTRO3.PAK", "INTRO4.PAK", "INTRO5.PAK",
+		"INTRO6.PAK", "INTRO7.PAK", "INTRO8.PAK", "INTRO9.PAK"
 	};
 
-	char filepath[32];
-	char *filename = filepath;
+	char filename[32];
 	for (uint i = 0; i < ARRAYSIZE(fileList); ++i) {
-		strcpy(filename, fileList[i]);
-		memcpy(filename, _languageExt[_lang], 3);
-		if (!_flags.isTalkie)
-			filename += 4;		
+		filename[0] = '\0';
+
+		if (_flags.isTalkie) {
+			strcpy(filename, _languageExt[_lang]);
+			strcat(filename, "/");
+		}
+
+		strcat(filename, fileList[i]);
 		
 		if (load) {
 			if (!_res->loadPakFile(filename))
@@ -591,22 +585,22 @@ int LoLEngine::selectionCharInfo(int character) {
 
 	switch (character) {
 	case 0:
-		strcpy(filename, "face09.shp");
+		strcpy(filename, "FACE09.SHP");
 		vocFilename[3] = 'A';
 		break;
 	
 	case 1:
-		strcpy(filename, "face01.shp");
+		strcpy(filename, "FACE01.SHP");
 		vocFilename[3] = 'M';
 		break;
 	
 	case 2:
-		strcpy(filename, "face08.shp");
+		strcpy(filename, "FACE08.SHP");
 		vocFilename[3] = 'K';
 		break;
 	
 	case 3:
-		strcpy(filename, "face05.shp");
+		strcpy(filename, "FACE05.SHP");
 		vocFilename[3] = 'C';
 		break;
 	

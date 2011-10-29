@@ -324,7 +324,7 @@ int KyraEngine_MR::go() {
 	if (_showOutro)
 		playVQA("CREDITS");
 
-	return _eventMan->shouldRTL();
+	return 0;
 }
 
 void KyraEngine_MR::initMainMenu() {
@@ -684,7 +684,7 @@ void KyraEngine_MR::startup() {
 	assert(_invWsa);
 	_invWsa->open("MOODOMTR.WSA", 1, 0);
 	_invWsaFrame = 6;
-	saveGame(getSavegameFilename(0), (const char*)getTableEntry(_optionsFile, 33), 0);
+	saveGame(getSavegameFilename(0), "New Game", 0);
 	_soundDigital->beginFadeOut(_musicSoundChannel, 60);
 	delayWithTicks(60);
 	if (_gameToLoad == -1)
@@ -1008,7 +1008,12 @@ void KyraEngine_MR::runLoop() {
 			_drawNoShapeFlag = 0;
 			_gui->optionsButton(0);
 			_deathHandler = -1;
+
+			if (quit())
+				break;
 		}
+
+		checkAutosave();
 		
 		if (_system->getMillis() >= _nextIdleAnim)
 			showIdleAnim();

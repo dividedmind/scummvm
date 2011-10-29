@@ -34,13 +34,9 @@ const String String::emptyString;
 const char *String::emptyString = "";
 #endif
 
-static int computeCapacity(int len) {
-	// By default, for the capacity we use the nearest multiple of 32
-	// that leaves at least 16 chars of extra space (in case the string
-	// grows a bit).
-	// Finally, we subtract 1 to compensate for the trailing zero byte.
-	len += 16;
-	return ((len + 32 - 1) & ~0x1F) - 1;
+static uint32 computeCapacity(uint32 len) {
+	// By default, for the capacity we use the next multiple of 32
+	return ((len + 32 - 1) & ~0x1F);
 }
 
 String::String(const char *str) : _size(0), _str(_storage) {
@@ -71,9 +67,9 @@ void String::initWithCStr(const char *str, uint32 len) {
 
 	if (len >= _builtinCapacity) {
 		// Not enough internal storage, so allocate more
-		_extern._capacity = computeCapacity(len);
+		_extern._capacity = computeCapacity(len+1);
 		_extern._refCount = 0;
-		_str = (char *)malloc(_extern._capacity+1);
+		_str = (char *)malloc(_extern._capacity);
 		assert(_str != 0);
 	}
 
@@ -86,7 +82,7 @@ String::String(const String &str)
  : _size(str._size), _str(str.isStorageIntern() ? _storage : str._str) {
 	if (str.isStorageIntern()) {
 		// String in internal storage: just copy it
-		memcpy(_storage, str._storage, _builtinCapacity);
+		memcpy(_storage, str._storage, sizeof(_storage));
 	} else {
 		// String in external storage: use refcount mechanism
 		str.incRefCount();
@@ -129,7 +125,7 @@ void String::ensureCapacity(uint32 new_size, bool keep_old) {
 
 	if (isStorageIntern()) {
 		isShared = false;
-		curCapacity = _builtinCapacity - 1;
+		curCapacity = _builtinCapacity;
 	} else {
 		isShared = (oldRefCount && *oldRefCount > 1);
 		curCapacity = _extern._capacity;
@@ -137,27 +133,27 @@ void String::ensureCapacity(uint32 new_size, bool keep_old) {
 
 	// Special case: If there is enough space, and we do not share
 	// the storage, then there is nothing to do.
-	if (!isShared && new_size <= curCapacity)
+	if (!isShared && new_size < curCapacity)
 		return;
 
-	if (isShared && new_size <= _builtinCapacity - 1) {
+	if (isShared && new_size < _builtinCapacity) {
 		// We share the storage, but there is enough internal storage: Use that.
 		newStorage = _storage;
-		newCapacity = _builtinCapacity - 1;
+		newCapacity = _builtinCapacity;
 	} else {
 		// We need to allocate storage on the heap!
 
 		// Compute a suitable new capacity limit
-		newCapacity = computeCapacity(new_size);
+		newCapacity = MAX(curCapacity * 2, computeCapacity(new_size+1));
 
 		// Allocate new storage
-		newStorage = (char *)malloc(newCapacity+1);
+		newStorage = (char *)malloc(newCapacity);
 		assert(newStorage);
 	}
 
 	// Copy old data if needed, elsewise reset the new storage.
 	if (keep_old) {
-		assert(_size <= newCapacity);
+		assert(_size < newCapacity);
 		memcpy(newStorage, _str, _size + 1);
 	} else {
 		_size = 0;
@@ -313,6 +309,14 @@ bool String::contains(const char *x) const {
 
 bool String::contains(char x) const {
 	return strchr(c_str(), x) != NULL;
+}
+
+bool String::matchString(const char *pat) const {
+	return Common::matchString(c_str(), pat);
+}
+
+bool String::matchString(const String &pat) const {
+	return Common::matchString(c_str(), pat.c_str());
 }
 
 void String::deleteLastChar() {
@@ -589,6 +593,47 @@ Common::String normalizePath(const Common::String &path, const char sep) {
 	}
 
 	return result;
+}
+
+bool matchString(const char *str, const char *pat) {
+	assert(str);
+	assert(pat);
+
+	const char *p = 0;
+	const char *q = 0;
+
+	for (;;) {
+		switch (*pat) {
+		case '*':
+			// Record pattern / string possition for backtracking
+			p = ++pat;
+			q = str;
+			// If pattern ended with * -> match
+			if (!*pat)
+				return true;
+			break;
+
+		default:
+			if (*pat != *str) {
+				if (p) {
+					// No match, oops -> try to backtrack
+					pat = p;
+					str = ++q;
+					if (!*str)
+						return !*pat;
+					break;
+				}
+				else
+					return false;
+			}
+			// fallthrough
+		case '?':
+			if (!*str)
+				return !*pat;
+			pat++;
+			str++;
+		}
+	}
 }
 
 }	// End of namespace Common

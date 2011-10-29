@@ -226,7 +226,7 @@ void ScummEngine::askForDisk(const char *filename, int disknum) {
 #ifdef MACOSX
 		sprintf(buf, "Cannot find file: '%s'\nPlease insert disc %d.\nPress OK to retry, Quit to exit", filename, disknum);
 #else
-		sprintf(buf, "Cannot find file: '%s'\nInsert disc %d into drive %s\nPress OK to retry, Quit to exit", filename, disknum, _gameDataPath.c_str());
+		sprintf(buf, "Cannot find file: '%s'\nInsert disc %d into drive %s\nPress OK to retry, Quit to exit", filename, disknum, _gameDataDir.getPath().c_str());
 #endif
 
 		result = displayMessage("Quit", buf);
@@ -253,7 +253,7 @@ void ScummEngine::readIndexFile() {
 
 	if (_game.version <= 5) {
 		// Figure out the sizes of various resources
-		while (!_fileHandle->eof()) {
+		while (!_fileHandle->eos()) {
 			blocktype = _fileHandle->readUint32BE();
 			itemsize = _fileHandle->readUint32BE();
 			if (_fileHandle->ioFailed())

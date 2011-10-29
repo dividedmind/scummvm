@@ -32,15 +32,10 @@
 class AbstractFilesystemNode;
 
 namespace Common {
-	class SeekableReadStream;
-	class WriteStream;
-}
-
-//namespace Common {
 
 class FilesystemNode;
-//class SeekableReadStream;
-//class WriteStream;
+class SeekableReadStream;
+class WriteStream;
 
 /**
  * List of multiple file system nodes. E.g. the contents of a given directory.
@@ -108,7 +103,7 @@ public:
 
 	/**
 	 * Create a new node referring to a child node of the current node, which
-	 * must be a directory node (an assertion is triggered otherwise).
+	 * must be a directory node (otherwise an invalid node is returned).
 	 * If a child matching the name exists, a normal node for it is returned.
 	 * If no child with the name exists, a node for it is still returned,
 	 * but exists() will return 'false' for it. This node can however be used
@@ -153,10 +148,11 @@ public:
 	virtual Common::String getName() const;
 
 	/**
-	 * Return a string representation of the file which can be passed to fopen(),
-	 * and is suitable for archiving (i.e. writing to the config file).
-	 * This will usually be a 'path' (hence the name of the method), but can
-	 * be anything that fulfills the above criterions.
+	 * Return a string representation of the file which is suitable for
+	 * archiving (i.e. writing to the config file). This will usually be a
+	 * 'path' (hence the name of the method), but can be anything that meets
+	 * the above criterions. What a 'path' is differs greatly from system to
+	 * system anyway.
 	 *
 	 * @note Do not assume that this string contains (back)slashes or any
 	 *       other kind of 'path separators'.
@@ -234,7 +230,7 @@ public:
 	 *
 	 * @return pointer to the stream object, 0 in case of a failure
 	 */
-	virtual Common::SeekableReadStream *openForReading();
+	virtual Common::SeekableReadStream *openForReading() const;
 
 	/**
 	 * Creates a WriteStream instance corresponding to the file
@@ -243,9 +239,9 @@ public:
 	 *
 	 * @return pointer to the stream object, 0 in case of a failure
 	 */
-	virtual Common::WriteStream *openForWriting();
+	virtual Common::WriteStream *openForWriting() const;
 };
 
-//} // End of namespace Common
+} // End of namespace Common
 
 #endif //COMMON_FS_H

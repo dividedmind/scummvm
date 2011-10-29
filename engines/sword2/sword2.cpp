@@ -83,8 +83,9 @@ public:
 	virtual bool hasFeature(MetaEngineFeature f) const;
 	virtual GameList getSupportedGames() const;
 	virtual GameDescriptor findGame(const char *gameid) const;
-	virtual GameList detectGames(const FSList &fslist) const;
+	virtual GameList detectGames(const Common::FSList &fslist) const;
 	virtual SaveStateList listSaves(const char *target) const;
+	virtual void removeSaveState(const char *target, int slot) const;
 
 	virtual PluginError createInstance(OSystem *syst, Engine **engine) const;
 };
@@ -117,10 +118,10 @@ GameDescriptor Sword2MetaEngine::findGame(const char *gameid) const {
 	return GameDescriptor(g->gameid, g->description);
 }
 
-GameList Sword2MetaEngine::detectGames(const FSList &fslist) const {
+GameList Sword2MetaEngine::detectGames(const Common::FSList &fslist) const {
 	GameList detectedGames;
 	const Sword2::GameSettings *g;
-	FSList::const_iterator file;
+	Common::FSList::const_iterator file;
 
 	// TODO: It would be nice if we had code here which distinguishes
 	// between the 'sword2' and 'sword2demo' targets. The current code
@@ -150,8 +151,8 @@ GameList Sword2MetaEngine::detectGames(const FSList &fslist) const {
 				const char *fileName = file->getName().c_str();
 
 				if (0 == scumm_stricmp("clusters", fileName)) {
-					FSList recList;
-					if (file->getChildren(recList, FilesystemNode::kListAll)) {
+					Common::FSList recList;
+					if (file->getChildren(recList, Common::FilesystemNode::kListAll)) {
 						GameList recGames(detectGames(recList));
 						if (!recGames.empty()) {
 							detectedGames.push_back(recGames);
@@ -196,13 +197,23 @@ SaveStateList Sword2MetaEngine::listSaves(const char *target) const {
 	return saveList;
 }
 
+void Sword2MetaEngine::removeSaveState(const char *target, int slot) const {
+	char extension[6];
+	snprintf(extension, sizeof(extension), ".%03d", slot);
+
+	Common::String filename = target;
+	filename += extension;
+
+	g_system->getSavefileManager()->removeSavefile(filename.c_str());
+}
+
 PluginError Sword2MetaEngine::createInstance(OSystem *syst, Engine **engine) const {
 	assert(syst);
 	assert(engine);
 
-	FSList fslist;
-	FilesystemNode dir(ConfMan.get("path"));
-	if (!dir.getChildren(fslist, FilesystemNode::kListAll)) {
+	Common::FSList fslist;
+	Common::FilesystemNode dir(ConfMan.get("path"));
+	if (!dir.getChildren(fslist, Common::FilesystemNode::kListAll)) {
 		return kInvalidPathError;
 	}
 
@@ -230,12 +241,12 @@ namespace Sword2 {
 
 Sword2Engine::Sword2Engine(OSystem *syst) : Engine(syst) {
 	// Add default file directories
-	Common::File::addDefaultDirectory(_gameDataPath + "CLUSTERS/");
-	Common::File::addDefaultDirectory(_gameDataPath + "SWORD2/");
-	Common::File::addDefaultDirectory(_gameDataPath + "VIDEO/");
-	Common::File::addDefaultDirectory(_gameDataPath + "clusters/");
-	Common::File::addDefaultDirectory(_gameDataPath + "sword2/");
-	Common::File::addDefaultDirectory(_gameDataPath + "video/");
+	Common::File::addDefaultDirectory(_gameDataDir.getChild("CLUSTERS"));
+	Common::File::addDefaultDirectory(_gameDataDir.getChild("SWORD2"));
+	Common::File::addDefaultDirectory(_gameDataDir.getChild("VIDEO"));
+	Common::File::addDefaultDirectory(_gameDataDir.getChild("clusters"));
+	Common::File::addDefaultDirectory(_gameDataDir.getChild("sword2"));
+	Common::File::addDefaultDirectory(_gameDataDir.getChild("video"));
 
 	if (0 == scumm_stricmp(ConfMan.get("gameid").c_str(), "sword2demo"))
 		_features = GF_DEMO;
@@ -499,7 +510,7 @@ int Sword2Engine::go() {
 #endif
 	}
 
-	return _eventMan->shouldRTL();
+	return 0;
 }
 
 void Sword2Engine::restartGame() {

@@ -913,20 +913,20 @@ int ScummEngine::init() {
 	// Add default file directories.
 	if (((_game.platform == Common::kPlatformAmiga) || (_game.platform == Common::kPlatformAtariST)) && (_game.version <= 4)) {
 		// This is for the Amiga version of Indy3/Loom/Maniac/Zak
-		File::addDefaultDirectory(_gameDataPath + "ROOMS/");
-		File::addDefaultDirectory(_gameDataPath + "rooms/");
+		File::addDefaultDirectory(_gameDataDir.getChild("ROOMS"));
+		File::addDefaultDirectory(_gameDataDir.getChild("rooms"));
 	}
 
 	if ((_game.platform == Common::kPlatformMacintosh) && (_game.version == 3)) {
 		// This is for the Mac version of Indy3/Loom
-		File::addDefaultDirectory(_gameDataPath + "Rooms 1/");
-		File::addDefaultDirectory(_gameDataPath + "Rooms 2/");
-		File::addDefaultDirectory(_gameDataPath + "Rooms 3/");
+		File::addDefaultDirectory(_gameDataDir.getChild("Rooms 1"));
+		File::addDefaultDirectory(_gameDataDir.getChild("Rooms 2"));
+		File::addDefaultDirectory(_gameDataDir.getChild("Rooms 3"));
 	}
 
 #ifdef ENABLE_SCUMM_7_8
 #ifdef MACOSX
-	if (_game.version == 8 && !memcmp(_gameDataPath.c_str(), "/Volumes/MONKEY3_", 17)) {
+	if (_game.version == 8 && !memcmp(_gameDataDir.getPath().c_str(), "/Volumes/MONKEY3_", 17)) {
 		// Special case for COMI on Mac OS X. The mount points on OS X depend
 		// on the volume name. Hence if playing from CD, we'd get a problem.
 		// So if loading of a resource file fails, we fall back to the (fixed)
@@ -943,16 +943,16 @@ int ScummEngine::init() {
 #endif
 	if (_game.version == 8) {
 		// This is for COMI
-		File::addDefaultDirectory(_gameDataPath + "RESOURCE/");
-		File::addDefaultDirectory(_gameDataPath + "resource/");
+		File::addDefaultDirectory(_gameDataDir.getChild("RESOURCE"));
+		File::addDefaultDirectory(_gameDataDir.getChild("resource"));
 	}
 
 	if (_game.version == 7) {
 		// This is for Full Throttle & The Dig
-		File::addDefaultDirectory(_gameDataPath + "VIDEO/");
-		File::addDefaultDirectory(_gameDataPath + "video/");
-		File::addDefaultDirectory(_gameDataPath + "DATA/");
-		File::addDefaultDirectory(_gameDataPath + "data/");
+		File::addDefaultDirectory(_gameDataDir.getChild("VIDEO"));
+		File::addDefaultDirectory(_gameDataDir.getChild("video"));
+		File::addDefaultDirectory(_gameDataDir.getChild("DATA"));
+		File::addDefaultDirectory(_gameDataDir.getChild("data"));
 	}
 #endif
 
@@ -1530,6 +1530,12 @@ void ScummEngine_v99he::resetScumm() {
 	byte *data = defineArray(129, kStringArray, 0, 0, 0, len);
 	memcpy(data, _filenamePattern.pattern, len);
 }
+
+void ScummEngine_v100he::resetScumm() {
+	ScummEngine_v99he::resetScumm();
+
+	memset(_debugInputBuffer, 0, sizeof(_debugInputBuffer));
+}
 #endif
 
 void ScummEngine::setupMusic(int midi) {
@@ -1687,17 +1693,17 @@ void ScummEngine::syncSoundSettings() {
 	if (VAR_VOICE_MODE != 0xFF)
 		VAR(VAR_VOICE_MODE) = _voiceMode;
 
-	_defaultTalkDelay = getTalkspeed();
+	_defaultTalkDelay = getTalkDelay();
 	if (VAR_CHARINC != 0xFF)
 		VAR(VAR_CHARINC) = _defaultTalkDelay;
 }
 
-void ScummEngine::setTalkspeed(int talkspeed) {
-	ConfMan.setInt("talkspeed", (talkspeed * 255 + 9 / 2) / 9);
+void ScummEngine::setTalkDelay(int talkdelay) {
+	ConfMan.setInt("talkspeed", ((9 - talkdelay) * 255 + 9 / 2) / 9);
 }
 
-int ScummEngine::getTalkspeed() {
-	return (ConfMan.getInt("talkspeed") * 9 + 255 / 2) / 255;
+int ScummEngine::getTalkDelay() {
+	return 9 - (ConfMan.getInt("talkspeed") * 9 + 255 / 2) / 255;
 }
 
 
@@ -1756,7 +1762,7 @@ int ScummEngine::go() {
 		}
 	}
 
-	return _eventMan->shouldRTL();
+	return 0;
 }
 
 void ScummEngine::waitForTimer(int msec_delay) {
@@ -2008,7 +2014,6 @@ void ScummEngine::scummLoop_handleSaveLoad() {
 	if (_saveLoadFlag) {
 		bool success;
 		const char *errMsg = 0;
-		char filename[256];
 
 		if (_game.version == 8 && _saveTemporaryState)
 			VAR(VAR_GAME_LOADED) = 0;
@@ -2029,13 +2034,13 @@ void ScummEngine::scummLoop_handleSaveLoad() {
 				VAR(VAR_GAME_LOADED) = (_game.version == 8) ? 1 : 203;
 		}
 
-		makeSavegameName(filename, _saveLoadSlot, _saveTemporaryState);
+		Common::String filename = makeSavegameName(_saveLoadSlot, _saveTemporaryState);
 		if (!success) {
-			displayMessage(0, errMsg, filename);
+			displayMessage(0, errMsg, filename.c_str());
 		} else if (_saveLoadFlag == 1 && _saveLoadSlot != 0 && !_saveTemporaryState) {
 			// Display "Save successful" message, except for auto saves
 			char buf[256];
-			snprintf(buf, sizeof(buf), "Successfully saved game state in file:\n\n%s", filename);
+			snprintf(buf, sizeof(buf), "Successfully saved game state in file:\n\n%s", filename.c_str());
 
 			GUI::TimedMessageDialog dialog(buf, 1500);
 			runDialog(dialog);

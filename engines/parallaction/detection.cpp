@@ -246,6 +246,7 @@ public:
 	virtual bool hasFeature(MetaEngineFeature f) const;
 	virtual bool createInstance(OSystem *syst, Engine **engine, const Common::ADGameDescription *desc) const;
 	virtual SaveStateList listSaves(const char *target) const;
+	virtual void removeSaveState(const char *target, int slot) const;
 };
 
 bool ParallactionMetaEngine::hasFeature(MetaEngineFeature f) const {
@@ -278,7 +279,6 @@ bool ParallactionMetaEngine::createInstance(OSystem *syst, Engine **engine, cons
 SaveStateList ParallactionMetaEngine::listSaves(const char *target) const {
 	Common::SaveFileManager *saveFileMan = g_system->getSavefileManager();
 	Common::StringList filenames;
-	char saveDesc[200];
 	Common::String pattern = target;
 	pattern += ".0??";
 
@@ -293,7 +293,7 @@ SaveStateList ParallactionMetaEngine::listSaves(const char *target) const {
 		if (slotNum >= 0 && slotNum <= 99) {
 			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
 			if (in) {
-				in->readLine(saveDesc, 199);
+				Common::String saveDesc = in->readLine();
 				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc, *file));
 				delete in;
 			}
@@ -301,6 +301,16 @@ SaveStateList ParallactionMetaEngine::listSaves(const char *target) const {
 	}
 
 	return saveList;
+}
+
+void ParallactionMetaEngine::removeSaveState(const char *target, int slot) const {
+	char extension[6];
+	snprintf(extension, sizeof(extension), ".0%02d", slot);
+
+	Common::String filename = target;
+	filename += extension;
+
+	g_system->getSavefileManager()->removeSavefile(filename.c_str());
 }
 
 #if PLUGIN_ENABLED_DYNAMIC(PARALLACTION)

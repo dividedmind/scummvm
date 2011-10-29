@@ -28,7 +28,6 @@
 #include "common/system.h"
 #include "common/rect.h"
 #include "common/str.h"
-#include "common/file.h"
 #include "common/config-file.h"
 
 #include "graphics/surface.h"
@@ -357,7 +356,8 @@ public:
 
 	//! Special image ids for images used in the GUI
 	enum kThemeImages {
-		kImageLogo = 0		//! ScummVM Logo used in the launcher
+		kImageLogo = 0,		//! ScummVM Logo used in the launcher
+		kImageLogoSmall		//! ScummVM logo used in the GMM
 	};
 
 	/**

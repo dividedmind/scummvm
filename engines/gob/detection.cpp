@@ -278,6 +278,19 @@ static const GOBGameDescription gameDescriptions[] = {
 		kFeaturesNone,
 		"intro"
 	},
+	{
+		{
+			"gob1",
+			"Interactive Demo",
+			AD_ENTRY1s("intro.stk", "a796096280d5efd48cf8e7dfbe426eb5", 193595),
+			UNK_LANG,
+			kPlatformPC,
+			Common::ADGF_DEMO
+		},
+		kGameTypeGob1,
+		kFeaturesNone,
+		"intro"
+	},
 	{ // Supplied by raina in the forums
 		{
 			"gob1",
@@ -1057,6 +1070,84 @@ static const GOBGameDescription gameDescriptions[] = {
 		kFeaturesCD,
 		"intro"
 	},
+	{ // Supplied by SiRoCs in bug report #2093672
+		{
+			"lostintime",
+			"",
+			AD_ENTRY1s("intro.stk", "795be7011ec31bf5bb8ce4efdb9ee5d3", 4838904),
+			EN_USA,
+			kPlatformPC,
+			Common::ADGF_NO_FLAGS
+		},
+		kGameTypeLostInTime,
+		kFeaturesCD,
+		"intro"
+	},
+	{ // Supplied by SiRoCs in bug report #2093672
+		{
+			"lostintime",
+			"",
+			AD_ENTRY1s("intro.stk", "795be7011ec31bf5bb8ce4efdb9ee5d3", 4838904),
+			FR_FRA,
+			kPlatformPC,
+			Common::ADGF_NO_FLAGS
+		},
+		kGameTypeLostInTime,
+		kFeaturesCD,
+		"intro"
+	},
+	{ // Supplied by SiRoCs in bug report #2093672
+		{
+			"lostintime",
+			"",
+			AD_ENTRY1s("intro.stk", "795be7011ec31bf5bb8ce4efdb9ee5d3", 4838904),
+			IT_ITA,
+			kPlatformPC,
+			Common::ADGF_NO_FLAGS
+		},
+		kGameTypeLostInTime,
+		kFeaturesCD,
+		"intro"
+	},
+	{ // Supplied by SiRoCs in bug report #2093672
+		{
+			"lostintime",
+			"",
+			AD_ENTRY1s("intro.stk", "795be7011ec31bf5bb8ce4efdb9ee5d3", 4838904),
+			DE_DEU,
+			kPlatformPC,
+			Common::ADGF_NO_FLAGS
+		},
+		kGameTypeLostInTime,
+		kFeaturesCD,
+		"intro"
+	},
+	{ // Supplied by SiRoCs in bug report #2093672
+		{
+			"lostintime",
+			"",
+			AD_ENTRY1s("intro.stk", "795be7011ec31bf5bb8ce4efdb9ee5d3", 4838904),
+			ES_ESP,
+			kPlatformPC,
+			Common::ADGF_NO_FLAGS
+		},
+		kGameTypeLostInTime,
+		kFeaturesCD,
+		"intro"
+	},
+	{ // Supplied by SiRoCs in bug report #2093672
+		{
+			"lostintime",
+			"",
+			AD_ENTRY1s("intro.stk", "795be7011ec31bf5bb8ce4efdb9ee5d3", 4838904),
+			EN_GRB,
+			kPlatformPC,
+			Common::ADGF_NO_FLAGS
+		},
+		kGameTypeLostInTime,
+		kFeaturesCD,
+		"intro"
+	},
 	{
 		{
 			"lostintime",
@@ -1197,6 +1288,19 @@ static const GOBGameDescription gameDescriptions[] = {
 			"",
 			AD_ENTRY1("intro.stk", "8d28ce1591b0e9cc79bf41cad0fc4c9c"),
 			UNK_LANG,
+			kPlatformPC,
+			Common::ADGF_NO_FLAGS
+		},
+		kGameTypeGob3,
+		kFeaturesAdlib,
+		"intro"
+	},
+	{ // Supplied by SiRoCs in bug report #2098621
+		{
+			"gob3",
+			"",
+			AD_ENTRY1s("intro.stk", "d3b72938fbbc8159198088811f9e6d19", 160382),
+			ES_ESP,
 			kPlatformPC,
 			Common::ADGF_NO_FLAGS
 		},
@@ -1769,6 +1873,19 @@ static const GOBGameDescription gameDescriptions[] = {
 			"",
 			AD_ENTRY1s("intro.stk", "60348a87651f92e8492ee070556a96d8", 7069736),
 			ES_ESP,
+			kPlatformPC,
+			Common::ADGF_NO_FLAGS
+		},
+		kGameTypeWoodruff,
+		kFeatures640,
+		"intro"
+	},
+	{ // Supplied by goodoldgeorg in bug report #2098838
+		{
+			"woodruff",
+			"",
+			AD_ENTRY1s("intro.stk", "08a96bf061af1fa4f75c6a7cc56b60a4", 20734979),
+			PL_POL,
 			kPlatformPC,
 			Common::ADGF_NO_FLAGS
 		},

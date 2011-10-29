@@ -26,7 +26,7 @@
 #define LAUNCHER_DIALOG_H
 
 #include "gui/dialog.h"
-#include "base/game.h"
+#include "engines/game.h"
 #include "common/str.h"
 
 namespace GUI {
@@ -54,6 +54,7 @@ protected:
 	ListWidget		*_list;
 	ButtonWidget	*_addButton;
 	Widget			*_startButton;
+	Widget			*_loadButton;
 	Widget			*_editButton;
 	Widget			*_removeButton;
 #ifndef DISABLE_FANCY_THEMES
@@ -75,8 +76,6 @@ protected:
 	void editGame(int item);
 	void loadGame(int item);
 	
-	StringList generateSavegameList(int item, const EnginePlugin *plugin);
-
 	void selectGame(const String &name);
 };
 

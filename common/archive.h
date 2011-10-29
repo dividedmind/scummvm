@@ -31,10 +31,15 @@
 #include "common/hash-str.h"
 #include "common/list.h"
 #include "common/ptr.h"
+#include "common/singleton.h"
 #include "common/stream.h"
 
 namespace Common {
 
+/**
+ * FilePtr is a convenient way to keep track of a SeekableReadStream without
+ * having to worry about releasing its memory.
+ */
 typedef SharedPtr<SeekableReadStream> FilePtr;
 
 /**
@@ -52,30 +57,28 @@ public:
 	virtual bool hasFile(const String &name) = 0;
 
 	/**
-	 * Add names to the provided list according to the pattern. Returned
-	 * names can be used as parameters to fileOpen.
+	 * Add all the names present in the Archive which match pattern to
+	 * list. Returned names can be used as parameters to openFile.
 	 * Must not remove elements from the list.
 	 *
-	 * @return The number of names added to list.
+	 * @return the number of names added to list
 	 */
-	virtual int matchPattern(StringList &list, const String &pattern) = 0;
+	virtual int matchPattern(StringList &list, const String &pattern);
 
 	/**
-	 * Add all the names present in the Archive. Returned
-	 * names can be used as parameters to fileOpen.
+	 * Add all the names present in the Archive to list. Returned
+	 * names can be used as parameters to openFile.
 	 * Must not remove elements from the list.
 	 *
-	 * @return The number of names added to list.
+	 * @return the number of names added to list
 	 */
-	virtual int getAllNames(StringList &list) {
-		return matchPattern(list, "*");
-	}
+	virtual int getAllNames(StringList &list) = 0;
 
 	/**
 	 * Create a stream bound to a file in the archive.
-	 * @return The newly created input stream.
+	 * @return the newly created input stream
 	 */
-	virtual FilePtr openFile(const String &name) = 0;
+	virtual SeekableReadStream *openFile(const String &name) = 0;
 };
 
 
@@ -130,15 +133,15 @@ public:
 
 	/**
 	 * Create a new FSDirectory pointing to a sub directory of the instance.
-	 * @return A new FSDirectory instance conveniently wrapped in a SharedPtr.
+	 * @return a new FSDirectory instance
 	 */
-	SharedPtr<FSDirectory> getSubDirectory(const String &name);
+	FSDirectory *getSubDirectory(const String &name);
 
 	virtual bool hasFile(const String &name);
 	virtual int matchPattern(StringList &list, const String &pattern);
-	virtual FilePtr openFile(const String &name);
+	virtual int getAllNames(StringList &list);
+	virtual SeekableReadStream *openFile(const String &name);
 };
-
 
 
 /**
@@ -148,7 +151,7 @@ public:
  * match. SearchSet *DOES* guarantee that searches are performed in *DESCENDING*
  * priority order. In case of conflicting priorities, insertion order prevails.
  */
- class SearchSet : public Archive {
+class SearchSet : public Archive {
 	struct Node {
 		uint		_priority;
 		String		_name;
@@ -163,18 +166,20 @@ public:
 	void insert(const Node& node);
 
 public:
-	SearchSet();
-	virtual ~SearchSet();
-
 	/**
-	 * Add a new Archive to the searchable set.
+	 * Add a new archive to the searchable set.
 	 */
 	void add(const String& name, ArchivePtr archive, uint priority = 0);
 
 	/**
-	 * Remove an Archive from the searchable set.
+	 * Remove an archive from the searchable set.
 	 */
 	void remove(const String& name);
+
+	/**
+	 * Check if a given archive name is already present.
+	 */
+	bool hasArchive(const String &name) const;
 
 	/**
      * Empties the searchable set.
@@ -188,13 +193,38 @@ public:
 
 	virtual bool hasFile(const String &name);
 	virtual int matchPattern(StringList &list, const String &pattern);
+	virtual int getAllNames(StringList &list);
 
 	/**
 	 * Implements openFile from Archive base class. The current policy is
 	 * opening the first file encountered that matches the name.
 	 */
-	virtual FilePtr openFile(const String &name);
+	virtual SeekableReadStream *openFile(const String &name);
 };
+
+
+class SearchManager : public Singleton<SearchManager>, public SearchSet {
+public:
+	/**
+	 * Add an existing Archive. This is meant to support searching in system-specific
+	 * archives, namely the MACOSX/IPHONE bundles.
+	 */
+	void addArchive(const String &name, ArchivePtr archive);
+
+	/**
+	 * Create and add a FSDirectory by name
+	 */
+	void addDirectory(const String &name, const String &directory);
+
+	/**
+	 * Create and add a FSDirectory and its subdirectories by name
+	 */
+	void addDirectoryRecursive(const String &name, const String &directory, int depth = 4);
+
+};
+
+/** Shortcut for accessing the search manager. */
+#define SearchMan		Common::SearchManager::instance()
 
 } // namespace Common
 

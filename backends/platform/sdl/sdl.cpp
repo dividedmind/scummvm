@@ -32,9 +32,9 @@
 #endif
 
 #include "backends/platform/sdl/sdl.h"
+#include "common/archive.h"
 #include "common/config-manager.h"
 #include "common/events.h"
-#include "common/file.h"
 #include "common/util.h"
 
 #include "backends/saves/default/default-saves.h"
@@ -72,6 +72,9 @@
 #define DEFAULT_CONFIG_FILE "scummvm.ini"
 #endif
 
+#if defined(MACOSX) || defined(IPHONE)
+#include "CoreFoundation/CoreFoundation.h"
+#endif
 
 
 static Uint32 timer_handler(Uint32 interval, void *param) {
@@ -272,6 +275,38 @@ FilesystemFactory *OSystem_SDL::getFilesystemFactory() {
 	return _fsFactory;
 }
 
+void OSystem_SDL::addSysArchivesToSearchSet(Common::SearchSet &s, uint priority) {
+
+#ifdef DATA_PATH
+	// Add the global DATA_PATH to the directory search list
+	// FIXME: We use depth = 4 for now, to match the old code. May want to change that
+	Common::FilesystemNode dataNode(DATA_PATH);
+	if (dataNode.exists() && dataNode.isDirectory()) {
+		Common::ArchivePtr dataArchive(new Common::FSDirectory(dataNode, 4));
+		s.add(DATA_PATH, dataArchive, priority);
+	}
+#endif
+
+#if defined(MACOSX) || defined(IPHONE)
+	// Get URL of the Resource directory of the .app bundle
+	CFURLRef fileUrl = CFBundleCopyResourcesDirectoryURL(CFBundleGetMainBundle());
+	if (fileUrl) {
+		// Try to convert the URL to an absolute path
+		UInt8 buf[MAXPATHLEN];
+		if (CFURLGetFileSystemRepresentation(fileUrl, true, buf, sizeof(buf))) {
+			// Success: Add it to the search path
+			Common::String bundlePath((const char *)buf);
+			Common::ArchivePtr bundleArchive(new Common::FSDirectory(bundlePath));
+			s.add("__OSX_BUNDLE__", bundleArchive, priority);
+		}
+		CFRelease(fileUrl);
+	}
+
+#endif
+
+}
+
+
 static Common::String getDefaultConfigFileName() {
 	char configFile[MAXPATHLEN];
 #if defined (WIN32) && !defined(_WIN32_WCE) && !defined(__SYMBIAN32__)
@@ -338,12 +373,12 @@ static Common::String getDefaultConfigFileName() {
 }
 
 Common::SeekableReadStream *OSystem_SDL::openConfigFileForReading() {
-	FilesystemNode file(getDefaultConfigFileName());
+	Common::FilesystemNode file(getDefaultConfigFileName());
 	return file.openForReading();
 }
 
 Common::WriteStream *OSystem_SDL::openConfigFileForWriting() {
-	FilesystemNode file(getDefaultConfigFileName());
+	Common::FilesystemNode file(getDefaultConfigFileName());
 	return file.openForWriting();
 }
 
@@ -516,7 +551,7 @@ void OSystem_SDL::mixerProducerThread() {
 		// Generate samples and put them into the next buffer
 		nextSoundBuffer = _activeSoundBuf ^ 1;
 		_mixer->mixCallback(_soundBuffers[nextSoundBuffer], _soundBufSize);
-		
+
 		// Swap buffers
 		_activeSoundBuf = nextSoundBuffer;
 	}
@@ -560,7 +595,7 @@ void OSystem_SDL::deinitThreadedMixer() {
 		SDL_CondBroadcast(_soundCond);
 		SDL_WaitThread(_soundThread, NULL);
 
-		// Kill the mutex & cond variables. 
+		// Kill the mutex & cond variables.
 		// Attention: AT this point, the mixer callback must not be running
 		// anymore, else we will crash!
 		SDL_DestroyMutex(_soundMutex);
@@ -583,10 +618,10 @@ void OSystem_SDL::mixCallback(void *arg, byte *samples, int len) {
 
 	// Lock mutex, to ensure our data is not overwritten by the producer thread
 	SDL_LockMutex(this_->_soundMutex);
-	
+
 	// Copy data from the current sound buffer
 	memcpy(samples, this_->_soundBuffers[this_->_activeSoundBuf], len);
-	
+
 	// Unlock mutex and wake up the produced thread
 	SDL_UnlockMutex(this_->_soundMutex);
 	SDL_CondSignal(this_->_soundCond);
@@ -646,7 +681,7 @@ void OSystem_SDL::setupMixer() {
 		// even if it didn't. Probably only happens for "weird" rates, though.
 		_samplesPerSec = obtained.freq;
 		debug(1, "Output sample rate: %d Hz", _samplesPerSec);
-	
+
 		// Tell the mixer that we are ready and start the sound processing
 		_mixer->setOutputRate(_samplesPerSec);
 		_mixer->setReady(true);
