@@ -94,7 +94,7 @@ public:
 
 		Common::Point position() const { return _position; }
 		const std::vector<byte> &nexts() const { return _nexts; }
-		const uint16 index() const { return _index; }
+		uint16 index() const { return _index; }
 
 		Direction operator-(const Frame &other) const;
 		bool operator==(const Frame &other) const {

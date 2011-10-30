@@ -208,11 +208,7 @@ Common::ReadStream *Resources::tuneStream(uint16 index) const {
 }
 
 void Resources::readPalette(Common::ReadStream *stream, byte *palette) {
-	for(int i = 256; i; i--) { // convert to rgba
-		stream->read(palette, 3);
-		palette[3] = 0;
-		palette += 4;
-	}
+	stream->read(palette, 3 * 256);
 }
 
 void Resources::loadImage(uint16 index, byte *target, uint16 size, byte *palette) const {
