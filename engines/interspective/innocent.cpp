@@ -80,7 +80,6 @@ Engine::Engine(OSystem *syst) :
 
 Engine::~Engine() {
 	DebugMan.clearAllDebugChannels();
-	MusicParser::destroy();
 }
 
 Common::Error Engine::run() {

@@ -41,8 +41,8 @@ namespace Interspective {
 MusicParser::MusicParser() : MidiParser(), _time(0), _lasttick(0), _tick(0) {}
 
 MusicParser::~MusicParser() {
-	silence();
-	unloadMusic();
+/*	silence();
+	unloadMusic();*/
 //	_driver->close(); // XXX segfaults
 }
 
@@ -83,7 +83,7 @@ void MusicParser::tick() {
 
 	_lasttick = _time;
 
-	_tune->tick();
+	if (_tune.get()) _tune->tick();
 	_tick++;
 }
 
