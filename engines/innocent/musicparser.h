@@ -33,6 +33,7 @@
 #include "common/queue.h"
 #include "common/singleton.h"
 #include "audio/midiparser.h"
+#include "audio/mididrv.h"
 
 #include "innocent/value.h"
 
@@ -148,17 +149,20 @@ public:
 	~MusicParser();
 
 	bool loadMusic(byte *data, uint32 size = 0);
-	void onTimer();
-	virtual uint32 getTick() { return _tick; }
+	void tick();
+	uint32 getTick() { return _tick; }
 	void setBeat(uint16 beat) { _tune->setBeat(beat); }
 	void silence();
+	static void timerCallback(void *self) { static_cast<MusicParser *>(self)->tick(); }
 
 	friend class Note;
 	friend class MusicCommand;
 
 private:
 	void parseNextEvent(EventInfo &info) {  }
+	bool initializeDriver();
 	std::auto_ptr<Tune> _tune;
+	std::auto_ptr<MidiDriver> _driver;
 	std::auto_ptr<MusicScript> _script;
 
 	uint32 _time, _lasttick, _tick;

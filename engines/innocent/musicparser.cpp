@@ -47,6 +47,9 @@ MusicParser::~MusicParser() {
 }
 
 bool MusicParser::loadMusic(byte *data, uint32 /*size*/) {
+	if (!_driver.get() && !initializeDriver())
+		return false;
+	
 	unloadMusic();
 	silence();
 	_script.reset(new MusicScript(data));
@@ -60,7 +63,20 @@ bool MusicParser::loadMusic(byte *data, uint32 /*size*/) {
 	return true;
 }
 
-void MusicParser::onTimer() {
+bool MusicParser::initializeDriver()
+{
+	int midiDriver = MidiDriver::detectDevice(MDT_MIDI);
+
+	_driver.reset(MidiDriver::createMidi(midiDriver));
+
+	setMidiDriver(_driver.get());
+	_driver->open();
+	setTimerRate(_driver->getBaseTempo());
+	_driver->setTimerCallback(this, &MusicParser::timerCallback);
+	return true;
+}
+
+void MusicParser::tick() {
 	_time += _timer_rate;
 	if (_lasttick && _time < _lasttick + _psec_per_tick)
 		return;

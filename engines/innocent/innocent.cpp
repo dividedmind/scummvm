@@ -93,16 +93,6 @@ Common::Error Engine::run() {
 	_resources->init();
 	_graphics->init();
 
-	int midiDriver = MidiDriver::detectDevice(MDT_MIDI);
-
-	MidiDriver *driver = MidiDriver::createMidi(midiDriver);
-
-	_musicDriver.reset(driver);
-	Music.setMidiDriver(driver);
-	driver->open();
-	Music.setTimerRate(driver->getBaseTempo());
-	driver->setTimerCallback(&Music, &MusicParser::timerCallback);
-
 	_logic->init();
 
 	_resources->loadActors();
