@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #include "base/plugins.h"
@@ -43,6 +40,19 @@ uint32 LureEngine::getFeatures() const { return _gameDescription->features; }
 Common::Language LureEngine::getLanguage() const { return _gameDescription->desc.language; }
 Common::Platform LureEngine::getPlatform() const { return _gameDescription->desc.platform; }
 
+LureLanguage LureEngine::getLureLanguage() const {
+	switch (_gameDescription->desc.language) {
+	case Common::IT_ITA: return LANG_IT_ITA;
+	case Common::FR_FRA: return LANG_FR_FRA;
+	case Common::DE_DEU: return LANG_DE_DEU;
+	case Common::ES_ESP: return LANG_ES_ESP;
+	case Common::EN_ANY: return LANG_EN_ANY;
+	case Common::UNK_LANG: return LANG_UNKNOWN;
+	default:
+		error("Unknown game language");
+	}
+}
+
 } // End of namespace Lure
 
 static const PlainGameDescriptor lureGames[] = {
@@ -53,22 +63,7 @@ static const PlainGameDescriptor lureGames[] = {
 
 namespace Lure {
 
-using Common::GUIO_NONE;
-
 static const LureGameDescription gameDescriptions[] = {
-	{
-		{
-			"lure",
-			"EGA",
-			AD_ENTRY1("disk1.ega", "e9c9fdd8a19f7910d68e53cb84651273"),
-			Common::EN_ANY,
-			Common::kPlatformPC,
-			ADGF_NO_FLAGS,
-			GUIO_NONE
-		},
-		GF_FLOPPY | GF_EGA,
-	},
-
 	{
 		{
 			"lure",
@@ -77,7 +72,7 @@ static const LureGameDescription gameDescriptions[] = {
 			Common::EN_ANY,
 			Common::kPlatformPC,
 			ADGF_NO_FLAGS,
-			GUIO_NONE
+			GUIO1(GUIO_NONE)
 		},
 		GF_FLOPPY,
 	},
@@ -86,11 +81,11 @@ static const LureGameDescription gameDescriptions[] = {
 		{
 			"lure",
 			"EGA",
-			AD_ENTRY1("disk1.ega", "b80aced0321f64c58df2c7d3d74dfe79"),
-			Common::IT_ITA,
+			AD_ENTRY1("disk1.ega", "e9c9fdd8a19f7910d68e53cb84651273"),
+			Common::EN_ANY,
 			Common::kPlatformPC,
 			ADGF_NO_FLAGS,
-			GUIO_NONE
+			GUIO1(GUIO_NONE)
 		},
 		GF_FLOPPY | GF_EGA,
 	},
@@ -103,9 +98,22 @@ static const LureGameDescription gameDescriptions[] = {
 			Common::IT_ITA,
 			Common::kPlatformPC,
 			ADGF_NO_FLAGS,
-			GUIO_NONE
+			GUIO1(GUIO_NONE)
 		},
 		GF_FLOPPY,
+	},
+
+	{
+		{
+			"lure",
+			"EGA",
+			AD_ENTRY1("disk1.ega", "b80aced0321f64c58df2c7d3d74dfe79"),
+			Common::IT_ITA,
+			Common::kPlatformPC,
+			ADGF_NO_FLAGS,
+			GUIO1(GUIO_NONE)
+		},
+		GF_FLOPPY | GF_EGA,
 	},
 
 	{
@@ -116,7 +124,7 @@ static const LureGameDescription gameDescriptions[] = {
 			Common::DE_DEU,
 			Common::kPlatformPC,
 			ADGF_NO_FLAGS,
-			GUIO_NONE
+			GUIO1(GUIO_NONE)
 		},
 		GF_FLOPPY,
 	},
@@ -129,7 +137,7 @@ static const LureGameDescription gameDescriptions[] = {
 			Common::DE_DEU,
 			Common::kPlatformPC,
 			ADGF_NO_FLAGS,
-			GUIO_NONE
+			GUIO1(GUIO_NONE)
 		},
 		GF_FLOPPY,
 	},
@@ -142,7 +150,7 @@ static const LureGameDescription gameDescriptions[] = {
 			Common::FR_FRA,
 			Common::kPlatformPC,
 			ADGF_NO_FLAGS,
-			GUIO_NONE
+			GUIO1(GUIO_NONE)
 		},
 		GF_FLOPPY,
 	},
@@ -155,7 +163,7 @@ static const LureGameDescription gameDescriptions[] = {
 			Common::ES_ESP,
 			Common::kPlatformPC,
 			ADGF_NO_FLAGS,
-			GUIO_NONE
+			GUIO1(GUIO_NONE)
 		},
 		GF_FLOPPY,
 	},
@@ -165,33 +173,20 @@ static const LureGameDescription gameDescriptions[] = {
 
 } // End of namespace Lure
 
-static const ADParams detectionParams = {
-	// Pointer to ADGameDescription or its superset structure
-	(const byte *)Lure::gameDescriptions,
-	// Size of that superset structure
-	sizeof(Lure::LureGameDescription),
-	// Number of bytes to compute MD5 sum for
-	1024,
-	// List of all engine targets
-	lureGames,
-	// Structure for autoupgrading obsolete targets
-	0,
-	// Name of single gameid (optional)
-	"lure",
-	// List of files for file-based fallback detection (optional)
-	0,
-	// Flags
-	kADFlagUseExtraAsHint,
-	// Additional GUI options (for every game}
-	Common::GUIO_NOSPEECH
-};
-
 class LureMetaEngine : public AdvancedMetaEngine {
 public:
-	LureMetaEngine() : AdvancedMetaEngine(detectionParams) {}
+	LureMetaEngine() : AdvancedMetaEngine(Lure::gameDescriptions, sizeof(Lure::LureGameDescription), lureGames) {
+		_md5Bytes = 1024;
+		_singleid = "lure";
+
+		// Use kADFlagUseExtraAsHint to distinguish between EGA and VGA versions
+		// of italian Lure when their datafiles sit in the same directory.
+		_flags = kADFlagUseExtraAsHint;
+		_guioptions = GUIO1(GUIO_NOSPEECH);
+	}
 
 	virtual const char *getName() const {
-		return "Lure of the Temptress Engine";
+		return "Lure";
 	}
 
 	virtual const char *getOriginalCopyright() const {
@@ -229,7 +224,7 @@ bool LureMetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGame
 
 SaveStateList LureMetaEngine::listSaves(const char *target) const {
 	Common::SaveFileManager *saveFileMan = g_system->getSavefileManager();
-	Common::StringList filenames;
+	Common::StringArray filenames;
 	Common::String saveDesc;
 	Common::String pattern = "lure.???";
 
@@ -237,7 +232,7 @@ SaveStateList LureMetaEngine::listSaves(const char *target) const {
 	sort(filenames.begin(), filenames.end());	// Sort (hopefully ensuring we are sorted numerically..)
 
 	SaveStateList saveList;
-	for (Common::StringList::const_iterator file = filenames.begin(); file != filenames.end(); ++file) {
+	for (Common::StringArray::const_iterator file = filenames.begin(); file != filenames.end(); ++file) {
 		// Obtain the last 3 digits of the filename, since they correspond to the save slot
 		int slotNum = atoi(file->c_str() + file->size() - 3);
 
@@ -257,11 +252,8 @@ SaveStateList LureMetaEngine::listSaves(const char *target) const {
 int LureMetaEngine::getMaximumSaveSlot() const { return 999; }
 
 void LureMetaEngine::removeSaveState(const char *target, int slot) const {
-	char extension[6];
-	snprintf(extension, sizeof(extension), ".%03d", slot);
-
 	Common::String filename = target;
-	filename += extension;
+	filename += Common::String::format(".%03d", slot);
 
 	g_system->getSavefileManager()->removeSavefile(filename);
 }

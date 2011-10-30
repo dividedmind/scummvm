@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #include "common/endian.h"
@@ -34,6 +31,7 @@
 #include "gob/game.h"
 #include "gob/script.h"
 #include "gob/resources.h"
+#include "gob/sound/sound.h"
 
 namespace Gob {
 
@@ -42,7 +40,7 @@ namespace Gob {
 #define OPCODEFUNC(i, x)  _opcodesFunc[i]._OPCODEFUNC(OPCODEVER, x)
 #define OPCODEGOB(i, x)   _opcodesGob[i]._OPCODEGOB(OPCODEVER, x)
 
-Inter_v3::Inter_v3(GobEngine *vm) : Inter_v2(vm) {
+Inter_v3::Inter_v3(GobEngine *vm) : Inter_v2(vm), _ignoreSpeakerOff(false) {
 }
 
 void Inter_v3::setupOpcodesDraw() {
@@ -53,6 +51,8 @@ void Inter_v3::setupOpcodesFunc() {
 	Inter_v2::setupOpcodesFunc();
 
 	OPCODEFUNC(0x1A, o3_getTotTextItemPart);
+	OPCODEFUNC(0x22, o3_speakerOn);
+	OPCODEFUNC(0x23, o3_speakerOff);
 	OPCODEFUNC(0x32, o3_copySprite);
 }
 
@@ -66,7 +66,7 @@ void Inter_v3::setupOpcodesGob() {
 	OPCODEGOB(100, o3_wobble);
 }
 
-bool Inter_v3::o3_getTotTextItemPart(OpFuncParams &params) {
+void Inter_v3::o3_getTotTextItemPart(OpFuncParams &params) {
 	byte *totData;
 	int16 totTextItem;
 	int16 part, curPart = 0;
@@ -80,11 +80,16 @@ bool Inter_v3::o3_getTotTextItemPart(OpFuncParams &params) {
 	part = _vm->_game->_script->readValExpr();
 
 	stringVar = stringStartVar;
+	if (part == -1) {
+		warning("o3_getTotTextItemPart, part == -1");
+		_vm->_draw->_hotspotText = GET_VARO_STR(stringVar);
+	}
+
 	WRITE_VARO_UINT8(stringVar, 0);
 
 	TextItem *textItem = _vm->_game->_resources->getTextItem(totTextItem);
 	if (!textItem)
-		return false;
+		return;
 
 	totData = textItem->getData();
 
@@ -138,7 +143,7 @@ bool Inter_v3::o3_getTotTextItemPart(OpFuncParams &params) {
 							(*totData == 6) || (*totData == 7)) {
 						WRITE_VARO_UINT8(stringVar, 0);
 						delete textItem;
-						return false;
+						return;
 					}
 
 					switch (*totData) {
@@ -172,7 +177,7 @@ bool Inter_v3::o3_getTotTextItemPart(OpFuncParams &params) {
 						totData - _vm->_game->_resources->getTexts());
 				WRITE_VARO_UINT8(stringVar + 6, 0);
 				delete textItem;
-				return false;
+				return;
 			}
 
 			end = false;
@@ -219,7 +224,7 @@ bool Inter_v3::o3_getTotTextItemPart(OpFuncParams &params) {
 
 					if (curPart == part) {
 						delete textItem;
-						return false;
+						return;
 					}
 
 					stringVar = stringStartVar;
@@ -241,16 +246,44 @@ bool Inter_v3::o3_getTotTextItemPart(OpFuncParams &params) {
 	}
 
 	delete textItem;
-	return false;
 }
 
-bool Inter_v3::o3_copySprite(OpFuncParams &params) {
+void Inter_v3::o3_speakerOn(OpFuncParams &params) {
+	int16 frequency = _vm->_game->_script->readValExpr();
+	int32 length    = -1;
+
+	_ignoreSpeakerOff = false;
+
+	// WORKAROUND: This is the footsteps sound. The scripts just fire
+	// speaker on" and then a "speaker off" after a short while. Since
+	// we have delay in certain places avoid 100% CPU all the time and
+	// our PC speaker emulator sometimes "swallows" very short beeper
+	// bursts issued in this way, this is in general quite wonky and
+	// prone to fail, as can be seen in bug report #3376547. Therefore,
+	// we explicitely set a length in this case and ignore the next
+	// speaker off command.
+	if (frequency == 50) {
+		length = 5;
+
+		_ignoreSpeakerOff = true;
+	}
+
+	_vm->_sound->speakerOn(frequency, length);
+}
+
+void Inter_v3::o3_speakerOff(OpFuncParams &params) {
+	if (!_ignoreSpeakerOff)
+		_vm->_sound->speakerOff();
+
+	_ignoreSpeakerOff = false;
+}
+
+void Inter_v3::o3_copySprite(OpFuncParams &params) {
 	o1_copySprite(params);
 
 	// For the close-up "fading" in the CD version
-	if (_vm->_draw->_destSurface == 20)
-		_vm->_video->sparseRetrace(20);
-	return false;
+	if (_vm->_draw->_destSurface == Draw::kFrontSurface)
+		_vm->_video->sparseRetrace(Draw::kFrontSurface);
 }
 
 void Inter_v3::o3_wobble(OpGobParams &params) {

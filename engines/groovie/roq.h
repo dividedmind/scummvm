@@ -18,21 +18,12 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef GROOVIE_ROQ_H
 #define GROOVIE_ROQ_H
 
 #include "groovie/player.h"
-
-//#define DITHER
-
-#ifdef DITHER
-#include "graphics/dither.h"
-#endif
 
 namespace Groovie {
 
@@ -84,20 +75,14 @@ private:
 	byte _codebook4[256 * 4];
 
 	// Buffers
-	Graphics::Surface *_currBuf;
-	Graphics::Surface *_prevBuf;
-	Graphics::Surface _showBuf;
+	Graphics::Surface *_fg, *_bg, *_thirdBuf;
+	Graphics::Surface *_currBuf, *_prevBuf;
 	void buildShowBuf();
 	byte _scaleX, _scaleY;
 	byte _offScale;
 	bool _dirty;
 	byte _alpha;
 
-#ifdef DITHER
-	// Dithering
-	Graphics::PaletteLUT *_paletteLookup;
-	Graphics::SierraLight *_dither;
-#endif
 };
 
 } // End of Groovie namespace

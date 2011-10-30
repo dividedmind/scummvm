@@ -18,38 +18,53 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef MADE_RESOURCE_H
 #define MADE_RESOURCE_H
 
-#include "common/util.h"
-#include "common/file.h"
-#include "common/stream.h"
-#include "common/hashmap.h"
-#include "graphics/surface.h"
-#include "sound/audiostream.h"
-
 #include "made/sound.h"
+
+#include "common/endian.h"
+#include "common/array.h"
+#include "common/hashmap.h"
+
+namespace Common {
+class File;
+}
+
+namespace Audio {
+class AudioStream;
+}
+
+namespace Graphics {
+struct Surface;
+}
 
 namespace Made {
 
-const int kMaxResourceCacheCount = 100;
+/// This value specifies the size of the resource cache
+/// which stores recently used resources.  On the DS,
+/// 400Kb is all we can spare, while 1Mb seems like a
+/// good value for larger systems.
+#ifndef __DS__
+const int kMaxResourceCacheSize = 1000 * 1024;
+#else
+const int kMaxResourceCacheSize = 400 * 1024;
+#endif
+
 
 enum ResourceType {
-	kResARCH = MKID_BE('ARCH'),
-	kResFREE = MKID_BE('FREE'),
-	kResOMNI = MKID_BE('OMNI'),
-	kResFLEX = MKID_BE('FLEX'),
-	kResSNDS = MKID_BE('SNDS'),
-	kResANIM = MKID_BE('ANIM'),
-	kResMENU = MKID_BE('MENU'),
-	kResFONT = MKID_BE('FONT'),
-	kResXMID = MKID_BE('XMID'),
-	kResMIDI = MKID_BE('MIDI')
+	kResARCH = MKTAG('A','R','C','H'),
+	kResFREE = MKTAG('F','R','E','E'),
+	kResOMNI = MKTAG('O','M','N','I'),
+	kResFLEX = MKTAG('F','L','E','X'),
+	kResSNDS = MKTAG('S','N','D','S'),
+	kResANIM = MKTAG('A','N','I','M'),
+	kResMENU = MKTAG('M','E','N','U'),
+	kResFONT = MKTAG('F','O','N','T'),
+	kResXMID = MKTAG('X','M','I','D'),
+	kResMIDI = MKTAG('M','I','D','I')
 };
 
 struct ResourceSlot;
@@ -63,7 +78,7 @@ public:
 class PictureResource : public Resource {
 public:
 	PictureResource();
-	~PictureResource();
+	virtual ~PictureResource();
 	void load(byte *source, int size);
 	Graphics::Surface *getPicture() const { return _picture; }
 	byte *getPalette() const { return _picturePalette; }
@@ -81,7 +96,7 @@ protected:
 class AnimationResource : public Resource {
 public:
 	AnimationResource();
-	~AnimationResource();
+	virtual ~AnimationResource();
 	void load(byte *source, int size);
 	int getCount() const { return _frames.size(); }
 	Graphics::Surface *getFrame(int index) const {
@@ -117,14 +132,14 @@ protected:
 class SoundResourceV1 : public SoundResource {
 public:
 	SoundResourceV1() {}
-	~SoundResourceV1() {}
+	virtual ~SoundResourceV1() {}
 	void load(byte *source, int size);
 };
 
 class MenuResource : public Resource {
 public:
 	MenuResource();
-	~MenuResource();
+	virtual ~MenuResource();
 	void load(byte *source, int size);
 	int getCount() const { return _strings.size(); }
 	const char *getString(uint index) const;
@@ -135,7 +150,7 @@ protected:
 class FontResource : public Resource {
 public:
 	FontResource();
-	~FontResource();
+	virtual ~FontResource();
 	void load(byte *source, int size);
 	int getHeight() const;
 	int getCharWidth(uint c) const;
@@ -150,7 +165,7 @@ protected:
 class GenericResource : public Resource {
 public:
 	GenericResource();
-	~GenericResource();
+	virtual ~GenericResource();
 	void load(byte *source, int size);
 	byte *getData() const { return _data; }
 	int getSize() const { return _size; }
@@ -200,6 +215,7 @@ protected:
 
 	ResMap _resSlots;
 	int _cacheCount;
+	int _cacheDataSize;
 
 	void loadIndex(ResourceSlots *slots);
 

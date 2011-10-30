@@ -18,26 +18,47 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef AGI_H
 #define AGI_H
 
-
 #include "common/scummsys.h"
-#include "common/endian.h"
+#include "common/error.h"
 #include "common/util.h"
 #include "common/file.h"
-#include "common/savefile.h"
-#include "common/system.h"
-#include "common/hash-str.h"
+#include "common/rect.h"
 #include "common/stack.h"
+#include "common/system.h"
 
 #include "engines/engine.h"
 
+#include "gui/debugger.h"
+
+// AGI resources
+#include "agi/console.h"
+#include "agi/view.h"
+#include "agi/picture.h"
+#include "agi/logic.h"
+#include "agi/sound.h"
+
+
+namespace Common {
+class RandomSource;
+}
+
+/**
+ * This is the namespace of the AGI engine.
+ *
+ * Status of this engine: ???
+ *
+ * Games using this engine:
+ * - Early Sierra adventure games
+ * - many fan made games
+ * - Mickey's Space Adventure (Pre-AGI)
+ * - Winnie the Pooh in the Hundred Acre Wood (Pre-AGI)
+ * - Troll's Tale (Pre-AGI)
+ */
 namespace Agi {
 
 typedef signed int Err;
@@ -67,11 +88,12 @@ typedef signed int Err;
 
 #define	_EMPTY		0xfffff
 #define	EGO_OWNED	0xff
+#define	EGO_OWNED_V1	0xf9
 
 #define	CRYPT_KEY_SIERRA	"Avis Durgan"
 #define CRYPT_KEY_AGDS		"Alex Simkin"
 
-#define	MSG_BOX_COLOUR	0x0f	// White
+#define	MSG_BOX_COLOR	0x0f	// White
 #define MSG_BOX_TEXT	0x00	// Black
 #define MSG_BOX_LINE	0x04	// Red
 #define BUTTON_BORDER	0x00	// Black
@@ -101,28 +123,23 @@ enum AgiGameID {
 	GID_SQ2,
 	GID_XMASCARD,
 	GID_FANMADE,
-	GID_GETOUTTASQ,
+	GID_GETOUTTASQ,	// Fanmade
 	GID_MICKEY,			// PreAGI
 	GID_WINNIE,			// PreAGI
-	GID_TROLL			// PreAGI
+	GID_TROLL				// PreAGI
 };
-
-} // End of namespace Agi
-
-// AGI resources
-#include "agi/console.h"
-#include "agi/view.h"
-#include "agi/picture.h"
-#include "agi/logic.h"
-#include "agi/sound.h"
-
-namespace Agi {
 
 enum AgiGameType {
 	GType_PreAGI = 0,
-	GType_V2 = 1,
-	GType_V3 = 2
+	GType_V1 = 1,
+	GType_V2 = 2,
+	GType_V3 = 3
 };
+
+ enum BooterDisks {
+	 BooterDisk1 = 0,
+	 BooterDisk2 = 1
+ };
 
 //
 // GF_OLDAMIGAV20 means that the interpreter is an old Amiga AGI interpreter that
@@ -142,7 +159,8 @@ enum AgiGameFeatures {
 	GF_MENUS =		 (1 << 7),
 	GF_ESCPAUSE =	 (1 << 8),
 	GF_OLDAMIGAV20 = (1 << 9),
-	GF_CLIPCOORDS  = (1 << 10)
+	GF_CLIPCOORDS  = (1 << 10),
+	GF_2GSOLDSOUND = (1 << 11)
 };
 
 struct AGIGameDescription;
@@ -224,8 +242,6 @@ enum AgiMouseButton {
 	kAgiMouseButtonMiddle // Middle mouse button
 };
 
-#define report printf
-
 enum GameId {
 	GID_AGI = 1
 };
@@ -305,6 +321,12 @@ enum AgiComputerType {
 	kAgiComputerAmiga = 5, // Newer Amiga AGI interpreters' value (Commonly used)
 	kAgiComputerApple2GS = 7,
 	kAgiComputerAmigaOld = 20 // Older Amiga AGI interpreters' value (Seldom used)
+};
+
+enum AgiSoundType {
+	kAgiSoundPC = 1,
+	kAgiSoundTandy = 3, // Tandy (This value is also used by the Amiga AGI and Apple IIGS AGI)
+	kAgiSound2GSOld = 8 // Apple IIGS's Gold Rush! (Version 1.0M 1989-02-28 (CE), AGI 3.003) uses value 8
 };
 
 /**
@@ -488,10 +510,32 @@ struct ScriptPos {
 	int curIP;
 };
 
-#define EGO_VIEW_TABLE	0
-#define	HORIZON		36
-#define _WIDTH		160
-#define _HEIGHT		168
+enum {
+	EGO_VIEW_TABLE	= 0,
+	HORIZON			= 36,
+	_WIDTH			= 160,
+	_HEIGHT			= 168
+};
+
+enum InputMode {
+	INPUT_NORMAL	= 0x01,
+	INPUT_GETSTRING	= 0x02,
+	INPUT_MENU		= 0x03,
+	INPUT_NONE		= 0x04
+};
+
+enum State {
+	STATE_INIT		= 0x00,
+	STATE_LOADED	= 0x01,
+	STATE_RUNNING	= 0x02
+};
+
+enum {
+	SBUF16_OFFSET = 0,
+	SBUF256_OFFSET = ((_WIDTH) * (_HEIGHT)),
+	FROM_SBUF16_TO_SBUF256_OFFSET = ((SBUF256_OFFSET) - (SBUF16_OFFSET)),
+	FROM_SBUF256_TO_SBUF16_OFFSET = ((SBUF16_OFFSET) - (SBUF256_OFFSET))
+};
 
 /**
  * AGI game structure.
@@ -499,10 +543,9 @@ struct ScriptPos {
  * by the interpreter.
  */
 struct AgiGame {
-#define STATE_INIT	0x00
-#define STATE_LOADED	0x01
-#define STATE_RUNNING	0x02
-	int state;		/**< state of the interpreter */
+	AgiEngine *_vm;
+
+	State state;		/**< state of the interpreter */
 
 	// TODO: Check whether adjMouseX and adjMouseY must be saved and loaded when using savegames.
 	//       If they must be then loading and saving is partially broken at the moment.
@@ -523,15 +566,12 @@ struct AgiGame {
 	int lineUserInput;	/**< line to put user input on */
 	int lineMinPrint;		/**< num lines to print on */
 	int cursorPos;			/**< column where the input cursor is */
-	uint8 inputBuffer[40]; /**< buffer for user input */
-	uint8 echoBuffer[40];	/**< buffer for echo.line */
+	byte inputBuffer[40]; /**< buffer for user input */
+	byte echoBuffer[40];	/**< buffer for echo.line */
 	int keypress;
-#define INPUT_NORMAL	0x01
-#define INPUT_GETSTRING	0x02
-#define INPUT_MENU	0x03
-#define INPUT_NONE	0x04
-	int inputMode;			/**< keyboard input mode */
-	int inputEnabled;		/**< keyboard input enabled */
+
+	InputMode inputMode;			/**< keyboard input mode */
+	bool inputEnabled;		/**< keyboard input enabled */
 	int lognum;				/**< current logic number */
 	Common::Array<ScriptPos> execStack;
 
@@ -559,10 +599,7 @@ struct AgiGame {
 	char cursorChar;
 	unsigned int colorFg;
 	unsigned int colorBg;
-#define SBUF16_OFFSET 0
-#define SBUF256_OFFSET ((_WIDTH) * (_HEIGHT))
-#define FROM_SBUF16_TO_SBUF256_OFFSET ((SBUF256_OFFSET) - (SBUF16_OFFSET))
-#define FROM_SBUF256_TO_SBUF16_OFFSET ((SBUF16_OFFSET) - (SBUF256_OFFSET))
+
 	uint8 *sbufOrig;		/**< Pointer to the 160x336 AGI screen buffer that contains vertically two 160x168 screens (16 color and 256 color). */
 	uint8 *sbuf16c;			/**< 160x168 16 color (+control line & priority information) AGI screen buffer. Points at sbufOrig + SBUF16_OFFSET. */
 	uint8 *sbuf256c;		/**< 160x168 256 color AGI screen buffer (For AGI256 and AGI256-2 support). Points at sbufOrig + SBUF256_OFFSET. */
@@ -576,7 +613,6 @@ struct AgiGame {
 
 	bool controllerOccured[MAX_DIRS];  /**< keyboard keypress events */
 	AgiController controllers[MAX_CONTROLLERS];
-	int lastController;
 
 	char strings[MAX_STRINGS + 1][MAX_STRINGLEN]; /**< strings */
 
@@ -592,6 +628,11 @@ struct AgiGame {
 	AgiView views[MAX_DIRS];		/**< AGI view resources */
 	AgiSound *sounds[MAX_DIRS];		/**< Pointers to AGI sound resources */
 
+	AgiLogic *_curLogic;
+
+	// words
+	Common::Array<AgiWord*> words[26];
+
 	// view table
 	VtEntry viewTable[MAX_VIEWTABLE];
 
@@ -600,6 +641,13 @@ struct AgiGame {
 	int simpleSave;					/**< select simple savegames */
 
 	Common::Rect mouseFence;		/**< rectangle set by fence.mouse command */
+
+	// IF condition handling
+	int testResult;
+
+
+	int max_logics;
+	int logic_list[256];
 };
 
 class AgiLoader {
@@ -615,6 +663,28 @@ public:
 	virtual int unloadResource(int, int) = 0;
 	virtual int loadObjects(const char *) = 0;
 	virtual int loadWords(const char *) = 0;
+};
+
+class AgiLoader_v1 : public AgiLoader {
+private:
+	AgiEngine *_vm;
+	Common::String _filenameDisk0;
+	Common::String _filenameDisk1;
+
+	int loadDir_DDP(AgiDir *agid, int offset, int max);
+	int loadDir_BC(AgiDir *agid, int offset, int max);
+	uint8 *loadVolRes(AgiDir *agid);
+
+public:
+	AgiLoader_v1(AgiEngine *vm);
+
+	virtual int init();
+	virtual int deinit();
+	virtual int detectGame();
+	virtual int loadResource(int, int);
+	virtual int unloadResource(int, int);
+	virtual int loadObjects(const char *);
+	virtual int loadWords(const char *);
 };
 
 class AgiLoader_v2 : public AgiLoader {
@@ -661,12 +731,10 @@ public:
 	virtual int loadWords(const char *);
 };
 
+
 class GfxMgr;
 class SpritesMgr;
 class Menu;
-class SearchTree;
-
-extern struct Mouse g_mouse;
 
 // Image stack support
 struct ImageStackElement {
@@ -700,13 +768,15 @@ protected:
 	virtual Common::Error run() {
 		Common::Error err;
 		err = init();
-		if (err != Common::kNoError)
+		if (err.getCode() != Common::kNoError)
 			return err;
 		return go();
 	}
 	virtual bool hasFeature(EngineFeature f) const;
 
 	virtual void initialize() = 0;
+
+	void initRenderMode();
 
 public:
 	GfxMgr *_gfx;
@@ -719,14 +789,19 @@ public:
 	AgiGame _game;
 	Common::RandomSource *_rnd;
 
+	SoundMgr *_sound;
+
+	Mouse _mouse;
+
 	bool _noSaveLoadAllowed;
 
-	virtual void pollTimer(void) = 0;
-	virtual int getKeypress(void) = 0;
-	virtual bool isKeypress(void) = 0;
-	virtual void clearKeyQueue(void) = 0;
+	virtual void pollTimer() = 0;
+	virtual int getKeypress() = 0;
+	virtual bool isKeypress() = 0;
+	virtual void clearKeyQueue() = 0;
 
 	AgiBase(OSystem *syst, const AGIGameDescription *gameDesc);
+	~AgiBase();
 
 	virtual void clearImageStack() = 0;
 	virtual void recordImageStackCall(uint8 type, int16 p1, int16 p2, int16 p3,
@@ -734,8 +809,8 @@ public:
 	virtual void replayImageStackCall(uint8 type, int16 p1, int16 p2, int16 p3,
 		int16 p4, int16 p5, int16 p6, int16 p7) = 0;
 	virtual void releaseImageStack() = 0;
-	virtual	int saveGame(const char *fileName, const char *saveName) = 0;
-	virtual int loadGame(const char *fileName, bool checkId = true) = 0;
+	virtual	int saveGame(const Common::String &fileName, const Common::String &saveName) = 0;
+	virtual int loadGame(const Common::String &fileName, bool checkId = true) = 0;
 
 	int _soundemu;
 
@@ -755,22 +830,23 @@ public:
 	Common::Language getLanguage() const;
 	Common::Platform getPlatform() const;
 	const char *getGameMD5() const;
-	void initFeatures(void);
+	void initFeatures();
 	void setFeature(uint32 feature);
-	void initVersion(void);
+	void initVersion();
 	void setVersion(uint16 version);
+
+	const char *getDiskName(uint16 id);
 
 	bool canLoadGameStateCurrently();
 	bool canSaveGameStateCurrently();
 };
 
-class AgiEngine : public AgiBase {
-	int _gameId;
+typedef void (*AgiCommand)(AgiGame *state, uint8 *p);
 
+class AgiEngine : public AgiBase {
 protected:
 	// Engine APIs
 	virtual Common::Error go();
-	virtual void syncSoundSettings();
 
 	void initialize();
 
@@ -779,14 +855,12 @@ protected:
 public:
 	AgiEngine(OSystem *syst, const AGIGameDescription *gameDesc);
 	virtual ~AgiEngine();
-	int getGameId() {
-		return _gameId;
-	}
 
 	Common::Error loadGameState(int slot);
-	Common::Error saveGameState(int slot, const char *desc);
+	Common::Error saveGameState(int slot, const Common::String &desc);
 
 private:
+	uint32 _lastTick;
 
 	int _keyQueue[KEY_QUEUE_SIZE];
 	int _keyQueueStart;
@@ -798,7 +872,7 @@ private:
 	int checkCollision(VtEntry *v);
 	int checkPosition(VtEntry *v);
 
-	void parseFeatures(void);
+	void parseFeatures();
 
 	int _firstSlot;
 
@@ -807,18 +881,18 @@ public:
 
 	StringData _stringdata;
 
-	const char *getSavegameFilename(int num);
+	Common::String getSavegameFilename(int num) const;
 	void getSavegameDescription(int num, char *buf, bool showEmpty = true);
 	int selectSlot();
-	int saveGame(const char *fileName, const char *saveName);
+	int saveGame(const Common::String &fileName, const Common::String &saveName);
+	int loadGame(const Common::String &fileName, bool checkId = true);
 	int saveGameDialog();
 	int saveGameSimple();
-	int loadGame(const char *fileName, bool checkId = true);
 	int loadGameDialog();
 	int loadGameSimple();
 
 	uint8 *_intobj;
-	int _oldMode;
+	InputMode _oldMode;
 	bool _restartGame;
 
 	Menu* _menu;
@@ -827,7 +901,6 @@ public:
 	char _lastSentence[40];
 
 	SpritesMgr *_sprites;
-	SoundMgr *_sound;
 	PictureMgr *_picture;
 	AgiLoader *_loader;	// loader
 
@@ -843,6 +916,7 @@ public:
 	void pause(uint32 msec);
 
 	Console *_console;
+	GUI::Debugger *getDebugger() { return _console; }
 
 	int agiInit();
 	int agiDeinit();
@@ -851,15 +925,14 @@ public:
 	int agiUnloadResource(int, int);
 	void agiUnloadResources();
 
-	virtual void pollTimer(void);
-	virtual int getKeypress(void);
-	virtual bool isKeypress(void);
-	virtual void clearKeyQueue(void);
+	virtual void pollTimer();
+	virtual int getKeypress();
+	virtual bool isKeypress();
+	virtual void clearKeyQueue();
 
-	static void agiTimerFunctionLow(void *refCon);
 	void initPriTable();
 
-	void newInputMode(int);
+	void newInputMode(InputMode mode);
 	void oldInputMode();
 
 	int getvar(int);
@@ -891,22 +964,40 @@ public:
 	void checkQuickLoad();
 
 	// Objects
+public:
 	int showObjects();
-	int decodeObjects(uint8 *mem, uint32 flen);
 	int loadObjects(const char *fname);
-	int allocObjects(int);
+	int loadObjects(Common::File &fp);
 	void unloadObjects();
 	const char *objectName(unsigned int);
 	int objectGetLocation(unsigned int);
 	void objectSetLocation(unsigned int, int);
+private:
+	int decodeObjects(uint8 *mem, uint32 flen);
+	int readObjects(Common::File &fp, int flen);
+	int allocObjects(int);
 
 	// Logic
+public:
 	int decodeLogic(int);
 	void unloadLogic(int);
 	int runLogic(int);
 	void debugConsole(int, int, const char *);
 	int testIfCode(int);
 	void executeAgiCommand(uint8, uint8 *);
+
+public:
+	// Some submethods of testIfCode
+	void skipInstruction(byte op);
+	void skipInstructionsUntil(byte v);
+	uint8 testObjRight(uint8, uint8, uint8, uint8, uint8);
+	uint8 testObjCenter(uint8, uint8, uint8, uint8, uint8);
+	uint8 testObjInBox(uint8, uint8, uint8, uint8, uint8);
+	uint8 testPosn(uint8, uint8, uint8, uint8, uint8);
+	uint8 testSaid(uint8, uint8 *);
+	uint8 testController(uint8);
+	uint8 testKeypressed();
+	uint8 testCompareStrings(uint8, uint8);
 
 	// View
 private:
@@ -931,10 +1022,12 @@ public:
 	bool isEgoView(const VtEntry *v);
 
 	// Words
+public:
 	int showWords();
 	int loadWords(const char *);
+	int loadWords_v1(Common::File &f);
 	void unloadWords();
-	int findWord(char *word, int *flen);
+	int findWord(const char *word, int *flen);
 	void dictionaryWords(char *);
 
 	// Motion
@@ -972,34 +1065,29 @@ public:
 
 	// Text
 public:
-	#define MAXWORDLEN 24
-
-	typedef Common::String String;
-
 	int messageBox(const char *);
 	int selectionBox(const char *, const char **);
-	void closeWindow(void);
+	void closeWindow();
 	void drawWindow(int, int, int, int);
 	void printText(const char *, int, int, int, int, int, int, bool checkerboard = false);
 	void printTextConsole(const char *, int, int, int, int, int);
 	int print(const char *, int, int, int);
 	char *wordWrapString(const char *, int *);
 	char *agiSprintf(const char *);
-	void writeStatus(void);
-	void writePrompt(void);
-	void clearPrompt(void);
+	void writeStatus();
+	void writePrompt();
+	void clearPrompt(bool useBlackBg = false);
 	void clearLines(int, int, int);
 	void flushLines(int, int);
-	bool predictiveDialog(void);
+	bool predictiveDialog();
 
 private:
 	void printStatus(const char *message, ...) GCC_PRINTF(2, 3);
 	void printText2(int l, const char *msg, int foff, int xoff, int yoff, int len, int fg, int bg, bool checkerboard = false);
 	void blitTextbox(const char *p, int y, int x, int len);
 	void eraseTextbox();
-	char *safeStrcat(char *s, const char *t);
-	void loadDict(void);
-	bool matchWord(void);
+	void loadDict();
+	bool matchWord();
 
 	// Predictive dialog
 	// TODO: Move this to a separate class
@@ -1007,12 +1095,21 @@ private:
 	char **_predictiveDictLine;
 	int32 _predictiveDictLineCount;
 	char *_predictiveDictActLine;
-	String _currentCode;
-	String _currentWord;
+	Common::String _currentCode;
+	Common::String _currentWord;
 	int _wordNumber;
 	bool _predictiveDialogRunning;
 public:
 	char _predictiveResult[40];
+
+private:
+	AgiCommand _agiCommands[183];
+	AgiCommand _agiCondCommands[256];
+
+	void setupOpcodes();
+
+public:
+	int _timerHack;			// Workaround for timer loop in MH1 logic 153
 };
 
 } // End of namespace Agi

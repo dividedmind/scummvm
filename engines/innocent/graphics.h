@@ -28,6 +28,7 @@
 
 #include <memory>
 
+#include "common/list.h"
 #include "common/rect.h"
 #include "common/singleton.h"
 #include "config.h"
@@ -43,9 +44,6 @@ class Engine;
 class Resources;
 class Surface;
 class Sprite;
-
-Common::Point &operator+=(Common::Point &p1, const Common::Point &p2);
-Common::Point &operator-=(Common::Point &p1, const Common::Point &p2);
 
 class Graphics : public Common::Singleton<Graphics> {
 public:

@@ -18,13 +18,9 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
-
-
+#include "common/endian.h"
 #include "common/system.h"
 
 #include "agos/agos.h"
@@ -34,6 +30,7 @@
 
 namespace AGOS {
 
+#ifdef ENABLE_AGOS2
 void AGOSEngine_Feeble::doOutput(const byte *src, uint len) {
 	if (_textWindow == NULL)
 		return;
@@ -64,6 +61,7 @@ void AGOSEngine_Feeble::doOutput(const byte *src, uint len) {
 		}
 	}
 }
+#endif
 
 void AGOSEngine::doOutput(const byte *src, uint len) {
 	uint idx;
@@ -317,7 +315,7 @@ void AGOSEngine::renderString(uint vgaSpriteId, uint color, uint width, uint hei
 	if (count != 0)
 		memset(dst, 0, count);
 
-	if (_language == Common::HB_ISR)
+	if (_language == Common::HE_ISR)
 		dst += width - 1; // For Hebrew, start at the right edge, not the left.
 
 	dst_org = dst;
@@ -326,7 +324,7 @@ void AGOSEngine::renderString(uint vgaSpriteId, uint color, uint width, uint hei
 			dst_org += width * textHeight;
 			dst = dst_org;
 		} else if ((chr -= ' ') == 0) {
-			dst += (_language == Common::HB_ISR ? -6 : 6); // Hebrew moves to the left, all others to the right
+			dst += (_language == Common::HE_ISR ? -6 : 6); // Hebrew moves to the left, all others to the right
 		} else {
 			byte *img_hdr, *img;
 			uint i, img_width, img_height;
@@ -343,7 +341,7 @@ void AGOSEngine::renderString(uint vgaSpriteId, uint color, uint width, uint hei
 				img = src + READ_LE_UINT16(img_hdr);
 			}
 
-			if (_language == Common::HB_ISR)
+			if (_language == Common::HE_ISR)
 				dst -= img_width - 1; // For Hebrew, move from right edge to left edge of image.
 			byte *cur_dst = dst;
 
@@ -369,7 +367,7 @@ void AGOSEngine::renderString(uint vgaSpriteId, uint color, uint width, uint hei
 				cur_dst += width;
 			} while (--img_height);
 
-			if (_language != Common::HB_ISR) // Hebrew character movement is done higher up
+			if (_language != Common::HE_ISR) // Hebrew character movement is done higher up
 				dst += img_width - 1;
 		}
 	}
@@ -484,13 +482,11 @@ void AGOSEngine::openTextWindow() {
 		_textWindow = openWindow(8, 144, 24, 6, 1, 0, 15);
 }
 
-#ifdef ENABLE_PN
 void AGOSEngine_PN::windowPutChar(WindowBlock *window, byte c, byte b) {
 	if (_mousePrintFG || _wiped)
 		return;
 	AGOSEngine::windowPutChar(window, c, b);
 }
-#endif
 
 void AGOSEngine::windowPutChar(WindowBlock *window, byte c, byte b) {
 	byte width = 6;
@@ -499,8 +495,8 @@ void AGOSEngine::windowPutChar(WindowBlock *window, byte c, byte b) {
 		clearWindow(window);
 	} else if (c == 13 || c == 10) {
 		windowNewLine(window);
-	} else if ((c == 1 && _language != Common::HB_ISR) || (c == 8)) {
-		if (_language == Common::HB_ISR) {
+	} else if ((c == 1 && _language != Common::HE_ISR) || (c == 8)) {
+		if (_language == Common::HE_ISR) {
 			if (b >= 64 && b < 91)
 				width = _hebrewCharWidths [b - 64];
 
@@ -546,7 +542,7 @@ void AGOSEngine::windowPutChar(WindowBlock *window, byte c, byte b) {
 			window->textRow--;
 		}
 
-		if (_language == Common::HB_ISR) {
+		if (_language == Common::HE_ISR) {
 			if (c >= 64 && c < 91)
 				width = _hebrewCharWidths [c - 64];
 			window->textColumnOffset -= width;
@@ -573,6 +569,7 @@ void AGOSEngine::windowPutChar(WindowBlock *window, byte c, byte b) {
 	}
 }
 
+#ifdef ENABLE_AGOS2
 void AGOSEngine_Feeble::windowNewLine(WindowBlock *window) {
 	if (_noOracleScroll == 0) {
 		if (window->height < window->textRow + 30) {
@@ -603,6 +600,7 @@ void AGOSEngine_Feeble::windowNewLine(WindowBlock *window) {
 	window->textColumnOffset = 0;
 	window->textLength = 0;
 }
+#endif
 
 void AGOSEngine::windowNewLine(WindowBlock *window) {
 	window->textColumn = 0;
@@ -656,4 +654,3 @@ void AGOSEngine::windowScroll(WindowBlock *window) {
 	_videoLockOut &= ~0x8000;
 }
 } // End of namespace AGOS
-

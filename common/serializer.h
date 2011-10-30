@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef COMMON_SERIALIZER_H
@@ -71,15 +68,15 @@ public:
 	static const Version kLastVersion = 0xFFFFFFFF;
 
 protected:
-	Common::SeekableReadStream *_loadStream;
-	Common::WriteStream *_saveStream;
+	SeekableReadStream *_loadStream;
+	WriteStream *_saveStream;
 
 	uint _bytesSynced;
 
 	Version _version;
 
 public:
-	Serializer(Common::SeekableReadStream *in, Common::WriteStream *out)
+	Serializer(SeekableReadStream *in, WriteStream *out)
 		: _loadStream(in), _saveStream(out), _bytesSynced(0), _version(0) {
 		assert(in || out);
 	}
@@ -87,6 +84,26 @@ public:
 
 	inline bool isSaving() { return (_saveStream != 0); }
 	inline bool isLoading() { return (_loadStream != 0); }
+
+	// WORKAROUND for bugs #2892515 "BeOS: tinsel does not compile" and
+	// #2892510 "BeOS: Cruise does not compile". gcc 2.95.3, which is used
+	// for BeOS fails due to an internal compiler error, when we place the
+	// following function definitions in another place. Before this work-
+	// around the following SYNC_AS definitions were placed at the end
+	// of the class declaration. This caused an internal compiler error
+	// in the line "syncAsUint32LE(_version);" of
+	// "bool syncVersion(Version currentVersion)".
+	SYNC_AS(Byte, byte, 1)
+
+	SYNC_AS(Uint16LE, uint16, 2)
+	SYNC_AS(Uint16BE, uint16, 2)
+	SYNC_AS(Sint16LE, int16, 2)
+	SYNC_AS(Sint16BE, int16, 2)
+
+	SYNC_AS(Uint32LE, uint32, 4)
+	SYNC_AS(Uint32BE, uint32, 4)
+	SYNC_AS(Sint32LE, int32, 4)
+	SYNC_AS(Sint32BE, int32, 4)
 
 	/**
 	 * Returns true if an I/O failure occurred.
@@ -197,7 +214,7 @@ public:
 	 * Sync a C-string, by treating it as a zero-terminated byte sequence.
 	 * @todo Replace this method with a special Syncer class for Common::String
 	 */
-	void syncString(Common::String &str, Version minVersion = 0, Version maxVersion = kLastVersion) {
+	void syncString(String &str, Version minVersion = 0, Version maxVersion = kLastVersion) {
 		if (_version < minVersion || _version > maxVersion)
 			return;	// Ignore anything which is not supposed to be present in this save game version
 
@@ -216,17 +233,6 @@ public:
 		}
 	}
 
-	SYNC_AS(Byte, byte, 1)
-
-	SYNC_AS(Uint16LE, uint16, 2)
-	SYNC_AS(Uint16BE, uint16, 2)
-	SYNC_AS(Sint16LE, int16, 2)
-	SYNC_AS(Sint16BE, int16, 2)
-
-	SYNC_AS(Uint32LE, uint32, 4)
-	SYNC_AS(Uint32BE, uint32, 4)
-	SYNC_AS(Sint32LE, int32, 4)
-	SYNC_AS(Sint32BE, int32, 4)
 };
 
 #undef SYNC_AS
@@ -243,6 +249,6 @@ public:
 };
 
 
-} // end of namespace Common
+} // End of namespace Common
 
 #endif

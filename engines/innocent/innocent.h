@@ -29,6 +29,7 @@
 #include <memory>
 
 #include "common/ptr.h"
+#include "common/random.h"
 #include "engines/engine.h"
 
 class MidiDriver;

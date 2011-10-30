@@ -18,15 +18,11 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
-
-
 
 #include "agos/agos.h"
 #include "agos/intern.h"
+#include "agos/midi.h"
 
 #include "graphics/surface.h"
 
@@ -89,7 +85,7 @@ void AGOSEngine::vc59_stopAnimations() {
 }
 
 void AGOSEngine::vc64_ifSpeech() {
-	if ((getGameType() == GType_SIMON2 && _subtitles && _language != Common::HB_ISR) ||
+	if ((getGameType() == GType_SIMON2 && _subtitles && _language != Common::HE_ISR) ||
 		!_sound->isVoiceActive()) {
 		vcSkipNextInstruction();
 	}
@@ -138,7 +134,7 @@ void AGOSEngine::vc69_playSeq() {
 	// This is a "play track". The original
 	// design stored the track to play if one was
 	// already in progress, so that the next time a
-	// "fill MIDI stream" event occured, the MIDI
+	// "fill MIDI stream" event occurred, the MIDI
 	// player would find the change and switch
 	// tracks. We use a different architecture that
 	// allows for an immediate response here, but
@@ -149,8 +145,8 @@ void AGOSEngine::vc69_playSeq() {
 	// specifying a non-valid track number (999 or -1)
 	// as a means of stopping what music is currently
 	// playing.
-	_midi.setLoop(loop != 0);
-	_midi.startTrack(track);
+	_midi->setLoop(loop != 0);
+	_midi->startTrack(track);
 }
 
 void AGOSEngine::vc70_joinSeq() {
@@ -164,9 +160,9 @@ void AGOSEngine::vc70_joinSeq() {
 	// track and, if not, whether to switch to
 	// a different track upon completion.
 	if (track != 0xFFFF && track != 999)
-		_midi.queueTrack(track, loop != 0);
+		_midi->queueTrack(track, loop != 0);
 	else
-		_midi.setLoop(loop != 0);
+		_midi->setLoop(loop != 0);
 }
 
 void AGOSEngine::vc71_ifSeqWaiting() {
@@ -174,7 +170,7 @@ void AGOSEngine::vc71_ifSeqWaiting() {
 	// This command skips the next instruction
 	// unless (1) there is a track playing, AND
 	// (2) there is a track queued to play after it.
-	if (!_midi.isPlaying(true))
+	if (!_midi->isPlaying(true))
 		vcSkipNextInstruction();
 }
 
@@ -198,8 +194,8 @@ void AGOSEngine::vc72_segue() {
 	if (track == -1 || track == 999) {
 		stopMusic();
 	} else {
-		_midi.setLoop(loop != 0);
-		_midi.startTrack(track);
+		_midi->setLoop(loop != 0);
+		_midi->startTrack(track);
 	}
 }
 

@@ -18,19 +18,27 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef SWORD1_H
 #define SWORD1_H
 
 #include "engines/engine.h"
-#include "common/events.h"
+#include "common/error.h"
+#include "common/keyboard.h"
+#include "common/rect.h"
 #include "common/util.h"
 #include "sword1/sworddefs.h"
+#include "sword1/console.h"
 
+/**
+ * This is the namespace of the Sword1 engine.
+ *
+ * Status of this engine: ???
+ *
+ * Games using this engine:
+ * - Broken Sword: The Shadow of the Templars
+ */
 namespace Sword1 {
 
 enum {
@@ -55,18 +63,17 @@ class Music;
 class Control;
 
 struct SystemVars {
-	bool	runningFromCd;
-	uint32	currentCD;			// starts at zero, then either 1 or 2 depending on section being played
-	uint32	justRestoredGame;	// see main() in sword.c & New_screen() in gtm_core.c
+	bool    runningFromCd;
+	uint32  currentCD;          // starts at zero, then either 1 or 2 depending on section being played
+	uint32  justRestoredGame;   // see main() in sword.c & New_screen() in gtm_core.c
 
-	uint8	controlPanelMode;	// 1 death screen version of the control panel, 2 = successful end of game, 3 = force restart
-	bool	forceRestart;
-	bool	wantFade;			// when true => fade during scene change, else cut.
-	uint8	playSpeech;
-	uint8	showText;
-	uint8	language;
+	uint8   controlPanelMode;   // 1 death screen version of the control panel, 2 = successful end of game, 3 = force restart
+	bool    forceRestart;
+	bool    wantFade;           // when true => fade during scene change, else cut.
+	uint8   playSpeech;
+	uint8   showText;
+	uint8   language;
 	bool    isDemo;
-	uint32	engineStartTime;    // Used for playtime
 	Common::Platform platform;
 };
 
@@ -75,7 +82,7 @@ public:
 	SwordEngine(OSystem *syst);
 	virtual ~SwordEngine();
 	static SystemVars _systemVars;
-	void reinitialize(void);
+	void reinitialize();
 
 	uint32 _features;
 
@@ -92,46 +99,50 @@ protected:
 	virtual Common::Error run() {
 		Common::Error err;
 		err = init();
-		if (err != Common::kNoError)
+		if (err.getCode() != Common::kNoError)
 			return err;
 		return go();
 	}
 	virtual bool hasFeature(EngineFeature f) const;
 	virtual void syncSoundSettings();
 
+	GUI::Debugger *getDebugger() { return _console; }
+
 	Common::Error loadGameState(int slot);
 	bool canLoadGameStateCurrently();
-	Common::Error saveGameState(int slot, const char *desc);
+	Common::Error saveGameState(int slot, const Common::String &desc);
 	bool canSaveGameStateCurrently();
 
 private:
 	void delay(int32 amount);
 
-	void checkCdFiles(void);
-	void checkCd(void);
+	void checkCdFiles();
+	void checkCd();
 	void showFileErrorMsg(uint8 type, bool *fileExists);
 	void flagsToBool(bool *dest, uint8 flags);
 
-	void reinitRes(void); //Reinits the resources after a GMM load
+	void reinitRes(); //Reinits the resources after a GMM load
 
-	uint8 mainLoop(void);
+	SwordConsole *_console;
+
+	uint8 mainLoop();
 
 	Common::Point _mouseCoord;
 	uint16 _mouseState;
 	Common::KeyState _keyPressed;
 
-	ResMan		*_resMan;
-	ObjectMan	*_objectMan;
-	Screen		*_screen;
-	Mouse		*_mouse;
-	Logic		*_logic;
-	Sound		*_sound;
-	Menu		*_menu;
-	Music		*_music;
-	Control		*_control;
+	ResMan      *_resMan;
+	ObjectMan   *_objectMan;
+	Screen      *_screen;
+	Mouse       *_mouse;
+	Logic       *_logic;
+	Sound       *_sound;
+	Menu        *_menu;
+	Music       *_music;
+	Control     *_control;
 	static const uint8  _cdList[TOTAL_SECTIONS];
-	static const CdFile	_pcCdFileList[];
-	static const CdFile	_macCdFileList[];
+	static const CdFile _pcCdFileList[];
+	static const CdFile _macCdFileList[];
 	static const CdFile _psxCdFileList[];
 };
 

@@ -5,6 +5,7 @@ MODULE_OBJS := \
 	animator_v2.o \
 	animator_hof.o \
 	animator_mr.o \
+	animator_tim.o \
 	debugger.o \
 	detection.o \
 	gui.o \
@@ -50,6 +51,7 @@ MODULE_OBJS := \
 	sequences_hof.o \
 	sequences_mr.o \
 	sound_adlib.o \
+	sound_amiga.o \
 	sound_digital.o \
 	sound_midi.o \
 	sound_pcspk.o \
@@ -82,6 +84,7 @@ MODULE_OBJS += \
 	sequences_lol.o \
 	sound_lol.o \
 	sprites_lol.o \
+	staticres_lol.o \
 	text_lol.o \
 	timer_lol.o
 endif
@@ -93,3 +96,10 @@ endif
 
 # Include common rules
 include $(srcdir)/rules.mk
+
+ifeq ($(BACKEND), maemo)
+#ugly workaround, screen.cpp crashes gcc version 3.4.4 (CodeSourcery ARM 2005q3-2) with anything but -O3
+$(MODULE)/screen.o: $(MODULE)/screen.cpp
+	$(MKDIR) $(*D)/$(DEPDIR)
+	$(CXX) -Wp,-MMD,"$(*D)/$(DEPDIR)/$(*F).d",-MQ,"$@",-MP $(CXXFLAGS) -O3 $(CPPFLAGS) -c $(<) -o $*.o
+endif

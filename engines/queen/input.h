@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef QUEEN_INPUT_H
@@ -144,7 +141,7 @@ private:
 	const char *_currentCommandKeys;
 
 	//! command keys for all languages
-	static const char *_commandKeys[];
+	static const char *const _commandKeys[];
 
 	//! verbs matching the command keys
 	static const Verb _verbKeys[];

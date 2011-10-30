@@ -18,67 +18,35 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
-#include <common/scummsys.h>
-#include <X11/Xlib.h>
-#include <X11/extensions/Xsp.h>
+#if defined(MAEMO)
 
-#include <SDL/SDL.h>
-#include <SDL/SDL_syswm.h>
+#define FORBIDDEN_SYMBOL_EXCEPTION_unistd_h
 
-#include "backends/platform/maemo/maemo-sdl.h"
+#include "backends/platform/maemo/maemo.h"
+#include "backends/plugins/sdl/sdl-provider.h"
 #include "base/main.h"
-#include "base/internal_version.h"
-#include <hildon-widgets/hildon-app.h>
-#include <gtk/gtk.h>
-#include <libosso.h>
 
-#include <sys/time.h>
-#include <sys/resource.h>
+#include <unistd.h>
 
-#define OSSO_APP_NAME    "scummvm"
-#define OSSO_APP_VERSION SCUMMVM_VERSION
-
-void set_doubling(unsigned char enable) {
-  return;
-
-  SDL_SysWMinfo wminfo;
-  SDL_VERSION(&wminfo.version);
-  SDL_GetWMInfo(&wminfo);
-  XSPSetPixelDoubling(wminfo.info.x11.display, 0, enable);
-}
-
-int main(int argc, char *argv[]) {
-    osso_context_t *osso_context;
-
-    // Initialize maemo application
-    //osso_context = osso_initialize(OSSO_APP_NAME, OSSO_APP_VERSION, TRUE, NULL);
-
-    // Check that initialization was ok
-    //if (osso_context == NULL) {
-	//   return OSSO_ERROR;
-    //}
-
-	// Maemo task navigator priority inheritance fix
-	setpriority(PRIO_PROCESS, 0, 0);
-
-	set_doubling(0);
-
-	g_system = new OSystem_MAEMO();
+int main(int argc, char* argv[]) {
+	g_system = new Maemo::OSystem_SDL_Maemo();
 	assert(g_system);
+
+	((Maemo::OSystem_SDL_Maemo *)g_system)->init();
+
+#ifdef DYNAMIC_MODULES
+	PluginManager::instance().addPluginProvider(new SDLPluginProvider());
+#endif
 
 	// Invoke the actual ScummVM main entry point:
 	int res = scummvm_main(argc, argv);
-	g_system->quit();	// TODO: Consider removing / replacing this!
 
-    /* Deinitialize OSSO */
-    //osso_deinitialize(osso_context);
-
-	set_doubling(0);
+	// Free OSystem
+	delete (Maemo::OSystem_SDL_Maemo *)g_system;
 
 	return res;
 }
+
+#endif

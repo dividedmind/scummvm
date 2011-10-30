@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef COMMON_EVENTS_H
@@ -81,30 +78,6 @@ enum EventType {
 /**
  * Data structure for an event. A pointer to an instance of Event
  * can be passed to pollEvent.
- * @todo Rework/document this structure. It should be made 100% clear which
- *       field is valid for which event type.
- *       Implementation wise, we might want to use the classic
- *       union-of-structs trick. It goes roughly like this:
- *       struct BasicEvent {
- *          EventType type;
- *       };
- *       struct MouseMovedEvent : BasicEvent {
- *          Common::Point pos;
- *       };
- *       struct MouseButtonEvent : MouseMovedEvent {
- *          int button;
- *       };
- *       struct KeyEvent : BasicEvent {
- *          ...
- *       };
- *       ...
- *       union Event {
- *          EventType type;
- *          MouseMovedEvent mouse;
- *          MouseButtonEvent button;
- *          KeyEvent key;
- *          ...
- *       };
  */
 struct Event {
 	/** The type of the event. */
@@ -124,7 +97,7 @@ struct Event {
 	 * Virtual screen coordinates means: the coordinate system of the
 	 * screen area as defined by the most recent call to initSize().
 	 */
-	Common::Point mouse;
+	Point mouse;
 
 	Event() : type(EVENT_INVALID), synthetic(false) {}
 };
@@ -166,13 +139,13 @@ public:
  */
 class ArtificialEventSource : public EventSource {
 protected:
-	Common::Queue<Common::Event> _artificialEventQueue;
+	Queue<Event> _artificialEventQueue;
 public:
-	void addEvent(const Common::Event &ev) {
+	void addEvent(const Event &ev) {
 		_artificialEventQueue.push(ev);
 	}
 
-	bool pollEvent(Common::Event &ev) {
+	bool pollEvent(Event &ev) {
 	if (!_artificialEventQueue.empty()) {
 			ev = _artificialEventQueue.pop();
 			return true;
@@ -198,18 +171,27 @@ public:
 	virtual ~EventObserver() {}
 
 	/**
-	 * Notifies the source of an incoming event.
+	 * Notifies the observer of an incoming event.
 	 *
-	 * An obeser is supposed to eat the event, with returning true, when
-	 * it might want prevent other observers from preventing to receive
-	 * the event. An usage example here is the keymapper:
+	 * An observer is supposed to eat the event, with returning true, when
+	 * it wants to prevent other observers from receiving the event.
+	 * An usage example here is the keymapper:
 	 * If it processes an Event, it should 'eat' it and create a new
 	 * event, which the EventDispatcher will then catch.
 	 *
-	 * @param	event	the event, which is incoming.
-	 * @return	true if this observer uses this event, false otherwise.
+	 * @param   event   the event, which is incoming.
+	 * @return  true if the event should not be passed to other observers,
+	 *          false otherwise.
 	 */
 	virtual bool notifyEvent(const Event &event) = 0;
+
+	/**
+	 * Notifies the observer of pollEvent() query.
+	 *
+	 * @return  true if the event should not be passed to other observers,
+	 *          false otherwise.
+	 */
+	virtual bool notifyPoll() { return false; }
 };
 
 /**
@@ -281,8 +263,11 @@ public:
 
 	/**
 	 * Registers a new EventObserver with the Dispatcher.
+	 *
+	 * @param listenPools if set, then all pollEvent() calls are passed to observer
+	 *                    currently it is used by keyMapper
 	 */
-	void registerObserver(EventObserver *obs, uint priority, bool autoFree);
+	void registerObserver(EventObserver *obs, uint priority, bool autoFree, bool listenPolls = false);
 
 	/**
 	 * Unregisters a EventObserver.
@@ -301,16 +286,18 @@ private:
 		EventSource *source;
 	};
 
-	Common::List<SourceEntry> _sources;
+	List<SourceEntry> _sources;
 
 	struct ObserverEntry : public Entry {
 		uint priority;
 		EventObserver *observer;
+		bool poll;
 	};
 
-	Common::List<ObserverEntry> _observers;
+	List<ObserverEntry> _observers;
 
 	void dispatchEvent(const Event &event);
+	void dispatchPoll();
 };
 
 class Keymapper;
@@ -332,7 +319,7 @@ public:
 
 
 	/**
-	 * Initialise the event manager.
+	 * Initialize the event manager.
 	 * @note	called after graphics system has been set up
 	 */
 	virtual void init() {}
@@ -341,20 +328,20 @@ public:
 	 * @param event	point to an Event struct, which will be filled with the event data.
 	 * @return true if an event was retrieved.
 	 */
-	virtual bool pollEvent(Common::Event &event) = 0;
+	virtual bool pollEvent(Event &event) = 0;
 
 	/**
 	 * Pushes a "fake" event into the event queue
 	 */
-	virtual void pushEvent(const Common::Event &event) = 0;
+	virtual void pushEvent(const Event &event) = 0;
 
 	/** Return the current mouse position */
-	virtual Common::Point getMousePos() const = 0;
+	virtual Point getMousePos() const = 0;
 
 	/**
 	 * Return a bitmask with the button states:
-	 * - bit 0: left button up=1, down=0
-	 * - bit 1: right button up=1, down=0
+	 * - bit 0: left button up=0, down=1
+	 * - bit 1: right button up=0, down=1
 	 */
 	virtual int getButtonState() const = 0;
 
@@ -388,7 +375,7 @@ public:
 	// TODO: Consider removing OSystem::getScreenChangeID and
 	// replacing it by a generic getScreenChangeID method here
 #ifdef ENABLE_KEYMAPPER
-	virtual Common::Keymapper *getKeymapper() = 0;
+	virtual Keymapper *getKeymapper() = 0;
 #endif
 
 	enum {
@@ -396,7 +383,12 @@ public:
 		 * Priority of the event manager, for now it's lowest since it eats
 		 * *all* events, we might to change that in the future though.
 		 */
-		kEventManPriority = 0
+		kEventManPriority = 0,
+		/**
+		 * Priority of the event recorder. It has to go after event manager
+		 * in order to record events generated by it
+		 */
+		kEventRecorderPriority = 1
 	};
 
 	/**

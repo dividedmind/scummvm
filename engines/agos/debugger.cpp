@@ -18,17 +18,13 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
-
-
 
 #include "common/config-manager.h"
 
 #include "agos/debugger.h"
 #include "agos/agos.h"
+#include "agos/midi.h"
 
 namespace AGOS {
 
@@ -53,16 +49,6 @@ Debugger::Debugger(AGOSEngine *vm)
 }
 
 
-void Debugger::preEnter() {
-	//_vm->_midi.pause(1);
-}
-
-
-void Debugger::postEnter() {
-	//_vm->_midi.pause(0);
-}
-
-
 bool Debugger::Cmd_DebugLevel(int argc, const char **argv) {
 	if (argc == 1) {
 		if (_vm->_debugMode == false)
@@ -71,7 +57,7 @@ bool Debugger::Cmd_DebugLevel(int argc, const char **argv) {
 			DebugPrintf("Debugging is currently set at level %d\n", gDebugLevel);
 	} else { // set level
 		gDebugLevel = atoi(argv[1]);
-		if (gDebugLevel >= 0 && gDebugLevel < 10) {
+		if (0 <= gDebugLevel && gDebugLevel < 11) {
 			_vm->_debugMode = true;
 			DebugPrintf("Debug level set to level %d\n", gDebugLevel);
 		} else if (gDebugLevel < 0) {
@@ -92,7 +78,7 @@ bool Debugger::Cmd_PlayMusic(int argc, const char **argv) {
 				// TODO
 			} else if (_vm->getGameType() == GType_SIMON2) {
 				_vm->loadMusic(music);
-				_vm->_midi.startTrack(0);
+				_vm->_midi->startTrack(0);
 			} else {
 				_vm->playMusic(music, 0);
 			}
@@ -300,4 +286,3 @@ bool Debugger::Cmd_dumpScript(int argc, const char **argv) {
 }
 
 } // End of namespace AGOS
-

@@ -26,15 +26,17 @@
 #include "innocent/musicparser.h"
 
 #include "common/endian.h"
-#include "sound/mididrv.h"
+#include "audio/mididrv.h"
 
 #include "innocent/resources.h"
 #include "innocent/util.h"
 
+namespace Common {
+	DECLARE_SINGLETON(Innocent::MusicParser);
+}
+
 namespace Innocent {
 //
-
-DECLARE_SINGLETON(MusicParser);
 
 MusicParser::MusicParser() : MidiParser(), _time(0), _lasttick(0), _tick(0) {}
 
@@ -50,9 +52,6 @@ bool MusicParser::loadMusic(byte *data, uint32 /*size*/) {
 	_script.reset(new MusicScript(data));
 	_tune.reset(new Tune(_script->getTune()));
 
-	setTimerRate(_driver->getBaseTempo());
-	_driver->setTimerCallback(this, &MusicParser::timerCallback);
-
 	_num_tracks = 1;
 	_ppqn = 120;
 //	_clocks_per_tick = 0x19;
@@ -61,7 +60,7 @@ bool MusicParser::loadMusic(byte *data, uint32 /*size*/) {
 	return true;
 }
 
-void MusicParser::tick() {
+void MusicParser::onTimer() {
 	_time += _timer_rate;
 	if (_lasttick && _time < _lasttick + _psec_per_tick)
 		return;

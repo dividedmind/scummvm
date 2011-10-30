@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #include "common/endian.h"
@@ -44,8 +41,7 @@ void Init_v2::initVideo() {
 		_vm->validateVideoMode(_vm->_global->_videoMode);
 
 	_vm->_draw->_frontSurface = _vm->_global->_primarySurfDesc;
-	_vm->_video->initSurfDesc(_vm->_global->_videoMode,
-			_vm->_video->_surfWidth, _vm->_video->_surfHeight, PRIMARY_SURFACE);
+	_vm->_video->initSurfDesc(_vm->_video->_surfWidth, _vm->_video->_surfHeight, PRIMARY_SURFACE);
 
 	_vm->_global->_mousePresent = 1;
 
@@ -65,9 +61,11 @@ void Init_v2::initVideo() {
 	_vm->_global->_pPaletteDesc->unused1 = _vm->_global->_unusedPalette1;
 	_vm->_global->_pPaletteDesc->unused2 = _vm->_global->_unusedPalette2;
 
-	if (_vm->_global->_videoMode != 0)
-		_vm->_video->initSurfDesc(_vm->_global->_videoMode, _vm->_video->_surfWidth,
-				_vm->_video->_surfHeight, PRIMARY_SURFACE);
+	_vm->_video->initSurfDesc(_vm->_video->_surfWidth, _vm->_video->_surfHeight, PRIMARY_SURFACE);
+
+	_vm->_draw->_cursorWidth       = 16;
+	_vm->_draw->_cursorHeight      = 16;
+	_vm->_draw->_transparentCursor =  1;
 }
 
 } // End of namespace Gob

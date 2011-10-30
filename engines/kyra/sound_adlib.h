@@ -34,9 +34,6 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef KYRA_SOUND_ADLIB_H
@@ -47,7 +44,7 @@
 #include "common/mutex.h"
 
 namespace Kyra {
-class AdlibDriver;
+class AdLibDriver;
 
 /**
  * AdLib implementation of the sound output device.
@@ -57,38 +54,37 @@ class AdlibDriver;
  * Kyrandia 1 are using exact the same format, the
  * one of Kyrandia 2 slightly differs.
  *
- * See AdlibDriver for more information.
- * @see AdlibDriver
+ * See AdLibDriver for more information.
+ * @see AdLibDriver
  */
-class SoundAdlibPC : public Sound {
+class SoundAdLibPC : public Sound {
 public:
-	SoundAdlibPC(KyraEngine_v1 *vm, Audio::Mixer *mixer);
-	~SoundAdlibPC();
+	SoundAdLibPC(KyraEngine_v1 *vm, Audio::Mixer *mixer);
+	~SoundAdLibPC();
 
-	kType getMusicType() const { return kAdlib; }
+	virtual kType getMusicType() const { return kAdLib; }
 
-	bool init();
-	void process();
+	virtual bool init();
+	virtual void process();
 
-	void loadSoundFile(uint file);
-	void loadSoundFile(Common::String file);
+	virtual void updateVolumeSettings();
 
-	void playTrack(uint8 track);
-	void haltTrack();
-	bool isPlaying();
+	virtual void loadSoundFile(uint file);
+	virtual void loadSoundFile(Common::String file);
 
-	void playSoundEffect(uint8 track);
+	virtual void playTrack(uint8 track);
+	virtual void haltTrack();
+	virtual bool isPlaying() const;
 
-	void beginFadeOut();
+	virtual void playSoundEffect(uint8 track);
+
+	virtual void beginFadeOut();
 private:
 	void internalLoadFile(Common::String file);
 
 	void play(uint8 track);
 
-	void unk1();
-	void unk2();
-
-	AdlibDriver *_driver;
+	AdLibDriver *_driver;
 
 	bool _v2;
 	uint8 _trackEntries[500];
@@ -97,9 +93,6 @@ private:
 
 	Common::String _soundFileLoaded;
 
-	uint8 _sfxPriority;
-	uint8 _sfxFourthByteOfSong;
-
 	int _numSoundTriggers;
 	const int *_soundTriggers;
 
@@ -107,7 +100,6 @@ private:
 	static const int _kyra1SoundTriggers[];
 };
 
-} // end of namespace Kyra
+} // End of namespace Kyra
 
 #endif
-

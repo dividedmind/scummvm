@@ -18,34 +18,22 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef MADE_SCREEN_H
 #define MADE_SCREEN_H
 
-#include "common/endian.h"
-#include "common/util.h"
-#include "common/rect.h"
-
-#include "graphics/surface.h"
-#include "graphics/cursorman.h"
-
 #include "made/resource.h"
-#include "made/screenfx.h"
+
+#include "common/rect.h"
 
 namespace Made {
 
 struct SpriteChannel {
 	int16 type;
 	int16 state;
-	int16 needRefresh;
 	uint16 index;
 	int16 x, y;
-	int16 x1, y1, x2, y2;
-	uint32 area;
 	uint16 fontNum;
 	int16 textColor, outlineColor;
 	int16 frameNum;
@@ -62,6 +50,7 @@ struct SpriteListItem {
 };
 
 class MadeEngine;
+class ScreenEffects;
 
 static const byte defaultMouseCursor[256] = {
 	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
@@ -203,7 +192,6 @@ protected:
 	bool _screenLock;
 	bool _paletteLock;
 
-	byte *_screenPalette;
 	byte *_palette, *_newPalette;
 	int _paletteColorCount, _oldPaletteColorCount;
 	bool _paletteInitialized, _needPalette;

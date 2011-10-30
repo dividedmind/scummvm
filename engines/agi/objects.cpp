@@ -18,14 +18,11 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
-
-
 #include "agi/agi.h"
+
+#include "common/textconsole.h"
 
 namespace Agi {
 
@@ -37,7 +34,7 @@ int AgiEngine::allocObjects(int n) {
 }
 
 int AgiEngine::decodeObjects(uint8 *mem, uint32 flen) {
-	unsigned int i, so, padsize;
+	unsigned int i, so, padsize, spos;
 
 	padsize = _game.gameFlags & ID_AMIGA ? 4 : 3;
 
@@ -48,9 +45,9 @@ int AgiEngine::decodeObjects(uint8 *mem, uint32 flen) {
 	// if so, its encrypted, else it is not
 
 	if (READ_LE_UINT16(mem) > flen) {
-		report("Decrypting objects... ");
+		debugN(0, "Decrypting objects... ");
 		decrypt(mem, flen);
-		report("done.\n");
+		debug(0, "done.");
 	}
 
 	// alloc memory for object list
@@ -67,42 +64,59 @@ int AgiEngine::decodeObjects(uint8 *mem, uint32 flen) {
 		return errNotEnoughMemory;
 
 	// build the object list
-	for (i = 0, so = padsize; i < _game.numObjects; i++, so += padsize) {
+	spos = getVersion() >= 0x2000 ? padsize : 0;
+	for (i = 0, so = spos; i < _game.numObjects; i++, so += padsize) {
 		int offset;
 
-		(_objects + i)->location = *(mem + so + 2);
-		offset = READ_LE_UINT16(mem + so) + padsize;
+		_objects[i].location = *(mem + so + 2);
+		offset = READ_LE_UINT16(mem + so) + spos;
 
 		if ((uint) offset < flen) {
-			(_objects + i)->name = (char *)strdup((const char *)mem + offset);
+			_objects[i].name = (char *)strdup((const char *)mem + offset);
 		} else {
-			printf("ERROR: object %i name beyond object filesize! "
-					"(%04x > %04x)\n", i, offset, flen);
-			(_objects + i)->name = strdup("");
+			warning("object %i name beyond object filesize (%04x > %04x)", i, offset, flen);
+			_objects[i].name = strdup("");
 		}
+
+		// Don't show the invalid "?" object in ego's inventory in the fanmade
+		// game Beyond the Titanic 2 (bug #3116541).
+		if (!strcmp(_objects[i].name, "?") && _objects[i].location == EGO_OWNED)
+			_objects[i].location = 0;
 	}
-	report("Reading objects: %d objects read.\n", _game.numObjects);
+	debug(0, "Reading objects: %d objects read.", _game.numObjects);
 
 	return errOK;
 }
 
 int AgiEngine::loadObjects(const char *fname) {
 	Common::File fp;
-	uint32 flen;
-	uint8 *mem;
 
-	_objects = NULL;
-	_game.numObjects = 0;
-
-	debugC(5, kDebugLevelResources, "(fname = %s)", fname);
-	report("Loading objects: %s\n", fname);
+	debugC(5, kDebugLevelResources, "(Loading objects '%s')", fname);
 
 	if (!fp.open(fname))
 		return errBadFileOpen;
 
-	fp.seek(0, SEEK_END);
-	flen = fp.pos();
-	fp.seek(0, SEEK_SET);
+	return readObjects(fp, fp.size());
+}
+
+/**
+ * Loads an object file that is in the common VOL resource format. Expects
+ * the file pointer to point to the last field in header, ie. file length.
+ * This is used at least by the V1 booter games.
+ */
+int AgiEngine::loadObjects(Common::File &fp) {
+	int flen = fp.readUint16LE();
+	return readObjects(fp, flen);
+}
+
+/**
+ * Read and decode objects, and store them in the internal structure.
+ *
+ * @param  fp    File pointer
+ * @param  flen  File length
+ */
+int AgiEngine::readObjects(Common::File &fp, int flen) {
+	uint8 *mem;
 
 	if ((mem = (uint8 *)calloc(1, flen + 32)) == NULL) {
 		fp.close();
@@ -132,7 +146,7 @@ void AgiEngine::unloadObjects() {
 
 void AgiEngine::objectSetLocation(unsigned int n, int i) {
 	if (n >= _game.numObjects) {
-		report("Error: Can't access object %d.\n", n);
+		warning("AgiEngine::objectSetLocation: Can't access object %d.\n", n);
 		return;
 	}
 	_objects[n].location = i;
@@ -140,7 +154,7 @@ void AgiEngine::objectSetLocation(unsigned int n, int i) {
 
 int AgiEngine::objectGetLocation(unsigned int n) {
 	if (n >= _game.numObjects) {
-		report("Error: Can't access object %d.\n", n);
+		warning("AgiEngine::objectGetLocation: Can't access object %d.\n", n);
 		return 0;
 	}
 	return _objects[n].location;
@@ -148,7 +162,7 @@ int AgiEngine::objectGetLocation(unsigned int n) {
 
 const char *AgiEngine::objectName(unsigned int n) {
 	if (n >= _game.numObjects) {
-		report("Error: Can't access object %d.\n", n);
+		warning("AgiEngine::objectName: Can't access object %d.\n", n);
 		return "";
 	}
 	return _objects[n].name;

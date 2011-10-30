@@ -18,24 +18,24 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef MADE_REDREADER_H
 #define MADE_REDREADER_H
 
-#include "common/util.h"
-#include "common/file.h"
-#include "common/stream.h"
+#include "common/scummsys.h"
+
+namespace Common {
+class SeekableReadStream;
+class File;
+}
 
 namespace Made {
 
 class RedReader {
 public:
-	Common::MemoryReadStream *load(const char *redFilename, const char *filename);
-	static Common::MemoryReadStream *loadFromRed(const char *redFilename, const char *filename);
+	Common::SeekableReadStream *load(const char *redFilename, const char *filename);
+	static Common::SeekableReadStream *loadFromRed(const char *redFilename, const char *filename);
 private:
 	struct FileEntry {
 		uint32 compSize, origSize;
@@ -86,11 +86,11 @@ private:
 
 	void fillbuf(int count);
 	uint getbits(int count);
-	void init_getbits(void);
-	void decode_start(void);
+	void init_getbits();
+	void decode_start();
 	void decode(uint count, byte text[]);
-	void huf_decode_start(void);
-	unsigned int decode_c(void);
+	void huf_decode_start();
+	unsigned int decode_c();
 	unsigned int decode_p();
 	void read_pt_len(int nn, int nbit, int i_special);
 	void read_c_len();

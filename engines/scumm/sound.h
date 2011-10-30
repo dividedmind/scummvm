@@ -17,17 +17,15 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * $URL$
- * $Id$
  */
 
 #ifndef SCUMM_SOUND_H
 #define SCUMM_SOUND_H
 
 #include "common/scummsys.h"
-#include "sound/audiostream.h"
-#include "sound/mixer.h"
+#include "audio/audiostream.h"
+#include "audio/mididrv.h"
+#include "audio/mixer.h"
 #include "scumm/saveload.h"
 
 namespace Audio {
@@ -54,7 +52,7 @@ public:
 		kVOCMode,
 		kMP3Mode,
 		kVorbisMode,
-		kFlacMode
+		kFLACMode
 	};
 
 protected:
@@ -91,6 +89,9 @@ public:
 
 	bool _soundsPaused;
 	byte _sfxMode;
+	uint _lastSound;
+
+	MidiDriverFlags _musicType;
 
 public:
 	Sound(ScummEngine *parent, Audio::Mixer *mixer);

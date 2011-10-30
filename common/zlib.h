@@ -18,18 +18,17 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef COMMON_ZLIB_H
 #define COMMON_ZLIB_H
 
 #include "common/scummsys.h"
-#include "common/stream.h"
 
 namespace Common {
+
+class SeekableReadStream;
+class WriteStream;
 
 #if defined(USE_ZLIB)
 
@@ -41,6 +40,15 @@ namespace Common {
  * @return true on success (i.e. Z_OK), false otherwise
  */
 bool uncompress(byte *dst, unsigned long *dstLen, const byte *src, unsigned long srcLen);
+
+/**
+ * Wrapper around zlib's inflate functions. This function will call the
+ * necessary inflate functions to uncompress data compressed with deflate
+ * but *not* with the standard zlib header.
+ *
+ * @return true on success (Z_OK or Z_STREAM_END), false otherwise
+ */
+bool inflateZlibHeaderless(byte *dst, uint dstLen, const byte *src, uint srcLen);
 
 #endif
 
@@ -54,7 +62,7 @@ bool uncompress(byte *dst, unsigned long *dstLen, const byte *src, unsigned long
  * It is safe to call this with a NULL parameter (in this case, NULL is
  * returned).
  */
-Common::SeekableReadStream *wrapCompressedReadStream(Common::SeekableReadStream *toBeWrapped);
+SeekableReadStream *wrapCompressedReadStream(SeekableReadStream *toBeWrapped);
 
 /**
  * Take an arbitrary WriteStream and wrap it in a custom stream which provides
@@ -65,7 +73,7 @@ Common::SeekableReadStream *wrapCompressedReadStream(Common::SeekableReadStream 
  * It is safe to call this with a NULL parameter (in this case, NULL is
  * returned).
  */
-Common::WriteStream *wrapCompressedWriteStream(Common::WriteStream *toBeWrapped);
+WriteStream *wrapCompressedWriteStream(WriteStream *toBeWrapped);
 
 }	// End of namespace Common
 

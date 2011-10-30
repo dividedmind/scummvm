@@ -32,7 +32,7 @@
 #include "common/noncopyable.h"
 #include "common/queue.h"
 #include "common/singleton.h"
-#include "sound/midiparser.h"
+#include "audio/midiparser.h"
 
 #include "innocent/value.h"
 
@@ -148,8 +148,7 @@ public:
 	~MusicParser();
 
 	bool loadMusic(byte *data, uint32 size = 0);
-	static void timerCallback(void *data) { ((MusicParser *) data)->tick(); }
-	void tick();
+	void onTimer();
 	virtual uint32 getTick() { return _tick; }
 	void setBeat(uint16 beat) { _tune->setBeat(beat); }
 	void silence();

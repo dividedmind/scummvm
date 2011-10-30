@@ -18,17 +18,12 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
-
 
 #include "common/endian.h"
 #include "common/util.h"
-#include "common/system.h"
-#include "common/events.h"
-#include "common/EventRecorder.h"
+#include "common/textconsole.h"
+#include "common/translation.h"
 
 #include "sword1/logic.h"
 #include "sword1/text.h"
@@ -55,8 +50,8 @@ namespace Sword1 {
 
 uint32 Logic::_scriptVars[NUM_SCRIPT_VARS];
 
-Logic::Logic(SwordEngine *vm, ObjectMan *pObjMan, ResMan *resMan, Screen *pScreen, Mouse *pMouse, Sound *pSound, Music *pMusic, Menu *pMenu, OSystem *system, Audio::Mixer *mixer) {
-	g_eventRec.registerRandomSource(_rnd, "sword1");
+Logic::Logic(SwordEngine *vm, ObjectMan *pObjMan, ResMan *resMan, Screen *pScreen, Mouse *pMouse, Sound *pSound, Music *pMusic, Menu *pMenu, OSystem *system, Audio::Mixer *mixer)
+	: _rnd("sword1") {
 
 	_vm = vm;
 	_objMan = pObjMan;
@@ -76,13 +71,13 @@ Logic::Logic(SwordEngine *vm, ObjectMan *pObjMan, ResMan *resMan, Screen *pScree
 	setupMcodeTable();
 }
 
-Logic::~Logic(void) {
+Logic::~Logic() {
 	delete _textMan;
 	delete _router;
 	delete _eventMan;
 }
 
-void Logic::initialize(void) {
+void Logic::initialize() {
 	memset(_scriptVars, 0, NUM_SCRIPT_VARS * sizeof(uint32));
 	for (uint8 cnt = 0; cnt < NON_ZERO_SCRIPT_VARS; cnt++)
 		_scriptVars[_scriptVarInit[cnt][0]] = _scriptVarInit[cnt][1];
@@ -94,14 +89,14 @@ void Logic::initialize(void) {
 
 	delete _textMan;
 	_textMan = new Text(_objMan, _resMan,
-		(SwordEngine::_systemVars.language == BS1_CZECH) ? true : false);
+	                    (SwordEngine::_systemVars.language == BS1_CZECH) ? true : false);
 	_screen->useTextManager(_textMan);
 	_textRunning = _speechRunning = false;
 	_speechFinished = true;
 }
 
 void Logic::newScreen(uint32 screen) {
-	Object *compact = (Object*)_objMan->fetchObject(PLAYER);
+	Object *compact = (Object *)_objMan->fetchObject(PLAYER);
 
 	// work around script bug #911508
 	if (((screen == 25) || (_scriptVars[SCREEN] == 25)) && (_scriptVars[SAND_FLAG] == 4)) {
@@ -114,26 +109,26 @@ void Logic::newScreen(uint32 screen) {
 	}
 
 	// work around, at screen 69 in psx version TOP menu gets stuck at disabled, fix it at next screen (71)
-	if( (screen == 71) && (SwordEngine::isPsx()))
+	if ((screen == 71) && (SwordEngine::isPsx()))
 		_scriptVars[TOP_MENU_DISABLED] = 0;
 
 	if (SwordEngine::_systemVars.justRestoredGame) { // if we've just restored a game - we want George to be exactly as saved
 		fnAddHuman(NULL, 0, 0, 0, 0, 0, 0, 0);
 		if (_scriptVars[GEORGE_WALKING]) { // except that if George was walking when we saveed the game
-			fnStandAt(compact, PLAYER, _scriptVars[CHANGE_X], _scriptVars[CHANGE_Y], _scriptVars[CHANGE_DIR], _scriptVars[CHANGE_STANCE], 0,0);
-			fnIdle(compact,PLAYER,0,0,0,0,0,0);
+			fnStandAt(compact, PLAYER, _scriptVars[CHANGE_X], _scriptVars[CHANGE_Y], _scriptVars[CHANGE_DIR], _scriptVars[CHANGE_STANCE], 0, 0);
+			fnIdle(compact, PLAYER, 0, 0, 0, 0, 0, 0);
 			_scriptVars[GEORGE_WALKING] = 0;
 		}
 		SwordEngine::_systemVars.justRestoredGame = 0;
 		_music->startMusic(_scriptVars[CURRENT_MUSIC], 1);
 	} else { // if we haven't just restored a game, set George to stand, etc
 		compact->o_screen = _scriptVars[NEW_SCREEN]; //move the mega/player at this point between screens
-		fnStandAt(compact, PLAYER, _scriptVars[CHANGE_X], _scriptVars[CHANGE_Y], _scriptVars[CHANGE_DIR], _scriptVars[CHANGE_STANCE], 0,0);
+		fnStandAt(compact, PLAYER, _scriptVars[CHANGE_X], _scriptVars[CHANGE_Y], _scriptVars[CHANGE_DIR], _scriptVars[CHANGE_STANCE], 0, 0);
 		fnChangeFloor(compact, PLAYER, _scriptVars[CHANGE_PLACE], 0, 0, 0, 0, 0);
 	}
 }
 
-void Logic::engine(void) {
+void Logic::engine() {
 	debug(8, "\n\nNext logic cycle");
 	_eventMan->serviceGlobalEventList();
 
@@ -232,7 +227,7 @@ void Logic::processLogic(Object *compact, uint32 id) {
 		case LOGIC_restart:
 			compact->o_tree.o_script_pc[compact->o_tree.o_script_level] = compact->o_tree.o_script_id[compact->o_tree.o_script_level];
 			compact->o_logic = LOGIC_script;
-			logicRet=1;
+			logicRet = 1;
 			break;
 		case LOGIC_bookmark:
 			memcpy(&(compact->o_tree.o_script_level), &(compact->o_bookmark.o_script_level), sizeof(ScriptTree));
@@ -298,41 +293,41 @@ int Logic::logicArAnimate(Object *compact, uint32 id) {
 	compact->o_status |= STAT_SHRINK;
 	route = compact->o_route;
 
-	walkPc				=compact->o_walk_pc;
-	compact->o_frame	=route[walkPc].frame;
-	compact->o_dir		=route[walkPc].dir;
-	compact->o_xcoord	=route[walkPc].x;
-	compact->o_ycoord	=route[walkPc].y;
-	compact->o_anim_x	=compact->o_xcoord;
-	compact->o_anim_y	=compact->o_ycoord;
+	walkPc            = compact->o_walk_pc;
+	compact->o_frame  = route[walkPc].frame;
+	compact->o_dir    = route[walkPc].dir;
+	compact->o_xcoord = route[walkPc].x;
+	compact->o_ycoord = route[walkPc].y;
+	compact->o_anim_x = compact->o_xcoord;
+	compact->o_anim_y = compact->o_ycoord;
 
 	if (((_scriptVars[GEORGE_WALKING] == 2) && (walkPc > 5) && (id == PLAYER) &&
-		(route[walkPc - 1].step == 5) && (route[walkPc].step == 0)) ||
-		((_scriptVars[GEORGE_WALKING] == 3) && (id == PLAYER))) {
+	        (route[walkPc - 1].step == 5) && (route[walkPc].step == 0)) ||
+	        ((_scriptVars[GEORGE_WALKING] == 3) && (id == PLAYER))) {
 
-			compact->o_frame = 96 + compact->o_dir;						//reset
-			if	((compact->o_dir != 2) && (compact->o_dir != 6)) { // on verticals and diagonals stand where george is
-				compact->o_xcoord	= route[walkPc - 1].x;
-				compact->o_ycoord	= route[walkPc - 1].y;
-				compact->o_anim_x	= compact->o_xcoord;
-				compact->o_anim_y	= compact->o_ycoord;
-			}
-			compact->o_logic = LOGIC_script;
-			compact->o_down_flag = 0;		//0 means error
-			_scriptVars[GEORGE_WALKING] = 0;
-			route[compact->o_walk_pc+1].frame = 512;					//end of sequence
-			if (_scriptVars[MEGA_ON_GRID] == 2)
-				_scriptVars[MEGA_ON_GRID] = 0;
+		compact->o_frame = 96 + compact->o_dir;                     //reset
+		if ((compact->o_dir != 2) && (compact->o_dir != 6)) {  // on verticals and diagonals stand where george is
+			compact->o_xcoord = route[walkPc - 1].x;
+			compact->o_ycoord = route[walkPc - 1].y;
+			compact->o_anim_x = compact->o_xcoord;
+			compact->o_anim_y = compact->o_ycoord;
+		}
+		compact->o_logic = LOGIC_script;
+		compact->o_down_flag = 0;       //0 means error
+		_scriptVars[GEORGE_WALKING] = 0;
+		route[compact->o_walk_pc + 1].frame = 512;                  //end of sequence
+		if (_scriptVars[MEGA_ON_GRID] == 2)
+			_scriptVars[MEGA_ON_GRID] = 0;
 	}
 	compact->o_walk_pc++;
 
-	if	(route[compact->o_walk_pc].frame == 512) {					//end of sequence
+	if (route[compact->o_walk_pc].frame == 512) {                   //end of sequence
 		compact->o_logic = LOGIC_script;
 		if (((_scriptVars[GEORGE_WALKING] == 2) || (_scriptVars[GEORGE_WALKING] == 1)) &&
-			(id == PLAYER)) {
-				_scriptVars[GEORGE_WALKING] = 0;
-				if (_scriptVars[MEGA_ON_GRID] == 2)
-					_scriptVars[MEGA_ON_GRID] = 0;
+		        (id == PLAYER)) {
+			_scriptVars[GEORGE_WALKING] = 0;
+			if (_scriptVars[MEGA_ON_GRID] == 2)
+				_scriptVars[MEGA_ON_GRID] = 0;
 		}
 	}
 	return 0;
@@ -365,16 +360,16 @@ int Logic::speechDriver(Object *compact) {
 		_speechFinished = true;
 	}
 	if (compact->o_anim_resource) {
-		uint8 *animData = ((uint8*)_resMan->openFetchRes(compact->o_anim_resource)) + sizeof(Header);
+		uint8 *animData = ((uint8 *)_resMan->openFetchRes(compact->o_anim_resource)) + sizeof(Header);
 		int32 numFrames = _resMan->readUint32(animData);
 		animData += 4;
 		compact->o_anim_pc++; // go to next frame of anim
 
 		if (_speechFinished || (compact->o_anim_pc >= numFrames) ||
-			(_speechRunning && (_sound->amISpeaking() == 0)))
-				compact->o_anim_pc = 0; //set to frame 0, closed mouth
+		        (_speechRunning && (_sound->amISpeaking() == 0)))
+			compact->o_anim_pc = 0; //set to frame 0, closed mouth
 
-		AnimUnit *animPtr = (AnimUnit*)(animData + sizeof(AnimUnit) * compact->o_anim_pc);
+		AnimUnit *animPtr = (AnimUnit *)(animData + sizeof(AnimUnit) * compact->o_anim_pc);
 		if (!(compact->o_status & STAT_SHRINK)) {
 			compact->o_anim_x = _resMan->getUint32(animPtr->animX);
 			compact->o_anim_y = _resMan->getUint32(animPtr->animY);
@@ -390,10 +385,10 @@ int Logic::fullAnimDriver(Object *compact) {
 		compact->o_logic = LOGIC_script;
 		return 1;
 	}
-	uint8 *data = ((uint8*)_resMan->openFetchRes(compact->o_anim_resource)) + sizeof(Header);
+	uint8 *data = ((uint8 *)_resMan->openFetchRes(compact->o_anim_resource)) + sizeof(Header);
 	uint32 numFrames = _resMan->readUint32(data);
 	data += 4;
-	AnimUnit *animPtr = (AnimUnit*)(data + compact->o_anim_pc * sizeof(AnimUnit));
+	AnimUnit *animPtr = (AnimUnit *)(data + compact->o_anim_pc * sizeof(AnimUnit));
 
 	compact->o_anim_x = compact->o_xcoord = _resMan->getUint32(animPtr->animX);
 	compact->o_anim_y = compact->o_ycoord = _resMan->getUint32(animPtr->animY);
@@ -412,9 +407,9 @@ int Logic::animDriver(Object *compact) {
 		compact->o_logic = LOGIC_script;
 		return 1;
 	}
-	uint8 *data = ((uint8*)_resMan->openFetchRes(compact->o_anim_resource)) + sizeof(Header);
+	uint8 *data = ((uint8 *)_resMan->openFetchRes(compact->o_anim_resource)) + sizeof(Header);
 	uint32 numFrames = _resMan->readUint32(data);
-	AnimUnit *animPtr = (AnimUnit*)(data + 4 + compact->o_anim_pc * sizeof(AnimUnit));
+	AnimUnit *animPtr = (AnimUnit *)(data + 4 + compact->o_anim_pc * sizeof(AnimUnit));
 
 	if (!(compact->o_status & STAT_SHRINK)) {
 		compact->o_anim_x = _resMan->getUint32(animPtr->animX);
@@ -430,10 +425,10 @@ int Logic::animDriver(Object *compact) {
 	return 0;
 }
 
-void Logic::updateScreenParams(void) {
-	Object *compact = (Object*)_objMan->fetchObject(PLAYER);
+void Logic::updateScreenParams() {
+	Object *compact = (Object *)_objMan->fetchObject(PLAYER);
 	_screen->setScrolling((int16)(compact->o_xcoord - _scriptVars[FEET_X]),
-						  (int16)(compact->o_ycoord - _scriptVars[FEET_Y]));
+	                      (int16)(compact->o_ycoord - _scriptVars[FEET_Y]));
 }
 
 int Logic::scriptManager(Object *compact, uint32 id) {
@@ -470,7 +465,7 @@ void Logic::runMouseScript(Object *cpt, int32 scriptId) {
 }
 
 int Logic::interpretScript(Object *compact, int id, Header *scriptModule, int scriptBase, int scriptNum) {
-	int32 *scriptCode = (int32*)(((uint8*)scriptModule) + sizeof(Header));
+	int32 *scriptCode = (int32 *)(((uint8 *)scriptModule) + sizeof(Header));
 	int32 stack[MAX_STACK_SIZE];
 	int32 stackIdx = 0;
 	int32 offset;
@@ -614,7 +609,7 @@ int Logic::interpretScript(Object *compact, int id, Header *scriptModule, int sc
 			debug(9, "IT_SCRIPTEND");
 			return 0;
 		case IT_POPVAR:         // pop a variable
-			debug(9, "IT_POPVAR: ScriptVars[%d] = %d", scriptCode[pc], stack[stackIdx-1]);
+			debug(9, "IT_POPVAR: ScriptVars[%d] = %d", scriptCode[pc], stack[stackIdx - 1]);
 			varNum = scriptCode[pc++];
 			if (SwordEngine::_systemVars.isDemo && SwordEngine::isPc()) {
 				if (varNum >= 397) // BS1 Demo has different number of script variables
@@ -627,15 +622,15 @@ int Logic::interpretScript(Object *compact, int id, Header *scriptModule, int sc
 		case IT_POPLONGOFFSET:
 			offset = scriptCode[pc++];
 			debug(9, "IT_POPLONGOFFSET: Cpt[%d] = %d", offset, stack[stackIdx - 1]);
-			*((int32 *)((uint8*)compact + offset)) = stack[--stackIdx];
+			*((int32 *)((uint8 *)compact + offset)) = stack[--stackIdx];
 			break;
 		case IT_PUSHLONGOFFSET:
 			offset = scriptCode[pc++];
-			debug(9, "IT_PUSHLONGOFFSET: PUSH Cpt[%d] (==%d)", offset, *((int32 *)((uint8*)compact + offset)));
-			stack[stackIdx++] = *((int32 *)((uint8*)compact + offset));
+			debug(9, "IT_PUSHLONGOFFSET: PUSH Cpt[%d] (==%d)", offset, *((int32 *)((uint8 *)compact + offset)));
+			stack[stackIdx++] = *((int32 *)((uint8 *)compact + offset));
 			break;
 		case IT_SKIPONFALSE:
-			debug(9, "IT_SKIPONFALSE: %d (%s)", scriptCode[pc], (stack[stackIdx-1] ? "IS TRUE (NOT SKIPPED)" : "IS FALSE (SKIPPED)"));
+			debug(9, "IT_SKIPONFALSE: %d (%s)", scriptCode[pc], (stack[stackIdx - 1] ? "IS TRUE (NOT SKIPPED)" : "IS FALSE (SKIPPED)"));
 			if (stack[--stackIdx])
 				pc++;
 			else
@@ -650,12 +645,12 @@ int Logic::interpretScript(Object *compact, int id, Header *scriptModule, int sc
 			{
 				int switchValue = stack[--stackIdx];
 				int switchCount = scriptCode[pc++];
-				int doneSwitch=0;
+				int doneSwitch = 0;
 
-				for (int cnt = 0; (cnt < switchCount) && (doneSwitch==0); cnt++) {
+				for (int cnt = 0; (cnt < switchCount) && (doneSwitch == 0); cnt++) {
 					if (switchValue == scriptCode[pc]) {
-						pc += scriptCode[pc+1];
-						doneSwitch=1;
+						pc += scriptCode[pc + 1];
+						doneSwitch = 1;
 					} else
 						pc += 2;
 				}
@@ -664,7 +659,7 @@ int Logic::interpretScript(Object *compact, int id, Header *scriptModule, int sc
 			}
 			break;
 		case IT_SKIPONTRUE:     // skip if expression true
-			debug(9, "IT_SKIPONTRUE: %d (%s)", scriptCode[pc], (stack[stackIdx-1] ? "IS TRUE (SKIPPED)" : "IS FALSE (NOT SKIPPED)"));
+			debug(9, "IT_SKIPONTRUE: %d (%s)", scriptCode[pc], (stack[stackIdx - 1] ? "IS TRUE (SKIPPED)" : "IS FALSE (NOT SKIPPED)"));
 			stackIdx--;
 			if (stack[stackIdx])
 				pc += scriptCode[pc];
@@ -672,7 +667,7 @@ int Logic::interpretScript(Object *compact, int id, Header *scriptModule, int sc
 				pc++;
 			break;
 		case IT_PRINTF:
-			debug(0, "IT_PRINTF(%d)",stack[stackIdx]);
+			debug(0, "IT_PRINTF(%d)", stack[stackIdx]);
 			break;
 		case IT_RESTARTSCRIPT:
 			debug(9, "IT_RESTARTSCRIPT");
@@ -681,16 +676,16 @@ int Logic::interpretScript(Object *compact, int id, Header *scriptModule, int sc
 		case IT_POPWORDOFFSET:
 			offset = scriptCode[pc++];
 			debug(9, "IT_POPWORDOFFSET: Cpt[%d] = %d", offset, stack[stackIdx - 1] & 0xFFFF);
-			*((int32 *)((uint8*)compact + offset)) = stack[--stackIdx] & 0xffff;
+			*((int32 *)((uint8 *)compact + offset)) = stack[--stackIdx] & 0xffff;
 			break;
 		case IT_PUSHWORDOFFSET:
 			offset = scriptCode[pc++];
-			debug(9, "IT_PUSHWORDOFFSET: PUSH Cpt[%d] == %d", offset, (*((int32 *)((uint8*)compact + offset))) & 0xffff);
-			stack[stackIdx++] = (*((int32 *)((uint8*)compact + offset))) & 0xffff;
+			debug(9, "IT_PUSHWORDOFFSET: PUSH Cpt[%d] == %d", offset, (*((int32 *)((uint8 *)compact + offset))) & 0xffff);
+			stack[stackIdx++] = (*((int32 *)((uint8 *)compact + offset))) & 0xffff;
 			break;
 		default:
-			error("Invalid operator %d",scriptCode[pc-1]);
-			return 0;
+			error("Invalid operator %d", scriptCode[pc - 1]);
+			return 0;   // for compilers that don't support NORETURN
 		}
 	}
 }
@@ -836,7 +831,7 @@ int Logic::fnAnim(Object *cpt, int32 id, int32 cdt, int32 spr, int32 e, int32 f,
 	AnimSet *animTab;
 
 	if (cdt && (!spr)) {
-		animTab = (AnimSet*)((uint8*)_resMan->openFetchRes(cdt) + sizeof(Header));
+		animTab = (AnimSet *)((uint8 *)_resMan->openFetchRes(cdt) + sizeof(Header));
 		animTab += cpt->o_dir;
 
 		cpt->o_anim_resource = _resMan->getUint32(animTab->cdt);
@@ -870,13 +865,13 @@ int Logic::fnSetFrame(Object *cpt, int32 id, int32 cdt, int32 spr, int32 frameNo
 
 	AnimUnit   *animPtr;
 
-	uint8 *data = (uint8*)_resMan->openFetchRes(cdt);
+	uint8 *data = (uint8 *)_resMan->openFetchRes(cdt);
 	data += sizeof(Header);
 	if (frameNo == LAST_FRAME)
 		frameNo = _resMan->readUint32(data) - 1;
 
 	data += 4;
-	animPtr = (AnimUnit*)(data + frameNo * sizeof(AnimUnit));
+	animPtr = (AnimUnit *)(data + frameNo * sizeof(AnimUnit));
 
 	cpt->o_anim_x = _resMan->getUint32(animPtr->animX);
 	cpt->o_anim_y = _resMan->getUint32(animPtr->animY);
@@ -900,13 +895,13 @@ int Logic::fnFullAnim(Object *cpt, int32 id, int32 anim, int32 graphic, int32 e,
 }
 
 int Logic::fnFullSetFrame(Object *cpt, int32 id, int32 cdt, int32 spr, int32 frameNo, int32 f, int32 z, int32 x) {
-	uint8 *data = (uint8*)_resMan->openFetchRes(cdt) + sizeof(Header);
+	uint8 *data = (uint8 *)_resMan->openFetchRes(cdt) + sizeof(Header);
 
 	if (frameNo == LAST_FRAME)
 		frameNo = _resMan->readUint32(data) - 1;
 	data += 4;
 
-	AnimUnit *animPtr = (AnimUnit*)(data + sizeof(AnimUnit) * frameNo);
+	AnimUnit *animPtr = (AnimUnit *)(data + sizeof(AnimUnit) * frameNo);
 	cpt->o_anim_x = cpt->o_xcoord = _resMan->getUint32(animPtr->animX);
 	cpt->o_anim_y = cpt->o_ycoord = _resMan->getUint32(animPtr->animY);
 	cpt->o_frame = _resMan->getUint32(animPtr->animFrame);
@@ -964,7 +959,7 @@ int Logic::fnPlaySequence(Object *cpt, int32 id, int32 sequenceId, int32 d, int3
 	// meantime, we don't want any looping sound effects still playing.
 	_sound->quitScreen();
 
-	MoviePlayer *player = makeMoviePlayer(sequenceId, _vm, _textMan, _mixer, _system);
+	MoviePlayer *player = makeMoviePlayer(sequenceId, _vm, _textMan, _resMan, _mixer, _system);
 	if (player) {
 		_screen->clearScreen();
 		if (player->load(sequenceId))
@@ -1018,7 +1013,7 @@ int Logic::fnNewScript(Object *cpt, int32 id, int32 script, int32 d, int32 e, in
 int Logic::fnSubScript(Object *cpt, int32 id, int32 script, int32 d, int32 e, int32 f, int32 z, int32 x) {
 	cpt->o_tree.o_script_level++;
 	if (cpt->o_tree.o_script_level == TOTAL_script_levels)
-		error("Compact %d: script level exceeded in fnSubScript.", id);
+		error("Compact %d: script level exceeded in fnSubScript", id);
 	cpt->o_tree.o_script_pc[cpt->o_tree.o_script_level] = script;
 	cpt->o_tree.o_script_id[cpt->o_tree.o_script_level] = script;
 	return SCRIPT_STOP;
@@ -1120,7 +1115,7 @@ int Logic::fnISpeak(Object *cpt, int32 id, int32 cdt, int32 textNo, int32 spr, i
 
 	// first setup the talk animation
 	if (cdt && (!spr)) { // if 'cdt' is non-zero but 'spr' is zero - 'cdt' is an anim table tag
-		AnimSet *animTab = (AnimSet*)((uint8*)_resMan->openFetchRes(cdt) + sizeof(Header));
+		AnimSet *animTab = (AnimSet *)((uint8 *)_resMan->openFetchRes(cdt) + sizeof(Header));
 		animTab += cpt->o_dir;
 
 		cpt->o_anim_resource = _resMan->getUint32(animTab->cdt);
@@ -1157,10 +1152,10 @@ int Logic::fnISpeak(Object *cpt, int32 id, int32 cdt, int32 textNo, int32 spr, i
 
 		char *text = _objMan->lockText(textNo);
 		cpt->o_speech_time = strlen(text) + 5;
-		uint32 textCptId = _textMan->lowTextManager((uint8*)text, cpt->o_speech_width, (uint8)cpt->o_speech_pen);
+		uint32 textCptId = _textMan->lowTextManager((uint8 *)text, cpt->o_speech_width, (uint8)cpt->o_speech_pen);
 		_objMan->unlockText(textNo);
 
-		Object * textCpt = _objMan->fetchObject(textCptId);
+		Object *textCpt = _objMan->fetchObject(textCptId);
 		textCpt->o_screen = cpt->o_screen;
 		textCpt->o_target = textCptId;
 
@@ -1194,8 +1189,8 @@ int Logic::fnISpeak(Object *cpt, int32 id, int32 cdt, int32 textNo, int32 spr, i
 		textTopMargin    = SCREEN_TOP_EDGE    + TEXT_MARGIN + _scriptVars[SCROLL_OFFSET_Y];
 		textBottomMargin = SCREEN_BOTTOM_EDGE - TEXT_MARGIN + _scriptVars[SCROLL_OFFSET_Y] - textSpriteHeight;
 
-		textCpt->o_anim_x = textCpt->o_xcoord = inRange(textLeftMargin, textX, textRightMargin);
-		textCpt->o_anim_y = textCpt->o_ycoord = inRange(textTopMargin,  textY, textBottomMargin);
+		textCpt->o_anim_x = textCpt->o_xcoord = CLIP<uint16>(textX, textLeftMargin, textRightMargin);
+		textCpt->o_anim_y = textCpt->o_ycoord = CLIP<uint16>(textY, textTopMargin, textBottomMargin);
 	}
 	return SCRIPT_STOP;
 }
@@ -1252,7 +1247,7 @@ int Logic::fnChangeSpeechText(Object *cpt, int32 id, int32 tar, int32 width, int
 //The game is halted for debugging. Maybe we'll remove this later.
 int Logic::fnTalkError(Object *cpt, int32 id, int32 c, int32 d, int32 e, int32 f, int32 z, int32 x) {
 	error("fnTalkError for id %d, instruction %d", id, cpt->o_down_flag);
-	return SCRIPT_STOP;
+	return SCRIPT_STOP; // for compilers that don't support NORETURN
 }
 
 int Logic::fnStartTalk(Object *cpt, int32 id, int32 target, int32 d, int32 e, int32 f, int32 z, int32 x) {
@@ -1419,12 +1414,12 @@ int Logic::fnWalk(Object *cpt, int32 id, int32 x, int32 y, int32 dir, int32 stan
 			int32 target = _scriptVars[CLICK_ID];
 			// exceptions: compacts that use hand pointers but are not actually exits
 			if ((target != LEFT_SCROLL_POINTER) && (target != RIGHT_SCROLL_POINTER) &&
-				(target != FLOOR_63) && (target != ROOF_63) && (target != GUARD_ROOF_63) &&
-				(target != LEFT_TREE_POINTER_71) && (target != RIGHT_TREE_POINTER_71)) {
+			        (target != FLOOR_63) && (target != ROOF_63) && (target != GUARD_ROOF_63) &&
+			        (target != LEFT_TREE_POINTER_71) && (target != RIGHT_TREE_POINTER_71)) {
 
 				target = _objMan->fetchObject(_scriptVars[CLICK_ID])->o_mouse_on;
 				if ((target >= SCR_exit0) && (target <= SCR_exit9)) {
-					fnStandAt(cpt,id,x,y,dir,stance,0,0);
+					fnStandAt(cpt, id, x, y, dir, stance, 0, 0);
 					return SCRIPT_STOP;
 				}
 			}
@@ -1444,13 +1439,13 @@ int Logic::fnTurn(Object *cpt, int32 id, int32 dir, int32 stance, int32 c, int32
 		dir = 9;
 	int route = _router->routeFinder(id, cpt, cpt->o_xcoord, cpt->o_ycoord, dir);
 
-	if	(route)
-		cpt->o_down_flag = 1;		//1 means ok
+	if (route)
+		cpt->o_down_flag = 1;       //1 means ok
 	else
-		cpt->o_down_flag = 0;		//0 means error
+		cpt->o_down_flag = 0;       //0 means error
 
 	cpt->o_logic = LOGIC_AR_animate;
-	cpt->o_walk_pc = 0;						//reset
+	cpt->o_walk_pc = 0;                     //reset
 
 	return SCRIPT_STOP;
 }
@@ -1606,8 +1601,8 @@ int Logic::fnStopMusic(Object *cpt, int32 id, int32 a, int32 b, int32 c, int32 d
 }
 
 int Logic::fnInnerSpace(Object *cpt, int32 id, int32 a, int32 b, int32 c, int32 d, int32 z, int32 x) {
-	error("fnInnerSpace() not working.");
-	return SCRIPT_STOP;
+	error("fnInnerSpace() not working");
+	return SCRIPT_STOP; // for compilers that don't support NORETURN
 }
 
 int Logic::fnSetScreen(Object *cpt, int32 id, int32 target, int32 screen, int32 c, int32 d, int32 z, int32 x) {
@@ -1635,7 +1630,7 @@ int Logic::fnRestartGame(Object *cpt, int32 id, int32 a, int32 b, int32 c, int32
 
 int Logic::fnQuitGame(Object *cpt, int32 id, int32 a, int32 b, int32 c, int32 d, int32 z, int32 x) {
 	if (SwordEngine::_systemVars.isDemo) {
-		GUI::MessageDialog dialog("This is the end of the Broken Sword 1 Demo", "OK", NULL);
+		GUI::MessageDialog dialog(_("This is the end of the Broken Sword 1 Demo"), _("OK"), NULL);
 		dialog.runModal();
 		Engine::quitGame();
 	} else
@@ -1692,10 +1687,6 @@ int Logic::fnPurple(Object *cpt, int32 id, int32 a, int32 b, int32 c, int32 d, i
 int Logic::fnBlack(Object *cpt, int32 id, int32 a, int32 b, int32 c, int32 d, int32 z, int32 x) {
 	_screen->fnFlash(BORDER_BLACK);
 	return SCRIPT_CONT;
-}
-
-uint16 Logic::inRange(uint16 a, uint16 b, uint16 c) {
-	return (a > b)? a : (((b > c) ? c : b));
 }
 
 void Logic::startPosCallFn(uint8 fnId, uint32 param1, uint32 param2, uint32 param3) {
@@ -1794,7 +1785,7 @@ void Logic::startPositions(uint32 pos) {
 	if (pos == 0)
 		pos = 1;
 	Object *compact = _objMan->fetchObject(PLAYER);
-	fnEnterSection(compact, PLAYER, pos, 0, 0, 0, 0, 0);	// (automatically opens the compact resource for that section)
+	fnEnterSection(compact, PLAYER, pos, 0, 0, 0, 0, 0);    // (automatically opens the compact resource for that section)
 	SwordEngine::_systemVars.controlPanelMode = CP_NORMAL;
 	SwordEngine::_systemVars.wantFade = true;
 }

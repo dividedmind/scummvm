@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef SWORD1_SCREEN_H
@@ -41,14 +38,14 @@ struct SortSpr {
 };
 
 struct RoomDef {
-	int		totalLayers;
-	int		sizeX;
-	int		sizeY;
-	int		gridWidth;	//number of 16*16 grid blocks across - including off screen edges.
-	uint32	layers[4];
-	uint32	grids[3];
-	uint32	palettes[2];
-	uint32	parallax[2];
+	int     totalLayers;
+	int     sizeX;
+	int     sizeY;
+	int     gridWidth;  //number of 16*16 grid blocks across - including off screen edges.
+	uint32  layers[4];
+	uint32  grids[3];
+	uint32  palettes[2];
+	uint32  parallax[2];
 };
 
 struct PSXDataCache { // Cache for PSX screen, to avoid decompressing background at every screen update
@@ -71,30 +68,30 @@ struct PSXDataCache { // Cache for PSX screen, to avoid decompressing background
 class ResMan;
 class ObjectMan;
 class Text; // Text objects use sprites that are created internally at run-time
-				 // the buffer belongs to Text, so we need a reference here.
+            // the buffer belongs to Text, so we need a reference here.
 
 class Screen {
 public:
 	Screen(OSystem *system, ResMan *pResMan, ObjectMan *pObjMan);
-	~Screen(void);
-	void clearScreen(void);
+	~Screen();
+	void clearScreen();
 	void useTextManager(Text *pTextMan);
-	void draw(void);
+	void draw();
 
-	void quitScreen(void);
+	void quitScreen();
 	void newScreen(uint32 screen);
 
 	void setScrolling(int16 offsetX, int16 offsetY);
 	void addToGraphicList(uint8 listId, uint32 objId);
 
-	void fadeDownPalette(void);
-	void fadeUpPalette(void);
+	void fadeDownPalette();
+	void fadeUpPalette();
 	void fnSetPalette(uint8 start, uint16 length, uint32 id, bool fadeUp);
-	bool stillFading(void);
-	void fullRefresh(void);
+	bool stillFading();
+	void fullRefresh();
 
-	bool showScrollFrame(void);
-	void updateScreen(void);
+	bool showScrollFrame();
+	void updateScreen();
 	void showFrame(uint16 x, uint16 y, uint32 resId, uint32 frameNo, const byte *fadeMask = NULL, int8 fadeStatus = 0);
 
 	void fnSetParallax(uint32 screen, uint32 resId);
@@ -121,18 +118,17 @@ private:
 	void drawSprite(uint8 *sprData, uint16 sprX, uint16 sprY, uint16 sprWidth, uint16 sprHeight, uint16 sprPitch);
 	void drawPsxHalfShrinkedSprite(uint8 *sprData, uint16 sprX, uint16 sprY, uint16 sprWidth, uint16 sprHeight, uint16 sprPitch);
 	void drawPsxFullShrinkedSprite(uint8 *sprData, uint16 sprX, uint16 sprY, uint16 sprWidth, uint16 sprHeight, uint16 sprPitch);
-	uint8* psxBackgroundToIndexed(uint8 *psxBackground, uint32 bakXres, uint32 bakYres);
-	uint8* psxShrinkedBackgroundToIndexed(uint8 *psxBackground, uint32 bakXres, uint32 bakYres);
+	uint8 *psxBackgroundToIndexed(uint8 *psxBackground, uint32 bakXres, uint32 bakYres);
+	uint8 *psxShrinkedBackgroundToIndexed(uint8 *psxBackground, uint32 bakXres, uint32 bakYres);
 	void fetchPsxParallaxSize(uint8 *psxParallax, uint16 *paraSizeX, uint16 *paraSizeY);
 	void drawPsxParallax(uint8 *psxParallax, uint16 paraScrlX, uint16 scrnScrlX, uint16 scrnWidth);
 	void decompressRLE7(uint8 *src, uint32 compSize, uint8 *dest);
 	void decompressRLE0(uint8 *src, uint32 compSize, uint8 *dest);
 	void decompressTony(uint8 *src, uint32 compSize, uint8 *dest);
 	void fastShrink(uint8 *src, uint32 width, uint32 height, uint32 scale, uint8 *dest);
-	int32 inRange(int32 a, int32 b, int32 c);
-	void fadePalette(void);
+	void fadePalette();
 
-	void flushPsxCache(void);
+	void flushPsxCache();
 
 	OSystem *_system;
 	ResMan *_resMan;
@@ -161,17 +157,14 @@ private:
 
 	static RoomDef _roomDefTable[TOTAL_ROOMS]; // from ROOMS.C (not const, see fnSetParallax)
 
-	uint8 _targetPalette[256 * 4];
-	uint8 _currentPalette[256 * 4]; // for fading
+	uint8 _targetPalette[256 * 3];
+	uint8 _currentPalette[256 * 3]; // for fading
 	uint8 _fadingStep;
 	int8  _fadingDirection; // 1 for fade up, -1 for fade down
 	bool _isBlack; // if the logic already faded down the palette, this is set to show the
-				   // mainloop that no further fading is necessary.
+	               // mainloop that no further fading is necessary.
 };
 
 } // End of namespace Sword1
 
 #endif //BSSCREEN_H
-
-
-

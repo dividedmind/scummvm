@@ -18,11 +18,10 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
+
+#include "common/textconsole.h"
 
 #include "scumm/smush/channel.h"
 
@@ -41,8 +40,8 @@ SmushChannel::SmushChannel(int32 track) :
 }
 
 SmushChannel::~SmushChannel() {
-	delete[] _tbuffer;
-	delete[] _sbuffer;
+	free(_tbuffer);
+	free(_sbuffer);
 }
 
 void SmushChannel::processBuffer() {
@@ -60,7 +59,9 @@ void SmushChannel::processBuffer() {
 			_sbuffer = _tbuffer;
 			if (offset < _tbufferSize) {
 				int new_size = _tbufferSize - offset;
-				_tbuffer = new byte[new_size];
+				_tbuffer = (byte *)malloc(new_size);
+				// FIXME: _tbuffer might be 0 if new_size is 0.
+				// NB: Also check other "if (_tbuffer)" locations in smush
 				if (!_tbuffer)
 					error("smush channel failed to allocate memory");
 				memcpy(_tbuffer, _sbuffer + offset, new_size);
@@ -70,7 +71,7 @@ void SmushChannel::processBuffer() {
 				_tbufferSize = 0;
 			}
 			if (_sbufferSize == 0) {
-				delete[] _sbuffer;
+				free(_sbuffer);
 				_sbuffer = 0;
 			}
 		} else {
@@ -86,23 +87,27 @@ void SmushChannel::processBuffer() {
 		if (_inData) {
 			_sbufferSize = _tbufferSize - offset;
 			assert(_sbufferSize);
-			_sbuffer = new byte[_sbufferSize];
+			_sbuffer = (byte *)malloc(_sbufferSize);
 			if (!_sbuffer)
 				error("smush channel failed to allocate memory");
 			memcpy(_sbuffer, _tbuffer + offset, _sbufferSize);
-			delete[] _tbuffer;
+			free(_tbuffer);
 			_tbuffer = 0;
 			_tbufferSize = 0;
 		} else {
 			if (offset) {
 				byte *old = _tbuffer;
 				int32 new_size = _tbufferSize - offset;
-				_tbuffer = new byte[new_size];
-				if (!_tbuffer)
-					error("smush channel failed to allocate memory");
-				memcpy(_tbuffer, old + offset, new_size);
+				_tbuffer = (byte *)malloc(new_size);
+				// NB: Also check other "if (_tbuffer)" locations in smush
+				if (!_tbuffer) {
+					if (new_size)
+						error("smush channel failed to allocate memory");
+				} else {
+					memcpy(_tbuffer, old + offset, new_size);
+				}
 				_tbufferSize = new_size;
-				delete[] old;
+				free(old);
 			}
 		}
 	}

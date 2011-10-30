@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef SWORD1_TEXT_H
@@ -33,30 +30,30 @@ namespace Sword1 {
 
 #define MAX_TEXT_OBS 3
 
-#define BORDER_COL	200
+#define BORDER_COL  200
 #define BORDER_COL_PSX 199
-#define LETTER_COL	193
-#define NO_COL		0	// sprite background - 0 for transparency
+#define LETTER_COL  193
+#define NO_COL      0   // sprite background - 0 for transparency
 
 class ObjectMan;
 class ResMan;
 
 struct LineInfo {
-	uint16	width;	// width of line in pixels
-	uint16	length;	// length of line in characters
+	uint16 width;  // width of line in pixels
+	uint16 length; // length of line in characters
 };
 
 class Text {
 public:
 	Text(ObjectMan *pObjMan, ResMan *pResMan, bool czechVersion);
-	~Text(void);
+	~Text();
 	FrameHeader *giveSpriteData(uint32 textTarget);
 	uint32 lowTextManager(uint8 *text, int32 width, uint8 pen);
-	void makeTextSprite(uint8 slot, uint8 *text, uint16 maxWidth, uint8 pen);
+	void makeTextSprite(uint8 slot, const uint8 *text, uint16 maxWidth, uint8 pen);
 	void releaseText(uint32 id, bool updateCount = true);
 
 private:
-	uint16 analyzeSentence(uint8 *text, uint16 maxWidth, LineInfo *info);
+	uint16 analyzeSentence(const uint8 *text, uint16 maxWidth, LineInfo *info);
 	uint16 charWidth(uint8 ch);
 	uint16 copyChar(uint8 ch, uint8 *sprPtr, uint16 sprWidth, uint8 pen);
 	uint8 *_font;

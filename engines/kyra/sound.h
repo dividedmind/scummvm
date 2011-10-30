@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef KYRA_SOUND_H
@@ -31,11 +28,12 @@
 #include "common/scummsys.h"
 #include "common/str.h"
 
-#include "sound/mixer.h"
+#include "audio/mixer.h"
 
 namespace Audio {
 class AudioStream;
-} // end of namespace Audio
+class SeekableAudioStream;
+} // End of namespace Audio
 
 namespace Kyra {
 
@@ -50,16 +48,17 @@ public:
 	virtual ~Sound();
 
 	enum kType {
-		kAdlib,
+		kAdLib,
 		kMidiMT32,
 		kMidiGM,
 		kTowns,
 		kPC98,
-		kPCSpkr
+		kPCSpkr,
+		kAmiga
 	};
 
 	virtual kType getMusicType() const = 0;
-	virtual kType getSfxType() const { return getMusicType(); }
+	virtual kType getSfxType() const;
 
 	/**
 	 * Initializes the output device.
@@ -82,17 +81,17 @@ public:
 	 * Sets the soundfiles the output device will use
 	 * when playing a track and/or sound effect.
 	 *
-	 * @param list	soundfile list
+	 * @param list soundfile list
 	 */
-	virtual void setSoundList(const AudioDataStruct *list) { _soundDataList = list; }
+	virtual void setSoundList(const AudioDataStruct *list);
 
 	/**
 	 * Checks if a given sound file is present.
 	 *
-	 * @param track	track number
+	 * @param track track number
 	 * @return true if available, false otherwise
 	 */
-	virtual bool hasSoundFile(uint file) { return (fileListEntry(file) != 0); }
+	virtual bool hasSoundFile(uint file) const;
 
 	/**
 	 * Load a specifc sound file for use of
@@ -102,7 +101,7 @@ public:
 
 	/**
 	 * Load a sound file for playing music
-	 * (and somtimes sound effects) from.
+	 * (and sometimes sound effects) from.
 	 */
 	virtual void loadSoundFile(Common::String file) = 0;
 
@@ -110,12 +109,12 @@ public:
 	 * Load a sound file for playing sound
 	 * effects from.
 	 */
-	virtual void loadSfxFile(Common::String file) { }
+	virtual void loadSfxFile(Common::String file) {}
 
 	/**
 	 * Plays the specified track.
 	 *
-	 * @param track	track number
+	 * @param track track number
 	 */
 	virtual void playTrack(uint8 track) = 0;
 
@@ -127,7 +126,7 @@ public:
 	/**
 	 * Plays the specified sound effect.
 	 *
-	 * @param track	sound effect id
+	 * @param track sound effect id
 	 */
 	virtual void playSoundEffect(uint8 track) = 0;
 
@@ -141,7 +140,7 @@ public:
 	 *
 	 * @return true if playing, false otherwise
 	 */
-	virtual bool isPlaying() const { return false; }
+	virtual bool isPlaying() const;
 
 	/**
 	 * Starts fading out the volume.
@@ -154,20 +153,23 @@ public:
 	 */
 	virtual void beginFadeOut() = 0;
 
+	/**
+	* Stops all audio playback when paused. Continues after end of pause.
+	*/
+	virtual void pause(bool paused) {}
+
 	void enableMusic(int enable) { _musicEnabled = enable; }
 	int musicEnabled() const { return _musicEnabled; }
 	void enableSFX(bool enable) { _sfxEnabled = enable; }
 	bool sfxEnabled() const { return _sfxEnabled; }
 
-	virtual bool voiceFileIsPresent(const char *file);
-
 	/**
 	 * Checks whether a voice file with the given name is present
 	 *
-	 * @param file		file name
+	 * @param file     file name
 	 * @return true if available, false otherwise
 	 */
-	bool isVoicePresent(const char *file);
+	bool isVoicePresent(const char *file) const;
 
 	/**
 	 * Plays the specified voice file.
@@ -176,15 +178,15 @@ public:
 	 * specified voice file, it stops the
 	 * current voice.
 	 *
-	 * @param file		file to be played
-	 * @param volume	volume of the voice file
-	 * @param isSfx		marks file as sfx instead of voice
-	 * @param handle	store a copy of the sound handle
+	 * @param file      file to be played
+	 * @param volume    volume of the voice file
+	 * @param isSfx     marks file as sfx instead of voice
+	 * @param handle    store a copy of the sound handle
 	 * @return playtime of the voice file (-1 marks unknown playtime)
 	 */
 	virtual int32 voicePlay(const char *file, Audio::SoundHandle *handle = 0, uint8 volume = 255, bool isSfx = false);
 
-	Audio::AudioStream *getVoiceStream(const char *file);
+	Audio::SeekableAudioStream *getVoiceStream(const char *file) const;
 
 	bool playVoiceStream(Audio::AudioStream *stream, Audio::SoundHandle *handle = 0, uint8 volume = 255, bool isSfx = false);
 
@@ -193,21 +195,21 @@ public:
 	 *
 	 * @return true when playing, else false
 	 */
-	bool voiceIsPlaying(const Audio::SoundHandle *handle = 0);
+	bool voiceIsPlaying(const Audio::SoundHandle *handle = 0) const;
 
 	/**
 	 * Checks if all voice handles are used.
 	 *
 	 * @return false when a handle is free, else true
 	 */
-	bool allVoiceChannelsPlaying();
+	bool allVoiceChannelsPlaying() const;
 
 	/**
 	 * Checks how long a voice has been playing
 	 *
 	 * @return time in milliseconds
 	 */
-	uint32 voicePlayedTime(const Audio::SoundHandle &handle) {
+	uint32 voicePlayedTime(const Audio::SoundHandle &handle) const {
 		return _mixer->getSoundElapsedTime(handle);
 	}
 
@@ -239,12 +241,9 @@ private:
 
 	struct SpeechCodecs {
 		const char *fileext;
-		Audio::AudioStream *(*streamFunc)(
+		Audio::SeekableAudioStream *(*streamFunc)(
 			Common::SeekableReadStream *stream,
-			bool disposeAfterUse,
-			uint32 startTime,
-			uint32 duration,
-			uint numLoops);
+			DisposeAfterUse::Flag disposeAfterUse);
 	};
 
 	static const SpeechCodecs _supportedCodecs[];
@@ -252,33 +251,34 @@ private:
 
 class MixedSoundDriver : public Sound {
 public:
-	MixedSoundDriver(KyraEngine_v1 *vm, Audio::Mixer *mixer, Sound *music, Sound *sfx) : Sound(vm, mixer), _music(music), _sfx(sfx) {}
-	~MixedSoundDriver() { delete _music; delete _sfx; }
+	MixedSoundDriver(KyraEngine_v1 *vm, Audio::Mixer *mixer, Sound *music, Sound *sfx);
+	~MixedSoundDriver();
 
-	kType getMusicType() const { return _music->getMusicType(); }
-	kType getSfxType() const { return _sfx->getSfxType(); }
+	virtual kType getMusicType() const;
+	virtual kType getSfxType() const;
 
-	bool init() { return (_music->init() && _sfx->init()); }
-	void process() { _music->process(); _sfx->process(); }
+	virtual bool init();
+	virtual void process();
 
-	void updateVolumeSettings() { _music->updateVolumeSettings(); _sfx->updateVolumeSettings(); }
+	virtual void updateVolumeSettings();
 
-	void setSoundList(const AudioDataStruct * list) { _music->setSoundList(list); _sfx->setSoundList(list); }
-	bool hasSoundFile(uint file) const { return _music->hasSoundFile(file) && _sfx->hasSoundFile(file); }
-	void loadSoundFile(uint file) { _music->loadSoundFile(file); _sfx->loadSoundFile(file); }
-	void loadSoundFile(Common::String file) { _music->loadSoundFile(file); _sfx->loadSoundFile(file); }
+	virtual void setSoundList(const AudioDataStruct *list);
+	virtual bool hasSoundFile(uint file) const;
+	virtual void loadSoundFile(uint file);
+	virtual void loadSoundFile(Common::String file);
 
-	void loadSfxFile(Common::String file) { _sfx->loadSoundFile(file); }
+	virtual void loadSfxFile(Common::String file);
 
-	void playTrack(uint8 track) { _music->playTrack(track); }
-	void haltTrack() { _music->haltTrack(); }
-	bool isPlaying() const { return _music->isPlaying() | _sfx->isPlaying(); }
+	virtual void playTrack(uint8 track);
+	virtual void haltTrack();
+	virtual bool isPlaying() const;
 
-	void playSoundEffect(uint8 track) { _sfx->playSoundEffect(track); }
+	virtual void playSoundEffect(uint8 track);
 
-	void stopAllSoundEffects() { _sfx->stopAllSoundEffects(); }
+	virtual void stopAllSoundEffects();
 
-	void beginFadeOut() { _music->beginFadeOut(); }
+	virtual void beginFadeOut();
+	virtual void pause(bool paused);
 private:
 	Sound *_music, *_sfx;
 };
@@ -303,12 +303,12 @@ public:
 	/**
 	 * Plays a sound.
 	 *
-	 * @param filename		file to be played
-	 * @param priority		priority of the sound
-	 * @param type			type
-	 * @param volume		channel volume
-	 * @param loop			true if the sound should loop (endlessly)
-	 * @param channel		tell the sound player to use a specific channel for playback
+	 * @param filename  file to be played
+	 * @param priority  priority of the sound
+	 * @param type      type
+	 * @param volume    channel volume
+	 * @param loop      true if the sound should loop (endlessly)
+	 * @param channel   tell the sound player to use a specific channel for playback
 	 *
 	 * @return channel playing the sound
 	 */
@@ -317,7 +317,7 @@ public:
 	/**
 	 * Checks if a given channel is playing a sound.
 	 *
-	 * @param channel	channel number to check
+	 * @param channel channel number to check
 	 * @return true if playing, else false
 	 */
 	bool isPlaying(int channel);
@@ -326,7 +326,7 @@ public:
 	 * Stop the playback of a sound in the given
 	 * channel.
 	 *
-	 * @param channel	channel number
+	 * @param channel channel number
 	 */
 	void stopSound(int channel);
 
@@ -339,8 +339,8 @@ public:
 	 * Makes the sound in a given channel
 	 * fading out.
 	 *
-	 * @param channel	channel number
-	 * @param ticks		fadeout time
+	 * @param channel channel number
+	 * @param ticks   fadeout time
 	 */
 	void beginFadeOut(int channel, int ticks);
 private:
@@ -357,17 +357,14 @@ private:
 
 	struct AudioCodecs {
 		const char *fileext;
-		Audio::AudioStream *(*streamFunc)(
+		Audio::SeekableAudioStream *(*streamFunc)(
 			Common::SeekableReadStream *stream,
-			bool disposeAfterUse,
-			uint32 startTime,
-			uint32 duration,
-			uint numLoops);
+			DisposeAfterUse::Flag disposeAfterUse);
 	};
 
 	static const AudioCodecs _supportedCodecs[];
 };
 
-} // end of namespace Kyra
+} // End of namespace Kyra
 
 #endif

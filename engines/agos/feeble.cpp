@@ -18,20 +18,22 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
+
+
+
+#ifdef ENABLE_AGOS2
 
 #include "common/config-manager.h"
 
 #include "agos/intern.h"
 #include "agos/agos.h"
+#include "agos/animation.h"
 
 namespace AGOS {
 
-AGOSEngine_Feeble::AGOSEngine_Feeble(OSystem *system)
-	: AGOSEngine_Simon2(system) {
+AGOSEngine_Feeble::AGOSEngine_Feeble(OSystem *system, const AGOSGameDescription *gd)
+	: AGOSEngine_Simon2(system, gd) {
 
 	_interactiveVideo = 0;
 	_moviePlayer = 0;
@@ -43,6 +45,9 @@ AGOSEngine_Feeble::~AGOSEngine_Feeble() {
 }
 
 static const GameSpecificSettings feeblefiles_settings = {
+	"game22",                               // base_filename
+	"save.999",                             // restore_filename
+	"tbllist",                              // tbl_filename
 	"",                                     // effects_filename
 	"VOICES",                               // speech_filename
 };
@@ -64,6 +69,7 @@ void AGOSEngine_Feeble::setupGame() {
 	_numVars = 255;
 
 	_numSpeech = 10000;
+	_numZone = 450;
 
 	AGOSEngine::setupGame();
 }
@@ -106,8 +112,8 @@ void AGOSEngine_Feeble::stopInteractiveVideo() {
 	}
 }
 
-AGOSEngine_FeebleDemo::AGOSEngine_FeebleDemo(OSystem *system)
-	: AGOSEngine_Feeble(system) {
+AGOSEngine_FeebleDemo::AGOSEngine_FeebleDemo(OSystem *system, const AGOSGameDescription *gd)
+	: AGOSEngine_Feeble(system, gd) {
 
 	_filmMenuUsed = 0;
 }
@@ -383,3 +389,5 @@ void AGOSEngine_FeebleDemo::waitForSpace() {
 }
 
 } // End of namespace AGOS
+
+#endif // ENABLE_AGOS2

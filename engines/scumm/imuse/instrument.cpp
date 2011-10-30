@@ -17,16 +17,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * $URL$
- * $Id$
  */
 
 
 #include "scumm/scumm.h"
 #include "scumm/saveload.h"
 #include "scumm/imuse/instrument.h"
-#include "sound/mididrv.h"
+#include "audio/mididrv.h"
 
 namespace Scumm {
 
@@ -117,14 +114,15 @@ roland_to_gm_map[] = {
 //	{ "trickle4  ", ??? }
 };
 
+// This emulates the percussion bank setup LEC used with the MT-32,
+// where notes 24 - 34 were assigned instruments without reverb.
+// It also fixes problems on GS devices that map sounds to these
+// notes by default.
 const byte Instrument::_gmRhythmMap[35] = {
-	  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-	  0,  0,  0,  0,  0,  0,  0,  0, 36, 37, 38, 39, 40, 41, 66, 47,
-	 65, 48, 56};
-       // This emulates the percussion bank setup LEC used with the MT-32,
-       // where notes 24 - 34 were assigned instruments without reverb.
-       // It also fixes problems on GS devices that map sounds to these
-       // notes by default.
+	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+	0,  0,  0,  0,  0,  0,  0,  0, 36, 37, 38, 39, 40, 41, 66, 47,
+	65, 48, 56
+};
 
 class Instrument_Program : public InstrumentInternal {
 private:
@@ -139,17 +137,18 @@ public:
 	void copy_to(Instrument *dest) { dest->program(_program, _mt32); }
 	bool is_valid() {
 		return (_program < 128) &&
-			((_native_mt32 == _mt32) || _native_mt32
-				? (MidiDriver::_gmToMt32[_program] < 128)
-				: (MidiDriver::_mt32ToGm[_program] < 128)); }
+		       ((_native_mt32 == _mt32) || _native_mt32
+		        ? (MidiDriver::_gmToMt32[_program] < 128)
+		        : (MidiDriver::_mt32ToGm[_program] < 128));
+	}
 };
 
-class Instrument_Adlib : public InstrumentInternal {
+class Instrument_AdLib : public InstrumentInternal {
 private:
 
-#include "common/pack-start.h"	// START STRUCT PACKING
+#include "common/pack-start.h"  // START STRUCT PACKING
 
-	struct AdlibInstrument {
+	struct AdLibInstrument {
 		byte flags_1;
 		byte oplvl_1;
 		byte atdec_1;
@@ -162,19 +161,23 @@ private:
 		byte waveform_2;
 		byte feedback;
 		byte flags_a;
-		struct { byte a,b,c,d,e,f,g,h; } extra_a;
+		struct {
+			byte a, b, c, d, e, f, g, h;
+		} extra_a;
 		byte flags_b;
-		struct { byte a,b,c,d,e,f,g,h; } extra_b;
+		struct {
+			byte a, b, c, d, e, f, g, h;
+		} extra_b;
 		byte duration;
 	} PACKED_STRUCT;
 
-#include "common/pack-end.h"	// END STRUCT PACKING
+#include "common/pack-end.h"    // END STRUCT PACKING
 
-	AdlibInstrument _instrument;
+	AdLibInstrument _instrument;
 
 public:
-	Instrument_Adlib(const byte *data);
-	Instrument_Adlib(Serializer *s);
+	Instrument_AdLib(const byte *data);
+	Instrument_AdLib(Serializer *s);
 	void saveOrLoad(Serializer *s);
 	void send(MidiChannel *mc);
 	void copy_to(Instrument *dest) { dest->adlib((byte *)&_instrument); }
@@ -184,7 +187,7 @@ public:
 class Instrument_Roland : public InstrumentInternal {
 private:
 
-#include "common/pack-start.h"	// START STRUCT PACKING
+#include "common/pack-start.h"  // START STRUCT PACKING
 
 	struct RolandInstrument {
 		byte roland_id;
@@ -245,11 +248,11 @@ private:
 		byte checksum;
 	} PACKED_STRUCT;
 
-#include "common/pack-end.h"	// END STRUCT PACKING
+#include "common/pack-end.h"    // END STRUCT PACKING
 
 	RolandInstrument _instrument;
 
-	char _instrument_name [11];
+	char _instrument_name[11];
 
 	uint8 getEquivalentGM();
 
@@ -260,6 +263,19 @@ public:
 	void send(MidiChannel *mc);
 	void copy_to(Instrument *dest) { dest->roland((byte *)&_instrument); }
 	bool is_valid() { return (_native_mt32 ? true : (_instrument_name[0] != '\0')); }
+};
+
+class Instrument_PcSpk : public InstrumentInternal {
+public:
+	Instrument_PcSpk(const byte *data);
+	Instrument_PcSpk(Serializer *s);
+	void saveOrLoad(Serializer *s);
+	void send(MidiChannel *mc);
+	void copy_to(Instrument *dest) { dest->pcspk((byte *)&_instrument); }
+	bool is_valid() { return true; }
+
+private:
+	byte _instrument[23];
 };
 
 ////////////////////////////////////////
@@ -273,8 +289,7 @@ void Instrument::nativeMT32(bool native) {
 }
 
 void Instrument::clear() {
-	if (_instrument)
-		delete _instrument;
+	delete _instrument;
 	_instrument = NULL;
 	_type = itNone;
 }
@@ -291,8 +306,8 @@ void Instrument::adlib(const byte *instrument) {
 	clear();
 	if (!instrument)
 		return;
-	_type = itAdlib;
-	_instrument = new Instrument_Adlib(instrument);
+	_type = itAdLib;
+	_instrument = new Instrument_AdLib(instrument);
 }
 
 void Instrument::roland(const byte *instrument) {
@@ -303,7 +318,15 @@ void Instrument::roland(const byte *instrument) {
 	_instrument = new Instrument_Roland(instrument);
 }
 
-void Instrument::saveOrLoad (Serializer *s) {
+void Instrument::pcspk(const byte *instrument) {
+	clear();
+	if (!instrument)
+		return;
+	_type = itPcSpk;
+	_instrument = new Instrument_PcSpk(instrument);
+}
+
+void Instrument::saveOrLoad(Serializer *s) {
 	if (s->isSaving()) {
 		s->saveByte(_type);
 		if (_instrument)
@@ -317,11 +340,14 @@ void Instrument::saveOrLoad (Serializer *s) {
 		case itProgram:
 			_instrument = new Instrument_Program(s);
 			break;
-		case itAdlib:
-			_instrument = new Instrument_Adlib(s);
+		case itAdLib:
+			_instrument = new Instrument_AdLib(s);
 			break;
 		case itRoland:
 			_instrument = new Instrument_Roland(s);
+			break;
+		case itPcSpk:
+			_instrument = new Instrument_PcSpk(s);
 			break;
 		default:
 			warning("No known instrument classification #%d", (int)_type);
@@ -337,8 +363,8 @@ void Instrument::saveOrLoad (Serializer *s) {
 ////////////////////////////////////////
 
 Instrument_Program::Instrument_Program(byte program, bool mt32) :
-_program (program),
-_mt32 (mt32) {
+	_program(program),
+	_mt32(mt32) {
 	if (program > 127)
 		_program = 255;
 }
@@ -372,29 +398,29 @@ void Instrument_Program::send(MidiChannel *mc) {
 
 ////////////////////////////////////////
 //
-// Instrument_Adlib class members
+// Instrument_AdLib class members
 //
 ////////////////////////////////////////
 
-Instrument_Adlib::Instrument_Adlib(const byte *data) {
+Instrument_AdLib::Instrument_AdLib(const byte *data) {
 	memcpy(&_instrument, data, sizeof(_instrument));
 }
 
-Instrument_Adlib::Instrument_Adlib(Serializer *s) {
+Instrument_AdLib::Instrument_AdLib(Serializer *s) {
 	if (!s->isSaving())
 		saveOrLoad(s);
 	else
 		memset(&_instrument, 0, sizeof(_instrument));
 }
 
-void Instrument_Adlib::saveOrLoad(Serializer *s) {
+void Instrument_AdLib::saveOrLoad(Serializer *s) {
 	if (s->isSaving())
 		s->saveBytes(&_instrument, sizeof(_instrument));
 	else
 		s->loadBytes(&_instrument, sizeof(_instrument));
 }
 
-void Instrument_Adlib::send(MidiChannel *mc) {
+void Instrument_AdLib::send(MidiChannel *mc) {
 	mc->sysEx_customInstrument('ADL ', (byte *)&_instrument);
 }
 
@@ -417,16 +443,16 @@ Instrument_Roland::Instrument_Roland(const byte *data) {
 Instrument_Roland::Instrument_Roland(Serializer *s) {
 	_instrument_name[0] = '\0';
 	if (!s->isSaving())
-		saveOrLoad (s);
+		saveOrLoad(s);
 	else
 		memset(&_instrument, 0, sizeof(_instrument));
 }
 
-void Instrument_Roland::saveOrLoad (Serializer *s) {
+void Instrument_Roland::saveOrLoad(Serializer *s) {
 	if (s->isSaving()) {
-		s->saveBytes (&_instrument, sizeof(_instrument));
+		s->saveBytes(&_instrument, sizeof(_instrument));
 	} else {
-		s->loadBytes (&_instrument, sizeof(_instrument));
+		s->loadBytes(&_instrument, sizeof(_instrument));
 		memcpy(&_instrument_name, &_instrument.common.name, sizeof(_instrument.common.name));
 		_instrument_name[10] = '\0';
 		if (!_native_mt32 && getEquivalentGM() >= 128) {
@@ -472,6 +498,34 @@ uint8 Instrument_Roland::getEquivalentGM() {
 			return roland_to_gm_map[i].program;
 	}
 	return 255;
+}
+
+////////////////////////////////////////
+//
+// Instrument_PcSpk class members
+//
+////////////////////////////////////////
+
+Instrument_PcSpk::Instrument_PcSpk(const byte *data) {
+	memcpy(_instrument, data, sizeof(_instrument));
+}
+
+Instrument_PcSpk::Instrument_PcSpk(Serializer *s) {
+	if (!s->isSaving())
+		saveOrLoad(s);
+	else
+		memset(_instrument, 0, sizeof(_instrument));
+}
+
+void Instrument_PcSpk::saveOrLoad(Serializer *s) {
+	if (s->isSaving())
+		s->saveBytes(_instrument, sizeof(_instrument));
+	else
+		s->loadBytes(_instrument, sizeof(_instrument));
+}
+
+void Instrument_PcSpk::send(MidiChannel *mc) {
+	mc->sysEx_customInstrument('SPK ', (byte *)&_instrument);
 }
 
 } // End of namespace Scumm

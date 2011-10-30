@@ -18,11 +18,12 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
+#include "common/stream.h"
+#include "common/events.h"
+
+#include "graphics/palette.h"
 
 #include "gob/gob.h"
 #include "gob/util.h"
@@ -31,9 +32,8 @@
 #include "gob/draw.h"
 #include "gob/game.h"
 #include "gob/video.h"
+#include "gob/videoplayer.h"
 #include "gob/sound/sound.h"
-
-#include "common/events.h"
 
 namespace Gob {
 
@@ -47,7 +47,7 @@ Util::Util(GobEngine *vm) : _vm(vm) {
 	_startFrameTime = 0;
 }
 
-uint32 Util::getTimeKey(void) {
+uint32 Util::getTimeKey() {
 	return g_system->getMillis() * _vm->_global->_speedFactor;
 }
 
@@ -83,7 +83,7 @@ void Util::longDelay(uint16 msecs) {
 	         ((g_system->getMillis() * _vm->_global->_speedFactor) < time));
 }
 
-void Util::initInput(void) {
+void Util::initInput() {
 	_mouseButtons  = kMouseButtonsNone;
 	_keyBufferHead = _keyBufferTail = 0;
 }
@@ -93,6 +93,8 @@ void Util::processInput(bool scroll) {
 	Common::EventManager *eventMan = g_system->getEventManager();
 	int16 x = 0, y = 0;
 	bool hasMove = false;
+
+	_vm->_vidPlayer->updateLive();
 
 	while (eventMan->pollEvent(event)) {
 		switch (event.type) {
@@ -114,13 +116,17 @@ void Util::processInput(bool scroll) {
 			_mouseButtons = (MouseButtons) (((uint32) _mouseButtons) & ~((uint32) kMouseButtonsRight));
 			break;
 		case Common::EVENT_KEYDOWN:
-			if (event.kbd.flags == Common::KBD_CTRL) {
+			if (event.kbd.hasFlags(Common::KBD_CTRL)) {
 				if (event.kbd.keycode == Common::KEYCODE_f)
 					_fastMode ^= 1;
 				else if (event.kbd.keycode == Common::KEYCODE_g)
 					_fastMode ^= 2;
 				else if (event.kbd.keycode == Common::KEYCODE_p)
 					_vm->pauseGame();
+				else if (event.kbd.keycode == Common::KEYCODE_d) {
+					_vm->getDebugger()->attach();
+					_vm->getDebugger()->onFrame();
+				}
 				break;
 			}
 			addKeyToBuffer(event.kbd);
@@ -141,11 +147,17 @@ void Util::processInput(bool scroll) {
 		y -= _vm->_video->_screenDeltaY;
 
 		_vm->_util->setMousePos(x, y);
-		_vm->_game->evaluateScroll(x, y);
+		_vm->_game->wantScroll(x, y);
+
+		// WORKAROUND:
+		// Force a check of the mouse in order to fix the sofa bug. This apply only for Gob3, and only
+		// in the impacted TOT file so that the second screen animation is not broken.
+		if ((_vm->getGameType() == kGameTypeGob3) && _vm->isCurrentTot("EMAP1008.TOT"))
+			_vm->_game->evaluateScroll();
 	}
 }
 
-void Util::clearKeyBuf(void) {
+void Util::clearKeyBuf() {
 	processInput();
 	_keyBufferHead = _keyBufferTail = 0;
 }
@@ -214,7 +226,7 @@ int16 Util::translateKey(const Common::KeyState &key) {
 	return 0;
 }
 
-int16 Util::getKey(void) {
+int16 Util::getKey() {
 	Common::KeyState key;
 
 	while (!getKeyFromBuffer(key)) {
@@ -226,7 +238,7 @@ int16 Util::getKey(void) {
 	return translateKey(key);
 }
 
-int16 Util::checkKey(void) {
+int16 Util::checkKey() {
 	Common::KeyState key;
 
 	getKeyFromBuffer(key);
@@ -245,6 +257,18 @@ bool Util::checkKey(int16 &key) {
 	return true;
 }
 
+bool Util::keyPressed() {
+	int16 key = checkKey();
+	if (key)
+		return true;
+
+	int16 x, y;
+	MouseButtons buttons;
+
+	getMouseState(&x, &y, &buttons);
+	return buttons != kMouseButtonsNone;
+}
+
 void Util::getMouseState(int16 *pX, int16 *pY, MouseButtons *pButtons) {
 	Common::Point mouse = g_system->getEventManager()->getMousePos();
 	*pX = mouse.x + _vm->_video->_scrollOffsetX - _vm->_video->_screenDeltaX;
@@ -260,7 +284,7 @@ void Util::setMousePos(int16 x, int16 y) {
 	g_system->warpMouse(x, y);
 }
 
-void Util::waitMouseUp(void) {
+void Util::waitMouseUp() {
 	do {
 		processInput();
 		if (_mouseButtons != kMouseButtonsNone)
@@ -268,7 +292,7 @@ void Util::waitMouseUp(void) {
 	} while (_mouseButtons != kMouseButtonsNone);
 }
 
-void Util::waitMouseDown(void) {
+void Util::waitMouseDown() {
 	int16 x;
 	int16 y;
 	MouseButtons buttons;
@@ -303,15 +327,18 @@ void Util::forceMouseUp(bool onlyWhenSynced) {
 	_mouseButtons             = kMouseButtonsNone;
 }
 
-void Util::clearPalette(void) {
+void Util::clearPalette() {
 	int16 i;
-	byte colors[1024];
+	byte colors[768];
 
 	_vm->validateVideoMode(_vm->_global->_videoMode);
 
 	if (_vm->_global->_setAllPalette) {
-		memset(colors, 0, 1024);
-		g_system->setPalette(colors, 0, 256);
+		if (_vm->getPixelFormat().bytesPerPixel == 1) {
+			memset(colors, 0, sizeof(colors));
+			g_system->getPaletteManager()->setPalette(colors, 0, 256);
+		}
+
 		return;
 	}
 
@@ -429,7 +456,7 @@ void Util::cleanupStr(char *str) {
 		cutFromStr(str, 0, 1);
 
 	// Trim spaces right
-	while ((strlen(str) > 0) && (str[strlen(str) - 1] == ' '))
+	while ((*str != '\0') && (str[strlen(str) - 1] == ' '))
 		cutFromStr(str, strlen(str) - 1, 1);
 
 	// Merge double spaces
@@ -500,6 +527,48 @@ void Util::deleteList(List *list) {
 		listDropFront(list);
 
 	delete list;
+}
+
+char *Util::setExtension(char *str, const char *ext) {
+	assert(str && ext);
+
+	if (str[0] == '\0')
+		return str;
+
+	char *dot = strrchr(str, '.');
+	if (dot)
+		*dot = '\0';
+
+	strcat(str, ext);
+	return str;
+}
+
+Common::String Util::setExtension(const Common::String &str, const Common::String &ext) {
+	if (str.empty())
+		return str;
+
+	const char *dot = strrchr(str.c_str(), '.');
+	if (dot)
+		return Common::String(str.c_str(), dot - str.c_str()) + ext;
+
+	return str + ext;
+}
+
+Common::String Util::readString(Common::SeekableReadStream &stream, int n) {
+	Common::String str;
+
+	char c;
+	while (n-- > 0) {
+		if ((c = stream.readByte()) == '\0')
+			break;
+
+		str += c;
+	}
+
+	if (n > 0)
+		stream.skip(n);
+
+	return str;
 }
 
 /* NOT IMPLEMENTED */

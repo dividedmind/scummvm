@@ -23,9 +23,9 @@
  *
  */
 
-#include "innocent/actor.h"
-
 #include <sstream>
+
+#include "innocent/actor.h"
 
 #include "common/rect.h"
 

@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 
@@ -28,9 +25,11 @@
 #include "scumm/scumm.h"
 #include "scumm/scumm_v0.h"
 #include "scumm/scumm_v8.h"
+#include "scumm/sound.h"
 #include "scumm/he/intern_he.h"
 #include "scumm/he/logic_he.h"
-#include "sound/mididrv.h"
+
+#include "audio/mididrv.h"
 
 namespace Scumm {
 
@@ -82,6 +81,10 @@ void ScummEngine::setupScummVars() {
 	VAR_SOUNDCARD = 48;
 	VAR_VIDEOMODE = 49;
 
+	if (_game.id == GID_LOOM && _game.platform == Common::kPlatformPCEngine) {
+		VAR_MAINMENU_KEY = 50;
+	}
+
 	if (_game.version >= 4) {
 		VAR_SCROLL_SCRIPT = 27;
 		VAR_DEBUGMODE = 39;
@@ -112,10 +115,10 @@ void ScummEngine_v0::setupScummVars() {
 	VAR_CAMERA_POS_X = 2;
 	VAR_HAVE_MSG = 3;
 	VAR_ROOM = 4;
-	//VAR_ACTIVE_ACTOR = 5;
+	VAR_ACTIVE_ACTOR = 5;
 	VAR_OVERRIDE = 6;
-	//VAR_IS_SOUND_RUNNING = 8;
-	//VAR_ACTIVE_VERB = 9;
+	VAR_IS_SOUND_RUNNING = 8;
+	VAR_ACTIVE_VERB = 9;
 	VAR_CHARCOUNT = 10;
 }
 
@@ -291,15 +294,19 @@ void ScummEngine_v72he::setupScummVars() {
 	VAR_MOUSE_STATE = 75;
 	VAR_POLYGONS_ONLY = 76;
 
-	if (_game.heversion <= 73) {
+	if (_game.heversion <= 74) {
+		VAR_SOUND_ENABLED = 54;
 		VAR_NUM_SOUND_CHANNELS = 56;
+	}
+
+	if (_game.heversion >= 74) {
+		VAR_PLATFORM = 78;
 	}
 }
 
 void ScummEngine_v80he::setupScummVars() {
 	ScummEngine_v72he::setupScummVars();
 
-	VAR_PLATFORM = 78;
 	VAR_PLATFORM_VERSION = 79;
 	VAR_CURRENT_CHARSET = 80;
 	VAR_SOUNDCODE_TMR = 84;
@@ -312,6 +319,7 @@ void ScummEngine_v80he::setupScummVars() {
 void ScummEngine_v90he::setupScummVars() {
 	ScummEngine_v80he::setupScummVars();
 
+	VAR_TIMER = 97;
 	VAR_SCRIPT_CYCLE = 103;
 	VAR_NUM_SCRIPT_CYCLES = 104;
 
@@ -538,7 +546,7 @@ void ScummEngine_v8::setupScummVars() {
 #endif
 
 void ScummEngine_v0::resetScummVars() {
-	resetSentence();
+	resetSentence(false);
 
 	VAR(VAR_EGO) = 3;
 
@@ -645,6 +653,20 @@ void ScummEngine_v72he::resetScummVars() {
 	VAR(VAR_NUM_IMAGES) = _numImages - 1;
 	VAR(VAR_NUM_CHARSETS) = _numCharsets - 1;
 	VAR(VAR_NUM_GLOBAL_OBJS) = _numGlobalObjects - 1;
+
+	if (_game.heversion <= 74) {
+		// Songs are disabled, if sound is disabled.
+		VAR(VAR_SOUND_ENABLED) = 1;
+	}
+
+	if (_game.heversion == 74) {
+		// Uses different values, compared to later HE80+ games.
+		if (_game.platform == Common::kPlatformMacintosh) {
+			VAR(VAR_PLATFORM) = 3;
+		} else {
+			VAR(VAR_PLATFORM) = 2;
+		}
+	}
 }
 
 void ScummEngine_v80he::resetScummVars() {
@@ -685,8 +707,12 @@ void ScummEngine_v99he::resetScummVars() {
 	VAR(VAR_NUM_UNK) = _numUnk;
 
 	if (_game.heversion >= 100 && (_game.features & GF_16BIT_COLOR)) {
-		// Disable Bink and Smacker video in 16bit color games
+		// Enable Bink video in 16bit color games
+#ifdef USE_BINK
+		VAR(140) = 1;
+#else
 		VAR(140) = 0;
+#endif
 	}
 }
 #endif
@@ -697,12 +723,15 @@ void ScummEngine::resetScummVars() {
 		// 0 PC Speaker
 		// 1 Tandy
 		// 2 CMS
-		// 3 Adlib
+		// 3 AdLib
 		// 4 Roland
-		switch (_musicType) {
+		switch (_sound->_musicType) {
 		case MDT_NONE:
 		case MDT_PCSPK:
 			VAR(VAR_SOUNDCARD) = 0;
+			break;
+		case MDT_PCJR:
+			VAR(VAR_SOUNDCARD) = 1;
 			break;
 		case MDT_CMS:
 			VAR(VAR_SOUNDCARD) = 2;

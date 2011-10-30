@@ -18,33 +18,46 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef AGI_PREAGI_H
 #define AGI_PREAGI_H
 
 #include "agi/agi.h"
-#include "agi/preagi_common.h"
 
-#include "sound/softsynth/pcspk.h"
+#include "audio/softsynth/pcspk.h"
 
 namespace Agi {
+
+// default attributes
+#define IDA_DEFAULT		0x0F
+#define IDA_DEFAULT_REV	0xF0
+
+#define IDI_SND_OSCILLATOR_FREQUENCY	1193180
+#define IDI_SND_TIMER_RESOLUTION		0.0182
+
+#define kColorDefault 0x1337
+
+#define IDI_MAX_ROW_PIC	20
+
+enum SelectionTypes {
+	kSelYesNo,
+	kSelNumber,
+	kSelSpace,
+	kSelAnyKey,
+	kSelBackspace
+};
 
 class PreAgiEngine : public AgiBase {
 	int _gameId;
 
 protected:
-	Common::Error go();
 	void initialize();
 
-public:
-	void pollTimer(void) {}
-	int getKeypress(void) { return 0; }
-	bool isKeypress(void) { return false; }
-	void clearKeyQueue(void) {}
+	void pollTimer() {}
+	int getKeypress() { return 0; }
+	bool isKeypress() { return false; }
+	void clearKeyQueue() {}
 
 	PreAgiEngine(OSystem *syst, const AGIGameDescription *gameDesc);
 	virtual ~PreAgiEngine();
@@ -52,9 +65,7 @@ public:
 		return _gameId;
 	}
 
-	//SoundMgr *_sound;
 	PictureMgr *_picture;
-	PreAGI_Console *_console;
 
 	void clearImageStack() {}
 	void recordImageStackCall(uint8 type, int16 p1, int16 p2, int16 p3,
@@ -62,8 +73,8 @@ public:
 	void replayImageStackCall(uint8 type, int16 p1, int16 p2, int16 p3,
 		int16 p4, int16 p5, int16 p6, int16 p7) {}
 	void releaseImageStack() {}
-	int saveGame(const char *fileName, const char *saveName) { return -1; }
-	int loadGame(const char *fileName, bool checkId = true) { return -1; }
+	int saveGame(const Common::String &fileName, const Common::String &saveName) { return -1; }
+	int loadGame(const Common::String &fileName, bool checkId = true) { return -1; }
 
 	// Game
 	Common::String getTargetName() { return _targetName; }
@@ -76,7 +87,7 @@ public:
 	// Keyboard
 	int getSelection(SelectionTypes type);
 
-	int rnd(int hi) { return (_rnd->getRandomNumber(hi - 1) + 1); }
+	int rnd(int hi);
 
 	// Text
 	void drawStr(int row, int col, int attr, const char *buffer);

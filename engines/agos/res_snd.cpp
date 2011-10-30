@@ -18,26 +18,22 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
-
-
 
 #include "common/config-manager.h"
 #include "common/file.h"
+#include "common/memstream.h"
+#include "common/textconsole.h"
 
 #include "agos/intern.h"
 #include "agos/agos.h"
+#include "agos/midi.h"
 #include "agos/vga.h"
 
-#include "sound/audiocd.h"
-#include "sound/audiostream.h"
-#include "sound/mididrv.h"
-#include "sound/mods/protracker.h"
+#include "backends/audiocd/audiocd.h"
 
-using Common::File;
+#include "audio/audiostream.h"
+#include "audio/mods/protracker.h"
 
 namespace AGOS {
 
@@ -80,7 +76,7 @@ void AGOSEngine_Simon2::playSpeech(uint16 speech_id, uint16 vgaSpriteId) {
 		}
 		_skipVgaWait = true;
 	} else {
-		if (getGameType() == GType_SIMON2 && _subtitles && _language != Common::HB_ISR) {
+		if (getGameType() == GType_SIMON2 && _subtitles && _language != Common::HE_ISR) {
 			loadVoice(speech_id);
 			return;
 		}
@@ -129,10 +125,10 @@ void AGOSEngine::loadMusic(uint16 music) {
 	_gameFile->read(buf, 4);
 	if (!memcmp(buf, "FORM", 4)) {
 		_gameFile->seek(_gameOffsetsPtr[_musicIndexBase + music - 1], SEEK_SET);
-		_midi.loadXMIDI(_gameFile);
+		_midi->loadXMIDI(_gameFile);
 	} else {
 		_gameFile->seek(_gameOffsetsPtr[_musicIndexBase + music - 1], SEEK_SET);
-		_midi.loadMultipleSMF(_gameFile);
+		_midi->loadMultipleSMF(_gameFile);
 	}
 
 	_lastMusicPlayed = music;
@@ -177,7 +173,7 @@ static const ModuleOffs amigaWaxworksOffs[20] = {
 
 void AGOSEngine::playModule(uint16 music) {
 	char filename[15];
-	File f;
+	Common::File f;
 	uint32 offs = 0;
 
 	if (getPlatform() == Common::kPlatformAmiga && getGameType() == GType_WW) {
@@ -223,16 +219,16 @@ void AGOSEngine::playModule(uint16 music) {
 		audioStream = Audio::makeProtrackerStream(&f);
 	}
 
-	_mixer->playInputStream(Audio::Mixer::kMusicSoundType, &_modHandle, audioStream);
+	_mixer->playStream(Audio::Mixer::kMusicSoundType, &_modHandle, audioStream);
 }
 
 void AGOSEngine_Simon1::playMusic(uint16 music, uint16 track) {
 	stopMusic();
 
 	// Support for compressed music from the ScummVM Music Enhancement Project
-	AudioCD.stop();
-	AudioCD.play(music + 1, -1, 0, 0);
-	if (AudioCD.isPlaying())
+	_system->getAudioCDManager()->stop();
+	_system->getAudioCDManager()->play(music + 1, -1, 0, 0);
+	if (_system->getAudioCDManager()->isPlaying())
 		return;
 
 	if (getPlatform() == Common::kPlatformAmiga) {
@@ -246,39 +242,39 @@ void AGOSEngine_Simon1::playMusic(uint16 music, uint16 track) {
 		if (music == 35)
 			return;
 
-		_midi.setLoop(true); // Must do this BEFORE loading music. (GMF may have its own override.)
+		_midi->setLoop(true); // Must do this BEFORE loading music. (GMF may have its own override.)
 
 		_gameFile->seek(_gameOffsetsPtr[_musicIndexBase + music], SEEK_SET);
 		_gameFile->read(buf, 4);
 		if (!memcmp(buf, "GMF\x1", 4)) {
 			_gameFile->seek(_gameOffsetsPtr[_musicIndexBase + music], SEEK_SET);
-			_midi.loadSMF(_gameFile, music);
+			_midi->loadSMF(_gameFile, music);
 		} else {
 			_gameFile->seek(_gameOffsetsPtr[_musicIndexBase + music], SEEK_SET);
-			_midi.loadMultipleSMF(_gameFile);
+			_midi->loadMultipleSMF(_gameFile);
 		}
 
-		_midi.startTrack(0);
-		_midi.startTrack(track);
+		_midi->startTrack(0);
+		_midi->startTrack(track);
 	} else if (getPlatform() == Common::kPlatformAcorn) {
 		// TODO: Add support for Desktop Tracker format in Acorn disk version
 	} else {
 		char filename[15];
-		File f;
+		Common::File f;
 		sprintf(filename, "MOD%d.MUS", music);
 		f.open(filename);
 		if (f.isOpen() == false)
 			error("playMusic: Can't load music from '%s'", filename);
 
-		_midi.setLoop(true); // Must do this BEFORE loading music. (GMF may have its own override.)
+		_midi->setLoop(true); // Must do this BEFORE loading music. (GMF may have its own override.)
 
 		if (getFeatures() & GF_DEMO)
-			_midi.loadS1D(&f);
+			_midi->loadS1D(&f);
 		else
-			_midi.loadSMF(&f, music);
+			_midi->loadSMF(&f, music);
 
-		_midi.startTrack(0);
-		_midi.startTrack(track);
+		_midi->startTrack(0);
+		_midi->startTrack(track);
 	}
 }
 
@@ -290,35 +286,35 @@ void AGOSEngine::playMusic(uint16 music, uint16 track) {
 	} else if (getPlatform() == Common::kPlatformAtariST) {
 		// TODO: Add support for music formats used
 	} else {
-		_midi.setLoop(true); // Must do this BEFORE loading music.
+		_midi->setLoop(true); // Must do this BEFORE loading music.
 
 		char filename[15];
-		File f;
+		Common::File f;
 		sprintf(filename, "MOD%d.MUS", music);
 		f.open(filename);
 		if (f.isOpen() == false)
 			error("playMusic: Can't load music from '%s'", filename);
 
-		_midi.loadS1D(&f);
-		_midi.startTrack(0);
-		_midi.startTrack(track);
+		_midi->loadS1D(&f);
+		_midi->startTrack(0);
+		_midi->startTrack(track);
 	}
 }
 
 void AGOSEngine::stopMusic() {
 	if (_midiEnabled) {
-		_midi.stop();
+		_midi->stop();
 	}
 	_mixer->stopHandle(_modHandle);
 }
 
 void AGOSEngine::playSting(uint16 soundId) {
-	if (!_midi._enable_sfx)
+	if (!_midi->_enable_sfx)
 		return;
 
 	char filename[15];
 
-	File mus_file;
+	Common::File mus_file;
 	uint16 mus_offset;
 
 	sprintf(filename, "STINGS%i.MUS", _soundFileId);
@@ -332,8 +328,8 @@ void AGOSEngine::playSting(uint16 soundId) {
 		error("playSting: Can't read sting %d offset", soundId);
 
 	mus_file.seek(mus_offset, SEEK_SET);
-	_midi.loadSMF(&mus_file, soundId, true);
-	_midi.startTrack(0);
+	_midi->loadSMF(&mus_file, soundId, true);
+	_midi->startTrack(0);
 }
 
 static const byte elvira1_soundTable[100] = {
@@ -349,7 +345,7 @@ static const byte elvira1_soundTable[100] = {
 };
 
 bool AGOSEngine::loadVGASoundFile(uint16 id, uint8 type) {
-	File in;
+	Common::File in;
 	char filename[15];
 	byte *dst;
 	uint32 srcSize, dstSize;
@@ -417,7 +413,7 @@ bool AGOSEngine::loadVGASoundFile(uint16 id, uint8 type) {
 	return true;
 }
 
-static const char *dimpSoundList[32] = {
+static const char *const dimpSoundList[32] = {
 	"Beep",
 	"Birth",
 	"Boiling",
@@ -454,17 +450,17 @@ static const char *dimpSoundList[32] = {
 
 
 void AGOSEngine::loadSoundFile(const char* filename) {
-	File in;
+	Common::SeekableReadStream *in;
 
-	in.open(filename);
-	if (in.isOpen() == false)
+	in = _archives.open(filename);
+	if (!in)
 		error("loadSound: Can't load %s", filename);
 
-	uint32 dstSize = in.size();
+	uint32 dstSize = in->size();
 	byte *dst = (byte *)malloc(dstSize);
-	if (in.read(dst, dstSize) != dstSize)
+	if (in->read(dst, dstSize) != dstSize)
 		error("loadSound: Read failed");
-	in.close();
+	delete in;
 
 	_sound->playSfxData(dst, 0, 0, 0);
 }
@@ -473,21 +469,21 @@ void AGOSEngine::loadSound(uint16 sound, int16 pan, int16 vol, uint16 type) {
 	byte *dst;
 
 	if (getGameId() == GID_DIMP) {
-		File in;
+		Common::SeekableReadStream *in;
 		char filename[15];
 
 		assert(sound >= 1 && sound <= 32);
 		sprintf(filename, "%s.wav", dimpSoundList[sound - 1]);
 
-		in.open(filename);
-		if (in.isOpen() == false)
+		in = _archives.open(filename);
+		if (!in)
 			error("loadSound: Can't load %s", filename);
 
-		uint32 dstSize = in.size();
+		uint32 dstSize = in->size();
 		dst = (byte *)malloc(dstSize);
-		if (in.read(dst, dstSize) != dstSize)
+		if (in->read(dst, dstSize) != dstSize)
 			error("loadSound: Read failed");
-		in.close();
+		delete in;
 	} else if (getFeatures() & GF_ZLIBCOMP) {
 		char filename[15];
 

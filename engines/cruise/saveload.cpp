@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #include "cruise/cruise_main.h"
@@ -30,6 +27,7 @@
 #include "common/serializer.h"
 #include "common/savefile.h"
 #include "common/system.h"
+#include "common/textconsole.h"
 
 #include "graphics/scaler.h"
 #include "graphics/thumbnail.h"
@@ -64,12 +62,9 @@ bool readSavegameHeader(Common::InSaveFile *in, CruiseSavegameHeader &header) {
 	while ((ch = (char)in->readByte()) != '\0') header.saveName += ch;
 
 	// Get the thumbnail
-	header.thumbnail = new Graphics::Surface();
-	if (!Graphics::loadThumbnail(*in, *header.thumbnail)) {
-		delete header.thumbnail;
-		header.thumbnail = NULL;
+	header.thumbnail = Graphics::loadThumbnail(*in);
+	if (!header.thumbnail)
 		return false;
-	}
 
 	return true;
 }
@@ -150,6 +145,9 @@ static void syncBasicInfo(Common::Serializer &s) {
 static void syncBackgroundTable(Common::Serializer &s) {
 	// restore backgroundTable
 	for (int i = 0; i < 8; i++) {
+		if (s.isSaving() && (strlen(backgroundTable[i].name) > 8))
+			warning("Saving a background resource that has too long a name");
+
 		s.syncBytes((byte *)backgroundTable[i].name, 9);
 		s.syncBytes((byte *)backgroundTable[i].extention, 6);
 	}
@@ -332,7 +330,7 @@ void syncScript(Common::Serializer &s, scriptInstanceStruct *entry) {
 		s.syncAsSint16LE(ptr->ccr);
 		s.syncAsSint16LE(ptr->scriptOffset);
 		s.syncAsUint32LE(dummyLong);
-		s.syncAsSint16LE(ptr->varA);
+		s.syncAsSint16LE(ptr->dataSize);
 		s.syncAsSint16LE(ptr->scriptNumber);
 		s.syncAsSint16LE(ptr->overlayNumber);
 		s.syncAsSint16LE(ptr->sysKey);
@@ -342,12 +340,12 @@ void syncScript(Common::Serializer &s, scriptInstanceStruct *entry) {
 		s.syncAsSint16LE(ptr->var18);
 		s.syncAsSint16LE(ptr->var1A);
 
-		s.syncAsSint16LE(ptr->varA);
+		s.syncAsSint16LE(ptr->dataSize);
 
-		if (ptr->varA) {
+		if (ptr->dataSize) {
 			if (s.isLoading())
-				ptr->var6 = (byte *)mallocAndZero(ptr->varA);
-			s.syncBytes(ptr->var6, ptr->varA);
+				ptr->data = (byte *)mallocAndZero(ptr->dataSize);
+			s.syncBytes(ptr->data, ptr->dataSize);
 		}
 
 		if (s.isLoading()) {
@@ -470,7 +468,7 @@ static void syncIncrust(Common::Serializer &s) {
 
 		if (t->saveSize) {
 			if (s.isLoading())
-				t->ptr = (byte *)malloc(t->saveSize);
+				t->ptr = (byte *)MemAlloc(t->saveSize);
 
 			s.syncBytes(t->ptr, t->saveSize);
 		}
@@ -568,7 +566,7 @@ static void syncPerso(Common::Serializer &s, persoStruct &p) {
 		s.syncAsSint16LE(p.solution[i][0]);
 		s.syncAsSint16LE(p.solution[i][1]);
 	}
-	
+
 	s.syncAsSint16LE(p.inc_jo1);
 	s.syncAsSint16LE(p.inc_jo2);
 	s.syncAsSint16LE(p.dir_perso);
@@ -576,10 +574,10 @@ static void syncPerso(Common::Serializer &s, persoStruct &p) {
 }
 
 static void syncCT(Common::Serializer &s) {
-	int v = (polyStruct) ? 1 : 0;
+	int v = (_vm->_polyStruct) ? 1 : 0;
 	s.syncAsSint32LE(v);
 	if (s.isLoading())
-		polyStruct = (v != 0) ? &polyStructNorm : NULL;
+		_vm->_polyStruct = (v != 0) ? &_vm->_polyStructNorm : NULL;
 
 	if (v == 0)
 		// There is no further data to load or save
@@ -642,7 +640,7 @@ void resetPreload() {
 	for (unsigned long int i = 0; i < 64; i++) {
 		if (strlen(preloadData[i].name)) {
 			if (preloadData[i].ptr) {
-				free(preloadData[i].ptr);
+				MemFree(preloadData[i].ptr);
 				preloadData[i].ptr = NULL;
 			}
 			strcpy(preloadData[i].name, "");
@@ -659,12 +657,13 @@ void unloadOverlay(const char*name, int overlayNumber) {
 	overlayTable[overlayNumber].alreadyLoaded = 0;
 }
 
-void initVars(void) {
+void initVars() {
 	closeAllMenu();
 	resetFileEntryRange(0, NUM_FILE_ENTRIES);
 
 	resetPreload();
 	freeCTP();
+	freeBackgroundIncrustList(&backgroundIncrustHead);
 
 	freezeCell(&cellHead, -1, -1, -1, -1, -1, 0);
 	// TODO: unfreeze anims
@@ -672,6 +671,8 @@ void initVars(void) {
 	freeObjectList(&cellHead);
 	removeAnimation(&actorHead, -1, -1, -1);
 
+	removeAllScripts(&relHead);
+	removeAllScripts(&procHead);
 	changeScriptParamInList(-1, -1, &procHead, -1, 0);
 	removeFinishedScripts(&procHead);
 
@@ -825,7 +826,7 @@ Common::Error loadSavegameData(int saveGameIdx) {
 	// Skip over the savegame header
 	CruiseSavegameHeader header;
 	readSavegameHeader(f, header);
-	if (header.thumbnail) delete header.thumbnail;
+	delete header.thumbnail;
 
 	// Synchronise the remaining data of the savegame
 	Common::Serializer s(f, NULL);
@@ -850,7 +851,7 @@ Common::Error loadSavegameData(int saveGameIdx) {
 
 				if (ovlRestoreData[j]._sBssSize) {
 					if (ovlData->data4Ptr) {
-						free(ovlData->data4Ptr);
+						MemFree(ovlData->data4Ptr);
 					}
 
 					ovlData->data4Ptr = ovlRestoreData[j]._pBss;
@@ -861,7 +862,7 @@ Common::Error loadSavegameData(int saveGameIdx) {
 
 				if (ovlRestoreData[j]._sNumObj) {
 					if (ovlData->arrayObjVar) {
-						free(ovlData->arrayObjVar);
+						MemFree(ovlData->arrayObjVar);
 					}
 
 					ovlData->arrayObjVar = ovlRestoreData[j]._pObj;
@@ -895,11 +896,10 @@ Common::Error loadSavegameData(int saveGameIdx) {
 			}
 
 			/*if (j < 2) {
-				printf("Unsupported mono file load!\n");
-				ASSERT(0);
+				error("Unsupported mono file load");
 				//loadFileMode1(filesDatabase[j].subData.name,filesDatabase[j].subData.var4);
 			} else */
-			if (strlen(filesDatabase[i].subData.name) > 0) { 
+			if (strlen(filesDatabase[i].subData.name) > 0) {
 				loadFileRange(filesDatabase[i].subData.name, filesDatabase[i].subData.index, i, j - i);
 			} else {
 				filesDatabase[i].subData.ptr = NULL;

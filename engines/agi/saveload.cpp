@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 //
@@ -28,11 +25,12 @@
 // Multi-slots by Claudio Matsuoka <claudio@helllabs.org>
 //
 
-#include <time.h>	// for extended infos
-
 #include "common/file.h"
-#include "graphics/thumbnail.h"
 #include "common/config-manager.h"
+#include "common/savefile.h"
+#include "common/textconsole.h"
+#include "graphics/thumbnail.h"
+#include "graphics/surface.h"
 
 #include "agi/agi.h"
 #include "agi/graphics.h"
@@ -53,24 +51,24 @@
 
 namespace Agi {
 
-static const uint32 AGIflag = MKID_BE('AGI:');
+static const uint32 AGIflag = MKTAG('A','G','I',':');
 
-int AgiEngine::saveGame(const char *fileName, const char *description) {
+int AgiEngine::saveGame(const Common::String &fileName, const Common::String &description) {
 	char gameIDstring[8] = "gameIDX";
 	int i;
 	Common::OutSaveFile *out;
 	int result = errOK;
 
-	debugC(3, kDebugLevelMain | kDebugLevelSavegame, "AgiEngine::saveGame(%s, %s)", fileName, description);
+	debugC(3, kDebugLevelMain | kDebugLevelSavegame, "AgiEngine::saveGame(%s, %s)", fileName.c_str(), description.c_str());
 	if (!(out = _saveFileMan->openForSaving(fileName))) {
-		warning("Can't create file '%s', game not saved", fileName);
+		warning("Can't create file '%s', game not saved", fileName.c_str());
 		return errBadFileOpen;
 	} else {
-		debugC(3, kDebugLevelMain | kDebugLevelSavegame, "Successfully opened %s for writing", fileName);
+		debugC(3, kDebugLevelMain | kDebugLevelSavegame, "Successfully opened %s for writing", fileName.c_str());
 	}
 
 	out->writeUint32BE(AGIflag);
-	out->write(description, 31);
+	out->write(description.c_str(), 31);
 
 	out->writeByte(SAVEGAME_VERSION);
 	debugC(5, kDebugLevelMain | kDebugLevelSavegame, "Writing save game version (%d)", SAVEGAME_VERSION);
@@ -79,7 +77,7 @@ int AgiEngine::saveGame(const char *fileName, const char *description) {
 	Graphics::saveThumbnail(*out);
 
 	// Creation date/time
-	tm curTime;
+	TimeDate curTime;
 	_system->getTimeAndDate(curTime);
 
 	uint32 saveDate = ((curTime.tm_mday & 0xFF) << 24) | (((curTime.tm_mon + 1) & 0xFF) << 16) | ((curTime.tm_year + 1900) & 0xFFFF);
@@ -99,8 +97,17 @@ int AgiEngine::saveGame(const char *fileName, const char *description) {
 	debugC(5, kDebugLevelMain | kDebugLevelSavegame, "Writing game id (%s, %s)", gameIDstring, _game.id);
 
 	const char *tmp = getGameMD5();
-	for (i = 0; i < 32; i++)
-		out->writeByte(tmp[i]);
+	// As reported in bug report #2849084 "AGI: Crash when saving fallback-matched game"
+	// getGameMD5 will return NULL for fallback matched games. Since there is also no
+	// filename available we can not compute any MD5 here either. Thus we will just set
+	// the MD5 sum in the savegame to all zero, when getGameMD5 returns NULL.
+	if (!tmp) {
+		for (i = 0; i < 32; ++i)
+			out->writeByte(0);
+	} else {
+		for (i = 0; i < 32; ++i)
+			out->writeByte(tmp[i]);
+	}
 
 	for (i = 0; i < MAX_FLAGS; i++)
 		out->writeByte(_game.flags[i]);
@@ -124,7 +131,7 @@ int AgiEngine::saveGame(const char *fileName, const char *description) {
 	out->writeSint16BE((int16)_game.hasPrompt);
 	out->writeSint16BE((int16)_game.gameFlags);
 
-	out->writeSint16BE((int16)_game.inputEnabled);
+	out->writeSint16BE(_game.inputEnabled);
 
 	for (i = 0; i < _HEIGHT; i++)
 		out->writeByte(_game.priTable[i]);
@@ -232,33 +239,33 @@ int AgiEngine::saveGame(const char *fileName, const char *description) {
 
 	out->finalize();
 	if (out->err()) {
-		warning("Can't write file '%s'. (Disk full?)", fileName);
+		warning("Can't write file '%s'. (Disk full?)", fileName.c_str());
 		result = errIOError;
 	} else
-		debugC(1, kDebugLevelMain | kDebugLevelSavegame, "Saved game %s in file %s", description, fileName);
+		debugC(1, kDebugLevelMain | kDebugLevelSavegame, "Saved game %s in file %s", description.c_str(), fileName.c_str());
 
 	delete out;
-	debugC(3, kDebugLevelMain | kDebugLevelSavegame, "Closed %s", fileName);
+	debugC(3, kDebugLevelMain | kDebugLevelSavegame, "Closed %s", fileName.c_str());
 
 	_lastSaveTime = _system->getMillis();
 
 	return result;
 }
 
-int AgiEngine::loadGame(const char *fileName, bool checkId) {
+int AgiEngine::loadGame(const Common::String &fileName, bool checkId) {
 	char description[31], saveVersion, loadId[8];
 	int i, vtEntries = MAX_VIEWTABLE;
 	uint8 t;
 	int16 parm[7];
 	Common::InSaveFile *in;
 
-	debugC(3, kDebugLevelMain | kDebugLevelSavegame, "AgiEngine::loadGame(%s)", fileName);
+	debugC(3, kDebugLevelMain | kDebugLevelSavegame, "AgiEngine::loadGame(%s)", fileName.c_str());
 
 	if (!(in = _saveFileMan->openForLoading(fileName))) {
-		warning("Can't open file '%s', game not loaded", fileName);
+		warning("Can't open file '%s', game not loaded", fileName.c_str());
 		return errBadFileOpen;
 	} else {
-		debugC(3, kDebugLevelMain | kDebugLevelSavegame, "Successfully opened %s for reading", fileName);
+		debugC(3, kDebugLevelMain | kDebugLevelSavegame, "Successfully opened %s for reading", fileName.c_str());
 	}
 
 	uint32 typea = in->readUint32BE();
@@ -283,18 +290,14 @@ int AgiEngine::loadGame(const char *fileName, bool checkId) {
 
 	if (saveVersion >= 4) {
 		// We don't need the thumbnail here, so just read it and discard it
-		Graphics::Surface *thumbnail = new Graphics::Surface();
-		assert(thumbnail);
-		Graphics::loadThumbnail(*in, *thumbnail);
-		delete thumbnail;
-		thumbnail = 0;
+		Graphics::skipThumbnail(*in);
 
 		in->readUint32BE();	// save date
 		in->readUint16BE(); // save time
 		// TODO: played time
 	}
 
-	_game.state = in->readByte();
+	_game.state = (State)in->readByte();
 
 	in->read(loadId, 8);
 	if (strcmp(loadId, _game.id) && checkId) {
@@ -314,15 +317,27 @@ int AgiEngine::loadGame(const char *fileName, bool checkId) {
 		}
 		md5[i] = 0; // terminate
 
-		debug(0, "Saved game MD5: %s", md5);
+		// As noted above in AgiEngine::saveGame the MD5 sum field may be all zero
+		// when the save was made via a fallback matched game. In this case we will
+		// replace the MD5 sum with a nicer string, so that the user can easily see
+		// this fact in the debug output. The string saved in "md5" will never match
+		// any valid MD5 sum, thus it is safe to do that here.
+		if (md5[0] == 0)
+			strcpy(md5, "fallback matched");
 
-		if (strcmp(md5, getGameMD5())) {
+		debug(0, "Saved game MD5: \"%s\"", md5);
+
+		if (!getGameMD5()) {
+			warning("Since your game was only detected via the fallback detector, there is no possibility to assure the save is compatible with your game version");
+
+			debug(0, "The game used for saving is \"%s\".", md5);
+		} else if (strcmp(md5, getGameMD5())) {
 			warning("Game was saved with different gamedata - you may encounter problems");
 
-			debug(0, "You have %s and save is %s.", getGameMD5(), md5);
+			debug(0, "Your game is \"%s\" and save is \"%s\".", getGameMD5(), md5);
 		}
 	}
-	
+
 	for (i = 0; i < MAX_FLAGS; i++)
 		_game.flags[i] = in->readByte();
 	for (i = 0; i < MAX_VARS; i++)
@@ -341,7 +356,7 @@ int AgiEngine::loadGame(const char *fileName, bool checkId) {
 	_game.echoBuffer[0] = 0;
 	_game.keypress = 0;
 
-	_game.inputMode = in->readSint16BE();
+	_game.inputMode = (InputMode)in->readSint16BE();
 	_game.lognum = in->readSint16BE();
 
 	_game.playerControl = in->readSint16BE();
@@ -459,8 +474,8 @@ int AgiEngine::loadGame(const char *fileName, bool checkId) {
 		v->cycleTimeCount = in->readByte();
 		v->direction = in->readByte();
 
-		v->motion = in->readByte();
-		v->cycle = in->readByte();
+		v->motion = (MotionType)in->readByte();
+		v->cycle = (CycleType)in->readByte();
 		v->priority = in->readByte();
 
 		v->flags = in->readUint16BE();
@@ -512,7 +527,7 @@ int AgiEngine::loadGame(const char *fileName, bool checkId) {
 		_gfx->setAGIPal(in->readSint16BE());
 
 	delete in;
-	debugC(3, kDebugLevelMain | kDebugLevelSavegame, "Closed %s", fileName);
+	debugC(3, kDebugLevelMain | kDebugLevelSavegame, "Closed %s", fileName.c_str());
 
 	setflag(fRestoreJustRan, true);
 
@@ -531,30 +546,27 @@ int AgiEngine::loadGame(const char *fileName, bool checkId) {
 #define NUM_SLOTS 100
 #define NUM_VISIBLE_SLOTS 12
 
-const char *AgiEngine::getSavegameFilename(int num) {
-	static Common::String saveLoadSlot;
-	char extension[5];
-	snprintf(extension, sizeof(extension), ".%.3d", num);
-
-	saveLoadSlot = _targetName + extension;
-	return saveLoadSlot.c_str();
+Common::String AgiEngine::getSavegameFilename(int num) const {
+	Common::String saveLoadSlot = _targetName;
+	saveLoadSlot += Common::String::format(".%.3d", num);
+	return saveLoadSlot;
 }
 
 void AgiEngine::getSavegameDescription(int num, char *buf, bool showEmpty) {
-	char fileName[MAXPATHLEN];
 	Common::InSaveFile *in;
+	Common::String fileName = getSavegameFilename(num);
 
 	debugC(4, kDebugLevelMain | kDebugLevelSavegame, "Current game id is %s", _targetName.c_str());
-	sprintf(fileName, "%s", getSavegameFilename(num));
+
 	if (!(in = _saveFileMan->openForLoading(fileName))) {
-		debugC(4, kDebugLevelMain | kDebugLevelSavegame, "File %s does not exist", fileName);
+		debugC(4, kDebugLevelMain | kDebugLevelSavegame, "File %s does not exist", fileName.c_str());
 
 		if (showEmpty)
 			strcpy(buf, "        (empty slot)");
 		else
 			*buf = 0;
 	} else {
-		debugC(4, kDebugLevelMain | kDebugLevelSavegame, "Successfully opened %s for reading", fileName);
+		debugC(4, kDebugLevelMain | kDebugLevelSavegame, "Successfully opened %s for reading", fileName.c_str());
 
 		uint32 type = in->readUint32BE();
 
@@ -576,7 +588,7 @@ int AgiEngine::selectSlot() {
 	int hm = 1, vm = 3;	// box margins
 	int xmin, xmax, slotClicked;
 	char desc[NUM_VISIBLE_SLOTS][40];
-	int textCentre, buttonLength, buttonX[2], buttonY;
+	int textCenter, buttonLength, buttonX[2], buttonY;
 	const char *buttonText[] = { "  OK  ", "Cancel", NULL };
 
 	_noSaveLoadAllowed = true;
@@ -585,10 +597,10 @@ int AgiEngine::selectSlot() {
 		getSavegameDescription(_firstSlot + i, desc[i]);
 	}
 
-	textCentre = GFX_WIDTH / CHAR_LINES / 2;
+	textCenter = GFX_WIDTH / CHAR_LINES / 2;
 	buttonLength = 6;
-	buttonX[0] = (textCentre - 3 * buttonLength / 2) * CHAR_COLS;
-	buttonX[1] = (textCentre + buttonLength / 2) * CHAR_COLS;
+	buttonX[0] = (textCenter - 3 * buttonLength / 2) * CHAR_COLS;
+	buttonX[1] = (textCenter + buttonLength / 2) * CHAR_COLS;
 	buttonY = (vm + 17) * CHAR_LINES;
 
 	for (i = 0; i < 2; i++)
@@ -621,8 +633,8 @@ int AgiEngine::selectSlot() {
 			for (i = 0; i < NUM_VISIBLE_SLOTS; i++) {
 				sprintf(dstr, "[%2d. %-28.28s]", i + _firstSlot, desc[i]);
 				printText(dstr, 0, hm + 1, vm + 4 + i,
-						(40 - 2 * hm) - 1, i == active ? MSG_BOX_COLOUR : MSG_BOX_TEXT,
-						i == active ? MSG_BOX_TEXT : MSG_BOX_COLOUR);
+						(40 - 2 * hm) - 1, i == active ? MSG_BOX_COLOR : MSG_BOX_TEXT,
+						i == active ? MSG_BOX_TEXT : MSG_BOX_COLOR);
 			}
 
 			char upArrow[] = "^";
@@ -630,11 +642,11 @@ int AgiEngine::selectSlot() {
 			char scrollBar[] = " ";
 
 			for (i = 1; i < NUM_VISIBLE_SLOTS - 1; i++)
-				printText(scrollBar, 35, hm + 1, vm + 4 + i, 1, MSG_BOX_COLOUR, 7, true);
+				printText(scrollBar, 35, hm + 1, vm + 4 + i, 1, MSG_BOX_COLOR, 7, true);
 
 			printText(upArrow, 35, hm + 1, vm + 4, 1, 8, 7);
 			printText(downArrow, 35, hm + 1, vm + 4 + NUM_VISIBLE_SLOTS - 1, 1, 8, 7);
-			printText(scrollBar, 35, hm + 1, vm + 4 + sbPos, 1, MSG_BOX_COLOUR, MSG_BOX_TEXT);
+			printText(scrollBar, 35, hm + 1, vm + 4 + sbPos, 1, MSG_BOX_COLOR, MSG_BOX_TEXT);
 
 			oldActive = active;
 			oldFirstSlot = _firstSlot;
@@ -670,16 +682,16 @@ int AgiEngine::selectSlot() {
 				rc = -1;
 				goto getout;
 			}
-			slotClicked = ((int)g_mouse.y - 1) / CHAR_COLS - (vm + 4);
+			slotClicked = ((int)_mouse.y - 1) / CHAR_COLS - (vm + 4);
 			xmin = (hm + 1) * CHAR_COLS;
 			xmax = xmin + CHAR_COLS * 34;
-			if ((int)g_mouse.x >= xmin && (int)g_mouse.x <= xmax) {
+			if ((int)_mouse.x >= xmin && (int)_mouse.x <= xmax) {
 				if (slotClicked >= 0 && slotClicked < NUM_VISIBLE_SLOTS)
 					active = slotClicked;
 			}
 			xmin = (hm + 36) * CHAR_COLS;
 			xmax = xmin + CHAR_COLS;
-			if ((int)g_mouse.x >= xmin && (int)g_mouse.x <= xmax) {
+			if ((int)_mouse.x >= xmin && (int)_mouse.x <= xmax) {
 				if (slotClicked >= 0 && slotClicked < NUM_VISIBLE_SLOTS) {
 					if (slotClicked == 0)
 						keyEnqueue(KEY_UP);
@@ -770,7 +782,6 @@ getout:
 }
 
 int AgiEngine::saveGameDialog() {
-	char fileName[MAXPATHLEN];
 	char *desc;
 	const char *buttons[] = { "Do as I say!", "I regret", NULL };
 	char dstr[200];
@@ -787,19 +798,18 @@ int AgiEngine::saveGameDialog() {
 	do {
 		drawWindow(hp, vp, GFX_WIDTH - hp, GFX_HEIGHT - vp);
 		printText("Select a slot in which you wish to\nsave the game:",
-				0, hm + 1, vm + 1, w, MSG_BOX_TEXT, MSG_BOX_COLOUR);
+				0, hm + 1, vm + 1, w, MSG_BOX_TEXT, MSG_BOX_COLOR);
 		slot = selectSlot();
-		if (slot == 0)
+		if (slot + _firstSlot == 0)
 			messageBox("That slot is for Autosave only.");
 		else if (slot < 0)
 			return errOK;
-	}
-	while (slot == 0);
+	} while (slot + _firstSlot == 0);
 
 	drawWindow(hp, vp + 5 * CHAR_LINES, GFX_WIDTH - hp,
 			GFX_HEIGHT - vp - 9 * CHAR_LINES);
 	printText("Enter a description for this game:",
-			0, hm + 1, vm + 6, w, MSG_BOX_TEXT, MSG_BOX_COLOUR);
+			0, hm + 1, vm + 6, w, MSG_BOX_TEXT, MSG_BOX_COLOR);
 	_gfx->drawRectangle(3 * CHAR_COLS, 11 * CHAR_LINES - 1,
 			37 * CHAR_COLS, 12 * CHAR_LINES, MSG_BOX_TEXT);
 	_gfx->flushBlock(3 * CHAR_COLS, 11 * CHAR_LINES - 1,
@@ -824,7 +834,7 @@ int AgiEngine::saveGameDialog() {
 	for (numChars = 0; numChars < 28 && name[numChars]; numChars++)
 		handleGetstring(name[numChars]);
 
-	_gfx->printCharacter(numChars + 3, 11, _game.cursorChar, MSG_BOX_COLOUR, MSG_BOX_TEXT);
+	_gfx->printCharacter(numChars + 3, 11, _game.cursorChar, MSG_BOX_COLOR, MSG_BOX_TEXT);
 	do {
 		mainCycle();
 	} while (_game.inputMode == INPUT_GETSTRING);
@@ -841,8 +851,12 @@ int AgiEngine::saveGameDialog() {
 		return errOK;
 	}
 
-	sprintf(fileName, "%s", getSavegameFilename(_firstSlot + slot));
-	debugC(8, kDebugLevelMain | kDebugLevelResources, "file is [%s]", fileName);
+	Common::String fileName = getSavegameFilename(_firstSlot + slot);
+	debugC(8, kDebugLevelMain | kDebugLevelResources, "file is [%s]", fileName.c_str());
+
+	// Make sure all graphics was blitted to screen. This fixes bug
+	// #2960567: "AGI: Ego partly erased in Load/Save thumbnails"
+	_gfx->doUpdate();
 
 	int result = saveGame(fileName, desc);
 
@@ -855,9 +869,8 @@ int AgiEngine::saveGameDialog() {
 }
 
 int AgiEngine::saveGameSimple() {
-	char fileName[MAXPATHLEN];
+	Common::String fileName = getSavegameFilename(0);
 
-	sprintf(fileName, "%s", getSavegameFilename(0));
 	int result = saveGame(fileName, "Default savegame");
 	if (result != errOK)
 		messageBox("Error saving game.");
@@ -865,7 +878,6 @@ int AgiEngine::saveGameSimple() {
 }
 
 int AgiEngine::loadGameDialog() {
-	char fileName[MAXPATHLEN];
 	int rc, slot = 0;
 	int hm, vm, hp, vp;	// box margins
 	int w;
@@ -881,7 +893,7 @@ int AgiEngine::loadGameDialog() {
 
 	drawWindow(hp, vp, GFX_WIDTH - hp, GFX_HEIGHT - vp);
 	printText("Select a game which you wish to\nrestore:",
-			0, hm + 1, vm + 1, w, MSG_BOX_TEXT, MSG_BOX_COLOUR);
+			0, hm + 1, vm + 1, w, MSG_BOX_TEXT, MSG_BOX_COLOR);
 
 	slot = selectSlot();
 
@@ -892,7 +904,7 @@ int AgiEngine::loadGameDialog() {
 		return errOK;
 	}
 
-	sprintf(fileName, "%s", getSavegameFilename(_firstSlot + slot));
+	Common::String fileName = getSavegameFilename(_firstSlot + slot);
 
 	if ((rc = loadGame(fileName)) == errOK) {
 		messageBox("Game restored.");
@@ -906,10 +918,9 @@ int AgiEngine::loadGameDialog() {
 }
 
 int AgiEngine::loadGameSimple() {
-	char fileName[MAXPATHLEN];
 	int rc = 0;
 
-	sprintf(fileName, "%s", getSavegameFilename(0));
+	Common::String fileName = getSavegameFilename(0);
 
 	_sprites->eraseBoth();
 	_sound->stopSound();
@@ -958,19 +969,17 @@ void AgiEngine::replayImageStackCall(uint8 type, int16 p1, int16 p2, int16 p3,
 	}
 }
 
-void AgiEngine::clearImageStack(void) {
+void AgiEngine::clearImageStack() {
 	_imageStack.clear();
 }
 
-void AgiEngine::releaseImageStack(void) {
+void AgiEngine::releaseImageStack() {
 	_imageStack.clear();
 }
 
 void AgiEngine::checkQuickLoad() {
 	if (ConfMan.hasKey("save_slot")) {
-		char saveNameBuffer[256];
-
-		snprintf (saveNameBuffer, 256, "%s.%03d", _targetName.c_str(), ConfMan.getInt("save_slot"));
+		Common::String saveNameBuffer = getSavegameFilename(ConfMan.getInt("save_slot"));
 
 		_sprites->eraseBoth();
 		_sound->stopSound();
@@ -983,8 +992,7 @@ void AgiEngine::checkQuickLoad() {
 }
 
 Common::Error AgiEngine::loadGameState(int slot) {
-	static char saveLoadSlot[12];
-	sprintf(saveLoadSlot, "%s.%.3d", _targetName.c_str(), slot);
+	Common::String saveLoadSlot = getSavegameFilename(slot);
 
 	_sprites->eraseBoth();
 	_sound->stopSound();
@@ -998,9 +1006,8 @@ Common::Error AgiEngine::loadGameState(int slot) {
 	}
 }
 
-Common::Error AgiEngine::saveGameState(int slot, const char *desc) {
-	static char saveLoadSlot[12];
-	sprintf(saveLoadSlot, "%s.%.3d", _targetName.c_str(), slot);
+Common::Error AgiEngine::saveGameState(int slot, const Common::String &desc) {
+	Common::String saveLoadSlot = getSavegameFilename(slot);
 	if (saveGame(saveLoadSlot, desc) == errOK)
 		return Common::kNoError;
 	else

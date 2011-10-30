@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef SWORD1_SOUND_H
@@ -29,18 +26,19 @@
 #include "sword1/object.h"
 #include "sword1/sworddefs.h"
 #include "common/file.h"
-#include "sound/mixer.h"
 #include "common/util.h"
+#include "common/random.h"
+#include "audio/mixer.h"
 
 namespace Audio {
-	class Mixer;
+class Mixer;
 }
 
 namespace Sword1 {
 
-#define	TOTAL_FX_PER_ROOM	7		// total loop & random fx per room (see fx_list.c)
-#define	MAX_ROOMS_PER_FX	7		// max no. of rooms in the fx's room,vol list
-#define	MAX_FXQ_LENGTH		32		// max length of sound queue - ie. max number of fx that can be stored up/playing together
+#define TOTAL_FX_PER_ROOM   7       // total loop & random fx per room (see fx_list.c)
+#define MAX_ROOMS_PER_FX    7       // max no. of rooms in the fx's room,vol list
+#define MAX_FXQ_LENGTH      32      // max length of sound queue - ie. max number of fx that can be stored up/playing together
 
 #define FX_SPOT 1
 #define FX_LOOP 2
@@ -66,9 +64,9 @@ class ResMan;
 
 enum CowMode {
 	CowWave = 0,
-	CowFlac,
+	CowFLAC,
 	CowVorbis,
-	CowMp3,
+	CowMP3,
 	CowDemo,
 	CowPSX
 };
@@ -76,46 +74,46 @@ enum CowMode {
 class Sound {
 public:
 	Sound(const char *searchPath, Audio::Mixer *mixer, ResMan *pResMan);
-	~Sound(void);
+	~Sound();
 	void setSpeechVol(uint8 volL, uint8 volR) { _speechVolL = volL; _speechVolR = volR; }
 	void setSfxVol(uint8 volL, uint8 volR) { _sfxVolL = volL; _sfxVolR = volR; }
 	void giveSpeechVol(uint8 *volL, uint8 *volR) { *volL = _speechVolL; *volR = _speechVolR; }
 	void giveSfxVol(uint8 *volL, uint8 *volR) { *volL = _sfxVolL; *volR = _sfxVolR; }
 	void newScreen(uint32 screen);
-	void quitScreen(void);
-	void closeCowSystem(void);
+	void quitScreen();
+	void closeCowSystem();
 
 	bool startSpeech(uint16 roomNo, uint16 localNo);
-	bool speechFinished(void);
+	bool speechFinished();
 	void stopSpeech();
-	bool amISpeaking(void);
+	bool amISpeaking();
 
 	void fnStopFx(int32 fxNo);
 	int addToQueue(int32 fxNo);
 
-	void engine(void);
+	void engine();
 
 	void checkSpeechFileEndianness();
 
 private:
 	uint8 _sfxVolL, _sfxVolR, _speechVolL, _speechVolR;
 	void playSample(QueueElement *elem);
-	void initCowSystem(void);
+	void initCowSystem();
 
 	int16 *uncompressSpeech(uint32 index, uint32 cSize, uint32 *size);
 	void calcWaveVolume(int16 *data, uint32 length);
 	bool _waveVolume[WAVE_VOL_TAB_LENGTH];
 	uint16 _waveVolPos;
 	Common::File _cowFile;
-	uint32		 *_cowHeader;
-	uint32		 _cowHeaderSize;
-	uint8		 _currentCowFile;
-	CowMode		 _cowMode;
+	uint32       *_cowHeader;
+	uint32       _cowHeaderSize;
+	uint8        _currentCowFile;
+	CowMode      _cowMode;
 	Audio::SoundHandle _speechHandle, _fxHandle;
 	Common::RandomSource _rnd;
 
 	QueueElement _fxQueue[MAX_FXQ_LENGTH];
-	uint8		 _endOfQueue;
+	uint8        _endOfQueue;
 	Audio::Mixer *_mixer;
 	ResMan *_resMan;
 	bool _bigEndianSpeech;

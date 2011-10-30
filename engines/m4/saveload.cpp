@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #include "common/file.h"
@@ -34,7 +31,7 @@ namespace M4 {
 
 const char *orionSavesList = "saves.dir";
 
-SaveLoad::SaveLoad(M4Engine *vm) : _vm(vm) {
+SaveLoad::SaveLoad(MadsM4Engine *vm) : _vm(vm) {
 	// For Orion Burger, check the existance of a 'saves.dir' file to determine whether to
 	// act exactly like the original. Otherwise, we'll use the ScummVM standard, where we'll
 	// keep all the data for a savegame in a single file
@@ -99,7 +96,8 @@ SaveGameList *SaveLoad::getSaves() {
 				result->push_back(Common::String());
 			} else {
 				// Skip over byte offset
-				assert(saveFile->readUint32LE() < 0x100);
+				uint32 offset = saveFile->readUint32LE();
+				assert(offset < 0x100);
 
 				// Read in savegame name
 				saveFile->read(&saveName[0], MAX_SAVEGAME_NAME);

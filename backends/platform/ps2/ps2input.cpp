@@ -18,10 +18,9 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
+
+#define FORBIDDEN_SYMBOL_EXCEPTION_printf
 
 #include <kernel.h>
 #include <malloc.h>
@@ -546,5 +545,3 @@ const Common::KeyCode Ps2Input::_padFlags[16] = {
 	Common::KEYCODE_INVALID,			 //	Cross
 	Common::KEYCODE_INVALID				 //	Square
 };
-
-

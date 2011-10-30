@@ -18,21 +18,18 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef QUEEN_SOUND_H
 #define QUEEN_SOUND_H
 
 #include "common/util.h"
-#include "sound/mixer.h"
-#include "sound/mods/rjp1.h"
+#include "audio/mixer.h"
+#include "audio/mods/rjp1.h"
 #include "queen/defs.h"
 
 namespace Common {
-	class File;
+class File;
 }
 
 namespace Queen {
@@ -107,7 +104,7 @@ public:
 	static const SongData _song[];
 	static const TuneData _tuneDemo[];
 	static const TuneData _tune[];
-	static const char *_sfxName[];
+	static const char *const _sfxName[];
 	static const int16 _jungleList[];
 
 protected:

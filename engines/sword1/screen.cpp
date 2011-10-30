@@ -18,14 +18,14 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 
 #include "common/system.h"
+#include "common/textconsole.h"
 #include "common/util.h"
+
+#include "graphics/palette.h"
 
 #include "sword1/screen.h"
 #include "sword1/logic.h"
@@ -55,16 +55,18 @@ Screen::Screen(OSystem *system, ResMan *pResMan, ObjectMan *pObjMan) {
 	_updatePalette = false;
 	_psxCache.decodedBackground = NULL;
 	_psxCache.extPlxCache = NULL;
+	_oldScrollX = 0;
+	_oldScrollY = 0;
 }
 
-Screen::~Screen(void) {
+Screen::~Screen() {
 	free(_screenBuf);
 	free(_screenGrid);
 	if (_currentScreen != 0xFFFF)
 		quitScreen();
 }
 
-void Screen::clearScreen(void) {
+void Screen::clearScreen() {
 	if (_screenBuf) {
 		_fullRefresh = true;
 		memset(_screenBuf, 0, _scrnSizeX * _scrnSizeY);
@@ -76,13 +78,9 @@ void Screen::useTextManager(Text *pTextMan) {
 	_textMan = pTextMan;
 }
 
-int32 Screen::inRange(int32 a, int32 b, int32 c) { // return b(!) so that: a <= b <= c
-	return (a > b) ? (a) : ((b < c) ? b : c);
-}
-
 void Screen::setScrolling(int16 offsetX, int16 offsetY) {
-	offsetX = inRange(0, offsetX, Logic::_scriptVars[MAX_SCROLL_OFFSET_X]);
-	offsetY = inRange(0, offsetY, Logic::_scriptVars[MAX_SCROLL_OFFSET_Y]);
+	offsetX = CLIP<int32>(offsetX, 0, Logic::_scriptVars[MAX_SCROLL_OFFSET_X]);
+	offsetY = CLIP<int32>(offsetY, 0, Logic::_scriptVars[MAX_SCROLL_OFFSET_Y]);
 
 	if (Logic::_scriptVars[SCROLL_FLAG] == 2) { // first time on this screen - need absolute scroll immediately!
 		_oldScrollX = Logic::_scriptVars[SCROLL_OFFSET_X] = (uint32)offsetX;
@@ -99,18 +97,18 @@ void Screen::setScrolling(int16 offsetX, int16 offsetY) {
 		_oldScrollY = Logic::_scriptVars[SCROLL_OFFSET_Y];
 		int dx = offsetX - Logic::_scriptVars[SCROLL_OFFSET_X];
 		int dy = offsetY - Logic::_scriptVars[SCROLL_OFFSET_Y];
-		int scrlDistX = inRange(-MAX_SCROLL_DISTANCE, (((SCROLL_FRACTION - 1) + ABS(dx)) / SCROLL_FRACTION) * ((dx > 0) ? 1 : -1), MAX_SCROLL_DISTANCE);
-		int scrlDistY = inRange(-MAX_SCROLL_DISTANCE, (((SCROLL_FRACTION - 1) + ABS(dy)) / SCROLL_FRACTION) * ((dy > 0) ? 1 : -1), MAX_SCROLL_DISTANCE);
+		int scrlDistX = CLIP<int32>((((SCROLL_FRACTION - 1) + ABS(dx)) / SCROLL_FRACTION) * ((dx > 0) ? 1 : -1), -MAX_SCROLL_DISTANCE, MAX_SCROLL_DISTANCE);
+		int scrlDistY = CLIP<int32>((((SCROLL_FRACTION - 1) + ABS(dy)) / SCROLL_FRACTION) * ((dy > 0) ? 1 : -1), -MAX_SCROLL_DISTANCE, MAX_SCROLL_DISTANCE);
 		if ((scrlDistX != 0) || (scrlDistY != 0))
 			_fullRefresh = true;
-		Logic::_scriptVars[SCROLL_OFFSET_X] = inRange(0, Logic::_scriptVars[SCROLL_OFFSET_X] + scrlDistX, Logic::_scriptVars[MAX_SCROLL_OFFSET_X]);
-		Logic::_scriptVars[SCROLL_OFFSET_Y] = inRange(0, Logic::_scriptVars[SCROLL_OFFSET_Y] + scrlDistY, Logic::_scriptVars[MAX_SCROLL_OFFSET_Y]);
+		Logic::_scriptVars[SCROLL_OFFSET_X] = CLIP<int32>(Logic::_scriptVars[SCROLL_OFFSET_X] + scrlDistX, 0, Logic::_scriptVars[MAX_SCROLL_OFFSET_X]);
+		Logic::_scriptVars[SCROLL_OFFSET_Y] = CLIP<int32>(Logic::_scriptVars[SCROLL_OFFSET_Y] + scrlDistY, 0, Logic::_scriptVars[MAX_SCROLL_OFFSET_Y]);
 	} else {
 		// SCROLL_FLAG == 0, this usually means that the screen is smaller than 640x400 and doesn't need scrolling at all
 		// however, it can also mean that the gamescript overwrote the scrolling flag to take care of scrolling directly,
 		// (see bug report #1345130) so we ignore the offset arguments in this case
-		Logic::_scriptVars[SCROLL_OFFSET_X] = inRange(0, Logic::_scriptVars[SCROLL_OFFSET_X], Logic::_scriptVars[MAX_SCROLL_OFFSET_X]);
-		Logic::_scriptVars[SCROLL_OFFSET_Y] = inRange(0, Logic::_scriptVars[SCROLL_OFFSET_Y], Logic::_scriptVars[MAX_SCROLL_OFFSET_Y]);
+		Logic::_scriptVars[SCROLL_OFFSET_X] = CLIP<int32>(Logic::_scriptVars[SCROLL_OFFSET_X], 0, Logic::_scriptVars[MAX_SCROLL_OFFSET_X]);
+		Logic::_scriptVars[SCROLL_OFFSET_Y] = CLIP<int32>(Logic::_scriptVars[SCROLL_OFFSET_Y], 0, Logic::_scriptVars[MAX_SCROLL_OFFSET_Y]);
 		if ((Logic::_scriptVars[SCROLL_OFFSET_X] != _oldScrollX) || (Logic::_scriptVars[SCROLL_OFFSET_Y] != _oldScrollY)) {
 			_fullRefresh = true;
 			_oldScrollX = Logic::_scriptVars[SCROLL_OFFSET_X];
@@ -119,58 +117,58 @@ void Screen::setScrolling(int16 offsetX, int16 offsetY) {
 	}
 }
 
-void Screen::fadeDownPalette(void) {
+void Screen::fadeDownPalette() {
 	if (!_isBlack) { // don't fade down twice
 		_fadingStep = 15;
 		_fadingDirection = FADE_DOWN;
 	}
 }
 
-void Screen::fadeUpPalette(void) {
+void Screen::fadeUpPalette() {
 	_fadingStep = 1;
 	_fadingDirection = FADE_UP;
 }
 
 void Screen::fnSetPalette(uint8 start, uint16 length, uint32 id, bool fadeUp) {
-	uint8 *palData = (uint8*)_resMan->openFetchRes(id);
+	uint8 *palData = (uint8 *)_resMan->openFetchRes(id);
 	if (start == 0) // force color 0 to black
 		palData[0] = palData[1] = palData[2] = 0;
 
 	if (SwordEngine::isMac()) {  // see bug #1701058
 		if (start != 0 && start + length == 256) // and force color 255 to black as well
-			palData[(length-1)*3+0] = palData[(length-1)*3+1] = palData[(length-1)*3+2] = 0;
+			palData[(length - 1) * 3 + 0] = palData[(length - 1) * 3 + 1] = palData[(length - 1) * 3 + 2] = 0;
 	}
 
 	for (uint32 cnt = 0; cnt < length; cnt++) {
-		_targetPalette[(start + cnt) * 4 + 0] = palData[cnt * 3 + 0] << 2;
-		_targetPalette[(start + cnt) * 4 + 1] = palData[cnt * 3 + 1] << 2;
-		_targetPalette[(start + cnt) * 4 + 2] = palData[cnt * 3 + 2] << 2;
+		_targetPalette[(start + cnt) * 3 + 0] = palData[cnt * 3 + 0] << 2;
+		_targetPalette[(start + cnt) * 3 + 1] = palData[cnt * 3 + 1] << 2;
+		_targetPalette[(start + cnt) * 3 + 2] = palData[cnt * 3 + 2] << 2;
 	}
 	_resMan->resClose(id);
 	_isBlack = false;
 	if (fadeUp) {
 		_fadingStep = 1;
 		_fadingDirection = FADE_UP;
-		memset(_currentPalette, 0, 256 * 4);
-		_system->setPalette(_currentPalette, 0, 256);
+		memset(_currentPalette, 0, 256 * 3);
+		_system->getPaletteManager()->setPalette(_currentPalette, 0, 256);
 	} else
-		_system->setPalette(_targetPalette + 4 * start, start, length);
+		_system->getPaletteManager()->setPalette(_targetPalette + 3 * start, start, length);
 }
 
-void Screen::fullRefresh(void) {
+void Screen::fullRefresh() {
 	_fullRefresh = true;
-	_system->setPalette(_targetPalette, 0, 256);
+	_system->getPaletteManager()->setPalette(_targetPalette, 0, 256);
 }
 
-bool Screen::stillFading(void) {
+bool Screen::stillFading() {
 	return (_fadingStep != 0);
 }
 
-bool Screen::showScrollFrame(void) {
+bool Screen::showScrollFrame() {
 	if ((!_fullRefresh) || Logic::_scriptVars[NEW_PALETTE] || _updatePalette)
 		return false; // don't draw an additional frame if we aren't scrolling or have to change the palette
 	if ((_oldScrollX == Logic::_scriptVars[SCROLL_OFFSET_X]) &&
-		(_oldScrollY == Logic::_scriptVars[SCROLL_OFFSET_Y]))
+	        (_oldScrollY == Logic::_scriptVars[SCROLL_OFFSET_Y]))
 		return false; // check again if we *really* are scrolling.
 
 	uint16 avgScrlX = (uint16)(_oldScrollX + Logic::_scriptVars[SCROLL_OFFSET_X]) / 2;
@@ -181,7 +179,7 @@ bool Screen::showScrollFrame(void) {
 	return true;
 }
 
-void Screen::updateScreen(void) {
+void Screen::updateScreen() {
 	if (Logic::_scriptVars[NEW_PALETTE]) {
 		_fadingStep = 1;
 		_fadingDirection = FADE_UP;
@@ -195,7 +193,7 @@ void Screen::updateScreen(void) {
 	}
 	if (_fadingStep) {
 		fadePalette();
-		_system->setPalette(_currentPalette, 0, 256);
+		_system->getPaletteManager()->setPalette(_currentPalette, 0, 256);
 	}
 
 	uint16 scrlX = (uint16)Logic::_scriptVars[SCROLL_OFFSET_X];
@@ -314,39 +312,37 @@ void Screen::newScreen(uint32 screen) {
 	Logic::_scriptVars[SCROLL_OFFSET_X] = 0;
 	Logic::_scriptVars[SCROLL_OFFSET_Y] = 0;
 
-	if (_screenBuf)
-		free(_screenBuf);
-	if (_screenGrid)
-		free(_screenGrid);
+	free(_screenBuf);
+	free(_screenGrid);
 
 	if (SwordEngine::isPsx())
 		flushPsxCache();
 
-	_screenBuf = (uint8*)malloc(_scrnSizeX * _scrnSizeY);
-	_screenGrid = (uint8*)malloc(_gridSizeX * _gridSizeY);
+	_screenBuf = (uint8 *)malloc(_scrnSizeX * _scrnSizeY);
+	_screenGrid = (uint8 *)malloc(_gridSizeX * _gridSizeY);
 	memset(_screenGrid, 0, _gridSizeX * _gridSizeY);
 	for (cnt = 0; cnt < _roomDefTable[_currentScreen].totalLayers; cnt++) {
 		// open and lock all resources, will be closed in quitScreen()
-		_layerBlocks[cnt] = (uint8*)_resMan->openFetchRes(_roomDefTable[_currentScreen].layers[cnt]);
+		_layerBlocks[cnt] = (uint8 *)_resMan->openFetchRes(_roomDefTable[_currentScreen].layers[cnt]);
 		if (cnt > 0)
 			_layerBlocks[cnt] += sizeof(Header);
 	}
 	for (cnt = 0; cnt < _roomDefTable[_currentScreen].totalLayers - 1; cnt++) {
 		// there's no grid for the background layer, so it's totalLayers - 1
-		_layerGrid[cnt] = (uint16*)_resMan->openFetchRes(_roomDefTable[_currentScreen].grids[cnt]);
+		_layerGrid[cnt] = (uint16 *)_resMan->openFetchRes(_roomDefTable[_currentScreen].grids[cnt]);
 		_layerGrid[cnt] += 14;
 	}
 	_parallax[0] = _parallax[1] = NULL;
 	if (_roomDefTable[_currentScreen].parallax[0])
-		_parallax[0] = (uint8*)_resMan->openFetchRes(_roomDefTable[_currentScreen].parallax[0]);
+		_parallax[0] = (uint8 *)_resMan->openFetchRes(_roomDefTable[_currentScreen].parallax[0]);
 	if (_roomDefTable[_currentScreen].parallax[1])
-		_parallax[1] = (uint8*)_resMan->openFetchRes(_roomDefTable[_currentScreen].parallax[1]);
+		_parallax[1] = (uint8 *)_resMan->openFetchRes(_roomDefTable[_currentScreen].parallax[1]);
 
 	_updatePalette = true;
 	_fullRefresh = true;
 }
 
-void Screen::quitScreen(void) {
+void Screen::quitScreen() {
 	uint8 cnt;
 	if (SwordEngine::isPsx())
 		flushPsxCache();
@@ -361,19 +357,19 @@ void Screen::quitScreen(void) {
 	_currentScreen = 0xFFFF;
 }
 
-void Screen::draw(void) {
+void Screen::draw() {
 	uint8 cnt;
 
 	debug(8, "Screen::draw() -> _currentScreen %u", _currentScreen);
 
 	if (_currentScreen == 54) {
 		// rm54 has a BACKGROUND parallax layer in parallax[0]
-		if (_parallax[0] && !SwordEngine::isPsx() ) //Avoid drawing this parallax on PSX edition, it gets occluded by background
+		if (_parallax[0] && !SwordEngine::isPsx()) //Avoid drawing this parallax on PSX edition, it gets occluded by background
 			renderParallax(_parallax[0]);
 		uint8 *src = _layerBlocks[0];
 		uint8 *dest = _screenBuf;
 
-		if(SwordEngine::isPsx()) {
+		if (SwordEngine::isPsx()) {
 			if (!_psxCache.decodedBackground)
 				_psxCache.decodedBackground = psxShrinkedBackgroundToIndexed(_layerBlocks[0], _scrnSizeX, _scrnSizeY);
 			memcpy(_screenBuf, _psxCache.decodedBackground, _scrnSizeX * _scrnSizeY);
@@ -393,13 +389,13 @@ void Screen::draw(void) {
 					src++;
 					dest++;
 				}
-	}
+		}
 
 	} else if (!(SwordEngine::isPsx())) {
 		memcpy(_screenBuf, _layerBlocks[0], _scrnSizeX * _scrnSizeY);
 	} else { //We are using PSX version
-		if(_currentScreen == 45 || _currentScreen == 55 ||
-		   _currentScreen == 57 || _currentScreen == 63 || _currentScreen == 71) { // Width shrinked backgrounds
+		if (_currentScreen == 45 || _currentScreen == 55 ||
+		        _currentScreen == 57 || _currentScreen == 63 || _currentScreen == 71) { // Width shrinked backgrounds
 			if (!_psxCache.decodedBackground)
 				_psxCache.decodedBackground = psxShrinkedBackgroundToIndexed(_layerBlocks[0], _scrnSizeX, _scrnSizeY);
 		} else {
@@ -426,12 +422,12 @@ void Screen::draw(void) {
 		renderParallax(_parallax[1]);
 
 	// PSX version has parallax layer for this room in an external file (TRAIN.PLX)
-	if(SwordEngine::isPsx() && _currentScreen == 63) {
+	if (SwordEngine::isPsx() && _currentScreen == 63) {
 		// FIXME: this should be handled in a cleaner way...
 		if (!_psxCache.extPlxCache) {
 			Common::File parallax;
 			parallax.open("TRAIN.PLX");
-			_psxCache.extPlxCache = (uint8*) malloc(parallax.size());
+			_psxCache.extPlxCache = (uint8 *)malloc(parallax.size());
 			parallax.read(_psxCache.extPlxCache, parallax.size());
 			parallax.close();
 		}
@@ -456,7 +452,7 @@ void Screen::processImage(uint32 id) {
 	else
 		frameHead = _resMan->fetchFrame(_resMan->openFetchRes(compact->o_resource), compact->o_frame);
 
-	uint8 *sprData = ((uint8*)frameHead) + sizeof(FrameHeader);
+	uint8 *sprData = ((uint8 *)frameHead) + sizeof(FrameHeader);
 
 	uint16 spriteX = compact->o_anim_x;
 	uint16 spriteY = compact->o_anim_y;
@@ -474,8 +470,8 @@ void Screen::processImage(uint32 id) {
 	uint8 *tonyBuf = NULL;
 	uint8 *hifBuf = NULL;
 	if (SwordEngine::isPsx() && compact->o_type != TYPE_TEXT) { // PSX sprites are compressed with HIF
-		hifBuf = (uint8*)malloc(_resMan->readUint16(&frameHead->width) * _resMan->readUint16(&frameHead->height)/2);
-		memset(hifBuf, 0x00, (_resMan->readUint16(&frameHead->width) * _resMan->readUint16(&frameHead->height)/2));
+		hifBuf = (uint8 *)malloc(_resMan->readUint16(&frameHead->width) * _resMan->readUint16(&frameHead->height) / 2);
+		memset(hifBuf, 0x00, (_resMan->readUint16(&frameHead->width) * _resMan->readUint16(&frameHead->height) / 2));
 		decompressHIF(sprData, hifBuf);
 		sprData = hifBuf;
 	} else if (frameHead->runTimeComp[3] == '7') { // RLE7 encoded?
@@ -485,7 +481,7 @@ void Screen::processImage(uint32 id) {
 		decompressRLE0(sprData, _resMan->readUint32(&frameHead->compSize), _rleBuffer);
 		sprData = _rleBuffer;
 	} else if (frameHead->runTimeComp[1] == 'I') { // new type
-		tonyBuf = (uint8*)malloc(_resMan->readUint16(&frameHead->width) * _resMan->readUint16(&frameHead->height));
+		tonyBuf = (uint8 *)malloc(_resMan->readUint16(&frameHead->width) * _resMan->readUint16(&frameHead->height));
 		decompressTony(sprData, _resMan->readUint32(&frameHead->compSize), tonyBuf);
 		sprData = tonyBuf;
 	}
@@ -493,7 +489,7 @@ void Screen::processImage(uint32 id) {
 	uint16 sprSizeX, sprSizeY;
 	if (compact->o_status & STAT_SHRINK) {
 		memset(_shrinkBuffer, 0, SHRINK_BUFFER_SIZE); //Clean shrink buffer to avoid corruption
-		if( SwordEngine::isPsx() && (compact->o_resource != GEORGE_MEGA)) { //PSX Height shrinked sprites
+		if (SwordEngine::isPsx() && (compact->o_resource != GEORGE_MEGA)) { //PSX Height shrinked sprites
 			sprSizeX = (scale * _resMan->readUint16(&frameHead->width)) / 256;
 			sprSizeY = (scale * (_resMan->readUint16(&frameHead->height))) / 256 / 2;
 			fastShrink(sprData, _resMan->readUint16(&frameHead->width), (_resMan->readUint16(&frameHead->height)) / 2, scale, _shrinkBuffer);
@@ -509,7 +505,7 @@ void Screen::processImage(uint32 id) {
 		sprData = _shrinkBuffer;
 	} else {
 		sprSizeX = _resMan->readUint16(&frameHead->width);
-		if(SwordEngine::isPsx()) { //PSX sprites are half height
+		if (SwordEngine::isPsx()) { //PSX sprites are half height
 			sprSizeY = _resMan->readUint16(&frameHead->height) / 2;
 		} else
 			sprSizeY = (_resMan->readUint16(&frameHead->height));
@@ -537,28 +533,25 @@ void Screen::processImage(uint32 id) {
 	spriteClipAndSet(&spriteX, &spriteY, &sprSizeX, &sprSizeY, &incr);
 
 	if ((sprSizeX > 0) && (sprSizeY > 0)) {
-		if( (!(SwordEngine::isPsx()) || (compact->o_type == TYPE_TEXT)
-		|| (compact->o_resource == LVSFLY) || (!(compact->o_resource == GEORGE_MEGA) && (sprSizeX < 260))))
+		if ((!(SwordEngine::isPsx()) || (compact->o_type == TYPE_TEXT)
+		        || (compact->o_resource == LVSFLY) || (!(compact->o_resource == GEORGE_MEGA) && (sprSizeX < 260))))
 			drawSprite(sprData + incr, spriteX, spriteY, sprSizeX, sprSizeY, sprPitch);
 		else if (((sprSizeX >= 260) && (sprSizeX < 450)) || ((compact->o_resource == GMWRITH) && (sprSizeX < 515))  // a psx shrinked sprite (1/2 width)
-				|| ((compact->o_resource == GMPOWER) && (sprSizeX < 515)) )                                         // some needs to be hardcoded, headers don't give useful infos
+		         || ((compact->o_resource == GMPOWER) && (sprSizeX < 515)))                                         // some needs to be hardcoded, headers don't give useful infos
 			drawPsxHalfShrinkedSprite(sprData + incr, spriteX, spriteY, sprSizeX / 2, sprSizeY, sprPitch / 2);
 		else if (sprSizeX >= 450) // A PSX double shrinked sprite (1/3 width)
 			drawPsxFullShrinkedSprite(sprData + incr, spriteX, spriteY, sprSizeX / 3, sprSizeY, sprPitch / 3);
 		else // This is for psx half shrinked, walking george and remaining sprites
 			drawPsxHalfShrinkedSprite(sprData + incr, spriteX, spriteY, sprSizeX, sprSizeY, sprPitch);
-		if (!(compact->o_status&STAT_FORE) && !(SwordEngine::isPsx() && (compact->o_resource == MOUBUSY))) // Check fixes moue sprite being masked by layer, happens only on psx
+		if (!(compact->o_status & STAT_FORE) && !(SwordEngine::isPsx() && (compact->o_resource == MOUBUSY))) // Check fixes moue sprite being masked by layer, happens only on psx
 			verticalMask(spriteX, spriteY, sprSizeX, sprSizeY);
 	}
 
 	if (compact->o_type != TYPE_TEXT)
 		_resMan->resClose(compact->o_resource);
 
-	if (tonyBuf)
-		free(tonyBuf);
-
-	if (hifBuf)
-		free(hifBuf);
+	free(tonyBuf);
+	free(hifBuf);
 }
 
 void Screen::verticalMask(uint16 x, uint16 y, uint16 bWidth, uint16 bHeight) {
@@ -639,8 +632,8 @@ void Screen::renderParallax(uint8 *data) {
 	if (SwordEngine::isPsx()) //Parallax headers are different in PSX version
 		fetchPsxParallaxSize(data, &paraSizeX, &paraSizeY);
 	else {
-		header = (ParallaxHeader*)data;
-		lineIndexes = (uint32*)(data + sizeof(ParallaxHeader));
+		header = (ParallaxHeader *)data;
+		lineIndexes = (uint32 *)(data + sizeof(ParallaxHeader));
 		paraSizeX = _resMan->getUint16(header->sizeX);
 		paraSizeY = _resMan->getUint16(header->sizeY);
 	}
@@ -666,7 +659,7 @@ void Screen::renderParallax(uint8 *data) {
 	} else
 		paraScrlY = 0;
 
-	if(SwordEngine::isPsx())
+	if (SwordEngine::isPsx())
 		drawPsxParallax(data, paraScrlX, scrnScrlX, scrnWidth);
 	else
 		for (uint16 cnty = 0; cnty < scrnHeight; cnty++) {
@@ -763,7 +756,7 @@ void Screen::drawPsxFullShrinkedSprite(uint8 *sprData, uint16 sprX, uint16 sprY,
 	uint8 *dest = _screenBuf + (sprY * _scrnSizeX) + sprX;
 
 	for (uint16 cnty = 0; cnty < sprHeight; cnty++) {
-		for (uint16 cntx = 0; cntx < sprWidth ; cntx++)
+		for (uint16 cntx = 0; cntx < sprWidth; cntx++)
 			if (sprData[cntx]) {
 				dest[cntx * 3] = sprData[cntx]; //In these sprites we need to double vertical lines too...
 				dest[cntx * 3 + 1] = sprData[cntx];
@@ -835,7 +828,7 @@ void Screen::addToGraphicList(uint8 listId, uint32 objId) {
 		_sortList[_sortLength].id = objId;
 		_sortList[_sortLength].y = cpt->o_anim_y; // gives feet coords if boxed mega, otherwise top of sprite box
 		if (!(cpt->o_status & STAT_SHRINK)) {     // not a boxed mega using shrinking
-			Header *frameRaw = (Header*)_resMan->openFetchRes(cpt->o_resource);
+			Header *frameRaw = (Header *)_resMan->openFetchRes(cpt->o_resource);
 			FrameHeader *frameHead = _resMan->fetchFrame(frameRaw, cpt->o_frame);
 			_sortList[_sortLength].y += _resMan->readUint16(&frameHead->height) - 1; // now pointing to base of sprite
 			_resMan->resClose(cpt->o_resource);
@@ -848,7 +841,7 @@ void Screen::addToGraphicList(uint8 listId, uint32 objId) {
 	}
 }
 
-uint8* Screen::psxBackgroundToIndexed(uint8 *psxBackground, uint32 bakXres, uint32 bakYres) {
+uint8 *Screen::psxBackgroundToIndexed(uint8 *psxBackground, uint32 bakXres, uint32 bakYres) {
 	uint32 xresInTiles = bakXres / 16;
 	uint32 yresInTiles = ((bakYres / 2) % 16) ? (bakYres / 32) + 1 : (bakYres / 32);
 	uint32 totTiles = xresInTiles * yresInTiles;
@@ -867,10 +860,10 @@ uint8* Screen::psxBackgroundToIndexed(uint8 *psxBackground, uint32 bakXres, uint
 	for (uint32 currentTile = 0; currentTile < totTiles; currentTile++) {
 		uint32 tileOffset = READ_LE_UINT32(psxBackground + 4 * currentTile);
 
-		if(isCompressed)
+		if (isCompressed)
 			decompressHIF(psxBackground + tileOffset - 4, decomp_tile); //Decompress the tile into decomp_tile
 		else
-			memcpy(decomp_tile, psxBackground + tileOffset - 4, 16*16);
+			memcpy(decomp_tile, psxBackground + tileOffset - 4, 16 * 16);
 
 		if (currentTile > 0 && !(currentTile % xresInTiles)) { //Finished a line of tiles, going down
 			tileYpos++;
@@ -890,9 +883,9 @@ uint8* Screen::psxBackgroundToIndexed(uint8 *psxBackground, uint32 bakXres, uint
 }
 
 // needed because some psx backgrounds are half width and half height
-uint8* Screen::psxShrinkedBackgroundToIndexed(uint8 *psxBackground, uint32 bakXres, uint32 bakYres) {
-	uint32 xresInTiles = (bakXres / 2) % 16 ? (bakXres / 32) + 1 : (bakXres / 32);
-	uint32 yresInTiles =  (bakYres / 2) % 16 ? (bakYres / 32) + 1 : (bakYres / 32);
+uint8 *Screen::psxShrinkedBackgroundToIndexed(uint8 *psxBackground, uint32 bakXres, uint32 bakYres) {
+	uint32 xresInTiles = ((bakXres / 2) % 16) ? (bakXres / 32) + 1 : (bakXres / 32);
+	uint32 yresInTiles = ((bakYres / 2) % 16) ? (bakYres / 32) + 1 : (bakYres / 32);
 	uint32 totTiles = xresInTiles * yresInTiles;
 	uint32 tileYpos = 0; //tile position in a virtual xresInTiles * yresInTiles grid
 	uint32 tileXpos = 0;
@@ -902,7 +895,7 @@ uint8* Screen::psxShrinkedBackgroundToIndexed(uint8 *psxBackground, uint32 bakXr
 	uint8 *fullres_buffer = (uint8 *)malloc(bakXres * (yresInTiles + 1) * 32);
 	memset(fullres_buffer, 0, bakXres * (yresInTiles + 1) * 32);
 
-	bool isCompressed = (READ_LE_UINT32(psxBackground) == MKID_BE('COMP'));
+	bool isCompressed = (READ_LE_UINT32(psxBackground) == MKTAG('C', 'O', 'M', 'P'));
 
 	totTiles -= xresInTiles;
 	psxBackground += 4; //We skip the id tag
@@ -911,7 +904,7 @@ uint8* Screen::psxShrinkedBackgroundToIndexed(uint8 *psxBackground, uint32 bakXr
 	for (currentTile = 0; currentTile < totTiles; currentTile++) {
 		uint32 tileOffset = READ_LE_UINT32(psxBackground + 4 * currentTile);
 
-		if(isCompressed)
+		if (isCompressed)
 			decompressHIF(psxBackground + tileOffset - 4, decomp_tile); //Decompress the tile into decomp_tile
 		else
 			memcpy(decomp_tile, psxBackground + tileOffset - 4, 16 * 16);
@@ -949,7 +942,7 @@ uint8* Screen::psxShrinkedBackgroundToIndexed(uint8 *psxBackground, uint32 bakXr
 	for (; currentTile < totTiles + remainingTiles; currentTile++) {
 		uint32 tileOffset = READ_LE_UINT32(psxBackground + 4 * currentTile);
 
-		if(isCompressed)
+		if (isCompressed)
 			decompressHIF(psxBackground + tileOffset - 4, decomp_tile); //Decompress the tile into decomp_tile
 		else
 			memcpy(decomp_tile, psxBackground + tileOffset - 4, 256);
@@ -1101,7 +1094,7 @@ void Screen::decompressHIF(uint8 *src, uint8 *dest) {
 				if (info_word == 0xFFFF) return; //Got 0xFFFF code, finished.
 
 				int32 repeat_count = (info_word >> 12) + 2; //How many time data needs to be refetched
-				while(repeat_count >= 0) {
+				while (repeat_count >= 0) {
 					uint8 *old_data_src = dest - ((info_word & 0xFFF) + 1);
 					*dest++ = *old_data_src;
 					repeat_count--;
@@ -1114,7 +1107,7 @@ void Screen::decompressHIF(uint8 *src, uint8 *dest) {
 	}
 }
 
-void Screen::flushPsxCache(void) {
+void Screen::flushPsxCache() {
 	if (_psxCache.decodedBackground) {
 		free(_psxCache.decodedBackground);
 		_psxCache.decodedBackground = NULL;
@@ -1126,13 +1119,13 @@ void Screen::flushPsxCache(void) {
 	}
 }
 
-void Screen::fadePalette(void) {
+void Screen::fadePalette() {
 	if (_fadingStep == 16)
-		memcpy(_currentPalette, _targetPalette, 256 * 4);
+		memcpy(_currentPalette, _targetPalette, 256 * 3);
 	else if ((_fadingStep == 1) && (_fadingDirection == FADE_DOWN)) {
-		memset(_currentPalette, 0, 4 * 256);
+		memset(_currentPalette, 0, 3 * 256);
 	} else
-		for (uint16 cnt = 0; cnt < 256 * 4; cnt++)
+		for (uint16 cnt = 0; cnt < 256 * 3; cnt++)
 			_currentPalette[cnt] = (_targetPalette[cnt] * _fadingStep) >> 4;
 
 	_fadingStep += _fadingDirection;
@@ -1185,14 +1178,14 @@ void Screen::spriteClipAndSet(uint16 *pSprX, uint16 *pSprY, uint16 *pSprWidth, u
 	if (*pSprWidth && *pSprHeight) {
 		// sprite will be drawn, so mark it in the grid buffer
 		uint16 gridH = (*pSprHeight + (sprY & (SCRNGRID_Y - 1)) + (SCRNGRID_Y - 1)) / SCRNGRID_Y;
-		uint16 gridW = (*pSprWidth +  (sprX & (SCRNGRID_X - 1)) + (SCRNGRID_X - 1)) / SCRNGRID_X;
+		uint16 gridW = (*pSprWidth + (sprX & (SCRNGRID_X - 1)) + (SCRNGRID_X - 1)) / SCRNGRID_X;
 
-		if(SwordEngine::isPsx()) {
+		if (SwordEngine::isPsx()) {
 			gridH *= 2; // This will correct the PSX sprite being cut at half height
 			gridW *= 2; // and masking problems when sprites are stretched in width
 
 			uint16 bottomSprPos = (*pSprY + (*pSprHeight) * 2); //Position of bottom line of sprite
-			if ( bottomSprPos > _scrnSizeY ) { //Check that resized psx sprite isn't drawn outside of screen boundaries
+			if (bottomSprPos > _scrnSizeY) { //Check that resized psx sprite isn't drawn outside of screen boundaries
 				uint16 outScreen = bottomSprPos - _scrnSizeY;
 				*pSprHeight -= (outScreen % 2) ? (outScreen + 1) / 2 : outScreen / 2;
 			}
@@ -1225,17 +1218,17 @@ void Screen::showFrame(uint16 x, uint16 y, uint32 resId, uint32 frameNo, const b
 	uint8 frame[40 * 40];
 	int i, j;
 
-	if(SwordEngine::isPsx())
+	if (SwordEngine::isPsx())
 		memset(frame, 0, sizeof(frame)); // PSX top menu is black
 	else
 		memset(frame, 199, sizeof(frame)); // Dark gray background
 
 	if (resId != 0xffffffff) {
 		FrameHeader *frameHead = _resMan->fetchFrame(_resMan->openFetchRes(resId), frameNo);
-		uint8 *frameData = ((uint8*)frameHead) + sizeof(FrameHeader);
+		uint8 *frameData = ((uint8 *)frameHead) + sizeof(FrameHeader);
 
 		if (SwordEngine::isPsx()) { //We need to decompress PSX frames
-			uint8 *frameBufferPSX = (uint8 *)malloc(_resMan->getUint16(frameHead->width) *  _resMan->getUint16(frameHead->height)/2);
+			uint8 *frameBufferPSX = (uint8 *)malloc(_resMan->getUint16(frameHead->width) *  _resMan->getUint16(frameHead->height) / 2);
 			decompressHIF(frameData, frameBufferPSX);
 
 			for (i = 0; i < _resMan->getUint16(frameHead->height) / 2; i++) {

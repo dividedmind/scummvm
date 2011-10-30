@@ -18,14 +18,14 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 
 
 #include "agos/agos.h"
+#include "agos/midi.h"
+
+#include "common/textconsole.h"
 
 namespace AGOS {
 
@@ -343,11 +343,11 @@ void AGOSEngine_Simon2::os2_playTune() {
 	// effectively preloaded so there's no latency when
 	// starting playback).
 
-	_midi.setLoop(loop != 0);
+	_midi->setLoop(loop != 0);
 	if (_lastMusicPlayed != music)
 		_nextMusicToPlay = music;
 	else
-		_midi.startTrack(track);
+		_midi->startTrack(track);
 }
 
 void AGOSEngine_Simon2::os2_screenTextPObj() {
@@ -417,7 +417,7 @@ void AGOSEngine_Simon2::os2_screenTextPObj() {
 		int j, k;
 
 		if (subObject->objectFlags & kOFNumber) {
-			if (_language == Common::HB_ISR) {
+			if (_language == Common::HE_ISR) {
 				j = subObject->objectFlagValue[getOffsetOfChild2Param(subObject, kOFNumber)];
 				k = (j % 10) * 10;
 				k += j / 10;

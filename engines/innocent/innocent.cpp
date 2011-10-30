@@ -25,12 +25,14 @@
 
 #include "innocent/innocent.h"
 
+#include "audio/mididrv.h"
 #include "common/config-manager.h"
+#include "common/debug-channels.h"
 #include "common/error.h"
 #include "common/scummsys.h"
 #include "common/system.h"
 #include "common/events.h"
-#include "sound/mididrv.h"
+#include "engines/util.h"
 
 #include "innocent/debug.h"
 #include "innocent/debugger.h"
@@ -49,7 +51,9 @@ namespace Innocent {
 Engine *Engine::me;
 
 Engine::Engine(OSystem *syst) :
-		::Engine(syst) {
+		::Engine(syst),
+		_rnd("Interspective Engine")
+		{
 	_resources = &Res;
 	_resources->setEngine(this);
 	_graphics = &Graphics::instance();
@@ -60,30 +64,28 @@ Engine::Engine(OSystem *syst) :
 	me = this;
 	_lastTicks = 0;
 
-	Common::addDebugChannel(kDebugLevelScript, "script", "bytecode scripts");
-	Common::addDebugChannel(kDebugLevelGraphics, "graphics", "graphics handling");
-	Common::addDebugChannel(kDebugLevelFlow, "flow", "game code flow status");
-	Common::addDebugChannel(kDebugLevelAnimation, "animation", "animations");
-	Common::addDebugChannel(kDebugLevelValues, "values", "really low-level debugging of value manipulation");
-	Common::addDebugChannel(kDebugLevelFiles, "files", "file input and output");
-	Common::addDebugChannel(kDebugLevelEvents, "events", "event handling");
-	Common::addDebugChannel(kDebugLevelMusic, "music", "music loading and playing");
-	Common::addDebugChannel(kDebugLevelActor, "actor", "actor animation and behaviour");
+	DebugMan.addDebugChannel(kDebugLevelScript, "script", "bytecode scripts");
+	DebugMan.addDebugChannel(kDebugLevelGraphics, "graphics", "graphics handling");
+	DebugMan.addDebugChannel(kDebugLevelFlow, "flow", "game code flow status");
+	DebugMan.addDebugChannel(kDebugLevelAnimation, "animation", "animations");
+	DebugMan.addDebugChannel(kDebugLevelValues, "values", "really low-level debugging of value manipulation");
+	DebugMan.addDebugChannel(kDebugLevelFiles, "files", "file input and output");
+	DebugMan.addDebugChannel(kDebugLevelEvents, "events", "event handling");
+	DebugMan.addDebugChannel(kDebugLevelMusic, "music", "music loading and playing");
+	DebugMan.addDebugChannel(kDebugLevelActor, "actor", "actor animation and behaviour");
 
 	/* XXX how to integrate this with EventRecorder? */
 //	syst->getEventManager()->registerRandomSource(_rnd, "innocent");
 }
 
 Engine::~Engine() {
-	Common::clearAllDebugChannels();
+	DebugMan.clearAllDebugChannels();
 	MusicParser::destroy();
 }
 
 Common::Error Engine::run() {
-	GFX_TRANSACTION {
-		initCommonGFX(false);
-		_system->initSize(320, 200);
-	}
+	initGraphics(320, 200, false);
+	
 	_copyProtection = ConfMan.getBool("copy_protection");
 	_startRoom = ConfMan.getInt("boot_param");
 	_debugger = &Debug;
@@ -91,14 +93,15 @@ Common::Error Engine::run() {
 	_resources->init();
 	_graphics->init();
 
-	int midiDriver = MidiDriver::detectMusicDriver(MDT_MIDI);
+	int midiDriver = MidiDriver::detectDevice(MDT_MIDI);
 
 	MidiDriver *driver = MidiDriver::createMidi(midiDriver);
 
 	_musicDriver.reset(driver);
 	Music.setMidiDriver(driver);
 	driver->open();
-
+	Music.setTimerRate(driver->getBaseTempo());
+	driver->setTimerCallback(&Music, &MusicParser::timerCallback);
 
 	_logic->init();
 

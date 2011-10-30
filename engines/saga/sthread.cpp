@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 // Scripting module thread management component
@@ -39,16 +36,18 @@ namespace Saga {
 
 ScriptThread &Script::createThread(uint16 scriptModuleNumber, uint16 scriptEntryPointNumber) {
 	loadModule(scriptModuleNumber);
-	if (_modules[scriptModuleNumber].entryPointsCount <= scriptEntryPointNumber) {
+	if (_modules[scriptModuleNumber].entryPoints.size() <= scriptEntryPointNumber) {
 		error("Script::createThread wrong scriptEntryPointNumber");
 	}
 
-	ScriptThread newThread;
+	ScriptThread tmp;
+	_threadList.push_front(tmp);
+	ScriptThread &newThread = _threadList.front();
 	newThread._instructionOffset = _modules[scriptModuleNumber].entryPoints[scriptEntryPointNumber].offset;
-	newThread._commonBase = _commonBuffer;
-	newThread._staticBase = _commonBuffer + _modules[scriptModuleNumber].staticOffset;
-	newThread._moduleBase = _modules[scriptModuleNumber].moduleBase;
-	newThread._moduleBaseSize = _modules[scriptModuleNumber].moduleBaseSize;
+	newThread._commonBase = _commonBuffer.getBuffer();
+	newThread._staticBase = _commonBuffer.getBuffer() + _modules[scriptModuleNumber].staticOffset;
+	newThread._moduleBase = _modules[scriptModuleNumber].moduleBase.getBuffer();
+	newThread._moduleBaseSize = _modules[scriptModuleNumber].moduleBase.size();
 	newThread._strings = &_modules[scriptModuleNumber].strings;
 
 	if (_vm->getGameId() == GID_IHNM)
@@ -56,12 +55,10 @@ ScriptThread &Script::createThread(uint16 scriptModuleNumber, uint16 scriptEntry
 	else
 		newThread._voiceLUT = &_modules[scriptModuleNumber].voiceLUT;
 
-	_threadList.push_front(newThread);
-
-	ScriptThread &tmp = *_threadList.begin();
-	tmp._stackBuf = (int16 *)malloc(ScriptThread::THREAD_STACK_SIZE * sizeof(int16));
-	tmp._stackTopIndex = ScriptThread::THREAD_STACK_SIZE - 2;
-	return tmp;
+	newThread._stackBuf.resize(ScriptThread::THREAD_STACK_SIZE);
+	newThread._stackTopIndex = ScriptThread::THREAD_STACK_SIZE - 2;
+	debug(3, "createThread(). Total threads: %d", _threadList.size());
+	return newThread;
 }
 
 void Script::wakeUpActorThread(int waitType, void *threadObj) {
@@ -78,6 +75,8 @@ void Script::wakeUpActorThread(int waitType, void *threadObj) {
 void Script::wakeUpThreads(int waitType) {
 	ScriptThreadList::iterator threadIterator;
 
+	debug(3, "wakeUpThreads(%d)", waitType);
+
 	for (threadIterator = _threadList.begin(); threadIterator != _threadList.end(); ++threadIterator) {
 		ScriptThread &thread = *threadIterator;
 		if ((thread._flags & kTFlagWaiting) && (thread._waitType == waitType)) {
@@ -88,6 +87,8 @@ void Script::wakeUpThreads(int waitType) {
 
 void Script::wakeUpThreadsDelayed(int waitType, int sleepTime) {
 	ScriptThreadList::iterator threadIterator;
+
+	debug(3, "wakeUpThreads(%d, %d)", waitType, sleepTime);
 
 	for (threadIterator = _threadList.begin(); threadIterator != _threadList.end(); ++threadIterator) {
 		ScriptThread &thread = *threadIterator;
@@ -101,9 +102,8 @@ void Script::wakeUpThreadsDelayed(int waitType, int sleepTime) {
 void Script::executeThreads(uint msec) {
 	ScriptThreadList::iterator threadIterator;
 
-	if (_vm->_interface->_statusTextInput) {
+	if (_vm->_interface->_statusTextInput)
 		return;
-	}
 
 	threadIterator = _threadList.begin();
 
@@ -128,11 +128,10 @@ void Script::executeThreads(uint msec) {
 
 			switch (thread._waitType) {
 			case kWaitTypeDelay:
-				if (thread._sleepTime < msec) {
+				if (thread._sleepTime < msec)
 					thread._sleepTime = 0;
-				} else {
+				else
 					thread._sleepTime -= msec;
-				}
 
 				if (thread._sleepTime == 0)
 					thread._flags &= ~kTFlagWaiting;
@@ -140,11 +139,9 @@ void Script::executeThreads(uint msec) {
 
 			case kWaitTypeWalk:
 				{
-					ActorData *actor;
-					actor = (ActorData *)thread._threadObj;
-					if (actor->_currentAction == kActionWait) {
+					ActorData *actor = (ActorData *)thread._threadObj;
+					if (actor->_currentAction == kActionWait)
 						thread._flags &= ~kTFlagWaiting;
-					}
 				}
 				break;
 
@@ -156,9 +153,8 @@ void Script::executeThreads(uint msec) {
 		}
 
 		if (!(thread._flags & kTFlagWaiting)) {
-			if (runThread(thread)) {
+			if (runThread(thread))
 				break;
-			}
 		}
 
 		++threadIterator;
@@ -166,8 +162,10 @@ void Script::executeThreads(uint msec) {
 
 }
 
-void Script::abortAllThreads(void) {
+void Script::abortAllThreads() {
 	ScriptThreadList::iterator threadIterator;
+
+	debug(3, "abortAllThreads()");
 
 	threadIterator = _threadList.begin();
 
@@ -179,7 +177,7 @@ void Script::abortAllThreads(void) {
 	executeThreads(0);
 }
 
-void Script::completeThread(void) {
+void Script::completeThread() {
 	int limit = (_vm->getGameId() == GID_IHNM) ? 100 : 40;
 
 	for (int i = 0; i < limit && !_threadList.empty(); i++)
@@ -192,7 +190,7 @@ bool Script::runThread(ScriptThread &thread) {
 	bool breakOut = false;
 	int operandChar;
 
-	MemoryReadStream scriptS(thread._moduleBase, thread._moduleBaseSize);
+	Common::MemoryReadStream scriptS(thread._moduleBase, thread._moduleBaseSize);
 
 	scriptS.seek(thread._instructionOffset);
 
@@ -203,7 +201,7 @@ bool Script::runThread(ScriptThread &thread) {
 		savedInstructionOffset = thread._instructionOffset;
 		operandChar = scriptS.readByte();
 
-		debug(8, "Executing thread offset: %u (%x) stack: %d", thread._instructionOffset, operandChar, thread.pushedSize());
+		debug(8, "Executing thread offset: %u (0x%X) stack: %d", thread._instructionOffset, operandChar, thread.pushedSize());
 
 		stopParsing = false;
 		debug(4, "Calling op %s", this->_scriptOpsList[operandChar].scriptOpName);
@@ -233,4 +231,3 @@ bool Script::runThread(ScriptThread &thread) {
 }
 
 } // End of namespace Saga
-

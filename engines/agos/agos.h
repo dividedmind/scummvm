@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef AGOS_AGOS_H
@@ -28,25 +25,52 @@
 
 #include "engines/engine.h"
 
+#include "common/archive.h"
 #include "common/array.h"
+#include "common/error.h"
 #include "common/keyboard.h"
+#include "common/random.h"
 #include "common/rect.h"
 #include "common/stack.h"
 #include "common/util.h"
 
-#include "agos/animation.h"
-#include "agos/midi.h"
 #include "agos/sound.h"
 #include "agos/vga.h"
 
-// TODO: Replace with more portable code
-#include <setjmp.h>
+/**
+ * This is the namespace of the AGOS engine.
+ *
+ * Status of this engine: ???
+ *
+ * Games using this engine:
+ * - Elvira: Mistress of the Dark
+ * - Elvira 2: The Jaws of Cerberus
+ * - The Feeble Files
+ * - Simon the Sorcerer
+ * - Simon the Sorcerer 2
+ * - Simon the Sorcerer Puzzle Pack
+ */
+
+namespace Common {
+class File;
+class SeekableReadStream;
+}
+
+namespace Graphics {
+struct Surface;
+}
 
 namespace AGOS {
 
 uint fileReadItemID(Common::SeekableReadStream *in);
 
 #define CHECK_BOUNDS(x, y) assert((uint)(x) < ARRAYSIZE(y))
+
+#ifdef ENABLE_AGOS2
+class MoviePlayer;
+#endif
+
+class MidiPlayer;
 
 struct Child;
 struct SubObject;
@@ -163,7 +187,24 @@ class Debugger;
 #	define _OPCODE(ver, x)	{ &ver::x, "" }
 #endif
 
+class ArchiveMan : public Common::SearchSet {
+public:
+	ArchiveMan();
+
+	void enableFallback(bool val) { _fallBack = val; }
+
+#ifdef ENABLE_AGOS2
+	void registerArchive(const Common::String &filename, int priority);
+#endif
+
+	Common::SeekableReadStream *open(const Common::String &filename);
+
+private:
+	bool _fallBack;
+};
+
 class AGOSEngine : public Engine {
+protected:
 	friend class Debugger;
 
 	// Engine APIs
@@ -172,7 +213,7 @@ class AGOSEngine : public Engine {
 	virtual Common::Error run() {
 		Common::Error err;
 		err = init();
-		if (err != Common::kNoError)
+		if (err.getCode() != Common::kNoError)
 			return err;
 		return go();
 	}
@@ -181,7 +222,6 @@ class AGOSEngine : public Engine {
 	virtual void syncSoundSettings();
 	virtual void pauseEngineIntern(bool pause);
 
-public:
 	virtual void setupOpcodes();
 	uint16 _numOpcodes, _opcode;
 
@@ -193,8 +233,9 @@ public:
 
 	virtual void setupVideoOpcodes(VgaOpcodeProc *op);
 
-	const AGOSGameDescription *_gameDescription;
+	const AGOSGameDescription * const _gameDescription;
 
+public:
 	virtual void setupGame();
 
 	int getGameId() const;
@@ -216,6 +257,7 @@ protected:
 
 	uint8 _numMusic, _numSFX;
 	uint16 _numSpeech;
+	uint16 _numZone;
 
 	uint8 _numBitArray1, _numBitArray2, _numBitArray3, _numItemStore;
 	uint16 _numVars;
@@ -292,7 +334,7 @@ protected:
 	bool _beardLoaded;
 	bool _litBoxFlag;
 	bool _mortalFlag;
-	bool _displayScreen;
+	uint16 _displayFlag;
 	bool _syncFlag2;
 	bool _inCallBack;
 	bool _cepeFlag;
@@ -300,7 +342,7 @@ protected:
 	bool _backFlag;
 
 	uint16 _debugMode;
-	uint16 _language;
+	Common::Language _language;
 	bool _copyProtection;
 	bool _pause;
 	bool _dumpScripts;
@@ -385,7 +427,7 @@ protected:
 	Common::Point _mouseOld;
 
 	byte *_mouseData;
-	byte _animatePointer;
+	bool _animatePointer;
 	byte _maxCursorWidth, _maxCursorHeight;
 	byte _mouseAnim, _mouseAnimMax, _mouseCursor;
 	byte _currentMouseAnim, _currentMouseCursor;
@@ -515,8 +557,8 @@ protected:
 	uint16 _PVCount1;
 	uint16 _GPVCount1;
 
-	uint8 _currentPalette[1024];
-	uint8 _displayPalette[1024];
+	uint8 _currentPalette[768];
+	uint8 _displayPalette[768];
 
 	byte *_planarBuf;
 	byte _videoBuf1[32000];
@@ -535,10 +577,8 @@ protected:
 
 	byte _lettersToPrintBuf[80];
 
-	MidiPlayer _midi;
-	MidiDriver *_driver;
+	MidiPlayer *_midi;
 	bool _midiEnabled;
-	bool _nativeMT32;
 
 	int _vgaTickCounter;
 
@@ -574,8 +614,10 @@ protected:
 	byte _hebrewCharWidths[32];
 
 public:
-	AGOSEngine(OSystem *syst);
+	AGOSEngine(OSystem *system, const AGOSGameDescription *gd);
 	virtual ~AGOSEngine();
+
+	ArchiveMan _archives;
 
 	byte *_curSfxFile;
 	uint32 _curSfxFileSize;
@@ -585,6 +627,10 @@ protected:
 	virtual uint16 to16Wrapper(uint value);
 	virtual uint16 readUint16Wrapper(const void *src);
 	virtual uint32 readUint32Wrapper(const void *src);
+
+#ifdef ENABLE_AGOS2
+	void loadArchives();
+#endif
 
 	int allocGamePcVars(Common::SeekableReadStream *in);
 	void createPlayer();
@@ -770,14 +816,14 @@ protected:
 	void loadTextIntoMem(uint16 stringId);
 
 	uint loadTextFile(const char *filename, byte *dst);
-	Common::File *openTablesFile(const char *filename);
-	void closeTablesFile(Common::File *in);
+	Common::SeekableReadStream *openTablesFile(const char *filename);
+	void closeTablesFile(Common::SeekableReadStream *in);
 
 	uint loadTextFile_simon1(const char *filename, byte *dst);
-	Common::File *openTablesFile_simon1(const char *filename);
+	Common::SeekableReadStream *openTablesFile_simon1(const char *filename);
 
 	uint loadTextFile_gme(const char *filename, byte *dst);
-	Common::File *openTablesFile_gme(const char *filename);
+	Common::SeekableReadStream *openTablesFile_gme(const char *filename);
 
 	void invokeTimeEvent(TimeEvent *te);
 	bool kickoffTimeEvents();
@@ -892,6 +938,7 @@ public:
 	void vc19_loop();
 	void vc20_setRepeat();
 	void vc21_endRepeat();
+	virtual void vc22_setPalette();
 	void vc23_setPriority();
 	void vc24_setSpriteXY();
 	void vc25_halt_sprite();
@@ -904,7 +951,7 @@ public:
 	void vc33_setMouseOn();
 	void vc34_setMouseOff();
 	void vc35_clearWindow();
-	void vc36_setWindowImage();
+	virtual void vc36_setWindowImage();
 	void vc38_ifVarNotZero();
 	void vc39_setVar();
 	void vc40_scrollRight();
@@ -924,7 +971,6 @@ public:
 
 	// Video Script Opcodes, Elvira 1
 	void vc17_waitEnd();
-	void vc22_setPaletteOld();
 	void vc32_saveScreen();
 	void vc37_pokePalette();
 
@@ -962,10 +1008,9 @@ public:
 	void vc45_setSpriteX();
 	void vc46_setSpriteY();
 	void vc47_addToVar();
-	void vc48_setPathFinder();
+	virtual void vc48_setPathFinder();
 	void vc59_ifSpeech();
 	void vc61_setMaskImage();
-	void vc22_setPaletteNew();
 
 	// Video Script Opcodes, Simon 2
 	void vc56_delayLong();
@@ -1129,7 +1174,7 @@ protected:
 	int getScale(int16 y, int16 x);
 	void checkScrollX(int16 x, int16 xpos);
 	void checkScrollY(int16 y, int16 ypos);
-	void centreScroll();
+	void centerScroll();
 
 	virtual void clearVideoWindow(uint16 windowNum, uint16 color);
 	void clearVideoBackGround(uint16 windowNum, uint16 color);
@@ -1230,7 +1275,7 @@ protected:
 
 	virtual void windowNewLine(WindowBlock *window);
 	void windowScroll(WindowBlock *window);
-	void windowDrawChar(WindowBlock *window, uint x, uint y, byte chr);
+	virtual void windowDrawChar(WindowBlock *window, uint x, uint y, byte chr);
 
 	void loadMusic(uint16 track);
 	void playModule(uint16 music);
@@ -1264,7 +1309,6 @@ protected:
 	virtual char *genSaveName(int slot);
 };
 
-#ifdef ENABLE_PN
 class AGOSEngine_PN : public AGOSEngine {
 
 	virtual Common::Error go();
@@ -1273,7 +1317,7 @@ class AGOSEngine_PN : public AGOSEngine {
 	void setupBoxes();
 	int readfromline();
 public:
-	AGOSEngine_PN(OSystem *system);
+	AGOSEngine_PN(OSystem *system, const AGOSGameDescription *gd);
 	~AGOSEngine_PN();
 
 	virtual void setupGame();
@@ -1365,9 +1409,6 @@ protected:
 
 	int _tagOfActiveDoline;	///< tag of the active doline "instance"
 	int _dolineReturnVal;
-
-	jmp_buf _loadfail;
-
 
 	byte *_dataBase, *_textBase;
 	uint32 _dataBaseSize, _textBaseSize;
@@ -1515,11 +1556,10 @@ protected:
 
 	const OpcodeEntryPN *_opcodesPN;
 };
-#endif
 
 class AGOSEngine_Elvira1 : public AGOSEngine {
 public:
-	AGOSEngine_Elvira1(OSystem *system);
+	AGOSEngine_Elvira1(OSystem *system, const AGOSGameDescription *gd);
 	//~AGOSEngine_Elvira1();
 
 	virtual void setupGame();
@@ -1600,7 +1640,7 @@ protected:
 
 class AGOSEngine_Elvira2 : public AGOSEngine_Elvira1 {
 public:
-	AGOSEngine_Elvira2(OSystem *system);
+	AGOSEngine_Elvira2(OSystem *system, const AGOSGameDescription *gd);
 	//~AGOSEngine_Elvira2();
 
 	virtual void setupGame();
@@ -1695,7 +1735,7 @@ protected:
 
 class AGOSEngine_Waxworks : public AGOSEngine_Elvira2 {
 public:
-	AGOSEngine_Waxworks(OSystem *system);
+	AGOSEngine_Waxworks(OSystem *system, const AGOSGameDescription *gd);
 	//~AGOSEngine_Waxworks();
 
 	virtual void setupGame();
@@ -1762,7 +1802,7 @@ protected:
 
 class AGOSEngine_Simon1 : public AGOSEngine_Waxworks {
 public:
-	AGOSEngine_Simon1(OSystem *system);
+	AGOSEngine_Simon1(OSystem *system, const AGOSGameDescription *gd);
 	//~AGOSEngine_Simon1();
 
 	virtual void setupGame();
@@ -1770,6 +1810,8 @@ public:
 	virtual void setupVideoOpcodes(VgaOpcodeProc *op);
 
 	virtual void executeOpcode(int opcode);
+
+	virtual void vc22_setPalette();
 
 	// Opcodes, Simon 1
 	void os1_animate();
@@ -1831,7 +1873,7 @@ protected:
 
 class AGOSEngine_Simon2 : public AGOSEngine_Simon1 {
 public:
-	AGOSEngine_Simon2(OSystem *system);
+	AGOSEngine_Simon2(OSystem *system, const AGOSGameDescription *gd);
 	//~AGOSEngine_Simon2();
 
 	virtual void setupGame();
@@ -1875,9 +1917,10 @@ protected:
 	virtual char *genSaveName(int slot);
 };
 
+#ifdef ENABLE_AGOS2
 class AGOSEngine_Feeble : public AGOSEngine_Simon2 {
 public:
-	AGOSEngine_Feeble(OSystem *system);
+	AGOSEngine_Feeble(OSystem *system, const AGOSGameDescription *gd);
 	~AGOSEngine_Feeble();
 
 	virtual void setupGame();
@@ -1885,6 +1928,9 @@ public:
 	virtual void setupVideoOpcodes(VgaOpcodeProc *op);
 
 	virtual void executeOpcode(int opcode);
+
+	virtual void vc36_setWindowImage();
+	virtual void vc48_setPathFinder();
 
 	void off_chance();
 	void off_jumpOut();
@@ -1909,12 +1955,12 @@ public:
 	void off_mouseOff();
 	void off_loadVideo();
 	void off_playVideo();
-	void off_centreScroll();
+	void off_centerScroll();
 	void off_resetPVCount();
 	void off_setPathValues();
 	void off_stopClock();
 	void off_restartClock();
-	void off_setColour();
+	void off_setColor();
 	void off_b3Set();
 	void off_b3Clear();
 	void off_b3Zero();
@@ -1968,6 +2014,7 @@ protected:
 	void invertBox(HitArea *ha, bool state);
 
 	virtual void windowNewLine(WindowBlock *window);
+	virtual void windowDrawChar(WindowBlock *window, uint x, uint y, byte chr);
 
 	virtual void clearName();
 
@@ -2003,7 +2050,7 @@ protected:
 	void scrollOracleUp();
 	void scrollOracleDown();
 
-	void listSaveGames(int n);
+	void listSaveGamesFeeble();
 	void saveUserGame(int slot);
 	void windowBackSpace(WindowBlock *window);
 
@@ -2012,7 +2059,7 @@ protected:
 
 class AGOSEngine_FeebleDemo : public AGOSEngine_Feeble {
 public:
-	AGOSEngine_FeebleDemo(OSystem *system);
+	AGOSEngine_FeebleDemo(OSystem *system, const AGOSGameDescription *gd);
 
 protected:
 	bool _filmMenuUsed;
@@ -2033,7 +2080,7 @@ protected:
 
 class AGOSEngine_PuzzlePack : public AGOSEngine_Feeble {
 public:
-	AGOSEngine_PuzzlePack(OSystem *system);
+	AGOSEngine_PuzzlePack(OSystem *system, const AGOSGameDescription *gd);
 	//~AGOSEngine_PuzzlePack();
 
 	virtual void setupGame();
@@ -2059,7 +2106,7 @@ public:
 	void opp_resetGameTime();
 	void opp_resetPVCount();
 	void opp_setPathValues();
-	void opp_restartClock();
+	void opp_pauseClock();
 
 protected:
 	typedef void (AGOSEngine_PuzzlePack::*OpcodeProcPuzzlePack) ();
@@ -2071,10 +2118,7 @@ protected:
 	const OpcodeEntryPuzzlePack *_opcodesPuzzlePack;
 
 	bool _oopsValid;
-	int16 _iconToggleCount, _voiceCount;
 	uint32 _gameTime;
-	uint32 _lastTickCount, _thisTickCount;
-	uint32 _startSecondCount, _tSecondCount;
 
 	virtual void initMouse();
 	virtual void handleMouseMoved();
@@ -2084,14 +2128,45 @@ protected:
 
 	void loadMouseImage();
 
-	void dimpIdle();
-	virtual void timerProc();
-
 	void startOverlayAnims();
 	void startAnOverlayAnim();
 
+	void printInfoText(const char *itemText);
+
 	virtual char *genSaveName(int slot);
 };
+
+
+class AGOSEngine_DIMP : public AGOSEngine_PuzzlePack {
+public:
+	AGOSEngine_DIMP(OSystem *system, const AGOSGameDescription *gd);
+	//~AGOSEngine_DIMP();
+
+	virtual void setupOpcodes();
+
+	virtual void executeOpcode(int opcode);
+
+protected:
+	typedef void (AGOSEngine_DIMP::*OpcodeProcDIMP) ();
+	struct OpcodeEntryDIMP {
+		OpcodeProcDIMP proc;
+		const char *desc;
+	};
+
+	const OpcodeEntryDIMP *_opcodesDIMP;
+
+	int16 _iconToggleCount, _voiceCount;
+	uint32 _lastTickCount;
+	uint32 _startSecondCount, _tSecondCount;
+
+	void odp_saveUserGame();
+	void odp_loadUserGame();
+
+	void dimpIdle();
+	virtual void timerProc();
+
+};
+#endif
 
 } // End of namespace AGOS
 

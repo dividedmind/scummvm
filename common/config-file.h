@@ -18,20 +18,19 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef COMMON_CONFIG_FILE_H
 #define COMMON_CONFIG_FILE_H
 
-#include "common/config-manager.h"
+#include "common/hash-str.h"
 #include "common/list.h"
 #include "common/str.h"
-#include "common/stream.h"
 
 namespace Common {
+
+class SeekableReadStream;
+class WriteStream;
 
 /**
  * This class allows reading/writing INI style config files.
@@ -94,7 +93,7 @@ public:
 	 * underscores. In particular, white space and "#", "=", "[", "]"
 	 * are not valid!
 	 */
-	static bool isValidName(const Common::String &name);
+	static bool isValidName(const String &name);
 
 	/** Reset everything stored in this config file. */
 	void	clear();

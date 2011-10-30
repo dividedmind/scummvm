@@ -25,6 +25,11 @@
 #define __restrict__
 #endif
 
+#ifdef __sgi
+#define __restrict__ __restrict
+#endif
+
+
 typedef unsigned char scale2x_uint8;
 typedef unsigned short scale2x_uint16;
 typedef unsigned scale2x_uint32;
@@ -61,4 +66,3 @@ extern "C" void scale2x_32_arm(scale2x_uint32* dst0, scale2x_uint32* dst1, const
 #endif
 
 #endif
-

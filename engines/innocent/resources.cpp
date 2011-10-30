@@ -238,7 +238,7 @@ Image *Resources::loadImage(uint16 index) const {
 		return img;
 
 	img = new Image;
-	img->create(320, 200, 1);
+	img->create(320, 200);
 	assert(img->pitch == 320);
 	loadImage(index, reinterpret_cast<byte *>(img->pixels), 320*200);
 	cache[index] = img;
@@ -301,7 +301,7 @@ Surface *Resources::loadBackdrop(uint16 index, byte *palette) {
 
 
 	Surface *backdrop = new Surface;
-	backdrop->create(width, height, 1);
+	backdrop->create(width, height);
 
 	decodeImage(stream, reinterpret_cast<byte *>(backdrop->pixels), width * height);
 
@@ -338,7 +338,7 @@ SpriteInfo Resources::getSpriteInfo(uint16 id) const {
 
 Sprite *Image::cut(Common::Rect rect) const {
 	Sprite *sprite = new Sprite;
-	sprite->create(rect.width(), rect.height(), 1);
+	sprite->create(rect.width(), rect.height());
 
 	const byte *src = reinterpret_cast<const byte *>(getBasePtr(rect.left, rect.top));
 	byte *dest = reinterpret_cast<byte *>(sprite->pixels);

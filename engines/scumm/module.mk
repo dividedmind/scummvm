@@ -16,6 +16,7 @@ MODULE_OBJS := \
 	dialogs.o \
 	file.o \
 	file_nes.o \
+	gfx_towns.o \
 	gfx.o \
 	he/resource_he.o \
 	he/script_v60he.o \
@@ -26,20 +27,25 @@ MODULE_OBJS := \
 	imuse/imuse_part.o \
 	imuse/imuse_player.o \
 	imuse/instrument.o \
+	imuse/pcspk.o \
 	imuse/sysex_samnmax.o \
 	imuse/sysex_scumm.o \
 	input.o \
-	midiparser_eup.o \
 	midiparser_ro.o \
 	object.o \
 	palette.o \
 	player_mod.o \
 	player_nes.o \
+	player_pce.o \
+	player_sid.o \
+	player_towns.o \
 	player_v1.o \
 	player_v2.o \
 	player_v2a.o \
+	player_v2base.o \
 	player_v2cms.o \
 	player_v3a.o \
+	player_v4a.o \
 	resource_v2.o \
 	resource_v3.o \
 	resource_v4.o \
@@ -118,7 +124,14 @@ MODULE_OBJS += \
 	he/script_v90he.o \
 	he/script_v100he.o \
 	he/sprite_he.o \
-	he/wiz_he.o
+	he/wiz_he.o \
+	he/logic/baseball2001.o \
+	he/logic/basketball.o \
+	he/logic/football.o \
+	he/logic/funshop.o \
+	he/logic/moonbase.o \
+	he/logic/puttrace.o \
+	he/logic/soccer.o
 endif
 
 # This module can be built as a plugin

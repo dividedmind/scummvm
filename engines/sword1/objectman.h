@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 // this is the object manager. our equivalent to protocol.c and coredata.c
@@ -37,8 +34,8 @@ namespace Sword1 {
 class ObjectMan {
 public:
 	ObjectMan(ResMan *pResourceMan);
-	~ObjectMan(void);
-	void initialize(void);
+	~ObjectMan();
+	void initialize();
 
 	Object *fetchObject(uint32 id);
 	uint32 fetchNoObjects(int section);
@@ -57,12 +54,12 @@ public:
 	void loadLiveList(uint16 *src);
 private:
 	ResMan *_resMan;
-	static const uint32 _objectList[TOTAL_SECTIONS];	//a table of pointers to object files
-	static const uint32 _textList[TOTAL_SECTIONS][7];	//a table of pointers to text files
-	uint16	_liveList[TOTAL_SECTIONS];					//which sections are active
+	static const uint32 _objectList[TOTAL_SECTIONS];    //a table of pointers to object files
+	static const uint32 _textList[TOTAL_SECTIONS][7];   //a table of pointers to text files
+	uint16  _liveList[TOTAL_SECTIONS];                  //which sections are active
 	uint8 *_cptData[TOTAL_SECTIONS];
 	static char _missingSubTitleStr[];
-	static const char *_translationId2950145[7];		//translation for textId 2950145 (missing from cluster file for some langages)
+	static const char *const _translationId2950145[7];        //translation for textId 2950145 (missing from cluster file for some langages)
 };
 
 } // End of namespace Sword1

@@ -18,15 +18,17 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #ifndef GOB_UTIL_H
 #define GOB_UTIL_H
 
+#include "common/str.h"
 #include "common/keyboard.h"
+
+namespace Common {
+	class SeekableReadStream;
+}
 
 namespace Gob {
 
@@ -91,7 +93,7 @@ public:
 		List() : pHead(0), pTail(0) {}
 	};
 
-	uint32 getTimeKey(void);
+	uint32 getTimeKey();
 	int16 getRandom(int16 max);
 	void beep(int16 freq);
 
@@ -100,21 +102,22 @@ public:
 	void delay(uint16 msecs);
 	void longDelay(uint16 msecs);
 
-	void initInput(void);
+	void initInput();
 	void processInput(bool scroll = false);
-	void clearKeyBuf(void);
-	int16 getKey(void);
-	int16 checkKey(void);
+	void clearKeyBuf();
+	int16 getKey();
+	int16 checkKey();
 	bool checkKey(int16 &key);
+	bool keyPressed();
 
 	void getMouseState(int16 *pX, int16 *pY, MouseButtons *pButtons);
 	void setMousePos(int16 x, int16 y);
-	void waitMouseUp(void);
-	void waitMouseDown(void);
+	void waitMouseUp();
+	void waitMouseDown();
 	void waitMouseRelease(char drawMouse);
 	void forceMouseUp(bool onlyWhenSynced = false);
 
-	void clearPalette(void);
+	void clearPalette();
 	int16 getFrameRate();
 	void setFrameRate(int16 rate);
 	void notifyNewAnim();
@@ -130,6 +133,12 @@ public:
 	static void listInsertBack(List *list, void *data);
 	static void listDropFront(List *list);
 	static void deleteList(List *list);
+
+	static char *setExtension(char *str, const char *ext);
+	static Common::String setExtension(const Common::String &str, const Common::String &ext);
+
+	/** Read a constant-length string out of a stream. */
+	static Common::String readString(Common::SeekableReadStream &stream, int n);
 
 	Util(GobEngine *vm);
 

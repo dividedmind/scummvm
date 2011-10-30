@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 // Intro sequence scene procedures
@@ -61,15 +58,15 @@ using Common::IT_ITA;
 #define MUSIC_2 10
 
 LoadSceneParams ITE_IntroList[] = {
-	{RID_ITE_INTRO_ANIM_SCENE, kLoadByResourceId, NULL, Scene::SC_ITEIntroAnimProc, false, kTransitionNoFade, 0, NO_CHAPTER_CHANGE},
-	{RID_ITE_CAVE_SCENE_1, kLoadByResourceId, NULL, Scene::SC_ITEIntroCave1Proc, false, kTransitionFade, 0, NO_CHAPTER_CHANGE},
-	{RID_ITE_CAVE_SCENE_2, kLoadByResourceId, NULL, Scene::SC_ITEIntroCave2Proc, false, kTransitionNoFade, 0, NO_CHAPTER_CHANGE},
-	{RID_ITE_CAVE_SCENE_3, kLoadByResourceId, NULL, Scene::SC_ITEIntroCave3Proc, false, kTransitionNoFade, 0, NO_CHAPTER_CHANGE},
-	{RID_ITE_CAVE_SCENE_4, kLoadByResourceId, NULL, Scene::SC_ITEIntroCave4Proc, false, kTransitionNoFade, 0, NO_CHAPTER_CHANGE},
-	{RID_ITE_VALLEY_SCENE, kLoadByResourceId, NULL, Scene::SC_ITEIntroValleyProc, false, kTransitionFade, 0, NO_CHAPTER_CHANGE},
-	{RID_ITE_TREEHOUSE_SCENE, kLoadByResourceId, NULL, Scene::SC_ITEIntroTreeHouseProc, false, kTransitionNoFade, 0, NO_CHAPTER_CHANGE},
-	{RID_ITE_FAIREPATH_SCENE, kLoadByResourceId, NULL, Scene::SC_ITEIntroFairePathProc, false, kTransitionNoFade, 0, NO_CHAPTER_CHANGE},
-	{RID_ITE_FAIRETENT_SCENE, kLoadByResourceId, NULL, Scene::SC_ITEIntroFaireTentProc, false, kTransitionNoFade, 0, NO_CHAPTER_CHANGE}
+	{RID_ITE_INTRO_ANIM_SCENE, kLoadByResourceId, Scene::SC_ITEIntroAnimProc, false, kTransitionNoFade, 0, NO_CHAPTER_CHANGE},
+	{RID_ITE_CAVE_SCENE_1, kLoadByResourceId, Scene::SC_ITEIntroCave1Proc, false, kTransitionFade, 0, NO_CHAPTER_CHANGE},
+	{RID_ITE_CAVE_SCENE_2, kLoadByResourceId, Scene::SC_ITEIntroCave2Proc, false, kTransitionNoFade, 0, NO_CHAPTER_CHANGE},
+	{RID_ITE_CAVE_SCENE_3, kLoadByResourceId, Scene::SC_ITEIntroCave3Proc, false, kTransitionNoFade, 0, NO_CHAPTER_CHANGE},
+	{RID_ITE_CAVE_SCENE_4, kLoadByResourceId, Scene::SC_ITEIntroCave4Proc, false, kTransitionNoFade, 0, NO_CHAPTER_CHANGE},
+	{RID_ITE_VALLEY_SCENE, kLoadByResourceId, Scene::SC_ITEIntroValleyProc, false, kTransitionFade, 0, NO_CHAPTER_CHANGE},
+	{RID_ITE_TREEHOUSE_SCENE, kLoadByResourceId, Scene::SC_ITEIntroTreeHouseProc, false, kTransitionNoFade, 0, NO_CHAPTER_CHANGE},
+	{RID_ITE_FAIREPATH_SCENE, kLoadByResourceId, Scene::SC_ITEIntroFairePathProc, false, kTransitionNoFade, 0, NO_CHAPTER_CHANGE},
+	{RID_ITE_FAIRETENT_SCENE, kLoadByResourceId, Scene::SC_ITEIntroFaireTentProc, false, kTransitionNoFade, 0, NO_CHAPTER_CHANGE}
 };
 
 int Scene::ITEStartProc() {
@@ -84,25 +81,24 @@ int Scene::ITEStartProc() {
 	for (i = 0; i < scenesCount; i++) {
 		tempScene = ITE_IntroList[i];
 		tempScene.sceneDescriptor = _vm->_resource->convertResourceId(tempScene.sceneDescriptor);
-		_vm->_scene->queueScene(&tempScene);
+		_vm->_scene->queueScene(tempScene);
 	}
 
 
 	firstScene.loadFlag = kLoadBySceneNumber;
 	firstScene.sceneDescriptor = _vm->getStartSceneNumber();
-	firstScene.sceneDescription = NULL;
 	firstScene.sceneSkipTarget = true;
 	firstScene.sceneProc = NULL;
 	firstScene.transitionType = kTransitionFade;
 	firstScene.actorsEntrance = 0;
 	firstScene.chapter = -1;
 
-	_vm->_scene->queueScene(&firstScene);
+	_vm->_scene->queueScene(firstScene);
 
 	return SUCCESS;
 }
 
-Event *Scene::ITEQueueDialogue(Event *q_event, int n_dialogues, const IntroDialogue dialogue[]) {
+EventColumns *Scene::ITEQueueDialogue(EventColumns *eventColumns, int n_dialogues, const IntroDialogue dialogue[]) {
 	TextListEntry textEntry;
 	TextListEntry *entry;
 	Event event;
@@ -136,7 +132,7 @@ Event *Scene::ITEQueueDialogue(Event *q_event, int n_dialogues, const IntroDialo
 		event.op = kEventDisplay;
 		event.data = entry;
 		event.time = (i == 0) ? 0 : VOICE_PAD;
-		q_event = _vm->_events->chain(q_event, &event);
+		eventColumns = _vm->_events->chain(eventColumns, event);
 
 		// Play voice
 		event.type = kEvTOneshot;
@@ -144,7 +140,7 @@ Event *Scene::ITEQueueDialogue(Event *q_event, int n_dialogues, const IntroDialo
 		event.op = kEventPlay;
 		event.param = dialogue[i].i_voice_rn;
 		event.time = 0;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		voice_len = _vm->_sndRes->getVoiceLength(dialogue[i].i_voice_rn);
 		if (voice_len < 0) {
@@ -157,10 +153,10 @@ Event *Scene::ITEQueueDialogue(Event *q_event, int n_dialogues, const IntroDialo
 		event.op = kEventRemove;
 		event.data = entry;
 		event.time = voice_len;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 	}
 
-	return q_event;
+	return eventColumns;
 }
 
 enum {
@@ -180,24 +176,25 @@ enum {
 // Queue a page of credits text. The original interpreter did word-wrapping
 // automatically. We currently don't.
 
-Event *Scene::ITEQueueCredits(int delta_time, int duration, int n_credits, const IntroCredit credits[]) {
+EventColumns *Scene::ITEQueueCredits(int delta_time, int duration, int n_credits, const IntroCredit credits[]) {
 	int game;
 	Common::Language lang;
+	bool hasWyrmkeepCredits = (Common::File::exists("credit3n.dlt") ||	// PC
+							   Common::File::exists("credit3m.dlt"));	// Mac
 
 	// The assumption here is that all WyrmKeep versions have the same
 	// credits, regardless of which operating system they're for.
 
 	lang = _vm->getLanguage();
 
-	if (_vm->getFeatures() & GF_WYRMKEEP) {
+	if (hasWyrmkeepCredits)
 		game = kITEWyrmKeep;
-	} else if (_vm->getPlatform() == Common::kPlatformMacintosh) {
+	else if (_vm->getPlatform() == Common::kPlatformMacintosh)
 		game = kITEMac;
-	} else if (_vm->getFeatures() & GF_EXTRA_ITE_CREDITS) {
+	else if (_vm->getFeatures() & GF_EXTRA_ITE_CREDITS)
 		game = kITEPCCD;
-	} else {
+	else
 		game = kITEPC;
-	}
 
 	int line_spacing = 0;
 	int paragraph_spacing;
@@ -241,7 +238,7 @@ Event *Scene::ITEQueueCredits(int delta_time, int duration, int n_credits, const
 	TextListEntry textEntry;
 	TextListEntry *entry;
 	Event event;
-	Event *q_event = NULL;
+	EventColumns *eventColumns = NULL;
 
 	textEntry.knownColor = kKnownColorSubtitleTextColor;
 	textEntry.effectKnownColor = kKnownColorTransparent;
@@ -283,7 +280,7 @@ Event *Scene::ITEQueueCredits(int delta_time, int duration, int n_credits, const
 		event.op = kEventDisplay;
 		event.data = entry;
 		event.time = delta_time;
-		q_event = _vm->_events->queue(&event);
+		eventColumns = _vm->_events->queue(event);
 
 		// Remove text
 		event.type = kEvTOneshot;
@@ -291,12 +288,12 @@ Event *Scene::ITEQueueCredits(int delta_time, int duration, int n_credits, const
 		event.op = kEventRemove;
 		event.data = entry;
 		event.time = duration;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		y += (_vm->_font->getHeight(font) + line_spacing);
 	}
 
-	return q_event;
+	return eventColumns;
 }
 
 int Scene::SC_ITEIntroAnimProc(int param, void *refCon) {
@@ -306,7 +303,12 @@ int Scene::SC_ITEIntroAnimProc(int param, void *refCon) {
 // Handles the introductory Dreamer's Guild / NWC logo animation scene.
 int Scene::ITEIntroAnimProc(int param) {
 	Event event;
-	Event *q_event;
+	EventColumns *eventColumns;
+	bool isMac = _vm->getPlatform() == Common::kPlatformMacintosh;
+	bool isMultiCD = _vm->getPlatform() == Common::kPlatformUnknown;
+	bool hasWyrmkeepCredits = (Common::File::exists("credit3n.dlt") ||	// PC
+							   Common::File::exists("credit3m.dlt"));	// Mac
+	bool isDemo = Common::File::exists("scriptsd.rsc");
 
 	switch (param) {
 	case SCENE_BEGIN:{
@@ -317,7 +319,7 @@ int Scene::ITEIntroAnimProc(int param) {
 		event.op = kEventDisplay;
 		event.param = kEvPSetPalette;
 		event.time = 0;
-		q_event = _vm->_events->queue(&event);
+		eventColumns = _vm->_events->queue(event);
 
 		debug(3, "Intro animation procedure started.");
 		debug(3, "Linking animation resources...");
@@ -328,19 +330,10 @@ int Scene::ITEIntroAnimProc(int param) {
 		// playback
 		int lastAnim;
 
-		if (_vm->getFeatures() & GF_WYRMKEEP) {
-			if (_vm->getPlatform() == Common::kPlatformMacintosh) {
-				lastAnim = 3;
-			} else {
-				lastAnim = 2;
-			}
-		} else {
-			if (_vm->getPlatform() == Common::kPlatformMacintosh) {
-				lastAnim = 4;
-			} else {
-				lastAnim = 5;
-			}
-		}
+		if (hasWyrmkeepCredits || isMultiCD || isDemo)
+			lastAnim = isMac ? 3 : 2;
+		else
+			lastAnim = isMac ? 4 : 5;
 
 		for (int i = 0; i < lastAnim; i++)
 			_vm->_anim->link(i, i+1);
@@ -355,7 +348,7 @@ int Scene::ITEIntroAnimProc(int param) {
 		event.op = kEventPlay;
 		event.param = 0;
 		event.time = 0;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		// Queue intro music playback
 		event.type = kEvTOneshot;
@@ -364,7 +357,7 @@ int Scene::ITEIntroAnimProc(int param) {
 		event.param2 = MUSIC_LOOP;
 		event.op = kEventPlay;
 		event.time = 0;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 		}
 		break;
 	case SCENE_END:
@@ -384,7 +377,7 @@ int Scene::SC_ITEIntroCave1Proc(int param, void *refCon) {
 // Handles first introductory cave painting scene
 int Scene::ITEIntroCave1Proc(int param) {
 	Event event;
-	Event *q_event;
+	EventColumns *eventColumns;
 	int lang = 0;
 
 	if (_vm->getLanguage() == Common::DE_DEU)
@@ -468,24 +461,24 @@ int Scene::ITEIntroCave1Proc(int param) {
 		event.code = kPalAnimEvent;
 		event.op = kEventCycleStart;
 		event.time = 0;
-		q_event = _vm->_events->queue(&event);
+		eventColumns = _vm->_events->queue(event);
 
 		// Queue narrator dialogue list
-		q_event = ITEQueueDialogue(q_event, n_dialogues, dialogue[lang]);
+		ITEQueueDialogue(eventColumns, n_dialogues, dialogue[lang]);
 
 		// End scene after last dialogue over
 		event.type = kEvTOneshot;
 		event.code = kSceneEvent;
 		event.op = kEventEnd;
 		event.time = VOICE_PAD;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		break;
 	case SCENE_END:
 		break;
 
 	default:
-		warning("Illegal scene procedure paramater");
+		warning("Illegal scene procedure parameter");
 		break;
 	}
 
@@ -499,7 +492,7 @@ int Scene::SC_ITEIntroCave2Proc(int param, void *refCon) {
 // Handles second introductory cave painting scene
 int Scene::ITEIntroCave2Proc(int param) {
 	Event event;
-	Event *q_event;
+	EventColumns *eventColumns;
 	int lang = 0;
 
 	if (_vm->getLanguage() == Common::DE_DEU)
@@ -566,30 +559,30 @@ int Scene::ITEIntroCave2Proc(int param) {
 		event.op = kEventDissolve;
 		event.time = 0;
 		event.duration = DISSOLVE_DURATION;
-		q_event = _vm->_events->queue(&event);
+		eventColumns = _vm->_events->queue(event);
 
 		// Begin palette cycling animation for candles
 		event.type = kEvTOneshot;
 		event.code = kPalAnimEvent;
 		event.op = kEventCycleStart;
 		event.time = 0;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		// Queue narrator dialogue list
-		q_event = ITEQueueDialogue(q_event, n_dialogues, dialogue[lang]);
+		ITEQueueDialogue(eventColumns, n_dialogues, dialogue[lang]);
 
 		// End scene after last dialogue over
 		event.type = kEvTOneshot;
 		event.code = kSceneEvent;
 		event.op = kEventEnd;
 		event.time = VOICE_PAD;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		break;
 	case SCENE_END:
 		break;
 	default:
-		warning("Illegal scene procedure paramater");
+		warning("Illegal scene procedure parameter");
 		break;
 	}
 
@@ -603,7 +596,7 @@ int Scene::SC_ITEIntroCave3Proc(int param, void *refCon) {
 // Handles third introductory cave painting scene
 int Scene::ITEIntroCave3Proc(int param) {
 	Event event;
-	Event *q_event;
+	EventColumns *eventColumns;
 	int lang = 0;
 
 	if (_vm->getLanguage() == Common::DE_DEU)
@@ -671,30 +664,30 @@ int Scene::ITEIntroCave3Proc(int param) {
 		event.op = kEventDissolve;
 		event.time = 0;
 		event.duration = DISSOLVE_DURATION;
-		q_event = _vm->_events->queue(&event);
+		eventColumns = _vm->_events->queue(event);
 
 		// Begin palette cycling animation for candles
 		event.type = kEvTOneshot;
 		event.code = kPalAnimEvent;
 		event.op = kEventCycleStart;
 		event.time = 0;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		// Queue narrator dialogue list
-		q_event = ITEQueueDialogue(q_event, n_dialogues, dialogue[lang]);
+		ITEQueueDialogue(eventColumns, n_dialogues, dialogue[lang]);
 
 		// End scene after last dialogue over
 		event.type = kEvTOneshot;
 		event.code = kSceneEvent;
 		event.op = kEventEnd;
 		event.time = VOICE_PAD;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		break;
 	case SCENE_END:
 		break;
 	default:
-		warning("Illegal scene procedure paramater");
+		warning("Illegal scene procedure parameter");
 		break;
 	}
 
@@ -708,7 +701,7 @@ int Scene::SC_ITEIntroCave4Proc(int param, void *refCon) {
 // Handles fourth introductory cave painting scene
 int Scene::ITEIntroCave4Proc(int param) {
 	Event event;
-	Event *q_event;
+	EventColumns *eventColumns;
 	int lang = 0;
 
 	if (_vm->getLanguage() == Common::DE_DEU)
@@ -789,30 +782,30 @@ int Scene::ITEIntroCave4Proc(int param) {
 		event.op = kEventDissolve;
 		event.time = 0;
 		event.duration = DISSOLVE_DURATION;
-		q_event = _vm->_events->queue(&event);
+		eventColumns = _vm->_events->queue(event);
 
 		// Begin palette cycling animation for candles
 		event.type = kEvTOneshot;
 		event.code = kPalAnimEvent;
 		event.op = kEventCycleStart;
 		event.time = 0;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		// Queue narrator dialogue list
-		q_event = ITEQueueDialogue(q_event, n_dialogues, dialogue[lang]);
+		ITEQueueDialogue(eventColumns, n_dialogues, dialogue[lang]);
 
 		// End scene after last dialogue over
 		event.type = kEvTOneshot;
 		event.code = kSceneEvent;
 		event.op = kEventEnd;
 		event.time = VOICE_PAD;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		break;
 	case SCENE_END:
 		break;
 	default:
-		warning("Illegal scene procedure paramater");
+		warning("Illegal scene procedure parameter");
 		break;
 	}
 
@@ -826,7 +819,7 @@ int Scene::SC_ITEIntroValleyProc(int param, void *refCon) {
 // Handles intro title scene (valley overlook)
 int Scene::ITEIntroValleyProc(int param) {
 	Event event;
-	Event *q_event;
+	EventColumns *eventColumns;
 
 	static const IntroCredit credits[] = {
 		{EN_ANY, kITEAny, kCHeader, "Producer"},
@@ -856,7 +849,7 @@ int Scene::ITEIntroValleyProc(int param) {
 		event.op = kEventPlay;
 		event.param = 0;
 		event.time = 0;
-		q_event = _vm->_events->queue(&event);
+		eventColumns = _vm->_events->queue(event);
 
 		// Begin ITE title theme music
 		_vm->_music->stop();
@@ -867,7 +860,7 @@ int Scene::ITEIntroValleyProc(int param) {
 		event.param2 = MUSIC_NORMAL;
 		event.op = kEventPlay;
 		event.time = 0;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		// Pause animation before logo
 		event.type = kEvTOneshot;
@@ -875,7 +868,7 @@ int Scene::ITEIntroValleyProc(int param) {
 		event.op = kEventStop;
 		event.param = 0;
 		event.time = 3000;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		// Display logo
 		event.type = kEvTContinuous;
@@ -883,7 +876,7 @@ int Scene::ITEIntroValleyProc(int param) {
 		event.op = kEventDissolveBGMask;
 		event.time = 0;
 		event.duration = LOGO_DISSOLVE_DURATION;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		// Remove logo
 		event.type = kEvTContinuous;
@@ -891,7 +884,7 @@ int Scene::ITEIntroValleyProc(int param) {
 		event.op = kEventDissolve;
 		event.time = 3000;
 		event.duration = LOGO_DISSOLVE_DURATION;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		// Unpause animation before logo
 		event.type = kEvTOneshot;
@@ -899,17 +892,17 @@ int Scene::ITEIntroValleyProc(int param) {
 		event.op = kEventPlay;
 		event.time = 0;
 		event.param = 0;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		// Queue game credits list
-		q_event = ITEQueueCredits(9000, CREDIT_DURATION1, n_credits, credits);
+		eventColumns = ITEQueueCredits(9000, CREDIT_DURATION1, n_credits, credits);
 
 		// End scene after credit display
 		event.type = kEvTOneshot;
 		event.code = kSceneEvent;
 		event.op = kEventEnd;
 		event.time = 1000;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		break;
 	case SCENE_END:
@@ -929,7 +922,7 @@ int Scene::SC_ITEIntroTreeHouseProc(int param, void *refCon) {
 // Handles second intro credit screen (treehouse view)
 int Scene::ITEIntroTreeHouseProc(int param) {
 	Event event;
-	Event *q_event;
+	EventColumns *eventColumns;
 
 	static const IntroCredit credits1[] = {
 		{EN_ANY, kITEAny, kCHeader, "Game Design"},
@@ -981,7 +974,7 @@ int Scene::ITEIntroTreeHouseProc(int param) {
 		event.op = kEventDissolve;
 		event.time = 0;
 		event.duration = DISSOLVE_DURATION;
-		q_event = _vm->_events->queue(&event);
+		eventColumns = _vm->_events->queue(event);
 
 		if (_vm->_anim->hasAnimation(0)) {
 			// Begin title screen background animation
@@ -992,19 +985,19 @@ int Scene::ITEIntroTreeHouseProc(int param) {
 			event.op = kEventPlay;
 			event.param = 0;
 			event.time = 0;
-			q_event = _vm->_events->chain(q_event, &event);
+			_vm->_events->chain(eventColumns, event);
 		}
 
 		// Queue game credits list
-		q_event = ITEQueueCredits(DISSOLVE_DURATION + 2000, CREDIT_DURATION1, n_credits1, credits1);
-		q_event = ITEQueueCredits(DISSOLVE_DURATION + 7000, CREDIT_DURATION1, n_credits2, credits2);
+		eventColumns = ITEQueueCredits(DISSOLVE_DURATION + 2000, CREDIT_DURATION1, n_credits1, credits1);
+		eventColumns = ITEQueueCredits(DISSOLVE_DURATION + 7000, CREDIT_DURATION1, n_credits2, credits2);
 
 		// End scene after credit display
 		event.type = kEvTOneshot;
 		event.code = kSceneEvent;
 		event.op = kEventEnd;
 		event.time = 1000;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		break;
 	case SCENE_END:
@@ -1024,7 +1017,7 @@ int Scene::SC_ITEIntroFairePathProc(int param, void *refCon) {
 // Handles third intro credit screen (path to puzzle tent)
 int Scene::ITEIntroFairePathProc(int param) {
 	Event event;
-	Event *q_event;
+	EventColumns *eventColumns;
 
 	static const IntroCredit credits1[] = {
 		{EN_ANY, kITEAny, kCHeader, "Programming"},
@@ -1063,7 +1056,7 @@ int Scene::ITEIntroFairePathProc(int param) {
 		event.op = kEventDissolve;
 		event.time = 0;
 		event.duration = DISSOLVE_DURATION;
-		q_event = _vm->_events->queue(&event);
+		eventColumns = _vm->_events->queue(event);
 
 		// Begin title screen background animation
 		_vm->_anim->setCycles(0, -1);
@@ -1073,18 +1066,18 @@ int Scene::ITEIntroFairePathProc(int param) {
 		event.op = kEventPlay;
 		event.param = 0;
 		event.time = 0;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		// Queue game credits list
-		q_event = ITEQueueCredits(DISSOLVE_DURATION + 2000, CREDIT_DURATION1, n_credits1, credits1);
-		q_event = ITEQueueCredits(DISSOLVE_DURATION + 7000, CREDIT_DURATION1, n_credits2, credits2);
+		eventColumns = ITEQueueCredits(DISSOLVE_DURATION + 2000, CREDIT_DURATION1, n_credits1, credits1);
+		eventColumns = ITEQueueCredits(DISSOLVE_DURATION + 7000, CREDIT_DURATION1, n_credits2, credits2);
 
 		// End scene after credit display
 		event.type = kEvTOneshot;
 		event.code = kSceneEvent;
 		event.op = kEventEnd;
 		event.time = 1000;
-		q_event = _vm->_events->chain(q_event, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		break;
 	case SCENE_END:
@@ -1104,8 +1097,7 @@ int Scene::SC_ITEIntroFaireTentProc(int param, void *refCon) {
 // Handles fourth intro credit screen (treehouse view)
 int Scene::ITEIntroFaireTentProc(int param) {
 	Event event;
-	Event *q_event;
-	Event *q_event_start;
+	EventColumns *eventColumns;
 
 	switch (param) {
 	case SCENE_BEGIN:
@@ -1116,14 +1108,14 @@ int Scene::ITEIntroFaireTentProc(int param) {
 		event.op = kEventDissolve;
 		event.time = 0;
 		event.duration = DISSOLVE_DURATION;
-		q_event_start = _vm->_events->queue(&event);
+		eventColumns = _vm->_events->queue(event);
 
 		// End scene after momentary pause
 		event.type = kEvTOneshot;
 		event.code = kSceneEvent;
 		event.op = kEventEnd;
 		event.time = 5000;
-		q_event = _vm->_events->chain(q_event_start, &event);
+		_vm->_events->chain(eventColumns, event);
 
 		break;
 	case SCENE_END:

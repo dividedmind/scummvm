@@ -18,9 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * $URL$
- * $Id$
- *
  */
 
 #include "base/plugins.h"
@@ -39,16 +36,16 @@ struct M4GameDescription {
 	uint32 features;
 };
 
-int M4Engine::getGameType() const { return _gameDescription->gameType; }
-uint32 M4Engine::getFeatures() const { return _gameDescription->features; }
-Common::Language M4Engine::getLanguage() const { return _gameDescription->desc.language; }
-Common::Platform M4Engine::getPlatform() const { return _gameDescription->desc.platform; }
+int MadsM4Engine::getGameType() const { return _gameDescription->gameType; }
+uint32 MadsM4Engine::getFeatures() const { return _gameDescription->features; }
+Common::Language MadsM4Engine::getLanguage() const { return _gameDescription->desc.language; }
+Common::Platform MadsM4Engine::getPlatform() const { return _gameDescription->desc.platform; }
 
-}
+} // End of namespace M4
 
 static const PlainGameDescriptor m4Games[] = {
 	{"m4", "MADS/M4 engine game"},
-	{"riddle", "Riddle of Master Lu: Believe it or Not!"},
+	{"riddle", "Ripley's Believe It or Not!: The Riddle of Master Lu"},
 	{"burger", "Orion Burger"},
 	{"rex", "Rex Nebular and the Cosmic Gender Bender"},
 	{"dragon", "DragonSphere"},
@@ -60,16 +57,13 @@ static const PlainGameDescriptor m4Games[] = {
 
 namespace M4 {
 
-const char *M4Engine::getGameFile(int fileType) {
+const char *MadsM4Engine::getGameFile(int fileType) {
 	for (int i = 0; _gameDescription->desc.filesDescriptions[i].fileName; i++) {
 		if (_gameDescription->desc.filesDescriptions[i].fileType == fileType)
 			return _gameDescription->desc.filesDescriptions[i].fileName;
 	}
 	return NULL;
 }
-
-using Common::GUIO_NONE;
-using Common::GUIO_NOSPEECH;
 
 static const M4GameDescription gameDescriptions[] = {
 	{
@@ -82,8 +76,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS,
-			GUIO_NONE
+			ADGF_UNSTABLE,
+			GUIO1(GUIO_NOASPECT)
 		},
 		GType_Burger,
 		kFeaturesCD
@@ -98,8 +92,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS,
-			GUIO_NONE
+			ADGF_UNSTABLE,
+			GUIO1(GUIO_NOASPECT)
 		},
 		GType_Burger,
 		kFeaturesCD
@@ -114,8 +108,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::RU_RUS,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS,
-			GUIO_NONE
+			ADGF_UNSTABLE,
+			GUIO1(GUIO_NOASPECT)
 		},
 		GType_Burger,
 		kFeaturesCD
@@ -130,8 +124,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DEMO,
-			GUIO_NONE
+			ADGF_DEMO | ADGF_UNSTABLE,
+			GUIO1(GUIO_NOASPECT)
 		},
 		GType_Burger,
 		kFeaturesDemo
@@ -146,8 +140,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DEMO,
-			GUIO_NONE
+			ADGF_DEMO | ADGF_UNSTABLE,
+			GUIO1(GUIO_NOASPECT)
 		},
 		GType_Burger,
 		kFeaturesDemo
@@ -162,8 +156,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS,
-			GUIO_NONE
+			ADGF_UNSTABLE,
+			GUIO1(GUIO_NOASPECT)
 		},
 		GType_Riddle,
 		kFeaturesCD
@@ -178,8 +172,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS,
-			GUIO_NONE
+			ADGF_UNSTABLE,
+			GUIO1(GUIO_NOASPECT)
 		},
 		GType_Riddle,
 		kFeaturesCD
@@ -194,8 +188,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS,
-			GUIO_NONE
+			ADGF_UNSTABLE,
+			GUIO1(GUIO_NOASPECT)
 		},
 		GType_Riddle,
 		kFeaturesCD
@@ -210,8 +204,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS,
-			GUIO_NONE
+			ADGF_UNSTABLE,
+			GUIO1(GUIO_NOASPECT)
 		},
 		GType_Riddle,
 		kFeaturesCD
@@ -226,8 +220,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::ES_ESP,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS,
-			GUIO_NONE
+			ADGF_UNSTABLE,
+			GUIO1(GUIO_NOASPECT)
 		},
 		GType_Riddle,
 		kFeaturesCD
@@ -242,8 +236,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DEMO,
-			GUIO_NONE
+			ADGF_DEMO | ADGF_UNSTABLE,
+			GUIO1(GUIO_NOASPECT)
 		},
 		GType_Riddle,
 		kFeaturesDemo
@@ -258,8 +252,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS,
-			GUIO_NOSPEECH
+			ADGF_UNSTABLE,
+			GUIO1(GUIO_NOSPEECH)
 		},
 		GType_RexNebular,
 		kFeaturesNone
@@ -274,8 +268,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DEMO,
-			GUIO_NONE
+			ADGF_DEMO | ADGF_UNSTABLE,
+			GUIO1(GUIO_NONE)
 		},
 		GType_RexNebular,
 		kFeaturesDemo
@@ -290,8 +284,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS,
-			GUIO_NOSPEECH
+			ADGF_UNSTABLE,
+			GUIO1(GUIO_NOSPEECH)
 		},
 		GType_DragonSphere,
 		kFeaturesNone
@@ -307,8 +301,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS,
-			GUIO_NONE
+			ADGF_UNSTABLE,
+			GUIO1(GUIO_NONE)
 		},
 		GType_DragonSphere,
 		kFeaturesCD
@@ -323,8 +317,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DEMO,
-			GUIO_NONE
+			ADGF_DEMO | ADGF_UNSTABLE,
+			GUIO1(GUIO_NONE)
 		},
 		GType_DragonSphere,
 		kFeaturesDemo
@@ -339,8 +333,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS,
-			GUIO_NOSPEECH
+			ADGF_UNSTABLE,
+			GUIO1(GUIO_NOSPEECH)
 		},
 		GType_Phantom,
 		kFeaturesNone
@@ -355,8 +349,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS,
-			GUIO_NONE
+			ADGF_UNSTABLE,
+			GUIO1(GUIO_NONE)
 		},
 		GType_Phantom,
 		kFeaturesCD
@@ -371,8 +365,8 @@ static const M4GameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DEMO,
-			GUIO_NONE
+			ADGF_DEMO | ADGF_UNSTABLE,
+			GUIO1(GUIO_NONE)
 		},
 		GType_Phantom,
 		kFeaturesDemo
@@ -380,35 +374,24 @@ static const M4GameDescription gameDescriptions[] = {
 	{ AD_TABLE_END_MARKER, 0, 0 }
 };
 
-}
+} // End of namespace M4
 
-static const ADParams detectionParams = {
-	// Pointer to ADGameDescription or its superset structure
-	(const byte *)M4::gameDescriptions,
-	// Size of that superset structure
-	sizeof(M4::M4GameDescription),
-	// Number of bytes to compute MD5 sum for
-	5000,
-	// List of all engine targets
-	m4Games,
-	// Structure for autoupgrading obsolete targets
-	0,
-	// Name of single gameid (optional)
-	"m4",
-	// List of files for file-based fallback detection (optional)
-	0,
-	// Flags
-	0,
-	// Additional GUI options (for every game}
-	Common::GUIO_NOMIDI
+static const char *directoryGlobs[] = {
+	"option1",
+	0
 };
 
 class M4MetaEngine : public AdvancedMetaEngine {
 public:
-	M4MetaEngine() : AdvancedMetaEngine(detectionParams) {}
+	M4MetaEngine() : AdvancedMetaEngine(M4::gameDescriptions, sizeof(M4::M4GameDescription), m4Games) {
+		_singleid = "m4";
+		_guioptions = GUIO1(GUIO_NOMIDI);
+		_maxScanDepth = 2;
+		_directoryGlobs = directoryGlobs;
+	}
 
 	virtual const char *getName() const {
-		return "MADS/M4 engine";
+		return "MADS/M4";
 	}
 
 	virtual const char *getOriginalCopyright() const {
@@ -421,7 +404,10 @@ public:
 bool M4MetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const {
 	const M4::M4GameDescription *gd = (const M4::M4GameDescription *)desc;
 	if (gd) {
-		*engine = new M4::M4Engine(syst, gd);
+		if ((gd->gameType == M4::GType_Burger) || (gd->gameType == M4::GType_Riddle))
+			*engine = new M4::M4Engine(syst, gd);
+		else
+			*engine = new M4::MadsEngine(syst, gd);
 	}
 	return gd != 0;
 }
