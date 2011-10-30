@@ -130,7 +130,7 @@ bool SaveLoad_v3::loadVersioned(int type, int16 dataVar, int32 size, int32 offse
 		break;
 
 	case kSaveTempSprite:
-		if(loadTempSprite(_saveFiles[type], dataVar, size, offset))
+		if (loadTempSprite(_saveFiles[type], dataVar, size, offset))
 			return true;
 
 		warning("While loading the temporary sprite");
@@ -169,7 +169,7 @@ bool SaveLoad_v3::saveVersioned(int type, int16 dataVar, int32 size, int32 offse
 		break;
 
 	case kSaveTempSprite:
-		if(saveTempSprite(_saveFiles[type], dataVar, size, offset))
+		if (saveTempSprite(_saveFiles[type], dataVar, size, offset))
 			return true;
 
 		warning("While saving the temporary sprite");
@@ -308,7 +308,7 @@ bool SaveLoad_v3::loadGame(SaveFile &saveFile,
 		saveFile.slot = getSlot(offset);
 		int slotRem = getSlotRemainder(offset);
 
-		debugC(2, kDebugSaveLoad, "Loading from slot %d", saveFile.slot); 
+		debugC(2, kDebugSaveLoad, "Loading from slot %d", saveFile.slot);
 
 		SaveLoad::setCurrentSlot(saveFile.destName, saveFile.slot);
 
@@ -489,10 +489,10 @@ bool SaveLoad_v3::saveGame(SaveFile &saveFile,
 
 		_hasIndex = false;
 
-		if(!_save->save(0, 500, 0, saveFile.destName, _propBuffer, _propBuffer + 500))
+		if (!_save->save(0, 500, 0, saveFile.destName, _propBuffer, _propBuffer + 500))
 			return false;
 
-		if(!_save->save(0, 40, 500, saveFile.destName, _indexBuffer + (saveFile.slot * 40), 0))
+		if (!_save->save(0, 40, 500, saveFile.destName, _indexBuffer + (saveFile.slot * 40), 0))
 			return false;
 
 		if (!_save->save(dataVar, size, 540, saveFile.destName, _vm->_inter->_variables))
@@ -569,7 +569,7 @@ bool SaveLoad_v3::saveScreenshot(SaveFile &saveFile,
 			if (!_screenshot.savePalette(_vm->_global->_pPaletteDesc->vgaPal))
 				return false;
 
-		
+
 		byte *buffer = new byte[_screenshotSize];
 
 		if (!_screenshot.toBuffer(buffer, _screenshotSize, palette)) {

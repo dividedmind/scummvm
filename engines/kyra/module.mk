@@ -12,10 +12,12 @@ MODULE_OBJS := \
 	gui_v2.o \
 	gui_hof.o \
 	gui_mr.o \
+	gui_lol.o \
 	items_lok.o \
 	items_v2.o \
 	items_hof.o \
 	items_mr.o \
+	items_lol.o \
 	kyra_v1.o \
 	kyra_lok.o \
 	kyra_v2.o \
@@ -33,6 +35,7 @@ MODULE_OBJS := \
 	scene_v2.o \
 	scene_hof.o \
 	scene_mr.o \
+	scene_lol.o \
 	screen.o \
 	screen_lok.o \
 	screen_lol.o \
@@ -44,15 +47,18 @@ MODULE_OBJS := \
 	script_v2.o \
 	script_hof.o \
 	script_mr.o \
+	script_lol.o \
 	script.o \
 	script_tim.o \
 	seqplayer.o \
 	sequences_lok.o \
+	sequences_lol.o \
 	sequences_v2.o \
 	sequences_hof.o \
 	sequences_mr.o \
 	sound_adlib.o \
 	sound_digital.o \
+	sound_midi.o \
 	sound_towns.o \
 	sound.o \
 	sound_lok.o \
@@ -60,12 +66,14 @@ MODULE_OBJS := \
 	staticres.o \
 	text.o \
 	text_lok.o \
+	text_lol.o \
 	text_hof.o \
 	text_mr.o \
 	timer.o \
 	timer_lok.o \
 	timer_hof.o \
 	timer_mr.o \
+	util.o \
 	vqa.o \
 	wsamovie.o
 

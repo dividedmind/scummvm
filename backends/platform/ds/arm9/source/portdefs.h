@@ -19,7 +19,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  *
  */
- 
+
 #ifndef _PORTDEFS_H_
 #define _PORTDEFS_H_
 
@@ -38,7 +38,6 @@ typedef signed int s32;
 
 #include "nds/jtypes.h"
 
-
 // Somebody removed these from scummsys.h, but they're still required, so I'm adding them here
 // in the hope that they'll stay.
 #include <stdio.h>
@@ -47,7 +46,6 @@ typedef signed int s32;
 #include <stdarg.h>
 #include <ctype.h>
 #include <math.h>
-#include <time.h>
 
 #define double float
 
@@ -57,7 +55,7 @@ typedef signed int s32;
 #ifdef __cplusplus
 extern "C" {
 #endif
-void consolePrintf(const char* s, ...);
+int consolePrintf(const char* s, ...);
 #ifdef __cplusplus
 }
 #endif
@@ -76,21 +74,12 @@ void consolePrintf(const char* s, ...);
 
 //#define debug(fmt, ...) consolePrintf(fmt, ##__VA_ARGS__)
 //#define debug(fmt, ...) debug(0, fmt, ##__VA_ARGS__)
-#define time(t) DS_time(t)
-//#define memcpy(dest, src, size) DS_memcpy(dest, src, size)
 
 #define ITCM_DATA	__attribute__((section(".itcm")))
 
 // Since I can't change the engine at the moment (post lockdown) this define can go here.
-// This define changes the mouse-relative motion which doesn't make sense on a touch screen to 
+// This define changes the mouse-relative motion which doesn't make sense on a touch screen to
 // a more conventional form of input where the menus can be clicked on.
 #define LURE_CLICKABLE_MENUS
-
-//#include "common/array.h"
-//#include "common/str.h"
-
-time_t DS_time(time_t* t);
-time_t DS_time(long* t);
-void* DS_memcpy(void* s1, void const* s2, size_t n);
 
 #endif

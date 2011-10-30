@@ -171,7 +171,7 @@ void Parallaction_ns::_c_fade(void *parm) {
 		_gfx->setPalette(pal);
 
 		_gfx->updateScreen();
-		_vm->_system->delayMillis(20);
+		_system->delayMillis(20);
 	}
 
 	return;
@@ -188,21 +188,21 @@ void Parallaction_ns::_c_moveSarc(void *parm) {
 		_introSarcData2 = 0;
 		if (!_moveSarcZones[0]) {
 
-			_moveSarcZones[0] = findZone("sarc1");
-			_moveSarcZones[1] = findZone("sarc2");
-			_moveSarcZones[2] = findZone("sarc3");
-			_moveSarcZones[3] = findZone("sarc4");
-			_moveSarcZones[4] = findZone("sarc5");
+			_moveSarcZones[0] = _location.findZone("sarc1");
+			_moveSarcZones[1] = _location.findZone("sarc2");
+			_moveSarcZones[2] = _location.findZone("sarc3");
+			_moveSarcZones[3] = _location.findZone("sarc4");
+			_moveSarcZones[4] = _location.findZone("sarc5");
 
-			_moveSarcExaZones[0] = findZone("sarc1exa");
-			_moveSarcExaZones[1] = findZone("sarc2exa");
-			_moveSarcExaZones[2] = findZone("sarc3exa");
-			_moveSarcExaZones[3] = findZone("sarc4exa");
-			_moveSarcExaZones[4] = findZone("sarc5exa");
+			_moveSarcExaZones[0] = _location.findZone("sarc1exa");
+			_moveSarcExaZones[1] = _location.findZone("sarc2exa");
+			_moveSarcExaZones[2] = _location.findZone("sarc3exa");
+			_moveSarcExaZones[3] = _location.findZone("sarc4exa");
+			_moveSarcExaZones[4] = _location.findZone("sarc5exa");
 
 		}
 
-		a = findAnimation("sposta");
+		a = _location.findAnimation("sposta");
 
 		_moveSarcZone1 = *(ZonePtr*)parm;
 
@@ -239,7 +239,7 @@ void Parallaction_ns::_c_moveSarc(void *parm) {
 		_moveSarcZones[3]->getX() == 134 &&
 		_moveSarcZones[4]->getX() == 167) {
 
-		a = findAnimation("finito");
+		a = _location.findAnimation("finito");
 
 		a->_flags |= (kFlagsActive | kFlagsActing);
 		setLocationFlags(0x20);		// GROSS HACK: activates 'finito' flag in dinoit_museo.loc
@@ -288,7 +288,10 @@ void Parallaction_ns::_c_onMouse(void *parm) {
 
 void Parallaction_ns::_c_setMask(void *parm) {
 
-	memset(_gfx->_backgroundInfo->mask.data + 3600, 0, 3600);
+	if (!_gfx->_backgroundInfo->hasMask())
+		return;
+
+	memset(_gfx->_backgroundInfo->_mask->data + 3600, 0, 3600);
 	_gfx->_backgroundInfo->layers[1] = 500;
 
 	return;
@@ -306,13 +309,11 @@ void Parallaction_ns::_c_endComment(void *param) {
 		_gfx->setPalette(_gfx->_palette);
 
 		_gfx->updateScreen();
-		_vm->_system->delayMillis(20);
+		_system->delayMillis(20);
 	}
 
 	_input->waitForButtonEvent(kMouseLeftUp);
-	_balloonMan->freeBalloons();
-
-	return;
+	_gfx->freeDialogueObjects();
 }
 
 void Parallaction_ns::_c_frankenstein(void *parm) {
@@ -325,10 +326,10 @@ void Parallaction_ns::_c_frankenstein(void *parm) {
 	}
 
 	for (uint16 _di = 0; _di < 30; _di++) {
-		_vm->_system->delayMillis(20);
+		_system->delayMillis(20);
 		_gfx->setPalette(pal0);
 		_gfx->updateScreen();
-		_vm->_system->delayMillis(20);
+		_system->delayMillis(20);
 		_gfx->setPalette(pal1);
 		_gfx->updateScreen();
 	}
@@ -371,7 +372,6 @@ void Parallaction_ns::_c_testResult(void *parm) {
 	_gfx->freeLabels();
 	_gfx->updateScreen();
 
-	_disk->selectArchive("disk1");
 	parseLocation("common");
 
 	uint id[2];
@@ -404,7 +404,7 @@ void Parallaction_ns::_c_closeMusic(void*) {
 */
 
 void Parallaction_ns::_c_startIntro(void *parm) {
-	_rightHandAnim = findAnimation("righthand");
+	_rightHandAnim = _location.findAnimation("righthand");
 
 	if (getPlatform() == Common::kPlatformPC) {
 		_soundMan->setMusicFile("intro");
@@ -412,10 +412,12 @@ void Parallaction_ns::_c_startIntro(void *parm) {
 	}
 
 	_input->setMouseState(MOUSE_DISABLED);
+	_intro = true;
 }
 
 void Parallaction_ns::_c_endIntro(void *parm) {
 	startCreditSequence();
+	_intro = false;
 }
 
 void Parallaction_ns::_c_moveSheet(void *parm) {
@@ -447,10 +449,13 @@ void Parallaction_ns::_c_moveSheet(void *parm) {
 void zeroMask(int x, int y, int color, void *data) {
 	//_vm->_gfx->zeroMaskValue(x, y, color);
 
-	BackgroundInfo* info = (BackgroundInfo*)data;
+	if (!_vm->_gfx->_backgroundInfo->hasMask())
+		return;
 
-	uint16 _ax = x + y * info->width;
-	info->mask.data[_ax >> 2] &= ~(3 << ((_ax & 3) << 1));
+//	BackgroundInfo* info = (BackgroundInfo*)data;
+
+	uint16 _ax = x + y * _vm->_gfx->_backgroundInfo->_mask->w;
+	_vm->_gfx->_backgroundInfo->_mask->data[_ax >> 2] &= ~(3 << ((_ax & 3) << 1));
 
 }
 
@@ -477,7 +482,7 @@ void Parallaction_ns::_c_sketch(void *parm) {
 		newx = _rightHandPositions[2*index];
 	}
 
-	Graphics::drawLine(oldx, oldy, newx, newy, 0, zeroMask, &_gfx->_backgroundInfo);
+	Graphics::drawLine(oldx, oldy, newx, newy, 0, zeroMask, _gfx->_backgroundInfo);
 
 	_rightHandAnim->setX(newx);
 	_rightHandAnim->setY(newy - 20);
@@ -499,11 +504,11 @@ void Parallaction_ns::_c_shade(void *parm) {
 		_rightHandAnim->getY()
 	);
 
-	uint16 _di = r.left/4 + r.top * _gfx->_backgroundInfo->mask.internalWidth;
+	uint16 _di = r.left/4 + r.top * _vm->_gfx->_backgroundInfo->_mask->internalWidth;
 
 	for (uint16 _si = r.top; _si < r.bottom; _si++) {
-		memset(_gfx->_backgroundInfo->mask.data + _di, 0, r.width()/4+1);
-		_di += _gfx->_backgroundInfo->mask.internalWidth;
+		memset(_vm->_gfx->_backgroundInfo->_mask->data + _di, 0, r.width()/4+1);
+		_di += _vm->_gfx->_backgroundInfo->_mask->internalWidth;
 	}
 
 	return;

@@ -37,15 +37,6 @@
 #define USE_HASHMAP_MEMORY_POOL
 #ifdef USE_HASHMAP_MEMORY_POOL
 #include "common/memorypool.h"
-// FIXME: we sadly can't assume standard C++ to be present
-// on every system we support, so we should get rid of this.
-// The solution should be to write a simple placement new
-// on our own.
-
-// Symbian does not have <new> but the new operator 
-#if !defined(__SYMBIAN32__) 
-#include <new>
-#endif
 #endif
 
 namespace Common {
@@ -87,40 +78,28 @@ public:
 	enum {
 		HASHMAP_PERTURB_SHIFT = 5,
 		HASHMAP_MIN_CAPACITY = 16,
-		
-		// The quotient of the next two constants controls how much the 
+
+		// The quotient of the next two constants controls how much the
 		// internal storage of the hashmap may fill up before being
 		// increased automatically.
 		// Note: the quotient of these two must be between and different
 		// from 0 and 1.
 		HASHMAP_LOADFACTOR_NUMERATOR = 2,
 		HASHMAP_LOADFACTOR_DENOMINATOR = 3,
-		
+
 		HASHMAP_MEMORYPOOL_SIZE = HASHMAP_MIN_CAPACITY * HASHMAP_LOADFACTOR_NUMERATOR / HASHMAP_LOADFACTOR_DENOMINATOR
 	};
 
 
-#ifdef USE_HASHMAP_MEMORY_POOL
-	FixedSizeMemoryPool<sizeof(Node), HASHMAP_MEMORYPOOL_SIZE> _nodePool;
+	ObjectPool<Node, HASHMAP_MEMORYPOOL_SIZE> _nodePool;
 
 	Node *allocNode(const Key &key) {
-		void* mem = _nodePool.malloc();
-		return new (mem) Node(key);
-	} 
+		return new (_nodePool) Node(key);
+	}
 
 	void freeNode(Node *node) {
-		node->~Node();
-		_nodePool.free(node);
+		_nodePool.deleteChunk(node);
 	}
-#else
-	Node* allocNode(const Key &key) {
-		return new Node(key);
-	} 
-
-	void freeNode(Node *node) {
-		delete node;
-	}
-#endif
 
 	Node **_storage;	// hashtable of size arrsize.
 	uint _mask;		/**< Capacity of the HashMap minus one; must be a power of two of minus one */
@@ -304,7 +283,7 @@ HashMap<Key, Val, HashFunc, EqualFunc>::HashMap() :
  * to heap buffers for the internal storage.
  */
 template<class Key, class Val, class HashFunc, class EqualFunc>
-HashMap<Key, Val, HashFunc, EqualFunc>::HashMap(const HM_t &map) : 
+HashMap<Key, Val, HashFunc, EqualFunc>::HashMap(const HM_t &map) :
 	_defaultVal()  {
 	assign(map);
 }

@@ -44,7 +44,7 @@
 				Optimization="0"
 				InlineFunctionExpansion="0"
 				AdditionalIncludeDirectories="../../;../../engines"
-				PreprocessorDefinitions="WIN32;_DEBUG;_CONSOLE;USE_ZLIB;USE_MAD;USE_VORBIS;USE_MPEG2;USE_NASM;USE_MT32EMU;ENABLE_AGI;ENABLE_AGOS;ENABLE_CINE;ENABLE_CRUISE;ENABLE_DRASCULA;ENABLE_GOB;ENABLE_IGOR;ENABLE_KYRA;ENABLE_LURE;ENABLE_M4;ENABLE_MADE;ENABLE_PARALLACTION;ENABLE_QUEEN;ENABLE_SAGA;ENABLE_SCUMM;ENABLE_SKY;ENABLE_SWORD1;ENABLE_SWORD2;ENABLE_TOUCHE;ENABLE_SCUMM_7_8;ENABLE_HE;ENABLE_TINSEL"
+				PreprocessorDefinitions="WIN32;_DEBUG;_CONSOLE;USE_ZLIB;USE_MAD;USE_VORBIS;USE_MPEG2;USE_NASM;USE_MT32EMU;ENABLE_AGI;ENABLE_AGOS;ENABLE_CINE;ENABLE_CRUISE;ENABLE_DRASCULA;ENABLE_GOB;ENABLE_IGOR;ENABLE_KYRA;ENABLE_LURE;ENABLE_M4;ENABLE_MADE;ENABLE_PARALLACTION;ENABLE_QUEEN;ENABLE_SAGA;ENABLE_SCUMM;ENABLE_SKY;ENABLE_SWORD1;ENABLE_SWORD2;ENABLE_TOUCHE;ENABLE_SCUMM_7_8;ENABLE_HE;ENABLE_TINSEL;ENABLE_TUCKER;ENABLE_GROOVIE"
 				MinimalRebuild="true"
 				ExceptionHandling="1"
 				BasicRuntimeChecks="3"
@@ -72,7 +72,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="winmm.lib sdl.lib zlib.lib libmad.lib vorbisfile_static.lib vorbis_static.lib ogg_static.lib libmpeg2.lib sword1_debug/sword1.lib sword2_debug/sword2.lib lure_debug/lure.lib cine_debug/cine.lib cruise_debug/cruise.lib igor_debug/igor.lib kyra_debug/kyra.lib gob_debug/gob.lib queen_debug/queen.lib saga_debug/saga.lib agi_debug/agi.lib scumm_debug/scumm.lib agos_debug/agos.lib drascula_debug/drascula.lib sky_debug/sky.lib parallaction_debug/parallaction.lib m4_debug/m4.lib made_debug/made.lib tinsel_Debug/tinsel.lib"
+				AdditionalDependencies="winmm.lib sdl.lib zlib.lib libmad.lib vorbisfile_static.lib vorbis_static.lib ogg_static.lib libmpeg2.lib sword1_debug/sword1.lib sword2_debug/sword2.lib lure_debug/lure.lib cine_debug/cine.lib cruise_debug/cruise.lib igor_debug/igor.lib kyra_debug/kyra.lib gob_debug/gob.lib queen_debug/queen.lib saga_debug/saga.lib agi_debug/agi.lib scumm_debug/scumm.lib agos_debug/agos.lib drascula_debug/drascula.lib sky_debug/sky.lib parallaction_debug/parallaction.lib m4_debug/m4.lib made_debug/made.lib tinsel_Debug/tinsel.lib tucker_Debug/tucker.lib groovie_Debug/groovie.lib"
 				OutputFile="$(OutDir)/scummvm.exe"
 				LinkIncremental="2"
 				IgnoreDefaultLibraryNames="libc.lib;libcmt.lib"
@@ -101,9 +101,6 @@
 			/>
 			<Tool
 				Name="VCAppVerifierTool"
-			/>
-			<Tool
-				Name="VCWebDeploymentTool"
 			/>
 			<Tool
 				Name="VCPostBuildEventTool"
@@ -141,7 +138,7 @@
 				FavorSizeOrSpeed="2"
 				OmitFramePointers="true"
 				AdditionalIncludeDirectories="../../;../../engines"
-				PreprocessorDefinitions="WIN32;NDEBUG;_CONSOLE;USE_ZLIB;USE_MAD;USE_VORBIS;USE_MPEG2;USE_MT32EMU;ENABLE_AGI;ENABLE_AGOS;ENABLE_CINE;ENABLE_CRUISE;ENABLE_DRASCULA;ENABLE_GOB;ENABLE_IGOR;ENABLE_KYRA;ENABLE_LURE;ENABLE_M4;ENABLE_MADE;ENABLE_PARALLACTION;ENABLE_QUEEN;ENABLE_SAGA;ENABLE_SCUMM;ENABLE_SKY;ENABLE_SWORD1;ENABLE_SWORD2;ENABLE_TOUCHE;ENABLE_SCUMM_7_8;ENABLE_HE;ENABLE_TINSEL"
+				PreprocessorDefinitions="WIN32;NDEBUG;_CONSOLE;USE_ZLIB;USE_MAD;USE_VORBIS;USE_MPEG2;USE_MT32EMU;ENABLE_AGI;ENABLE_AGOS;ENABLE_CINE;ENABLE_CRUISE;ENABLE_DRASCULA;ENABLE_GOB;ENABLE_IGOR;ENABLE_KYRA;ENABLE_LURE;ENABLE_M4;ENABLE_MADE;ENABLE_PARALLACTION;ENABLE_QUEEN;ENABLE_SAGA;ENABLE_SCUMM;ENABLE_SKY;ENABLE_SWORD1;ENABLE_SWORD2;ENABLE_TOUCHE;ENABLE_SCUMM_7_8;ENABLE_HE;ENABLE_TINSEL;ENABLE_TUCKER;ENABLE_GROOVIE"
 				StringPooling="true"
 				MinimalRebuild="false"
 				ExceptionHandling="1"
@@ -167,7 +164,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="winmm.lib sdl.lib zlib.lib libmad.lib vorbisfile_static.lib vorbis_static.lib ogg_static.lib libmpeg2.lib saga_release/saga.lib agi_release/agi.lib sword1_release/sword1.lib sword2_release/sword2.lib lure_release/lure.lib cine_release/cine.lib cruise_release/cruise.lib igor_release/igor.lib kyra_release/kyra.lib gob_release/gob.lib queen_release/queen.lib scumm_release/scumm.lib agos_release/agos.lib sky_release/sky.lib drascula_release/drascula.lib parallaction_release/parallaction.lib m4_release/m4.lib made_release/made.lib tinsel_release/tinsel.lib"
+				AdditionalDependencies="winmm.lib sdl.lib zlib.lib libmad.lib vorbisfile_static.lib vorbis_static.lib ogg_static.lib libmpeg2.lib saga_release/saga.lib agi_release/agi.lib sword1_release/sword1.lib sword2_release/sword2.lib lure_release/lure.lib cine_release/cine.lib cruise_release/cruise.lib igor_release/igor.lib kyra_release/kyra.lib gob_release/gob.lib queen_release/queen.lib scumm_release/scumm.lib agos_release/agos.lib sky_release/sky.lib drascula_release/drascula.lib parallaction_release/parallaction.lib m4_release/m4.lib made_release/made.lib tinsel_release/tinsel.lib tucker_release/tucker.lib groovie_release/groovie.lib"
 				OutputFile="$(OutDir)/scummvm.exe"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
@@ -200,9 +197,6 @@
 				Name="VCAppVerifierTool"
 			/>
 			<Tool
-				Name="VCWebDeploymentTool"
-			/>
-			<Tool
 				Name="VCPostBuildEventTool"
 			/>
 		</Configuration>
@@ -219,14 +213,6 @@
 			</File>
 			<File
 				RelativePath="..\..\base\commandLine.h"
-				>
-			</File>
-			<File
-				RelativePath="..\..\base\game.cpp"
-				>
-			</File>
-			<File
-				RelativePath="..\..\base\game.h"
 				>
 			</File>
 			<File
@@ -262,14 +248,6 @@
 			Name="common"
 			>
 			<File
-				RelativePath="..\..\common\advancedDetector.cpp"
-				>
-			</File>
-			<File
-				RelativePath="..\..\common\advancedDetector.h"
-				>
-			</File>
-			<File
 				RelativePath="..\..\common\algorithm.h"
 				>
 			</File>
@@ -299,6 +277,14 @@
 			</File>
 			<File
 				RelativePath="..\..\common\config-manager.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\common\debug.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\common\debug.h"
 				>
 			</File>
 			<File
@@ -478,6 +464,14 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\common\xmlparser.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\common\xmlparser.h"
+				>
+			</File>
+			<File
 				RelativePath="..\..\common\zlib.cpp"
 				>
 			</File>
@@ -633,6 +627,14 @@
 			</File>
 			<File
 				RelativePath="..\..\sound\rate.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\sound\shorten.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\sound\shorten.h"
 				>
 			</File>
 			<File
@@ -914,6 +916,14 @@
 		<Filter
 			Name="backends"
 			>
+			<File
+				RelativePath="..\..\backends\base-backend.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\backends\base-backend.h"
+				>
+			</File>
 			<Filter
 				Name="sdl"
 				>
@@ -1125,11 +1135,11 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\gui\eval.cpp"
+				RelativePath="..\..\gui\GuiManager.cpp"
 				>
 			</File>
 			<File
-				RelativePath="..\..\gui\eval.h"
+				RelativePath="..\..\gui\GuiManager.h"
 				>
 			</File>
 			<File
@@ -1173,14 +1183,6 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\gui\newgui.cpp"
-				>
-			</File>
-			<File
-				RelativePath="..\..\gui\newgui.h"
-				>
-			</File>
-			<File
 				RelativePath="..\..\gui\object.cpp"
 				>
 			</File>
@@ -1205,6 +1207,14 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\gui\saveload.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\gui\saveload.h"
+				>
+			</File>
+			<File
 				RelativePath="..\..\gui\ScrollBarWidget.cpp"
 				>
 			</File>
@@ -1221,18 +1231,6 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\gui\theme-config.cpp"
-				>
-			</File>
-			<File
-				RelativePath="..\..\gui\theme.cpp"
-				>
-			</File>
-			<File
-				RelativePath="..\..\gui\theme.h"
-				>
-			</File>
-			<File
 				RelativePath="..\..\gui\themebrowser.cpp"
 				>
 			</File>
@@ -1241,12 +1239,39 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\gui\ThemeClassic.cpp"
+				RelativePath="..\..\gui\ThemeEngine.cpp"
 				>
 			</File>
 			<File
-				RelativePath="..\..\gui\ThemeModern.cpp"
+				RelativePath="..\..\gui\ThemeEngine.h"
 				>
+			</File>
+			<File
+				RelativePath="..\..\gui\ThemeEval.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\gui\ThemeLayout.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\gui\ThemeLayout.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\gui\ThemeParser.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\gui\ThemeParser.h"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="VCCustomBuildTool"
+					/>
+				</FileConfiguration>
 			</File>
 			<File
 				RelativePath="..\..\gui\widget.cpp"
@@ -1273,11 +1298,11 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\graphics\dxa_player.cpp"
+				RelativePath="..\..\graphics\dither.cpp"
 				>
 			</File>
 			<File
-				RelativePath="..\..\graphics\dxa_player.h"
+				RelativePath="..\..\graphics\dither.h"
 				>
 			</File>
 			<File
@@ -1313,22 +1338,6 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\graphics\imageman.cpp"
-				>
-			</File>
-			<File
-				RelativePath="..\..\graphics\imageman.h"
-				>
-			</File>
-			<File
-				RelativePath="..\..\graphics\mpeg_player.cpp"
-				>
-			</File>
-			<File
-				RelativePath="..\..\graphics\mpeg_player.h"
-				>
-			</File>
-			<File
 				RelativePath="..\..\graphics\primitives.cpp"
 				>
 			</File>
@@ -1358,6 +1367,22 @@
 			</File>
 			<File
 				RelativePath="..\..\graphics\thumbnail.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\graphics\VectorRenderer.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\graphics\VectorRenderer.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\graphics\VectorRendererSpec.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\graphics\VectorRendererSpec.h"
 				>
 			</File>
 			<Filter
@@ -1484,10 +1509,62 @@
 					>
 				</File>
 			</Filter>
+			<Filter
+				Name="video"
+				>
+				<File
+					RelativePath="..\..\graphics\video\dxa_player.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\graphics\video\dxa_player.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\graphics\video\flic_player.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\graphics\video\flic_player.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\graphics\video\mpeg_player.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\graphics\video\mpeg_player.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\graphics\video\smk_player.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\graphics\video\smk_player.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\graphics\video\video_player.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\graphics\video\video_player.h"
+					>
+				</File>
+			</Filter>
 		</Filter>
 		<Filter
 			Name="engines"
 			>
+			<File
+				RelativePath="..\..\engines\advancedDetector.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\engines\advancedDetector.h"
+				>
+			</File>
 			<File
 				RelativePath="..\..\engines\dialogs.cpp"
 				>
@@ -1502,6 +1579,14 @@
 			</File>
 			<File
 				RelativePath="..\..\engines\engine.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\engines\game.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\engines\game.h"
 				>
 			</File>
 			<File

@@ -24,6 +24,7 @@
  */
 
 #include "graphics/iff.h"
+#include "common/config-manager.h"
 
 #include "parallaction/parallaction.h"
 
@@ -60,249 +61,185 @@ namespace Parallaction {
 #define NORMAL_ARCHIVE_DATA_OFS		0x4000
 #define SMALL_ARCHIVE_DATA_OFS		0x1966
 
-Archive::Archive() {
-	resetArchivedFile();
-}
+#define MAX_ARCHIVE_ENTRIES			384
 
-void Archive::open(const char *file) {
-	debugC(1, kDebugDisk, "Archive::open(%s)", file);
+class NSArchive : public Common::Archive {
 
-	if (_archive.isOpen())
-		close();
+	Common::SeekableReadStream	*_stream;
 
-	if (!_archive.open(file))
-		error("archive '%s' not found", file);
+	char			_archiveDir[MAX_ARCHIVE_ENTRIES][32];
+	uint32			_archiveLenghts[MAX_ARCHIVE_ENTRIES];
+	uint32			_archiveOffsets[MAX_ARCHIVE_ENTRIES];
+	uint32			_numFiles;
 
-	_archiveName = file;
-
-	bool isSmallArchive = false;
-	if (_vm->getPlatform() == Common::kPlatformAmiga) {
-		if (_vm->getFeatures() & GF_DEMO) {
-			isSmallArchive = _archive.size() == SIZEOF_SMALL_ARCHIVE;
-		} else if (_vm->getFeatures() & GF_LANG_MULT) {
-			isSmallArchive = (_archive.readUint32BE() != MKID_BE('NDOS'));
-		}
-	}
-
-	_numFiles = (isSmallArchive) ? SMALL_ARCHIVE_FILES_NUM : NORMAL_ARCHIVE_FILES_NUM;
-
-	_archive.seek(ARCHIVE_FILENAMES_OFS);
-	_archive.read(_archiveDir, _numFiles*32);
-
-	_archive.seek((isSmallArchive) ? SMALL_ARCHIVE_SIZES_OFS : NORMAL_ARCHIVE_SIZES_OFS);
-
-	uint32 dataOffset = (isSmallArchive) ? SMALL_ARCHIVE_DATA_OFS : NORMAL_ARCHIVE_DATA_OFS;
-	for (uint16 i = 0; i < _numFiles; i++) {
-		_archiveOffsets[i] = dataOffset;
-		_archiveLenghts[i] = _archive.readUint32BE();
-		dataOffset += _archiveLenghts[i];
-	}
-
-	return;
-}
-
-
-void Archive::close() {
-	if (!_archive.isOpen()) return;
-
-	resetArchivedFile();
-
-	_archive.close();
-	_archiveName.clear();
-}
-
-Common::String Archive::name() const {
-	return _archiveName;
-}
-
-bool Archive::openArchivedFile(const char *filename) {
-	debugC(3, kDebugDisk, "Archive::openArchivedFile(%s)", filename);
-
-	resetArchivedFile();
-
-	debugC(3, kDebugDisk, "Archive::openArchivedFile(%s)", filename);
-
-	if (!_archive.isOpen())
-		error("Archive::openArchivedFile: the archive is not open");
-
-	uint16 i = 0;
-	for ( ; i < _numFiles; i++) {
-		if (!scumm_stricmp(_archiveDir[i], filename)) break;
-	}
-	if (i == _numFiles) return false;
-
-	debugC(9, kDebugDisk, "Archive::openArchivedFile: '%s' found in slot %i", filename, i);
-
-	_file = true;
-
-	_fileOffset = _archiveOffsets[i];
-	_fileCursor = _archiveOffsets[i];
-	_fileEndOffset = _archiveOffsets[i] + _archiveLenghts[i];
-
-	_archive.seek(_fileOffset);
-
-	return true;
-}
-
-void Archive::resetArchivedFile() {
-	_file = false;
-	_fileCursor = 0;
-	_fileOffset = 0;
-	_fileEndOffset = 0;
-}
-
-void Archive::closeArchivedFile() {
-	resetArchivedFile();
-}
-
-
-int32 Archive::size() const {
-	return (_file == true ? _fileEndOffset - _fileOffset : 0);
-}
-
-int32 Archive::pos() const {
-	return (_file == true ? _fileCursor - _fileOffset : 0 );
-}
-
-bool Archive::eos() const {
-	return (_file == true ? _fileCursor == _fileEndOffset : true ); // FIXME (eos definition change)
-}
-
-bool Archive::seek(int32 offs, int whence) {
-	assert(_file == true && _fileCursor <= _fileEndOffset);
-
-	switch (whence) {
-	case SEEK_CUR:
-		_fileCursor += offs;
-		break;
-	case SEEK_SET:
-		_fileCursor = _fileOffset + offs;
-		break;
-	case SEEK_END:
-		_fileCursor = _fileEndOffset - offs;
-		break;
-	}
-	assert(_fileCursor <= _fileEndOffset && _fileCursor >= _fileOffset);
-
-	return _archive.seek(_fileCursor, SEEK_SET);
-}
-
-uint32 Archive::read(void *dataPtr, uint32 dataSize) {
-//	printf("read(%i, %i)\n", file->_cursor, file->_endOffset);
-	if (_file == false)
-		error("Archive::read: no archived file is currently open");
-
-	if (_fileCursor >= _fileEndOffset)
-		error("can't read beyond end of archived file");
-
-	if (_fileEndOffset - _fileCursor < dataSize)
-		dataSize = _fileEndOffset - _fileCursor;
-
-	int32 readBytes = _archive.read(dataPtr, dataSize);
-	_fileCursor += readBytes;
-
-	return readBytes;
-}
-
-
-
-
-
-/*
-	This stream class is just a wrapper around Archive, so
-	deallocation is not a problem. In fact, this class doesn't
-	delete its input (Archive) stream.
-*/
-class DummyArchiveStream : public Common::SeekableReadStream {
-
-	Archive *_input;
+	uint32 			lookup(const char *name) const;
 
 public:
-	DummyArchiveStream(Archive &input) : _input(&input) {
+	NSArchive(Common::SeekableReadStream *stream, Common::Platform platform, uint32 features);
+	~NSArchive();
 
-	}
-
-	~DummyArchiveStream() {
-		// this class exists to provide this empty destructor
-	}
-
-	bool eos() const {
-		return _input->eos();
-	}
-
-	uint32 read(void* data, uint32 dataSize) {
-		return _input->read(data, dataSize);
-	}
-
-	int32 pos() const {
-		return _input->pos();
-	}
-
-	int32 size() const {
-		return _input->size();
-	}
-
-	bool seek(int32 offset, int whence) {
-		return _input->seek(offset, whence);
-	}
-
+	Common::SeekableReadStream *createReadStreamForMember(const Common::String &name) const;
+	bool hasFile(const Common::String &name);
+	int listMembers(Common::ArchiveMemberList &list);
+	Common::ArchiveMemberPtr getMember(const Common::String &name);
 };
 
 
+NSArchive::NSArchive(Common::SeekableReadStream *stream, Common::Platform platform, uint32 features) : _stream(stream) {
+	if (!_stream) {
+		error("NSArchive: invalid stream passed to constructor");
+	}
+
+ 	bool isSmallArchive = false;
+	if (platform == Common::kPlatformAmiga) {
+		if (features & GF_DEMO) {
+ 			isSmallArchive = stream->size() == SIZEOF_SMALL_ARCHIVE;
+		} else if (features & GF_LANG_MULT) {
+ 			isSmallArchive = (stream->readUint32BE() != MKID_BE('NDOS'));
+ 		}
+ 	}
+
+ 	_numFiles = (isSmallArchive) ? SMALL_ARCHIVE_FILES_NUM : NORMAL_ARCHIVE_FILES_NUM;
+
+	_stream->seek(ARCHIVE_FILENAMES_OFS);
+	_stream->read(_archiveDir, _numFiles*32);
+
+	_stream->seek((isSmallArchive) ? SMALL_ARCHIVE_SIZES_OFS : NORMAL_ARCHIVE_SIZES_OFS);
+
+ 	uint32 dataOffset = (isSmallArchive) ? SMALL_ARCHIVE_DATA_OFS : NORMAL_ARCHIVE_DATA_OFS;
+ 	for (uint16 i = 0; i < _numFiles; i++) {
+ 		_archiveOffsets[i] = dataOffset;
+		_archiveLenghts[i] = _stream->readUint32BE();
+ 		dataOffset += _archiveLenghts[i];
+	}
+
+}
+
+NSArchive::~NSArchive() {
+	delete _stream;
+}
+
+uint32 NSArchive::lookup(const char *name) const {
+	uint32 i = 0;
+ 	for ( ; i < _numFiles; i++) {
+		if (!scumm_stricmp(_archiveDir[i], name)) break;
+ 	}
+	return i;
+}
+
+Common::SeekableReadStream *NSArchive::createReadStreamForMember(const Common::String &name) const {
+	debugC(3, kDebugDisk, "NSArchive::createReadStreamForMember(%s)", name.c_str());
+
+	if (name.empty())
+		return 0;
+
+	uint32 index = lookup(name.c_str());
+	if (index == _numFiles) return 0;
+
+	debugC(9, kDebugDisk, "NSArchive::createReadStreamForMember: '%s' found in slot %i", name.c_str(), index);
+
+	int offset = _archiveOffsets[index];
+	int endOffset = _archiveOffsets[index] + _archiveLenghts[index];
+	return new Common::SeekableSubReadStream(_stream, offset, endOffset, false);
+}
+
+bool NSArchive::hasFile(const Common::String &name) {
+	if (name.empty())
+		return false;
+	return lookup(name.c_str()) != _numFiles;
+}
+
+int NSArchive::listMembers(Common::ArchiveMemberList &list) {
+	for (uint32 i = 0; i < _numFiles; i++) {
+		list.push_back(Common::SharedPtr<Common::GenericArchiveMember>(new Common::GenericArchiveMember(_archiveDir[i], this)));
+	}
+	return _numFiles;
+}
+
+Common::ArchiveMemberPtr NSArchive::getMember(const Common::String &name) {
+	uint32 index = lookup(name.c_str());
+
+	char *item = 0;
+	if (index < _numFiles) {
+		item = _archiveDir[index];
+	}
+
+	return Common::SharedPtr<Common::GenericArchiveMember>(new Common::GenericArchiveMember(item, this));
+}
+
+
+#define HIGHEST_PRIORITY			9
+#define NORMAL_ARCHIVE_PRIORITY		5
+#define LOW_ARCHIVE_PRIORITY		2
+#define LOWEST_ARCHIVE_PRIORITY		1
+
+Disk_ns::Disk_ns(Parallaction *vm) : _vm(vm) {
+	Common::FSDirectory *baseDir = new Common::FSDirectory(ConfMan.get("path"));
+	_sset.add("basedir", baseDir, HIGHEST_PRIORITY);
+}
+
+Disk_ns::~Disk_ns() {
+	_sset.clear();
+}
 
 void Disk_ns::errorFileNotFound(const char *s) {
 	error("File '%s' not found", s);
 }
 
-Disk_ns::Disk_ns(Parallaction *vm) : _vm(vm) {
-
+Common::SeekableReadStream *Disk_ns::openFile(const char *filename) {
+	Common::SeekableReadStream *stream = tryOpenFile(filename);
+	if (!stream)
+		errorFileNotFound(filename);
+	return stream;
 }
 
-Disk_ns::~Disk_ns() {
 
+void Disk_ns::addArchive(const Common::String& name, int priority) {
+	Common::SeekableReadStream *stream = _sset.createReadStreamForMember(name);
+	if (!stream)
+		error("Disk_ns::addArchive() couldn't find archive '%s'", name.c_str());
+
+	debugC(1, kDebugDisk, "Disk_ns::addArchive(name = %s, priority = %i)", name.c_str(), priority);
+
+	NSArchive *arc = new NSArchive(stream, _vm->getPlatform(), _vm->getFeatures());
+	_sset.add(name, arc, priority);
 }
-
 
 Common::String Disk_ns::selectArchive(const Common::String& name) {
-	Common::String oldName = _resArchive.name();
-	_resArchive.open(name.c_str());
+	Common::String oldName = _resArchiveName;
+
+	if (_sset.hasArchive(name)) {
+		return oldName;
+	}
+
+	if (!_resArchiveName.empty()) {
+		_sset.remove(_resArchiveName);
+	}
+	_resArchiveName = name;
+	addArchive(name, LOW_ARCHIVE_PRIORITY);
+
 	return oldName;
 }
 
 void Disk_ns::setLanguage(uint16 language) {
 	debugC(1, kDebugDisk, "setLanguage(%i)", language);
+	assert(language < 4);
 
-	switch (language) {
-	case 0:
-		strcpy(_languageDir, "it/");
-		break;
-
-	case 1:
-		strcpy(_languageDir, "fr/");
-		break;
-
-	case 2:
-		strcpy(_languageDir, "en/");
-		break;
-
-	case 3:
-		strcpy(_languageDir, "ge/");
-		break;
-
-	default:
-		error("unknown language");
-
+	if (!_language.empty()) {
+		_sset.remove(_language);
 	}
 
-	_languageDir[2] = '\0';
-	_locArchive.open(_languageDir);
-	_languageDir[2] = '/';
+	static const char *languages[] = { "it", "fr", "en", "ge" };
+	_language = languages[language];
 
-	return;
+	if (_sset.hasArchive(_language)) {
+		return;
+	}
+
+	addArchive(_language, LOWEST_ARCHIVE_PRIORITY);
 }
 
 #pragma mark -
-
 
 
 DosDisk_ns::DosDisk_ns(Parallaction* vm) : Disk_ns(vm) {
@@ -310,6 +247,23 @@ DosDisk_ns::DosDisk_ns(Parallaction* vm) : Disk_ns(vm) {
 }
 
 DosDisk_ns::~DosDisk_ns() {
+}
+
+void DosDisk_ns::init() {
+	// setup permament archives
+	addArchive("disk1", NORMAL_ARCHIVE_PRIORITY);
+}
+
+Common::SeekableReadStream *DosDisk_ns::tryOpenFile(const char* name) {
+	debugC(3, kDebugDisk, "DosDisk_ns::tryOpenFile(%s)", name);
+
+	Common::SeekableReadStream *stream = _sset.createReadStreamForMember(name);
+	if (stream)
+		return stream;
+
+	char path[PATH_LEN];
+	sprintf(path, "%s.pp", name);
+	return _sset.createReadStreamForMember(path);
 }
 
 
@@ -322,67 +276,36 @@ Cnv* DosDisk_ns::loadExternalCnv(const char *filename) {
 
 	sprintf(path, "%s.cnv", filename);
 
-	Common::File stream;
+	Common::SeekableReadStream *stream = openFile(path);
 
-	if (!stream.open(path))
-		errorFileNotFound(path);
-
-	uint16 numFrames = stream.readByte();
-	uint16 width = stream.readByte();
-	uint16 height = stream.readByte();
-
+	uint16 numFrames = stream->readByte();
+	uint16 width = stream->readByte();
+	uint16 height = stream->readByte();
 	uint32 decsize = numFrames * width * height;
-	byte *data = (byte*)malloc(decsize);
-	stream.read(data, decsize);
 
-	return new Cnv(numFrames, width, height, data);
+	byte *data = new byte[decsize];
+	stream->read(data, decsize);
+	delete stream;
+
+	return new Cnv(numFrames, width, height, data, true);
 }
 
-Frames* DosDisk_ns::loadExternalStaticCnv(const char *filename) {
 
-	char path[PATH_LEN];
+Frames* DosDisk_ns::loadCnv(const char *filename) {
 
-	sprintf(path, "%s.cnv", filename);
+	Common::SeekableReadStream *stream = openFile(filename);
 
-	Common::File stream;
-
-	if (!stream.open(path))
-		errorFileNotFound(path);
-
-	Graphics::Surface *cnv = new Graphics::Surface;
-
-	stream.skip(1);
-	byte w = stream.readByte();
-	byte h = stream.readByte();
-
-	cnv->create(w, h, 1);
-	stream.read(cnv->pixels, w*h);
-
-	return new SurfaceToFrames(cnv);
-}
-
-Cnv* DosDisk_ns::loadCnv(const char *filename) {
-
-	char path[PATH_LEN];
-
-	strcpy(path, filename);
-	if (!_resArchive.openArchivedFile(path)) {
-		sprintf(path, "%s.pp", filename);
-		if (!_resArchive.openArchivedFile(path))
-			errorFileNotFound(path);
-	}
-
-	uint16 numFrames = _resArchive.readByte();
-	uint16 width = _resArchive.readByte();
-	uint16 height = _resArchive.readByte();
-
+	uint16 numFrames = stream->readByte();
+	uint16 width = stream->readByte();
+	uint16 height = stream->readByte();
 	uint32 decsize = numFrames * width * height;
-	byte *data = (byte*)malloc(decsize);
+	byte *data = new byte[decsize];
 
-	Graphics::PackBitsReadStream decoder(_resArchive);
+	Graphics::PackBitsReadStream decoder(*stream);
 	decoder.read(data, decsize);
+	delete stream;
 
-	return new Cnv(numFrames, width, height, data);
+	return new Cnv(numFrames, width, height, data, true);
 }
 
 GfxObj* DosDisk_ns::loadTalk(const char *name) {
@@ -407,46 +330,37 @@ GfxObj* DosDisk_ns::loadTalk(const char *name) {
 Script* DosDisk_ns::loadLocation(const char *name) {
 
 	char archivefile[PATH_LEN];
-	sprintf(archivefile, "%s%s%s.loc", _vm->_char.getBaseName(), _languageDir, name);
+	sprintf(archivefile, "%s%s/%s.loc", _vm->_char.getBaseName(), _language.c_str(), name);
 
 	debugC(3, kDebugDisk, "DosDisk_ns::loadLocation(%s): trying '%s'", name, archivefile);
 
-	if (!_locArchive.openArchivedFile(archivefile)) {
-		sprintf(archivefile, "%s%s.loc", _languageDir, name);
+	Common::SeekableReadStream *stream = tryOpenFile(archivefile);
+	if  (!stream) {
+		sprintf(archivefile, "%s/%s.loc", _language.c_str(), name);
 		debugC(3, kDebugDisk, "DosDisk_ns::loadLocation(%s): trying '%s'", name, archivefile);
-
-		if (!_locArchive.openArchivedFile(archivefile))
-			errorFileNotFound(name);
+		stream = openFile(archivefile);
 	}
 
-	return new Script(new DummyArchiveStream(_locArchive), true);
+	return new Script(stream, true);
 }
 
 Script* DosDisk_ns::loadScript(const char* name) {
-
-	char vC8[PATH_LEN];
-
-	sprintf(vC8, "%s.script", name);
-
-	if (!_resArchive.openArchivedFile(vC8))
-		errorFileNotFound(vC8);
-
-	return new Script(new DummyArchiveStream(_resArchive), true);
+	char path[PATH_LEN];
+	sprintf(path, "%s.script", name);
+	Common::SeekableReadStream *stream = openFile(path);
+	return new Script(stream, true);
 }
 
 GfxObj* DosDisk_ns::loadHead(const char* name) {
-
 	char path[PATH_LEN];
-
 	sprintf(path, "%shead", name);
 	path[8] = '\0';
-
-	return new GfxObj(0, loadExternalStaticCnv(path));
+	return new GfxObj(0, loadExternalCnv(path));
 }
 
 
 Frames* DosDisk_ns::loadPointer(const char *name) {
-	return loadExternalStaticCnv(name);
+	return loadExternalCnv(name);
 }
 
 
@@ -458,7 +372,6 @@ Font* DosDisk_ns::loadFont(const char* name) {
 
 
 GfxObj* DosDisk_ns::loadObjects(const char *name) {
-
 	char path[PATH_LEN];
 	sprintf(path, "%sobj", name);
 	return new GfxObj(0, loadExternalCnv(path), name);
@@ -466,28 +379,7 @@ GfxObj* DosDisk_ns::loadObjects(const char *name) {
 
 
 GfxObj* DosDisk_ns::loadStatic(const char* name) {
-
-	char path[PATH_LEN];
-
-	strcpy(path, name);
-	if (!_resArchive.openArchivedFile(path)) {
-		sprintf(path, "%s.pp", name);
-		if (!_resArchive.openArchivedFile(path))
-			errorFileNotFound(path);
-	}
-
-	Graphics::Surface* cnv = new Graphics::Surface;
-
-	_resArchive.skip(1);
-	byte w = _resArchive.readByte();
-	byte h = _resArchive.readByte();
-
-	cnv->create(w, h, 1);
-
-	Graphics::PackBitsReadStream decoder(_resArchive);
-	decoder.read(cnv->pixels, w*h);
-
-	return new GfxObj(0, new SurfaceToFrames(cnv), name);
+	return new GfxObj(0, loadCnv(name), name);
 }
 
 Frames* DosDisk_ns::loadFrames(const char* name) {
@@ -507,8 +399,11 @@ void DosDisk_ns::unpackBackground(Common::ReadStream *stream, byte *screen, byte
 	byte b;
 	uint32 i = 0;
 
-	while (!stream->eos()) {
+	while (1) {
 		b = stream->readByte();
+
+		if (stream->eos())
+			break;
 
 		path[i/8] |= ((b & 0x80) >> 7) << (i & 7);
 		mask[i/4] |= ((b & 0x60) >> 5) << ((i & 3) << 1);
@@ -554,24 +449,26 @@ void DosDisk_ns::parseBackground(BackgroundInfo& info, Common::SeekableReadStrea
 }
 
 void DosDisk_ns::loadBackground(BackgroundInfo& info, const char *filename) {
-
-	if (!_resArchive.openArchivedFile(filename))
-		errorFileNotFound(filename);
+	Common::SeekableReadStream *stream = openFile(filename);
 
 	info.width = _vm->_screenWidth;	// 320
 	info.height = _vm->_screenHeight;	// 200
 
-	parseBackground(info, _resArchive);
+	parseBackground(info, *stream);
 
 	info.bg.create(info.width, info.height, 1);
-	info.mask.create(info.width, info.height);
-	info.mask.bigEndian = true;
-	info.path.create(info.width, info.height);
+	info._mask = new MaskBuffer;
+	info._mask->create(info.width, info.height);
+	info._mask->bigEndian = true;
 
-	Graphics::PackBitsReadStream stream(_resArchive);
-	unpackBackground(&stream, (byte*)info.bg.pixels, info.mask.data, info.path.data);
+	info._path = new PathBuffer;
+	info._path->create(info.width, info.height);
+	info._path->bigEndian = true;
 
-	return;
+	Graphics::PackBitsReadStream pbstream(*stream);
+	unpackBackground(&pbstream, (byte*)info.bg.pixels, info._mask->data, info._path->data);
+
+	delete stream;
 }
 
 //
@@ -583,20 +480,17 @@ void DosDisk_ns::loadBackground(BackgroundInfo& info, const char *filename) {
 void DosDisk_ns::loadMaskAndPath(BackgroundInfo& info, const char *name) {
 	char path[PATH_LEN];
 	sprintf(path, "%s.msk", name);
-
-	if (!_resArchive.openArchivedFile(path))
-		errorFileNotFound(name);
-
-	parseDepths(info, _resArchive);
-
-	info.path.create(info.width, info.height);
-	_resArchive.read(info.path.data, info.path.size);
-
-	info.mask.create(info.width, info.height);
-	info.mask.bigEndian = true;
-	_resArchive.read(info.mask.data, info.mask.size);
-
-	return;
+	Common::SeekableReadStream *stream = openFile(path);
+	parseDepths(info, *stream);
+	info._path = new PathBuffer;
+	info._path->create(info.width, info.height);
+	info._path->bigEndian = true;
+	stream->read(info._path->data, info._path->size);
+	info._mask = new MaskBuffer;
+	info._mask->create(info.width, info.height);
+	info._mask->bigEndian = true;
+	stream->read(info._mask->data, info._mask->size);
+	delete stream;
 }
 
 void DosDisk_ns::loadSlide(BackgroundInfo& info, const char *filename) {
@@ -624,27 +518,16 @@ void DosDisk_ns::loadScenery(BackgroundInfo& info, const char *name, const char 
 Table* DosDisk_ns::loadTable(const char* name) {
 	char path[PATH_LEN];
 	sprintf(path, "%s.tab", name);
-
-	Common::File	stream;
-	if (!stream.open(path))
-		errorFileNotFound(path);
-
-	Table *t = createTableFromStream(100, stream);
-
-	stream.close();
-
+	Common::SeekableReadStream *stream = openFile(path);
+	Table *t = createTableFromStream(100, *stream);
+	delete stream;
 	return t;
 }
 
 Common::SeekableReadStream* DosDisk_ns::loadMusic(const char* name) {
 	char path[PATH_LEN];
 	sprintf(path, "%s.mid", name);
-
-	Common::File *stream = new Common::File;
-	if (!stream->open(path))
-		errorFileNotFound(path);
-
-	return stream;
+	return openFile(path);
 }
 
 
@@ -822,14 +705,22 @@ public:
 
 
 
-
 AmigaDisk_ns::AmigaDisk_ns(Parallaction *vm) : Disk_ns(vm) {
-
 }
 
 
 AmigaDisk_ns::~AmigaDisk_ns() {
 
+}
+
+void AmigaDisk_ns::init() {
+	// setup permament archives
+	if (_vm->getFeatures() & GF_DEMO) {
+		addArchive("disk0", NORMAL_ARCHIVE_PRIORITY);
+	} else {
+		addArchive("disk0", NORMAL_ARCHIVE_PRIORITY);
+		addArchive("disk1", NORMAL_ARCHIVE_PRIORITY);
+	}
 }
 
 #define NUM_PLANES		5
@@ -935,35 +826,13 @@ void AmigaDisk_ns::unpackBitmap(byte *dst, byte *src, uint16 numFrames, uint16 b
 
 }
 
-Frames* AmigaDisk_ns::makeStaticCnv(Common::SeekableReadStream &stream) {
 
-	stream.skip(1);
-	uint16 width = stream.readByte();
-	uint16 height = stream.readByte();
+Cnv* AmigaDisk_ns::makeCnv(Common::SeekableReadStream *stream, bool disposeStream) {
+	assert(stream);
 
-	assert((width & 7) == 0);
-
-	byte bytesPerPlane = width / 8;
-
-	uint32 rawsize = bytesPerPlane * NUM_PLANES * height;
-	byte *buf = (byte*)malloc(rawsize);
-	stream.read(buf, rawsize);
-
-	Graphics::Surface *cnv = new Graphics::Surface;
-	cnv->create(width, height, 1);
-
-	unpackBitmap((byte*)cnv->pixels, buf, 1, bytesPerPlane, height);
-
-	free(buf);
-
-	return new SurfaceToFrames(cnv);
-}
-
-Cnv* AmigaDisk_ns::makeCnv(Common::SeekableReadStream &stream) {
-
-	uint16 numFrames = stream.readByte();
-	uint16 width = stream.readByte();
-	uint16 height = stream.readByte();
+	uint16 numFrames = stream->readByte();
+	uint16 width = stream->readByte();
+	uint16 height = stream->readByte();
 
 	assert((width & 7) == 0);
 
@@ -971,16 +840,20 @@ Cnv* AmigaDisk_ns::makeCnv(Common::SeekableReadStream &stream) {
 
 	uint32 rawsize = numFrames * bytesPerPlane * NUM_PLANES * height;
 	byte *buf = (byte*)malloc(rawsize);
-	stream.read(buf, rawsize);
+	stream->read(buf, rawsize);
 
 	uint32 decsize = numFrames * width * height;
-	byte *data = (byte*)calloc(decsize, 1);
+	byte *data = new byte[decsize];
+	memset(data, 0, decsize);
 
 	unpackBitmap(data, buf, numFrames, bytesPerPlane, height);
 
 	free(buf);
 
-	return new Cnv(numFrames, width, height, data);
+	if (disposeStream)
+		delete stream;
+
+	return new Cnv(numFrames, width, height, data, true);
 }
 #undef NUM_PLANES
 
@@ -988,78 +861,59 @@ Script* AmigaDisk_ns::loadLocation(const char *name) {
 	debugC(1, kDebugDisk, "AmigaDisk_ns()::loadLocation '%s'", name);
 
 	char path[PATH_LEN];
-	sprintf(path, "%s%s%s.loc.pp", _vm->_char.getBaseName(), _languageDir, name);
+	sprintf(path, "%s%s/%s.loc", _vm->_char.getBaseName(), _language.c_str(), name);
 
-	if (!_locArchive.openArchivedFile(path)) {
-		sprintf(path, "%s%s.loc.pp", _languageDir, name);
-		if (!_locArchive.openArchivedFile(path)) {
-			errorFileNotFound(name);
-		}
+	Common::SeekableReadStream *stream = tryOpenFile(path);
+	if (!stream) {
+		sprintf(path, "%s/%s.loc", _language.c_str(), name);
+		stream = openFile(path);
 	}
 
 	debugC(3, kDebugDisk, "location file found: %s", path);
-
-	return new Script(new PowerPackerStream(_locArchive), true);
+	return new Script(stream, true);
 }
 
 Script* AmigaDisk_ns::loadScript(const char* name) {
 	debugC(1, kDebugDisk, "AmigaDisk_ns::loadScript '%s'", name);
-
-	char vC8[PATH_LEN];
-
-	sprintf(vC8, "%s.script", name);
-
-	if (!_resArchive.openArchivedFile(vC8))
-		errorFileNotFound(vC8);
-
-	return new Script(new DummyArchiveStream(_resArchive), true);
+	char path[PATH_LEN];
+	sprintf(path, "%s.script", name);
+	Common::SeekableReadStream *stream = openFile(path);
+	return new Script(stream, true);
 }
 
 Frames* AmigaDisk_ns::loadPointer(const char* name) {
 	debugC(1, kDebugDisk, "AmigaDisk_ns::loadPointer");
-
-	Common::File stream;
-	if (!stream.open(name))
-		errorFileNotFound(name);
-
-	return makeStaticCnv(stream);
+	Common::SeekableReadStream *stream = openFile(name);
+	return makeCnv(stream, true);
 }
 
 GfxObj* AmigaDisk_ns::loadStatic(const char* name) {
 	debugC(1, kDebugDisk, "AmigaDisk_ns::loadStatic '%s'", name);
-
-	Common::SeekableReadStream *s = openArchivedFile(name, true);
-	Frames *cnv = makeStaticCnv(*s);
-
-	delete s;
-
-	return new GfxObj(0, cnv, name);
+	Common::SeekableReadStream *s = openFile(name);
+	return new GfxObj(0, makeCnv(s, true), name);
 }
 
-Common::SeekableReadStream *AmigaDisk_ns::openArchivedFile(const char* name, bool errorOnFileNotFound) {
-	debugC(3, kDebugDisk, "AmigaDisk_ns::openArchivedFile(%s)", name);
+Common::SeekableReadStream *AmigaDisk_ns::tryOpenFile(const char* name) {
+	debugC(3, kDebugDisk, "AmigaDisk_ns::tryOpenFile(%s)", name);
 
-	if (_resArchive.openArchivedFile(name)) {
-		return new DummyArchiveStream(_resArchive);
-	}
+	Common::SeekableReadStream *stream = _sset.createReadStreamForMember(name);
+	if (stream)
+		return stream;
 
 	char path[PATH_LEN];
-
 	sprintf(path, "%s.pp", name);
-	if (_resArchive.openArchivedFile(path)) {
-		return new PowerPackerStream(_resArchive);
-	}
+	stream = _sset.createReadStreamForMember(path);
+	if (stream)
+		return new PowerPackerStream(*stream);
 
 	sprintf(path, "%s.dd", name);
-	if (_resArchive.openArchivedFile(path)) {
-		return new PowerPackerStream(_resArchive);
-	}
+	stream = _sset.createReadStreamForMember(path);
+	if (stream)
+		return new PowerPackerStream(*stream);
 
-	if (errorOnFileNotFound)
-		errorFileNotFound(name);
-
-	return NULL;
+	return 0;
 }
+
 
 /*
 	FIXME: mask values are not computed correctly for level 1 and 2
@@ -1067,7 +921,7 @@ Common::SeekableReadStream *AmigaDisk_ns::openArchivedFile(const char* name, boo
 	NOTE: this routine is only able to build masks for Nippon Safes, since mask widths are hardcoded
 	into the main loop.
 */
-void buildMask(byte* buf) {
+void AmigaDisk_ns::buildMask(byte* buf) {
 
 	byte mask1[16] = { 0, 0x80, 0x20, 0xA0, 8, 0x88, 0x28, 0xA8, 2, 0x82, 0x22, 0xA2, 0xA, 0x8A, 0x2A, 0xAA };
 	byte mask0[16] = { 0, 0x40, 0x10, 0x50, 4, 0x44, 0x14, 0x54, 1, 0x41, 0x11, 0x51, 0x5, 0x45, 0x15, 0x55 };
@@ -1140,7 +994,7 @@ public:
 
 void AmigaDisk_ns::loadBackground(BackgroundInfo& info, const char *name) {
 
-	Common::SeekableReadStream *s = openArchivedFile(name, true);
+	Common::SeekableReadStream *s = openFile(name);
 
 	byte *pal;
 	PaletteFxRange ranges[6];
@@ -1182,8 +1036,8 @@ void AmigaDisk_ns::loadMask(BackgroundInfo& info, const char *name) {
 	char path[PATH_LEN];
 	sprintf(path, "%s.mask", name);
 
-	Common::SeekableReadStream *s = openArchivedFile(path, false);
-	if (s == NULL) {
+	Common::SeekableReadStream *s = tryOpenFile(path);
+	if (!s) {
 		debugC(5, kDebugDisk, "Mask file not found");
 		return;	// no errors if missing mask files: not every location has one
 	}
@@ -1202,9 +1056,10 @@ void AmigaDisk_ns::loadMask(BackgroundInfo& info, const char *name) {
 	s->seek(0x126, SEEK_SET);	// HACK: skipping IFF/ILBM header should be done by analysis, not magic
 	Graphics::PackBitsReadStream stream(*s);
 
-	info.mask.create(info.width, info.height);
-	stream.read(info.mask.data, info.mask.size);
-	buildMask(info.mask.data);
+	info._mask = new MaskBuffer;
+	info._mask->create(info.width, info.height);
+	stream.read(info._mask->data, info._mask->size);
+	buildMask(info._mask->data);
 
 	delete s;
 
@@ -1216,8 +1071,8 @@ void AmigaDisk_ns::loadPath(BackgroundInfo& info, const char *name) {
 	char path[PATH_LEN];
 	sprintf(path, "%s.path", name);
 
-	Common::SeekableReadStream *s = openArchivedFile(path, false);
-	if (s == NULL)
+	Common::SeekableReadStream *s = tryOpenFile(path);
+	if (!s)
 		return;	// no errors if missing path files: not every location has one
 
 
@@ -1225,8 +1080,10 @@ void AmigaDisk_ns::loadPath(BackgroundInfo& info, const char *name) {
 
 	Graphics::PackBitsReadStream stream(*s);
 
-	info.path.create(info.width, info.height);
-	stream.read(info.path.data, info.path.size);
+	info._path = new PathBuffer;
+	info._path->create(info.width, info.height);
+	info._path->bigEndian = false;
+	stream.read(info._path->data, info._path->size);
 
 	delete s;
 
@@ -1261,33 +1118,22 @@ void AmigaDisk_ns::loadSlide(BackgroundInfo& info, const char *name) {
 Frames* AmigaDisk_ns::loadFrames(const char* name) {
 	debugC(1, kDebugDisk, "AmigaDisk_ns::loadFrames '%s'", name);
 
-	Common::SeekableReadStream *s;
-
 	char path[PATH_LEN];
 	sprintf(path, "anims/%s", name);
 
-	s = openArchivedFile(path, false);
+	Common::SeekableReadStream *s = tryOpenFile(path);
 	if (!s)
-		s = openArchivedFile(name, true);
+		s = openFile(name);
 
-	Cnv *cnv = makeCnv(*s);
-	delete s;
-
-	return cnv;
+	return makeCnv(s, true);
 }
 
 GfxObj* AmigaDisk_ns::loadHead(const char* name) {
 	debugC(1, kDebugDisk, "AmigaDisk_ns::loadHead '%s'", name);
-
 	char path[PATH_LEN];
 	sprintf(path, "%s.head", name);
-
-	Common::SeekableReadStream *s = openArchivedFile(path, true);
-	Frames *cnv = makeStaticCnv(*s);
-
-	delete s;
-
-	return new GfxObj(0, cnv, name);
+	Common::SeekableReadStream *s = openFile(path);
+	return new GfxObj(0, makeCnv(s, true), name);
 }
 
 
@@ -1300,19 +1146,13 @@ GfxObj* AmigaDisk_ns::loadObjects(const char *name) {
 	else
 		sprintf(path, "objs/%s.objs", name);
 
-	Common::SeekableReadStream *s = openArchivedFile(path, true);
-
-	Cnv *cnv = makeCnv(*s);
-	delete s;
-
-	return new GfxObj(0, cnv, name);
+	Common::SeekableReadStream *s = openFile(path);
+	return new GfxObj(0, makeCnv(s, true), name);
 }
 
 
 GfxObj* AmigaDisk_ns::loadTalk(const char *name) {
 	debugC(1, kDebugDisk, "AmigaDisk_ns::loadTalk '%s'", name);
-
-	Common::SeekableReadStream *s;
 
 	char path[PATH_LEN];
 	if (_vm->getFeatures() & GF_DEMO)
@@ -1320,47 +1160,29 @@ GfxObj* AmigaDisk_ns::loadTalk(const char *name) {
 	else
 		sprintf(path, "talk/%s.talk", name);
 
-	s = openArchivedFile(path, false);
-	if (s == NULL) {
-		s = openArchivedFile(name, true);
+	Common::SeekableReadStream *s = tryOpenFile(path);
+	if (!s) {
+		s = openFile(name);
 	}
-
-	Cnv *cnv = makeCnv(*s);
-	delete s;
-
-	return new GfxObj(0, cnv, name);
+	return new GfxObj(0, makeCnv(s, true), name);
 }
 
 Table* AmigaDisk_ns::loadTable(const char* name) {
 	debugC(1, kDebugDisk, "AmigaDisk_ns::loadTable '%s'", name);
 
 	char path[PATH_LEN];
-	sprintf(path, "%s.table", name);
-
-	bool dispose = false;
-
-	Common::SeekableReadStream *stream;
-
 	if (!scumm_stricmp(name, "global")) {
-		Common::File *s = new Common::File;
-		if (!s->open(path))
-			errorFileNotFound(path);
-
-		dispose = true;
-		stream = s;
+		sprintf(path, "%s.table", name);
 	} else {
 		if (!(_vm->getFeatures() & GF_DEMO))
 			sprintf(path, "objs/%s.table", name);
-		if (!_resArchive.openArchivedFile(path))
-			errorFileNotFound(path);
-
-		stream = &_resArchive;
+		else
+			sprintf(path, "%s.table", name);
 	}
 
+	Common::SeekableReadStream *stream = openFile(path);
 	Table *t = createTableFromStream(100, *stream);
-
-	if (dispose)
-		delete stream;
+	delete stream;
 
 	return t;
 }
@@ -1371,31 +1193,23 @@ Font* AmigaDisk_ns::loadFont(const char* name) {
 	char path[PATH_LEN];
 	sprintf(path, "%sfont", name);
 
-	if (_vm->getFeatures() & GF_LANG_IT) {
-		// Italian version has separate font files
-		Common::File stream;
-		if (!stream.open(path))
-			errorFileNotFound(path);
+	Common::SeekableReadStream *stream = openFile(path);
+	Font *font = createFont(name, *stream);
+	delete stream;
 
-		return createFont(name, stream);
-	} else {
-		if (!_resArchive.openArchivedFile(path))
-			errorFileNotFound(path);
-
-		return createFont(name, _resArchive);
-	}
+	return font;
 }
 
 
 Common::SeekableReadStream* AmigaDisk_ns::loadMusic(const char* name) {
-	return openArchivedFile(name);
+	return tryOpenFile(name);
 }
 
 Common::ReadStream* AmigaDisk_ns::loadSound(const char* name) {
 	char path[PATH_LEN];
 	sprintf(path, "%s.snd", name);
 
-	return openArchivedFile(path);
+	return tryOpenFile(path);
 }
 
 } // namespace Parallaction

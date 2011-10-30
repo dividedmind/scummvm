@@ -23,19 +23,7 @@
  *
  */
 
-
 #include "sword1/sword1.h"
-
-#include "base/plugins.h"
-#include "common/config-manager.h"
-#include "common/file.h"
-#include "common/fs.h"
-#include "common/timer.h"
-#include "common/events.h"
-#include "common/savefile.h"
-#include "common/system.h"
-
-#include "engines/metaengine.h"
 
 #include "sword1/resman.h"
 #include "sword1/objectman.h"
@@ -48,201 +36,10 @@
 #include "sword1/music.h"
 #include "sword1/control.h"
 
+#include "common/config-manager.h"
+
 #include "gui/message.h"
-#include "gui/newgui.h"
-
-using namespace Sword1;
-
-/* Broken Sword 1 */
-static const PlainGameDescriptor sword1FullSettings =
-	{"sword1", "Broken Sword 1: The Shadow of the Templars"};
-static const PlainGameDescriptor sword1DemoSettings =
-	{"sword1demo", "Broken Sword 1: The Shadow of the Templars (Demo)"};
-static const PlainGameDescriptor sword1MacFullSettings =
-	{"sword1mac", "Broken Sword 1: The Shadow of the Templars (Mac)"};
-static const PlainGameDescriptor sword1MacDemoSettings =
-	{"sword1macdemo", "Broken Sword 1: The Shadow of the Templars (Mac demo)"};
-
-// check these subdirectories (if present)
-static const char *g_dirNames[] = {	"clusters",	"speech" };
-
-#define NUM_COMMON_FILES_TO_CHECK 1
-#define NUM_PC_FILES_TO_CHECK 3
-#define NUM_MAC_FILES_TO_CHECK 4
-#define NUM_DEMO_FILES_TO_CHECK 1
-#define NUM_MAC_DEMO_FILES_TO_CHECK 1
-#define NUM_FILES_TO_CHECK NUM_COMMON_FILES_TO_CHECK + NUM_PC_FILES_TO_CHECK + NUM_MAC_FILES_TO_CHECK + NUM_DEMO_FILES_TO_CHECK + NUM_MAC_DEMO_FILES_TO_CHECK
-static const char *g_filesToCheck[NUM_FILES_TO_CHECK] = { // these files have to be found
-	"swordres.rif", // Mac and PC version
-	"general.clu", // PC version only
-	"compacts.clu", // PC version only
-	"scripts.clu", // PC version only
-	"general.clm", // Mac version only
-	"compacts.clm", // Mac version only
-	"scripts.clm", // Mac version only
-	"paris2.clm", // Mac version (full game only)
-	"cows.mad",	// this one should only exist in the demo version
-	"scripts.clm", // Mac version both demo and full game
-	// the engine needs several more files to work, but checking these should be sufficient
-};
-
-class SwordMetaEngine : public MetaEngine {
-public:
-	virtual const char *getName() const {
-		return "Broken Sword";
-	}
-	virtual const char *getCopyright() const {
-		return "Broken Sword Games (C) Revolution";
-	}
-
-	virtual bool hasFeature(MetaEngineFeature f) const;
-	virtual GameList getSupportedGames() const;
-	virtual GameDescriptor findGame(const char *gameid) const;
-	virtual GameList detectGames(const Common::FSList &fslist) const;
-	virtual SaveStateList listSaves(const char *target) const;
-
-	virtual PluginError createInstance(OSystem *syst, Engine **engine) const;
-};
-
-bool SwordMetaEngine::hasFeature(MetaEngineFeature f) const {
-	return
-		(f == kSupportsRTL) ||
-		(f == kSupportsListSaves) ||
-		(f == kSupportsDirectLoad);
-}
-
-GameList SwordMetaEngine::getSupportedGames() const {
-	GameList games;
-	games.push_back(sword1FullSettings);
-	games.push_back(sword1DemoSettings);
-	games.push_back(sword1MacFullSettings);
-	games.push_back(sword1MacDemoSettings);
-	return games;
-}
-
-GameDescriptor SwordMetaEngine::findGame(const char *gameid) const {
-	if (0 == scumm_stricmp(gameid, sword1FullSettings.gameid))
-		return sword1FullSettings;
-	if (0 == scumm_stricmp(gameid, sword1DemoSettings.gameid))
-		return sword1DemoSettings;
-	if (0 == scumm_stricmp(gameid, sword1MacFullSettings.gameid))
-		return sword1MacFullSettings;
-	if (0 == scumm_stricmp(gameid, sword1MacDemoSettings.gameid))
-		return sword1MacDemoSettings;
-	return GameDescriptor();
-}
-
-void Sword1CheckDirectory(const Common::FSList &fslist, bool *filesFound) {
-	for (Common::FSList::const_iterator file = fslist.begin(); file != fslist.end(); ++file) {
-		if (!file->isDirectory()) {
-			const char *fileName = file->getName().c_str();
-			for (int cnt = 0; cnt < NUM_FILES_TO_CHECK; cnt++)
-				if (scumm_stricmp(fileName, g_filesToCheck[cnt]) == 0)
-					filesFound[cnt] = true;
-		} else {
-			for (int cnt = 0; cnt < ARRAYSIZE(g_dirNames); cnt++)
-				if (scumm_stricmp(file->getName().c_str(), g_dirNames[cnt]) == 0) {
-					Common::FSList fslist2;
-					if (file->getChildren(fslist2, Common::FilesystemNode::kListFilesOnly))
-						Sword1CheckDirectory(fslist2, filesFound);
-				}
-		}
-	}
-}
-
-GameList SwordMetaEngine::detectGames(const Common::FSList &fslist) const {
-	int i, j;
-	GameList detectedGames;
-	bool filesFound[NUM_FILES_TO_CHECK];
-	for (i = 0; i < NUM_FILES_TO_CHECK; i++)
-		filesFound[i] = false;
-
-	Sword1CheckDirectory(fslist, filesFound);
-	bool mainFilesFound = true;
-	bool pcFilesFound = true;
-	bool macFilesFound = true;
-	bool demoFilesFound = true;
-	bool macDemoFilesFound = true;
-	for (i = 0; i < NUM_COMMON_FILES_TO_CHECK; i++)
-		if (!filesFound[i])
-			mainFilesFound = false;
-	for (j = 0; j < NUM_PC_FILES_TO_CHECK; i++, j++)
-		if (!filesFound[i])
-			pcFilesFound = false;
-	for (j = 0; j < NUM_MAC_FILES_TO_CHECK; i++, j++)
-		if (!filesFound[i])
-			macFilesFound = false;
-	for (j = 0; j < NUM_DEMO_FILES_TO_CHECK; i++, j++)
-		if (!filesFound[i])
-			demoFilesFound = false;
-	for (j = 0; j < NUM_DEMO_FILES_TO_CHECK; i++, j++)
-		if (!filesFound[i])
-			macDemoFilesFound = false;
-
-	if (mainFilesFound && pcFilesFound && demoFilesFound)
-		detectedGames.push_back(sword1DemoSettings);
-	else if (mainFilesFound && pcFilesFound)
-		detectedGames.push_back(sword1FullSettings);
-	else if (mainFilesFound && macFilesFound)
-		detectedGames.push_back(sword1MacFullSettings);
-	else if (mainFilesFound && macDemoFilesFound)
-		detectedGames.push_back(sword1MacDemoSettings);
-
-	return detectedGames;
-}
-
-PluginError SwordMetaEngine::createInstance(OSystem *syst, Engine **engine) const {
-	assert(engine);
-	*engine = new SwordEngine(syst);
-	return kNoError;
-}
-
-SaveStateList SwordMetaEngine::listSaves(const char *target) const {
-	Common::SaveFileManager *saveFileMan = g_system->getSavefileManager();
-	SaveStateList saveList;
-
-	Common::String pattern = "SAVEGAME.???";
-	Common::StringList filenames = saveFileMan->listSavefiles(pattern.c_str());
-	sort(filenames.begin(), filenames.end());
-	Common::StringList::const_iterator file = filenames.begin();
-
-	Common::InSaveFile *in = saveFileMan->openForLoading("SAVEGAME.INF");
-	if (in) {
-		uint8 stop;
-		char saveDesc[32];
-		do {
-			// Obtain the last digit of the filename, since they correspond to the save slot
-			int slotNum = atoi(file->c_str() + file->size() - 1);
-
-			uint pos = 0;
-			do {
-				stop = in->readByte();
-				if (pos < (sizeof(saveDesc) - 1)) { 	
-					if ((stop == 10) || (stop == 255) || (in->eos())) {
-						saveDesc[pos++] = '\0';
-					}
-					else if (stop >= 32) {
-						saveDesc[pos++] = stop;
-					}
-				}
-			} while ((stop != 10) && (stop != 255) && (!in->eos()));
-			if (saveDesc[0] != 0) {
-				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc, *file));
-				file++;
-			}
-		} while ((stop != 255) && (!in->eos()));
-	}
-	
-	delete in;
-		
-	return saveList;
-}
-
-#if PLUGIN_ENABLED_DYNAMIC(SWORD1)
-	REGISTER_PLUGIN_DYNAMIC(SWORD1, PLUGIN_TYPE_ENGINE, SwordMetaEngine);
-#else
-	REGISTER_PLUGIN_STATIC(SWORD1, PLUGIN_TYPE_ENGINE, SwordMetaEngine);
-#endif
+#include "gui/GuiManager.h"
 
 namespace Sword1 {
 
@@ -279,12 +76,9 @@ SwordEngine::~SwordEngine() {
 	delete _resMan;
 }
 
-int SwordEngine::init() {
+Common::Error SwordEngine::init() {
 
-	_system->beginGFXTransaction();
-		initCommonGFX(true);
-		_system->initSize(640, 480);
-	_system->endGFXTransaction();
+	initGraphics(640, 480, true);
 
 	if ( 0 == scumm_stricmp(ConfMan.get("gameid").c_str(), "sword1mac") ||
 	     0 == scumm_stricmp(ConfMan.get("gameid").c_str(), "sword1macdemo") )
@@ -303,7 +97,7 @@ int SwordEngine::init() {
 	_music = new Music(_mixer);
 	_sound = new Sound("", _mixer, _resMan);
 	_menu = new Menu(_screen, _mouse);
-	_logic = new Logic(_objectMan, _resMan, _screen, _mouse, _sound, _music, _menu, _system, _mixer);
+	_logic = new Logic(this, _objectMan, _resMan, _screen, _mouse, _sound, _music, _menu, _system, _mixer);
 	_mouse->useLogicAndMenu(_logic, _menu);
 
 	syncSoundSettings();
@@ -347,7 +141,7 @@ int SwordEngine::init() {
 	_mouse->initialize();
 	_control = new Control(_saveFileMan, _resMan, _objectMan, _system, _mouse, _sound, _music);
 
-	return 0;
+	return Common::kNoError;
 }
 
 void SwordEngine::reinitialize(void) {
@@ -529,10 +323,10 @@ void SwordEngine::showFileErrorMsg(uint8 type, bool *fileExists) {
 		if (missCnt == 1) {
 			sprintf(msg, errorMsgs[msgId],
 					_macCdFileList[missNum].name, (_macCdFileList[missNum].flags & FLAG_CD2) ? 2 : 1);
-			warning(msg);
+			warning("%s", msg);
 		} else {
 			char *pos = msg + sprintf(msg, errorMsgs[msgId + 1], missCnt);
-			warning(msg);
+			warning("%s", msg);
 			for (int i = 0; i < ARRAYSIZE(_macCdFileList); i++)
 				if (!fileExists[i]) {
 					warning("\"%s\" (CD %d)", _macCdFileList[i].name, (_macCdFileList[i].flags & FLAG_CD2) ? 2 : 1);
@@ -551,10 +345,10 @@ void SwordEngine::showFileErrorMsg(uint8 type, bool *fileExists) {
 		if (missCnt == 1) {
 			sprintf(msg, errorMsgs[msgId],
 					_pcCdFileList[missNum].name, (_pcCdFileList[missNum].flags & FLAG_CD2) ? 2 : 1);
-			warning(msg);
+			warning("%s", msg);
 		} else {
 			char *pos = msg + sprintf(msg, errorMsgs[msgId + 1], missCnt);
-			warning(msg);
+			warning("%s", msg);
 			for (int i = 0; i < ARRAYSIZE(_pcCdFileList); i++)
 				if (!fileExists[i]) {
 					warning("\"%s\" (CD %d)", _pcCdFileList[i].name, (_pcCdFileList[i].flags & FLAG_CD2) ? 2 : 1);
@@ -565,7 +359,7 @@ void SwordEngine::showFileErrorMsg(uint8 type, bool *fileExists) {
 	GUI::MessageDialog dialog(msg);
 	dialog.runModal();
 	if (type == TYPE_IMMED) // we can't start without this file, so error() out.
-		error(msg);
+		error("%s", msg);
 }
 
 void SwordEngine::checkCdFiles(void) { // check if we're running from cd, hdd or what...
@@ -689,8 +483,11 @@ void SwordEngine::checkCdFiles(void) { // check if we're running from cd, hdd or
 #endif
 }
 
-int SwordEngine::go() {
+Common::Error SwordEngine::go() {
+	_control->checkForOldSaveGames();
+
 	uint16 startPos = ConfMan.getInt("boot_param");
+	_control->readSavegameDescriptions();
 	if (startPos) {
 		_logic->startPositions(startPos);
 	} else {
@@ -703,7 +500,7 @@ int SwordEngine::go() {
 			_systemVars.controlPanelMode = CP_NEWGAME;
 			if (_control->runPanel() == CONTROL_GAME_RESTORED)
 				_control->doRestore();
-			else if (!quit())
+			else if (!shouldQuit())
 				_logic->startPositions(0);
 		} else {
 			// no savegames, start new game.
@@ -712,10 +509,10 @@ int SwordEngine::go() {
 	}
 	_systemVars.controlPanelMode = CP_NORMAL;
 
-	while (!quit()) {
+	while (!shouldQuit()) {
 		uint8 action = mainLoop();
 
-		if (!quit()) {
+		if (!shouldQuit()) {
 			// the mainloop was left, we have to reinitialize.
 			reinitialize();
 			if (action == CONTROL_GAME_RESTORED)
@@ -727,7 +524,7 @@ int SwordEngine::go() {
 		}
 	}
 
-	return 0;
+	return Common::kNoError;
 }
 
 void SwordEngine::checkCd(void) {
@@ -756,7 +553,7 @@ uint8 SwordEngine::mainLoop(void) {
 	uint8 retCode = 0;
 	_keyPressed.reset();
 
-	while ((retCode == 0) && (!quit())) {
+	while ((retCode == 0) && (!shouldQuit())) {
 		// do we need the section45-hack from sword.c here?
 		checkCd();
 
@@ -796,7 +593,6 @@ uint8 SwordEngine::mainLoop(void) {
 				retCode = CONTROL_RESTART_GAME;
 
 			// The control panel is triggered by F5 or ESC.
-			// FIXME: This is a very strange way of detecting F5...
 			else if (((_keyPressed.keycode == Common::KEYCODE_F5 || _keyPressed.keycode == Common::KEYCODE_ESCAPE)
 			         && (Logic::_scriptVars[MOUSE_STATUS] & 1)) || (_systemVars.controlPanelMode)) {
 				retCode = _control->runPanel();
@@ -805,9 +601,9 @@ uint8 SwordEngine::mainLoop(void) {
 			}
 			_mouseState = 0;
 			_keyPressed.reset();
-		} while ((Logic::_scriptVars[SCREEN] == Logic::_scriptVars[NEW_SCREEN]) && (retCode == 0) && (!quit()));
+		} while ((Logic::_scriptVars[SCREEN] == Logic::_scriptVars[NEW_SCREEN]) && (retCode == 0) && (!shouldQuit()));
 
-		if ((retCode == 0) && (Logic::_scriptVars[SCREEN] != 53) && _systemVars.wantFade && (!quit())) {
+		if ((retCode == 0) && (Logic::_scriptVars[SCREEN] != 53) && _systemVars.wantFade && (!shouldQuit())) {
 			_screen->fadeDownPalette();
 			int32 relDelay = (int32)_system->getMillis();
 			while (_screen->stillFading()) {
@@ -865,6 +661,10 @@ void SwordEngine::delay(int32 amount) { //copied and mutilated from sky.cpp
 			_system->delayMillis(10);
 
 	} while (_system->getMillis() < start + amount);
+}
+
+bool SwordEngine::mouseIsActive() {
+	return Logic::_scriptVars[MOUSE_STATUS] & 1;
 }
 
 } // End of namespace Sword1

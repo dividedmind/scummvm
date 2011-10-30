@@ -142,7 +142,7 @@ bool AGOSEngine::kickoffTimeEvents() {
 
 	cur_time = getTime() - _gameStoppedClock;
 
-	while ((te = _firstTimeStruct) != NULL && te->time <= cur_time && !quit()) {
+	while ((te = _firstTimeStruct) != NULL && te->time <= cur_time && !shouldQuit()) {
 		result = true;
 		_pendingDeleteTimeEvent = te;
 		invokeTimeEvent(te);
@@ -160,7 +160,7 @@ bool AGOSEngine::isVgaQueueEmpty() {
 	bool result = false;
 
 	while (vte->delay) {
-		if (vte->cur_vga_file == _variableArray[999] && vte->sprite_id >= 100) {
+		if (vte->zoneNum == _variableArray[999] && vte->id >= 100) {
 			result = true;
 			break;
 		}
@@ -195,7 +195,7 @@ void AGOSEngine::restartAnimation() {
 	// Check picture queue
 }
 
-void AGOSEngine::addVgaEvent(uint16 num, uint8 type, const byte *code_ptr, uint16 cur_sprite, uint16 curZoneNum) {
+void AGOSEngine::addVgaEvent(uint16 num, uint8 type, const byte *codePtr, uint16 curSprite, uint16 curZoneNum) {
 	VgaTimerEntry *vte;
 
 	_lockWord |= 1;
@@ -204,9 +204,9 @@ void AGOSEngine::addVgaEvent(uint16 num, uint8 type, const byte *code_ptr, uint1
 	}
 
 	vte->delay = num;
-	vte->script_pointer = code_ptr;
-	vte->sprite_id = cur_sprite;
-	vte->cur_vga_file = curZoneNum;
+	vte->codePtr = codePtr;
+	vte->id = curSprite;
+	vte->zoneNum = curZoneNum;
 	vte->type = type;
 
 	_lockWord &= ~1;
@@ -235,9 +235,9 @@ void AGOSEngine::processVgaEvents() {
 	while (vte->delay) {
 		vte->delay -= _vgaBaseDelay;
 		if (vte->delay <= 0) {
-			uint16 curZoneNum = vte->cur_vga_file;
-			uint16 cur_sprite = vte->sprite_id;
-			const byte *script_ptr = vte->script_pointer;
+			uint16 curZoneNum = vte->zoneNum;
+			uint16 curSprite = vte->id;
+			const byte *script_ptr = vte->codePtr;
 
 			switch (vte->type) {
 			case ANIMATE_INT:
@@ -248,7 +248,7 @@ void AGOSEngine::processVgaEvents() {
 			case ANIMATE_EVENT:
 				_nextVgaTimerToProcess = vte + 1;
 				deleteVgaEvent(vte);
-				animateEvent(script_ptr, curZoneNum, cur_sprite);
+				animateEvent(script_ptr, curZoneNum, curSprite);
 				vte = _nextVgaTimerToProcess;
 				break;
 			case SCROLL_EVENT:
@@ -274,10 +274,10 @@ void AGOSEngine::processVgaEvents() {
 	}
 }
 
-void AGOSEngine::animateEvent(const byte *code_ptr, uint16 curZoneNum, uint16 cur_sprite) {
+void AGOSEngine::animateEvent(const byte *codePtr, uint16 curZoneNum, uint16 curSprite) {
 	VgaPointersEntry *vpe;
 
-	_vgaCurSpriteId = cur_sprite;
+	_vgaCurSpriteId = curSprite;
 
 	_vgaCurZoneNum = curZoneNum;
 	_zoneNumber = curZoneNum;
@@ -287,7 +287,7 @@ void AGOSEngine::animateEvent(const byte *code_ptr, uint16 curZoneNum, uint16 cu
 	_curVgaFile2 = vpe->vgaFile2;
 	_curSfxFile = vpe->sfxFile;
 
-	_vcPtr = code_ptr;
+	_vcPtr = codePtr;
 
 	runVgaScript();
 }
@@ -451,7 +451,7 @@ void AGOSEngine::delay(uint amount) {
 				_lastVgaTick = cur;
 
 			_inCallBack = true;
-			timer_callback();
+			timerCallback();
 			_inCallBack = false;
 		}
 
@@ -544,21 +544,21 @@ void AGOSEngine::delay(uint amount) {
 		_system->delayMillis(this_delay);
 
 		cur = _system->getMillis();
-	} while (cur < start + amount && !quit());
+	} while (cur < start + amount && !shouldQuit());
 }
 
-void AGOSEngine::timer_callback() {
-	if (getGameId() == GID_DIMP) {
-		_lastTickCount = _system->getMillis();
+void AGOSEngine_PuzzlePack::timerCallback() {
+	_lastTickCount = _system->getMillis();
 
-		timer_proc1();
-		dimp_idle();
-	} else {
-		timer_proc1();
-	}
+	timerProc();
+	dimpIdle();
 }
 
-void AGOSEngine_Feeble::timer_proc1() {
+void AGOSEngine::timerCallback() {
+	timerProc();
+}
+
+void AGOSEngine_Feeble::timerProc() {
 	if (_lockWord & 0x80E9 || _lockWord & 2)
 		return;
 
@@ -580,8 +580,15 @@ void AGOSEngine_Feeble::timer_proc1() {
 			}
 		}
 
-		if (getGameType() == GType_FF) {
-			_moviePlay->nextFrame();
+		if (getGameType() == GType_FF && _moviePlayer) {
+			// Controls Omni TV videos
+			if (getBitFlag(42)) {
+				_moviePlayer->stopVideo();
+				delete _moviePlayer;
+				_moviePlayer = NULL;
+			} else {
+				_moviePlayer->nextFrame();
+			}
 		}
 
 		animateSprites();
@@ -604,7 +611,7 @@ void AGOSEngine_Feeble::timer_proc1() {
 	_lockWord &= ~2;
 }
 
-void AGOSEngine::timer_proc1() {
+void AGOSEngine::timerProc() {
 	if (_lockWord & 0x80E9 || _lockWord & 2)
 		return;
 
@@ -630,7 +637,7 @@ void AGOSEngine::timer_proc1() {
 	_lockWord &= ~2;
 }
 
-void AGOSEngine::dimp_idle() {
+void AGOSEngine_PuzzlePack::dimpIdle() {
 	int z, n;
 
 	_iconToggleCount++;

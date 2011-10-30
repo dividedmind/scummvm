@@ -45,6 +45,8 @@
 
 #include "engines/engine.h"
 
+#include "made/sound.h"
+
 namespace Made {
 
 enum MadeGameID {
@@ -65,7 +67,7 @@ const uint32 kTimerResolution = 40;
 
 struct MadeGameDescription;
 
-class ProjectReader;
+class ResourceReader;
 class PmvPlayer;
 class Screen;
 class ScriptInterpreter;
@@ -78,12 +80,17 @@ class MadeEngine : public ::Engine {
 
 protected:
 
-	int init();
-	int go();
+	// Engine APIs
+	virtual Common::Error init();
+	virtual Common::Error go();
 
 public:
 	MadeEngine(OSystem *syst, const MadeGameDescription *gameDesc);
 	virtual ~MadeEngine();
+
+	virtual bool hasFeature(EngineFeature f) const;
+	virtual void syncSoundSettings();
+
 	int getGameId() {
 		return _gameId;
 	}
@@ -98,13 +105,11 @@ public:
 private:
 public:
 	PmvPlayer *_pmvPlayer;
-	ProjectReader *_res;
+	ResourceReader *_res;
 	Screen *_screen;
 	GameDatabase *_dat;
 	ScriptInterpreter *_script;
 	MusicPlayer *_music;
-
-	bool _quit;
 
 	uint16 _eventNum;
 	int _eventMouseX, _eventMouseY;
@@ -112,12 +117,11 @@ public:
 
 	int _soundRate;
 	bool _autoStopSound;
-
-	int _musicVolume;
+	uint _soundEnergyIndex;
+	SoundEnergyArray *_soundEnergyArray;
 	
-	// 2 = LGOP2, Manhole N&E
-	// 3 = Return to Zork
-	int _engineVersion;
+	uint32 _musicBeatStart;
+	uint32 _cdTimeStart;
 
 	int32 _timers[50];
 	int16 getTicks();
@@ -126,6 +130,7 @@ public:
 	void resetTimer(int16 timerNum);
 	int16 allocTimer();
 	void freeTimer(int16 timerNum);
+	void resetAllTimers();
 
 	const Common::String getTargetName() { return _targetName; }
 	Common::String getSavegameFilename(int16 saveNum);

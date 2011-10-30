@@ -696,7 +696,8 @@ struct StringData {
 class AgiBase : public ::Engine {
 protected:
 	// Engine API
-	int init();
+	virtual Common::Error init();
+	virtual bool hasFeature(EngineFeature f) const;
 
 	virtual void initialize() = 0;
 
@@ -723,6 +724,8 @@ public:
 	virtual void replayImageStackCall(uint8 type, int16 p1, int16 p2, int16 p3,
 		int16 p4, int16 p5, int16 p6, int16 p7) = 0;
 	virtual void releaseImageStack() = 0;
+	virtual	int saveGame(const char *fileName, const char *saveName) = 0;
+	virtual int loadGame(const char *fileName, bool checkId = true) = 0;
 
 	int _soundemu;
 
@@ -737,13 +740,20 @@ public:
 	uint16 getGameType() const;
 	Common::Language getLanguage() const;
 	Common::Platform getPlatform() const;
+	Common::Error loadGameState(int slot);
+	Common::Error saveGameState(int slot, const char *desc);
+	bool canLoadGameStateCurrently();
+	bool canSaveGameStateCurrently();
 };
 
 class AgiEngine : public AgiBase {
 	int _gameId;
 
 protected:
-	int go();
+	// Engine APIs
+	virtual Common::Error go();
+	virtual void syncSoundSettings();
+
 	void initialize();
 
 	uint32 _lastSaveTime;
@@ -755,7 +765,6 @@ public:
 		return _gameId;
 	}
 
-	virtual void syncSoundSettings();
 
 private:
 
@@ -954,7 +963,7 @@ public:
 	void printText(const char *, int, int, int, int, int, int, bool checkerboard = false);
 	void printTextConsole(const char *, int, int, int, int, int);
 	int print(const char *, int, int, int);
-	char *wordWrapString(char *, int *);
+	char *wordWrapString(const char *, int *);
 	char *agiSprintf(const char *);
 	void writeStatus(void);
 	void writePrompt(void);

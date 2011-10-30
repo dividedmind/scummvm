@@ -428,7 +428,8 @@ int RawScript::getNextLabel(const FWScriptInfo &info, int offset) const {
 			case 'l': // label
 				return pos;
 			case 's': // string
-				while (_data[pos++] != 0);
+				while (_data[pos++] != 0)
+					;
 				break;
 			case 'x': // exit script
 				return -pos-1;
@@ -1087,7 +1088,6 @@ int FWScript::o1_unloadMask0() {
 
 	debugC(5, kCineDebugScript, "Line: %d: removeSpriteOverlay(%d)", _line, param);
 	removeOverlay(param, 0);
-	return 0;
 	return 0;
 }
 

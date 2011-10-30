@@ -209,8 +209,7 @@ void MidiParser::onTimer() {
 					jumpToTick(0);
 					parseNextEvent(_next_event);
 				} else {
-					allNotesOff();
-					resetTracking();
+					stopPlaying();
 					_driver->metaEvent(info.ext.type, info.ext.data, (uint16)info.length);
 				}
 				return;
@@ -286,7 +285,18 @@ void MidiParser::resetTracking() {
 bool MidiParser::setTrack(int track) {
 	if (track < 0 || track >= _num_tracks)
 		return false;
-	else if (track == _active_track)
+	// We allow restarting the track via setTrack when
+	// it isn't playing anymore. This allows us to reuse
+	// a MidiParser when a track has finished and will
+	// be restarted via setTrack by the client again.
+	// This isn't exactly how setTrack behaved before though,
+	// the old MidiParser code did not allow setTrack to be
+	// used to restart a track, which was already finished.
+	//
+	// TODO: Check if any engine has problem with this
+	// handling, if so we need to find a better way to handle
+	// track restarts. (KYRA relies on this working)
+	else if (track == _active_track && isPlaying())
 		return true;
 
 	if (_smartJump)
@@ -300,6 +310,11 @@ bool MidiParser::setTrack(int track) {
 	_position._play_pos = _tracks[track];
 	parseNextEvent(_next_event);
 	return true;
+}
+
+void MidiParser::stopPlaying() {
+	allNotesOff();
+	resetTracking();
 }
 
 void MidiParser::hangAllActiveNotes() {

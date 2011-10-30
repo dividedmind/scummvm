@@ -24,8 +24,9 @@
 
 #include "gui/EditTextWidget.h"
 #include "gui/dialog.h"
-#include "gui/eval.h"
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
+
+#include "gui/ThemeEval.h"
 
 namespace GUI {
 
@@ -41,7 +42,6 @@ EditTextWidget::EditTextWidget(GuiObject *boss, const String &name, const String
 	: EditableWidget(boss, name) {
 	setFlags(WIDGET_ENABLED | WIDGET_CLEARBG | WIDGET_RETAIN_FOCUS | WIDGET_WANT_TICKLE);
 	_type = kEditTextWidget;
-	_hints |= THEME_HINT_USE_SHADOW;
 
 	setEditString(text);
 }
@@ -52,10 +52,10 @@ void EditTextWidget::setEditString(const String &str) {
 }
 
 void EditTextWidget::reflowLayout() {
-	_leftPadding = g_gui.evaluator()->getVar("EditTextWidget.leftPadding", 0);
-	_rightPadding = g_gui.evaluator()->getVar("EditTextWidget.rightPadding", 0);
+	_leftPadding = g_gui.xmlEval()->getVar("Globals.EditTextWidget.Padding.Left", 0);
+	_rightPadding = g_gui.xmlEval()->getVar("Globals.EditTextWidget.Padding.Right", 0);
 
-	_font = (Theme::FontStyle)g_gui.evaluator()->getVar("EditTextWidget.font", Theme::kFontStyleNormal);
+	_font = (ThemeEngine::FontStyle)g_gui.xmlEval()->getVar("EditTextWidget.Font", ThemeEngine::kFontStyleNormal);
 
 	EditableWidget::reflowLayout();
 }
@@ -82,11 +82,11 @@ void EditTextWidget::handleMouseDown(int x, int y, int button, int clickCount) {
 
 
 void EditTextWidget::drawWidget() {
-	g_gui.theme()->drawWidgetBackground(Common::Rect(_x, _y, _x+_w, _y+_h), _hints, Theme::kWidgetBackgroundEditText);
+	g_gui.theme()->drawWidgetBackground(Common::Rect(_x, _y, _x+_w, _y+_h), 0, ThemeEngine::kWidgetBackgroundEditText);
 
 	// Draw the text
 	adjustOffset();
-	g_gui.theme()->drawText(Common::Rect(_x+2+ _leftPadding,_y+2, _x+_leftPadding+getEditRect().width()+2, _y+_h-2), _editString, _state, Theme::kTextAlignLeft, false, -_editScrollOffset, false, _font);
+	g_gui.theme()->drawText(Common::Rect(_x+2+ _leftPadding,_y+2, _x+_leftPadding+getEditRect().width()+2, _y+_h-2), _editString, _state, Graphics::kTextAlignLeft, false, -_editScrollOffset, false, _font);
 }
 
 Common::Rect EditTextWidget::getEditRect() const {

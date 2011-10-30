@@ -49,8 +49,10 @@ bool DrasculaEngine::saveLoadScreen() {
 			error("Can't open %s file", fileEpa);
 		}
 	}
-	for (n = 0; n < NUM_SAVES; n++)
-		sav->readLine_OLD(names[n], 23);
+	for (n = 0; n < NUM_SAVES; n++) {
+		strncpy(names[n], sav->readLine().c_str(), 23);
+		names[n][22] = '\0';	// make sure the savegame name is 0-terminated
+	}
 	delete sav;
 
 	loadPic("savescr.alg", bgSurface, HALF_PAL);

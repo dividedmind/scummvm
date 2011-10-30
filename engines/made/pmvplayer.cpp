@@ -34,26 +34,42 @@ PmvPlayer::PmvPlayer(MadeEngine *vm, Audio::Mixer *mixer) : _fd(NULL), _vm(vm), 
 PmvPlayer::~PmvPlayer() {
 }
 
-void PmvPlayer::play(const char *filename) {
+bool PmvPlayer::play(const char *filename) {
 
-	_abort = false;
+	_aborted = false;
 	_surface = NULL;
 
 	_fd = new Common::File();
 	if (!_fd->open(filename)) {
 		delete _fd;
-		return;
+		return false;
 	}
 
 	uint32 chunkType, chunkSize;
 
 	readChunk(chunkType, chunkSize);	// "MOVE"
-	readChunk(chunkType, chunkSize);	// "MHED"
+	if (chunkType != MKID_BE('MOVE')) {
+		warning("Unexpected PMV video header, expected 'MOVE'");
+		delete _fd;
+		return false;
+	}
 
-	// TODO: Evaluate header
+	readChunk(chunkType, chunkSize);	// "MHED"
+	if (chunkType != MKID_BE('MHED')) {
+		warning("Unexpected PMV video header, expected 'MHED'");
+		delete _fd;
+		return false;
+	}
 
 	uint frameDelay = _fd->readUint16LE();
-	_fd->skip(10);
+	int unk;
+	_fd->skip(4);	// always 0?
+	unk = _fd->readByte();
+	debug(2, "%i", unk);
+	unk = _fd->readByte();
+	debug(2, "%i", unk);
+	_fd->skip(4);	// always 0?
+
 	uint soundFreq = _fd->readUint16LE();
 	// Note: There seem to be weird sound frequencies in PMV videos.
 	// Not sure why, but leaving those original frequencies intact
@@ -63,13 +79,10 @@ void PmvPlayer::play(const char *filename) {
 	if (soundFreq == 11127) soundFreq = 11025;
 	if (soundFreq == 22254) soundFreq = 22050;
 
-	int unk;
-
 	for (int i = 0; i < 22; i++) {
 		unk = _fd->readUint16LE();
 		debug(2, "%i ", unk);
 	}
-	debug(2, "\n");
 
 	_mixer->stopAll();
 
@@ -84,10 +97,10 @@ void PmvPlayer::play(const char *filename) {
 	uint32 palSize = 0;
 	byte *frameData, *audioData, *soundData, *palData, *imageData;
 	bool firstTime = true;
-	
+
 	uint32 soundStartTime = 0, skipFrames = 0;
 
-	uint32 frameNum;
+	uint32 frameNum, bytesRead;
 	uint16 width, height, cmdOffs, pixelOffs, maskOffs, lineSize;
 
 	// TODO: Sound can still be a little choppy. A bug in the decoder or -
@@ -95,37 +108,39 @@ void PmvPlayer::play(const char *filename) {
 	// get it to work well?
 	_audioStream = Audio::makeAppendableAudioStream(soundFreq, Audio::Mixer::FLAG_UNSIGNED);
 
-	while (!_abort && !_fd->eos()) {
+	while (!_vm->shouldQuit() && !_aborted && !_fd->eos()) {
 
 		int32 frameTime = _vm->_system->getMillis();
 
 		readChunk(chunkType, chunkSize);
+		if (chunkType != MKID_BE('MFRM')) {
+			warning("Unknown chunk type");
+		}
 
 		if (_fd->eos())
 			break;
 
 		frameData = new byte[chunkSize];
-		_fd->read(frameData, chunkSize);
-		
+		bytesRead = _fd->read(frameData, chunkSize);
+
+		if (bytesRead < chunkSize || _fd->eos())
+			break;
+
 		soundChunkOfs = READ_LE_UINT32(frameData + 8);
 		palChunkOfs = READ_LE_UINT32(frameData + 16);
 
 		// Handle audio
 		if (soundChunkOfs) {
-
 			audioData = frameData + soundChunkOfs - 8;
 			chunkSize = READ_LE_UINT16(audioData + 4);
 			chunkCount = READ_LE_UINT16(audioData + 6);
 
 			debug(1, "chunkCount = %d; chunkSize = %d; total = %d\n", chunkCount, chunkSize, chunkCount * chunkSize);
 
-			if (chunkCount > 50) break;	// FIXME: this is a hack
-
 			soundSize = chunkCount * chunkSize;
 			soundData = new byte[soundSize];
 			decompressSound(audioData + 8, soundData, chunkSize, chunkCount);
 			_audioStream->queueBuffer(soundData, soundSize);
-
 		}
 
 		// Handle palette
@@ -156,7 +171,7 @@ void PmvPlayer::play(const char *filename) {
 		}
 
 		decompressMovieImage(imageData, *_surface, cmdOffs, pixelOffs, maskOffs, lineSize);
-	
+
 		if (firstTime) {
 			_mixer->playInputStream(Audio::Mixer::kPlainSoundType, &_audioStreamHandle, _audioStream);
 			soundStartTime = g_system->getMillis();
@@ -188,10 +203,12 @@ void PmvPlayer::play(const char *filename) {
 
 	_audioStream->finish();
 	_mixer->stopHandle(_audioStreamHandle);
-	
+
 	//delete _audioStream;
 	delete _fd;
 	delete _surface;
+
+	return !_aborted;
 
 }
 
@@ -212,11 +229,7 @@ void PmvPlayer::handleEvents() {
 		switch (event.type) {
 		case Common::EVENT_KEYDOWN:
 			if (event.kbd.keycode == Common::KEYCODE_ESCAPE)
-				_abort = true;
-			break;
-		case Common::EVENT_QUIT:
-			_vm->_quit = true;
-			_abort = true;
+				_aborted = true;
 			break;
 		default:
 			break;
@@ -225,7 +238,7 @@ void PmvPlayer::handleEvents() {
 }
 
 void PmvPlayer::updateScreen() {
-	_vm->_system->copyRectToScreen((const byte*)_surface->pixels, _surface->pitch, 
+	_vm->_system->copyRectToScreen((const byte*)_surface->pixels, _surface->pitch,
 									(320 - _surface->w) / 2, (200 - _surface->h) / 2, _surface->w, _surface->h);
 	_vm->_system->updateScreen();
 }

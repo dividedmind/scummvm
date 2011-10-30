@@ -60,14 +60,14 @@ IMuseDigital::IMuseDigital(ScummEngine_v7 *scumm, Audio::Mixer *mixer, int fps)
 		memset(_track[l], 0, sizeof(Track));
 		_track[l]->trackId = l;
 	}
-	_vm->_timer->installTimerProc(timer_handler, 1000000 / _callbackFps, this);
+	_vm->getTimerManager()->installTimerProc(timer_handler, 1000000 / _callbackFps, this);
 
 	_audioNames = NULL;
 	_numAudioNames = 0;
 }
 
 IMuseDigital::~IMuseDigital() {
-	_vm->_timer->removeTimerProc(timer_handler);
+	_vm->getTimerManager()->removeTimerProc(timer_handler);
 	stopAllSounds();
 	for (int l = 0; l < MAX_DIGITAL_TRACKS + MAX_DIGITAL_FADETRACKS; l++) {
 		delete _track[l];
@@ -98,6 +98,7 @@ void IMuseDigital::resetState() {
 	memset(_attributes, 0, sizeof(_attributes));
 	_nextSeqToPlay = 0;
 	_stopingSequence = 0;
+	_radioChatterSFX = 0;
 	_triggerUsed = false;
 }
 
@@ -112,6 +113,7 @@ void IMuseDigital::saveOrLoad(Serializer *ser) {
 		MKLINE(IMuseDigital, _curMusicSeq, sleInt32, VER(31)),
 		MKLINE(IMuseDigital, _curMusicCue, sleInt32, VER(31)),
 		MKLINE(IMuseDigital, _nextSeqToPlay, sleInt32, VER(31)),
+		MKLINE(IMuseDigital, _radioChatterSFX, sleByte, VER(76)),
 		MKARRAY(IMuseDigital, _attributes[0], sleInt32, 188, VER(31)),
 		MKEND()
 	};
@@ -128,7 +130,7 @@ void IMuseDigital::saveOrLoad(Serializer *ser) {
 		MKLINE(Track, used, sleByte, VER(31)),
 		MKLINE(Track, toBeRemoved, sleByte, VER(31)),
 		MKLINE(Track, souStreamUsed, sleByte, VER(31)),
-		MKLINE(Track, mixerStreamRunning, sleByte, VER(31)),	// FIXME: OBSOLETE, remove this!
+		MK_OBSOLETE(Track, mixerStreamRunning, sleByte, VER(31), VER(76)),
 		MKLINE(Track, soundPriority, sleInt32, VER(31)),
 		MKLINE(Track, regionOffset, sleInt32, VER(31)),
 		MK_OBSOLETE(Track, trackOffset, sleInt32, VER(31), VER(31)),
@@ -309,6 +311,31 @@ void IMuseDigital::callback() {
 						}
 					} else if (bits == 8) {
 						curFeedSize = _sound->getDataFromRegion(track->soundDesc, track->curRegion, &tmpSndBufferPtr, track->regionOffset, feedSize);
+						if (_radioChatterSFX && track->soundId == 10000) {
+							if (curFeedSize > feedSize)
+								curFeedSize = feedSize;
+							byte *buf = new byte[curFeedSize];
+							int index = 0;
+							int count = curFeedSize - 4;
+							byte *ptr_1 = tmpSndBufferPtr;
+							byte *ptr_2 = tmpSndBufferPtr + 4;
+							int value = ptr_1[0] - 0x80;
+							value += ptr_1[1] - 0x80;
+							value += ptr_1[2] - 0x80;
+							value += ptr_1[3] - 0x80;
+							do {
+								int t = *ptr_1++;
+								int v = t - (value / 4);
+								value = *ptr_2++ - 0x80 + (value - t + 0x80);
+								buf[index++] = v * 2 + 0x80;
+							} while (--count);
+							buf[curFeedSize - 1] = 0x80;
+							buf[curFeedSize - 2] = 0x80;
+							buf[curFeedSize - 3] = 0x80;
+							buf[curFeedSize - 4] = 0x80;
+							delete[] tmpSndBufferPtr;
+							tmpSndBufferPtr = buf;
+						}
 						if (channels == 2) {
 							curFeedSize &= ~1;
 						}

@@ -24,7 +24,7 @@
 
 #include "ScrollBarWidget.h"
 #include "gui/dialog.h"
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
 
 namespace GUI {
 
@@ -175,11 +175,11 @@ void ScrollBarWidget::recalc() {
 			UP_DOWN_BOX_HEIGHT + (_h - 2 * UP_DOWN_BOX_HEIGHT - _sliderHeight) * _currentPos / (_numEntries - _entriesPerPage);
 		if (_sliderPos < 0)
 			_sliderPos = 0;
-		clearFlags(WIDGET_INVISIBLE);
+		setVisible(true);
 	} else {
 		_sliderHeight = _h - 2 * UP_DOWN_BOX_HEIGHT;
 		_sliderPos = UP_DOWN_BOX_HEIGHT;
-		setFlags(WIDGET_INVISIBLE);
+		setVisible(false);
 	}
 }
 
@@ -187,15 +187,15 @@ void ScrollBarWidget::drawWidget() {
 	if (_draggingPart != kNoPart)
 		_part = _draggingPart;
 
-	Theme::ScrollbarState state = Theme::kScrollbarStateNo;
+	ThemeEngine::ScrollbarState state = ThemeEngine::kScrollbarStateNo;
 	if (_numEntries <= _entriesPerPage) {
-		state = Theme::kScrollbarStateSinglePage;
+		state = ThemeEngine::kScrollbarStateSinglePage;
 	} else if (_part == kUpArrowPart) {
-		state = Theme::kScrollbarStateUp;
+		state = ThemeEngine::kScrollbarStateUp;
 	} else if (_part == kDownArrowPart) {
-		state = Theme::kScrollbarStateDown;
+		state = ThemeEngine::kScrollbarStateDown;
 	} else if (_part == kSliderPart) {
-		state = Theme::kScrollbarStateSlider;
+		state = ThemeEngine::kScrollbarStateSlider;
 	}
 
 	g_gui.theme()->drawScrollbar(Common::Rect(_x, _y, _x+_w, _y+_h), _sliderPos, _sliderHeight, state, _state);

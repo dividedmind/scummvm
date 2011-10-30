@@ -303,6 +303,19 @@ void AkosRenderer::setPalette(byte *new_palette) {
 	if (_vm->_game.heversion >= 99 && _paletteNum) {
 		for (i = 0; i < size; i++)
 			_palette[i] = (byte)_vm->_hePalettes[_paletteNum * 1024 + 768 + akpl[i]];
+	} else if (_vm->_game.heversion >= 99 && rgbs) {
+		for (i = 0; i < size; i++) {
+			if (new_palette[i] == 0xFF) {
+				uint8 col = akpl[i];
+				uint8 r = rgbs[col * 3 + 0];
+				uint8 g = rgbs[col * 3 + 1];
+				uint8 b = rgbs[col * 3 + 2];
+
+				_palette[i] = _vm->remapPaletteColor(r, g, b, -1);
+			} else {
+				_palette[i] = new_palette[i];
+			}
+		}
 	} else {
 		for (i = 0; i < size; i++) {
 			_palette[i] = new_palette[i] != 0xFF ? new_palette[i] : akpl[i];
@@ -336,6 +349,7 @@ void AkosRenderer::setCostume(int costume, int shadow) {
 	akpl = _vm->findResourceData(MKID_BE('AKPL'), akos);
 	_codec = READ_LE_UINT16(&akhd->codec);
 	akct = _vm->findResourceData(MKID_BE('AKCT'), akos);
+	rgbs = _vm->findResourceData(MKID_BE('RGBS'), akos);
 
 	xmap = 0;
 	if (shadow) {
@@ -394,7 +408,7 @@ byte AkosRenderer::drawLimb(const Actor *a, int limb) {
 		uint j = 0;
 		extra = p[3];
 		uint8 n = extra;
-		assert(n < ARRAYSIZE(heCondMaskIndex));
+		assert(n <= ARRAYSIZE(heCondMaskIndex));
 		while (n--) {
 			heCondMaskIndex[j++] = aksq[s++];
 		}
@@ -1664,28 +1678,28 @@ bool ScummEngine_v6::akos_increaseAnim(Actor *a, int chan, const byte *aksq, con
 			akos_queCommand(9, a, a->_sound[a->getAnimVar(GB(2))], 0);
 			continue;
 		case AKC_C045:
-			a->setUserCondition(GB(3), a->getAnimVar(GB(4)));
+			((ActorHE *)a)->setUserCondition(GB(3), a->getAnimVar(GB(4)));
 			continue;
 		case AKC_C046:
-			a->setAnimVar(GB(4), a->isUserConditionSet(GB(3)));
+			a->setAnimVar(GB(4), ((ActorHE *)a)->isUserConditionSet(GB(3)));
 			continue;
 		case AKC_C047:
-			a->setTalkCondition(GB(3));
+			((ActorHE *)a)->setTalkCondition(GB(3));
 			continue;
 		case AKC_C048:
-			a->setAnimVar(GB(4), a->isTalkConditionSet(GB(3)));
+			a->setAnimVar(GB(4), ((ActorHE *)a)->isTalkConditionSet(GB(3)));
 			continue;
 		case AKC_C0A0:
 			akos_queCommand(8, a, GB(2), 0);
 			continue;
 		case AKC_C0A1:
-			if (a->_heTalking != 0) {
+			if (((ActorHE *)a)->_heTalking != 0) {
 				curpos = GUW(2);
 				break;
 			}
 			continue;
 		case AKC_C0A2:
-			if (a->_heTalking == 0) {
+			if (((ActorHE *)a)->_heTalking == 0) {
 				curpos = GUW(2);
 				break;
 			}
@@ -1716,7 +1730,8 @@ bool ScummEngine_v6::akos_increaseAnim(Actor *a, int chan, const byte *aksq, con
 	if (code2 & 0x80)
 		code2 = READ_BE_UINT16(aksq + curpos);
 
-	assert((code2 & 0xC000) != 0xC000 || code2 == AKC_ComplexChan || code2 == AKC_Return || code2 == AKC_EndSeq || code2 == AKC_C08E || code2 == AKC_ComplexChan2 || code2 == AKC_C021 || code2 == AKC_C022);
+	if ((code2 & 0xC000) == 0xC000 && code2 != AKC_ComplexChan && code2 != AKC_Return && code2 != AKC_EndSeq && code2 != AKC_C08E && code2 != AKC_ComplexChan2 && code2 != AKC_C021 && code2 != AKC_C022)
+		error("Ending with undefined uSweat token %X", code2);
 
 	a->_cost.curpos[chan] = curpos;
 
@@ -1763,8 +1778,8 @@ void ScummEngine_v6::akos_processQueue() {
 			a->_forceClip = param_1;
 			break;
 		case 6:
-			a->_offsX = param_1;
-			a->_offsY = param_2;
+			a->_heOffsX = param_1;
+			a->_heOffsY = param_2;
 			break;
 		case 7:
 #ifdef ENABLE_HE
@@ -1775,13 +1790,13 @@ void ScummEngine_v6::akos_processQueue() {
 		case 8:
 			_actorToPrintStrFor = a->_number;
 
-			a->_talkPosX = a->_heTalkQueue[param_1].posX;
-			a->_talkPosY = a->_heTalkQueue[param_1].posY;
-			a->_talkColor = a->_heTalkQueue[param_1].color;
+			a->_talkPosX = ((ActorHE *)a)->_heTalkQueue[param_1].posX;
+			a->_talkPosY = ((ActorHE *)a)->_heTalkQueue[param_1].posY;
+			a->_talkColor = ((ActorHE *)a)->_heTalkQueue[param_1].color;
 
 			_string[0].loadDefault();
 			_string[0].color = a->_talkColor;
-			actorTalk(a->_heTalkQueue[param_1].sentence);
+			actorTalk(((ActorHE *)a)->_heTalkQueue[param_1].sentence);
 
 			break;
 		case 9:
@@ -1825,8 +1840,8 @@ void ScummEngine_v7::akos_processQueue() {
 			a->_forceClip = param_1;
 			break;
 		case 6:
-			a->_offsX = param_1;
-			a->_offsY = param_2;
+			a->_heOffsX = param_1;
+			a->_heOffsY = param_2;
 			break;
 		case 7:
 			if (param_1 != 0) {

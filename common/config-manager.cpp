@@ -25,6 +25,7 @@
 
 #include "common/config-manager.h"
 #include "common/file.h"
+#include "common/fs.h"
 #include "common/util.h"
 #include "common/system.h"
 
@@ -61,13 +62,14 @@ ConfigManager::ConfigManager()
 
 void ConfigManager::loadDefaultConfigFile() {
 	// Open the default config file
-	SeekableReadStream *stream = g_system->openConfigFileForReading();
+	assert(g_system);
+	SeekableReadStream *stream = g_system->createConfigReadStream();
 	_filename.clear();	// clear the filename to indicate that we are using the default config file
 
 	// ... load it, if available ...
 	if (stream)
 		loadFromStream(*stream);
-	
+
 	// ... and close it again.
 	delete stream;
 
@@ -77,8 +79,9 @@ void ConfigManager::loadDefaultConfigFile() {
 void ConfigManager::loadConfigFile(const String &filename) {
 	_filename = filename;
 
+	FSNode node(filename);
 	File cfg_file;
-	if (!cfg_file.open(filename)) {
+	if (!cfg_file.open(node)) {
 		printf("Creating configuration file: %s\n", filename.c_str());
 	} else {
 		printf("Using configuration file: %s\n", _filename.c_str());
@@ -140,7 +143,7 @@ void ConfigManager::loadFromStream(SeekableReadStream &stream) {
 			_domainSaveOrder.push_back(domain);
 		} else {
 			// This line should be a line with a 'key=value' pair, or an empty one.
-			
+
 			// Skip leading whitespaces
 			const char *t = line.c_str();
 			while (isspace(*t))
@@ -163,7 +166,7 @@ void ConfigManager::loadFromStream(SeekableReadStream &stream) {
 			// Extract the key/value pair
 			String key(t, p);
 			String value(p + 1);
-			
+
 			// Trim of spaces
 			key.trim();
 			value.trim();
@@ -188,7 +191,8 @@ void ConfigManager::flushToDisk() {
 
 	if (_filename.empty()) {
 		// Write to the default config file
-		stream = g_system->openConfigFileForWriting();
+		assert(g_system);
+		stream = g_system->createConfigWriteStream();
 		if (!stream)	// If writing to the config file is not possible, do nothing
 			return;
 	} else {
@@ -200,7 +204,7 @@ void ConfigManager::flushToDisk() {
 			delete dump;
 			return;
 		}
-		
+
 		stream = dump;
 	}
 

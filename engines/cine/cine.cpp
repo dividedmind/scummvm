@@ -23,6 +23,7 @@
  *
  */
 
+#include "common/events.h"
 #include "common/file.h"
 #include "common/savefile.h"
 #include "common/config-manager.h"
@@ -49,9 +50,9 @@ Common::SaveFileManager *g_saveFileMan;
 CineEngine *g_cine;
 
 CineEngine::CineEngine(OSystem *syst, const CINEGameDescription *gameDesc) : Engine(syst), _gameDescription(gameDesc) {
-	Common::addSpecialDebugLevel(kCineDebugScript, "Script", "Script debug level");
-	Common::addSpecialDebugLevel(kCineDebugPart,   "Part",   "Part debug level");
-	Common::addSpecialDebugLevel(kCineDebugSound,  "Sound",  "Sound debug level");
+	Common::addDebugChannel(kCineDebugScript, "Script", "Script debug level");
+	Common::addDebugChannel(kCineDebugPart,   "Part",   "Part debug level");
+	Common::addDebugChannel(kCineDebugSound,  "Sound",  "Sound debug level");
 
 	// Setup mixer
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));
@@ -70,15 +71,12 @@ CineEngine::~CineEngine() {
 	if (g_cine->getGameType() == Cine::GType_OS) {
 		freeErrmessDat();
 	}
-	Common::clearAllSpecialDebugLevels();
+	Common::clearAllDebugChannels();
 }
 
-int CineEngine::init() {
+Common::Error CineEngine::init() {
 	// Initialize backend
-	_system->beginGFXTransaction();
-	initCommonGFX(false);
-	_system->initSize(320, 200);
-	_system->endGFXTransaction();
+	initGraphics(320, 200, false);
 
 	if (g_cine->getPlatform() == Common::kPlatformPC) {
 		g_sound = new PCSound(_mixer, this);
@@ -90,18 +88,18 @@ int CineEngine::init() {
 
 	initialize();
 
-	return 0;
+	return Common::kNoError;
 }
 
-int CineEngine::go() {
+Common::Error CineEngine::go() {
 	CursorMan.showMouse(true);
 	mainLoop(1);
 
 	delete renderer;
 	delete[] collisionPage;
 	delete g_sound;
-	
-	return 0;
+
+	return Common::kNoError;
 }
 
 int CineEngine::getTimerDelay() const {
@@ -132,7 +130,7 @@ void CineEngine::initialize() {
 	Common::set_to(zoneData.begin(), zoneData.end(), 0);
 
 	// Resize zone query table to its correct size and reset all its elements
-	zoneQuery.resize(NUM_MAX_ZONE);	
+	zoneQuery.resize(NUM_MAX_ZONE);
 	Common::set_to(zoneQuery.begin(), zoneQuery.end(), 0);
 
 	_timerDelayMultiplier = 12; // Set default speed

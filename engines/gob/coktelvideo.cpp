@@ -25,8 +25,10 @@
 
 #include "common/endian.h"
 #include "common/system.h"
+#include "graphics/dither.h"
 
 #include "gob/coktelvideo.h"
+#include "gob/indeo3.h"
 
 namespace Gob {
 
@@ -66,6 +68,8 @@ bool Imd::load(Common::SeekableReadStream &stream) {
 
 	// IMDs always have video
 	_features |= kFeaturesVideo;
+	// IMDs always have palettes
+	_features |= kFeaturesPalette;
 
 	// Palette
 	_stream->read((byte *) _palette, 768);
@@ -123,7 +127,7 @@ bool Imd::load(Common::SeekableReadStream &stream) {
 			return false;
 		}
 
-		_soundSliceLength = (uint32) (((double) (1000 << 16)) / 
+		_soundSliceLength = (uint32) (((double) (1000 << 16)) /
 				((double) _soundFreq / (double) _soundSliceSize));
 		_frameLength = _soundSliceLength >> 16;
 
@@ -327,7 +331,7 @@ void Imd::waitEndFrame() {
 
 		if (_skipFrames == 0) {
 			int32 waitTime = (int16) (((_curFrame * _soundSliceLength) -
-				((g_system->getMillis() - _soundStartTime) << 16)) >> 16);
+				(_mixer->getSoundElapsedTime(_audioHandle) << 16)) >> 16);
 
 			if (waitTime < 0) {
 				_skipFrames = -waitTime / (_soundSliceLength >> 16);
@@ -339,11 +343,6 @@ void Imd::waitEndFrame() {
 			_skipFrames--;
 	} else
 		g_system->delayMillis(_frameLength);
-}
-
-void Imd::notifyPaused(uint32 duration) {
-	if (_soundStage == 2)
-		_soundStartTime += duration;
 }
 
 void Imd::copyCurrentFrame(byte *dest,
@@ -432,6 +431,7 @@ void Imd::clear(bool del) {
 
 	_frameDataSize = _vidBufferSize = 0;
 	_frameData = _vidBuffer = 0;
+	_frameDataLen = 0;
 
 	memset(_palette, 0, 768);
 
@@ -440,7 +440,6 @@ void Imd::clear(bool del) {
 	_hasSound = false;
 	_soundEnabled = false;
 	_soundStage = 0;
-	_soundStartTime = 0;
 	_skipFrames = 0;
 
 	_soundFlags = 0;
@@ -576,6 +575,7 @@ CoktelVideo::State Imd::processFrame(uint16 frame) {
 		if (cmd == 0xFFF4) {
 			_stream->seek(2, SEEK_CUR);
 			state.flags |= kStatePalette;
+
 			_stream->read(_palette, 768);
 			cmd = _stream->readUint16LE();
 		}
@@ -599,6 +599,7 @@ CoktelVideo::State Imd::processFrame(uint16 frame) {
 			state.flags |= 1;
 			cmd = _stream->readUint32LE();
 			_stream->read(_frameData, cmd + 2);
+			_frameDataLen = cmd + 2;
 
 			if (_vidMemWidth <= state.right) {
 				state.left = 0;
@@ -620,6 +621,7 @@ CoktelVideo::State Imd::processFrame(uint16 frame) {
 		} else if (cmd != 0) {
 
 			_stream->read(_frameData, cmd + 2);
+			_frameDataLen = cmd + 2;
 
 			state.flags |= renderFrame(state.left, state.top, state.right, state.bottom);
 			state.flags |= _frameData[0];
@@ -631,7 +633,6 @@ CoktelVideo::State Imd::processFrame(uint16 frame) {
 
 	if (startSound && _soundEnabled) {
 		_mixer->playInputStream(Audio::Mixer::kSFXSoundType, &_audioHandle, _audioStream);
-		_soundStartTime = g_system->getMillis();
 		_skipFrames = 0;
 		_soundStage = 2;
 	}
@@ -847,7 +848,7 @@ void Imd::deLZ77(byte *dest, byte *src) {
 	}
 }
 
-const uint16 Vmd::_tableDPCM[128] = {
+const uint16 Vmd::_tableADPCM[128] = {
 	0x0000, 0x0008, 0x0010, 0x0020, 0x0030, 0x0040, 0x0050, 0x0060, 0x0070, 0x0080,
 	0x0090, 0x00A0, 0x00B0, 0x00C0, 0x00D0, 0x00E0, 0x00F0, 0x0100, 0x0110, 0x0120,
 	0x0130, 0x0140, 0x0150, 0x0160, 0x0170, 0x0180, 0x0190, 0x01A0, 0x01B0, 0x01C0,
@@ -863,7 +864,7 @@ const uint16 Vmd::_tableDPCM[128] = {
 	0x0F00, 0x1000, 0x1400, 0x1800, 0x1C00, 0x2000, 0x3000, 0x4000
 };
 
-Vmd::Vmd() {
+Vmd::Vmd(Graphics::PaletteLUT *palLUT) : _palLUT(palLUT) {
 	clear(false);
 }
 
@@ -880,8 +881,15 @@ bool Vmd::load(Common::SeekableReadStream &stream) {
 	uint16 handle = _stream->readUint16LE();
 	_version = _stream->readUint16LE();
 
+	if (!(_version & 2))
+		_features |= kFeaturesPalette;
+	else
+		_features |= kFeaturesFullColor;
+
+	// 0x4 (4)
+
 	// Version checking
-	if ((headerLength != 814) || (handle != 0) || (_version != 1)) {
+	if (headerLength != 814) {
 		warning("VMD Version incorrect (%d, %d, %d)", headerLength, handle, _version);
 		unload();
 		return false;
@@ -889,38 +897,111 @@ bool Vmd::load(Common::SeekableReadStream &stream) {
 
 	_framesCount = _stream->readUint16LE();
 
+	// 0x6 (6)
+
 	_x = _stream->readSint16LE();
 	_y = _stream->readSint16LE();
 	_width = _stream->readSint16LE();
 	_height = _stream->readSint16LE();
+
+	// 0xE (14)
+
 	if ((_width != 0) && (_height != 0)) {
 		_hasVideo = true;
 		_features |= kFeaturesVideo;
+		if (_features & kFeaturesFullColor)
+			_codecIndeo3 = new Indeo3(_width, _height, _palLUT);
 	} else
 		_hasVideo = false;
 
+	if (_width > 320) {
+		if (!(_version & 4)) {
+			_version |= 4;
+			handle = 0;
+		}
+	}
+
+	if (handle > 2) {
+		warning("VMD Version incorrect (%d, %d, %d)", headerLength, handle, _version);
+		unload();
+		return false;
+	}
+
+	_bytesPerPixel = handle + 1;
+
+	if (_bytesPerPixel > 1) {
+		_features |= kFeaturesFullColor;
+		_features &= ~kFeaturesPalette;
+	}
+
 	_flags = _stream->readUint16LE();
+
 	_partsPerFrame = _stream->readUint16LE();
 	_firstFramePos = _stream->readUint32LE();
 	_stream->skip(4); // Unknown
 
+	// 0x1A (26)
+
 	_stream->read((byte *) _palette, 768);
+
+	// 0x31A (794)
 
 	_frameDataSize = _stream->readUint32LE();
 	_vidBufferSize = _stream->readUint32LE();
 
+	if ((_version & 2) && !(_version & 8)) {
+		_externalCodec = true;
+		_frameDataSize = _vidBufferSize = 0;
+	} else
+		_externalCodec = false;
+
+	_preScaleX = 1;
+	_postScaleX = 1;
+
+	if (_externalCodec)
+		_blitMode = 0;
+	else if (_bytesPerPixel == 1)
+		_blitMode = 0;
+	else if ((_bytesPerPixel == 2) || (_bytesPerPixel == 3)) {
+		int n = (_flags & 0x80) ? 2 : 3;
+
+		_blitMode = n - 1;
+
+		if (_bytesPerPixel == 2) {
+			_preScaleX = n;
+			_postScaleX = 1;
+		} else if (_bytesPerPixel == 3) {
+			_preScaleX = 1;
+			_postScaleX = n;
+		}
+
+		_bytesPerPixel = n;
+	}
+
+	_scaleExternalX = 1;
+	if (!_externalCodec && !(_flags & 0x1000))
+			_scaleExternalX = _bytesPerPixel;
+
+	// 0x322 (802)
+
 	if (_hasVideo) {
 		if ((_frameDataSize == 0) || (_frameDataSize > 1048576))
-			_frameDataSize = _width * _height + 500;
+			_frameDataSize = _width * _height + 1000;
 		if ((_vidBufferSize == 0) || (_vidBufferSize > 1048576))
 			_vidBufferSize = _frameDataSize;
 
 		_frameData = new byte[_frameDataSize];
 		assert(_frameData);
 		memset(_frameData, 0, _frameDataSize);
+
 		_vidBuffer = new byte[_vidBufferSize];
 		assert(_vidBuffer);
 		memset(_vidBuffer, 0, _vidBufferSize);
+
+		if (_blitMode > 0) {
+			_vidMemBuffer = new byte[_bytesPerPixel * (_width * _height + 1000)];
+			memset(_vidMemBuffer, 0, _bytesPerPixel * (_width * _height + 1000));
+		}
 	}
 
 	_soundFreq = _stream->readSint16LE();
@@ -928,6 +1009,8 @@ bool Vmd::load(Common::SeekableReadStream &stream) {
 	_soundSlicesCount = _stream->readSint16LE();
 	_soundFlags = _stream->readUint16LE();
 	_hasSound = (_soundFreq != 0);
+
+	// 0x32A (810)
 
 	if (_hasSound) {
 		_features |= kFeaturesSound;
@@ -944,7 +1027,7 @@ bool Vmd::load(Common::SeekableReadStream &stream) {
 			_soundSliceSize = -_soundSliceSize;
 		}
 
-		_soundSliceLength = (uint32) (((double) (1000 << 16)) / 
+		_soundSliceLength = (uint32) (((double) (1000 << 16)) /
 				((double) _soundFreq / (double) _soundSliceSize));
 		_frameLength = _soundSliceLength >> 16;
 
@@ -956,6 +1039,8 @@ bool Vmd::load(Common::SeekableReadStream &stream) {
 
 	_frameInfoOffset = _stream->readUint32LE();
 
+	int numExtraData = 0;
+
 	_stream->seek(_frameInfoOffset);
 	_frames = new Frame[_framesCount];
 	for (uint16 i = 0; i < _framesCount; i++) {
@@ -964,10 +1049,12 @@ bool Vmd::load(Common::SeekableReadStream &stream) {
 		_frames[i].offset = _stream->readUint32LE();
 	}
 	for (uint16 i = 0; i < _framesCount; i++) {
+		bool separator = false;
+
 		for (uint16 j = 0; j < _partsPerFrame; j++) {
 
 			_frames[i].parts[j].type = (PartType) _stream->readByte();
-			_stream->skip(1); // Unknown
+			_frames[i].parts[j].field_1 = _stream->readByte();
 			_frames[i].parts[j].size = _stream->readUint32LE();
 
 			if (_frames[i].parts[j].type == kPartTypeAudio) {
@@ -981,9 +1068,16 @@ bool Vmd::load(Common::SeekableReadStream &stream) {
 				_frames[i].parts[j].top = _stream->readUint16LE();
 				_frames[i].parts[j].right = _stream->readUint16LE();
 				_frames[i].parts[j].bottom = _stream->readUint16LE();
-				_stream->skip(1); // Unknown
+				_frames[i].parts[j].field_E = _stream->readByte();
 				_frames[i].parts[j].flags = _stream->readByte();
 
+			} else if (_frames[i].parts[j].type == kPartTypeExtraData) {
+				if (!separator)
+					numExtraData++;
+				_stream->skip(10);
+			} else if (_frames[i].parts[j].type == kPartTypeSeparator) {
+				separator = true;
+				_stream->skip(10);
 			} else {
 				// Unknow type
 				_stream->skip(10);
@@ -992,6 +1086,45 @@ bool Vmd::load(Common::SeekableReadStream &stream) {
 		}
 	}
 
+	_stream->seek(_firstFramePos);
+
+	if (numExtraData == 0)
+		return true;
+
+	_extraData.reserve(numExtraData);
+
+	numExtraData = 0;
+
+	uint32 ssize = _stream->size();
+	for (uint16 i = 0; i < _framesCount; i++) {
+		_stream->seek(_frames[i].offset);
+
+		for (uint16 j = 0; j < _partsPerFrame; j++) {
+			if (_frames[i].parts[j].type == kPartTypeSeparator)
+				break;
+
+			if (_frames[i].parts[j].type == kPartTypeExtraData) {
+				ExtraData data;
+
+				data.offset = _stream->pos() + 20;
+				data.size = _frames[i].parts[j].size;
+				data.realSize = _stream->readUint32LE();
+				_stream->read(data.name, 16);
+				data.name[15] = '\0';
+
+				_stream->skip(_frames[i].parts[j].size - 20);
+
+				if ((((uint32) data.realSize) >= ssize) || (data.name[0] == 0))
+					continue;
+
+				_extraData.push_back(data);
+
+			} else
+				_stream->skip(_frames[i].parts[j].size);
+		}
+	}
+
+	_stream->seek(_firstFramePos);
 	return true;
 }
 
@@ -999,7 +1132,13 @@ void Vmd::unload() {
 	clear();
 }
 
+int16 Vmd::getWidth() const {
+	return preScaleX(_width);
+}
+
 void Vmd::setXY(int16 x, int16 y) {
+
+	x *= _scaleExternalX;
 
 	for (int i = 0; i < _framesCount; i++) {
 		for (int j = 0; j < _partsPerFrame; j++) {
@@ -1041,6 +1180,13 @@ void Vmd::seekFrame(int32 frame, int16 whence, bool restart) {
 		// Nothing to do
 		return;
 
+	// Restart sound
+	if (_hasSound && (frame == 0) && (_soundStage == 0) && !_audioStream) {
+		_soundStage = 1;
+		_audioStream = Audio::makeAppendableAudioStream(_soundFreq,
+				(_soundBytesPerSample == 2) ? Audio::Mixer::FLAG_16BITS : 0);
+	}
+
 	// Seek
 	_stream->seek(_frames[frame].offset);
 	_curFrame = frame;
@@ -1058,16 +1204,30 @@ void Vmd::clear(bool del) {
 	Imd::clear(del);
 
 	if (del) {
+		delete _codecIndeo3;
 		delete[] _frames;
+		delete[] _vidMemBuffer;
 	}
 
 	_hasVideo = true;
 
+	_codecIndeo3 = 0;
+
 	_partsPerFrame = 0;
 	_frames = 0;
 
+	_extraData.clear();
+
 	_soundBytesPerSample = 1;
 	_soundStereo = 0;
+
+	_externalCodec = false;
+	_blitMode = 0;
+	_bytesPerPixel = 1;
+	_preScaleX = 1;
+	_postScaleX = 1;
+	_scaleExternalX = 1;
+	_vidMemBuffer = 0;
 }
 
 CoktelVideo::State Vmd::processFrame(uint16 frame) {
@@ -1085,7 +1245,7 @@ CoktelVideo::State Vmd::processFrame(uint16 frame) {
 	if (!_vidMem)
 		setVideoMemory();
 
-	for (uint16 i = 0; i < _partsPerFrame; i++) {
+	for (uint16 i = 0; (i < _partsPerFrame) && (frame < _framesCount); i++) {
 		Part &part = _frames[frame].parts[i];
 
 		if (part.type == kPartTypeAudio) {
@@ -1149,13 +1309,19 @@ CoktelVideo::State Vmd::processFrame(uint16 frame) {
 			}
 
 			_stream->read(_frameData, size);
+			_frameDataLen = size;
 
-			if (renderFrame(part.left, part.top, part.right, part.bottom)) {
+			int16 l = part.left, t = part.top, r = part.right, b = part.bottom;
+			if (renderFrame(l, t, r, b)) {
+				if (!_externalCodec) {
+					l = preScaleX(l);
+					r = preScaleX(r);
+				}
 				// Rendering succeeded, merging areas
-				state.left = MIN(state.left, part.left);
-				state.top = MIN(state.top, part.top);
-				state.right = MAX(state.right, part.right);
-				state.bottom = MAX(state.bottom, part.bottom);
+				state.left   = MIN(state.left,   l);
+				state.top    = MIN(state.top,    t);
+				state.right  = MAX(state.right,  r);
+				state.bottom = MAX(state.bottom, b);
 			}
 
 		} else if (part.type == 4) {
@@ -1169,7 +1335,6 @@ CoktelVideo::State Vmd::processFrame(uint16 frame) {
 
 	if (startSound && _soundEnabled) {
 		_mixer->playInputStream(Audio::Mixer::kSFXSoundType, &_audioHandle, _audioStream);
-		_soundStartTime = g_system->getMillis();
 		_skipFrames = 0;
 		_soundStage = 2;
 	}
@@ -1180,6 +1345,10 @@ CoktelVideo::State Vmd::processFrame(uint16 frame) {
 		_audioStream = 0;
 		_soundStage = 0;
 	}
+
+	// If these are still 0x7FFF, no video data has been processed
+	if ((state.left == 0x7FFF) || (state.top == 0x7FFF))
+		state.left = state.top = state.right = state.bottom = 0;
 
 	_lastFrameTime = g_system->getMillis();
 	return state;
@@ -1212,64 +1381,101 @@ void Vmd::deRLE(byte *&srcPtr, byte *&destPtr, int16 len) {
 	}
 }
 
-uint32 Vmd::renderFrame(int16 left, int16 top, int16 right, int16 bottom) {
+uint32 Vmd::renderFrame(int16 &left, int16 &top, int16 &right, int16 &bottom) {
 	if (!_frameData || !_vidMem || (_width <= 0) || (_height <= 0))
 		return 0;
 
 	int16 width = right - left + 1;
 	int16 height = bottom - top + 1;
 	int16 sW = _vidMemWidth;
+	uint32 dataLen = _frameDataLen;
 	byte *dataPtr = _frameData;
 	byte *imdVidMem = _vidMem + sW * top + left;
 	byte *srcPtr;
-	uint8 type = *dataPtr++;
+	uint8 type;
 
-	srcPtr = dataPtr;
+	if ((width < 0) || (height < 0))
+		return 1;
 
-	if (type & 0x80) { // Frame data is compressed
+	byte *dest = imdVidMem;
+
+	if (Indeo3::isIndeo3(dataPtr, dataLen)) {
+		if (!_codecIndeo3)
+			return 0;
+
+		if (!_codecIndeo3->decompressFrame(dataPtr, dataLen, _vidBuffer, width, height))
+			return 0;
+
+		type = 2;
 		srcPtr = _vidBuffer;
-		type &= 0x7F;
-		if ((type == 2) && (width == sW)) {
-			deLZ77(imdVidMem, dataPtr);
-			return 1;
-		} else
-			deLZ77(srcPtr, dataPtr);
+		width = _width;
+		height = _height;
+		right = left + width - 1;
+		bottom = top + height - 1;
+
+	} else {
+
+		if (_externalCodec) {
+			warning("Unknown external codec");
+			return 0;
+		}
+
+		type = *dataPtr++;
+		srcPtr = dataPtr;
+
+		if (_blitMode > 0) {
+			dest = _vidMemBuffer + postScaleX(_width) * (top - _y) + postScaleX((left - _x));
+			imdVidMem = _vidMem + _vidMemWidth * top + preScaleX(left);
+			sW = postScaleX(_width);
+		}
+
+		if (type & 0x80) { // Frame data is compressed
+			srcPtr = _vidBuffer;
+			type &= 0x7F;
+			if ((type == 2) && (postScaleX(width) == sW)) {
+				deLZ77(dest, dataPtr);
+				blit(imdVidMem, dest, width, height);
+				return 1;
+			} else
+				deLZ77(srcPtr, dataPtr);
+		}
+
 	}
 
 	uint16 pixCount, pixWritten;
-	byte *imdVidMemBak;
+	byte *destBak;
 
 	if (type == 1) { // Sparse block
-		imdVidMemBak = imdVidMem;
+		destBak = dest;
 		for (int i = 0; i < height; i++) {
 			pixWritten = 0;
-			while (pixWritten < width) {
+			while (pixWritten < postScaleX(width)) {
 				pixCount = *srcPtr++;
 				if (pixCount & 0x80) { // Data
-					pixCount = MIN((pixCount & 0x7F) + 1, width - pixWritten);
-					memcpy(imdVidMem, srcPtr, pixCount);
+					pixCount = MIN<int>((pixCount & 0x7F) + 1, postScaleX(width) - pixWritten);
+					memcpy(dest, srcPtr, pixCount);
 
 					pixWritten += pixCount;
-					imdVidMem += pixCount;
+					dest += pixCount;
 					srcPtr += pixCount;
 				} else { // "Hole"
 					pixCount = (pixCount + 1) % 256;
 					pixWritten += pixCount;
-					imdVidMem += pixCount;
+					dest += pixCount;
 				}
 			}
-			imdVidMemBak += sW;
-			imdVidMem = imdVidMemBak;
+			destBak += sW;
+			dest = destBak;
 		}
 	} else if (type == 2) { // Whole block
 		for (int i = 0; i < height; i++) {
-			memcpy(imdVidMem, srcPtr, width);
-			srcPtr += width;
-			imdVidMem += sW;
+			memcpy(dest, srcPtr, postScaleX(width));
+			srcPtr += postScaleX(width);
+			dest += sW;
 		}
 	} else if (type == 3) { // RLE block
 		for (int i = 0; i < height; i++) {
-			imdVidMemBak = imdVidMem;
+			destBak = dest;
 
 			pixWritten = 0;
 			while (pixWritten < width) {
@@ -1278,31 +1484,161 @@ uint32 Vmd::renderFrame(int16 left, int16 top, int16 right, int16 bottom) {
 					pixCount = (pixCount & 0x7F) + 1;
 
 					if (*srcPtr != 0xFF) { // Normal copy
-						memcpy(imdVidMem, srcPtr, pixCount);
-						imdVidMem += pixCount;
+						memcpy(dest, srcPtr, pixCount);
+						dest += pixCount;
 						srcPtr += pixCount;
 					} else
-						deRLE(srcPtr, imdVidMem, pixCount);
+						deRLE(srcPtr, dest, pixCount);
 
 					pixWritten += pixCount;
 				} else { // "Hole"
-					imdVidMem += pixCount + 1;
+					dest += pixCount + 1;
 					pixWritten += pixCount + 1;
 				}
 
 			}
-			imdVidMemBak += sW;
-			imdVidMem = imdVidMemBak;
+			destBak += sW;
+			dest = destBak;
 		}
-	} else {
-		warning("Unkown frame rendering method %d (0x%X)", type, type);
-		return 0;
+	} else if (type == 0x42) { // Whole quarter-wide block
+		for (int i = 0; i < height; i++) {
+			destBak = dest;
+
+			for (int j = 0; j < width; j += 4, dest += 4, srcPtr++)
+				memset(dest, *srcPtr, 4);
+
+			destBak += sW;
+			dest = destBak;
+		}
+	} else if ((type & 0xF) == 2) { // Whole half-high block
+		for (; height > 1; height -= 2, dest += sW + sW, srcPtr += width) {
+			memcpy(dest, srcPtr, width);
+			memcpy(dest + sW, srcPtr, width);
+		}
+		if (height == -1)
+			memcpy(dest, srcPtr, width);
+	} else { // Sparse half-high block
+		destBak = dest;
+		for (int i = 0; i < height; i += 2) {
+			pixWritten = 0;
+			while (pixWritten < width) {
+				pixCount = *srcPtr++;
+				if (pixCount & 0x80) { // Data
+					pixCount = MIN((pixCount & 0x7F) + 1, width - pixWritten);
+					memcpy(dest, srcPtr, pixCount);
+					memcpy(dest + sW, srcPtr, pixCount);
+
+					pixWritten += pixCount;
+					dest += pixCount;
+					srcPtr += pixCount;
+				} else { // "Hole"
+					pixCount = (pixCount + 1) % 256;
+					pixWritten += pixCount;
+					dest += pixCount;
+				}
+			}
+			destBak += sW + sW;
+			dest = destBak;
+		}
 	}
+
+	dest = _vidMemBuffer + postScaleX(_width) * (top - _y) + postScaleX(left - _x);
+	blit(imdVidMem, dest, width, height);
 
 	return 1;
 }
 
+inline int32 Vmd::preScaleX(int32 x) const {
+	return x / _preScaleX;
+}
+
+inline int32 Vmd::postScaleX(int32 x) const {
+	return x * _postScaleX;
+}
+
+void Vmd::blit(byte *dest, byte *src, int16 width, int16 height) {
+	if (_blitMode == 0)
+		return;
+
+	if (_blitMode == 1)
+		blit16(dest, src, preScaleX(_width), preScaleX(width), height);
+	else if (_blitMode == 2)
+		blit24(dest, src, preScaleX(_width), preScaleX(width), height);
+}
+
+void Vmd::blit16(byte *dest, byte *src, int16 srcPitch, int16 width, int16 height) {
+	assert(_palLUT);
+
+	Graphics::SierraLight *dither =
+		new Graphics::SierraLight(width, _palLUT);
+
+	for (int i = 0; i < height; i++) {
+		byte *d = dest;
+		byte *s = src;
+
+		for (int j = 0; j < width; j++, s += 2) {
+			uint16 data = READ_LE_UINT16(s);
+			byte r = ((data & 0x7C00) >> 10);
+			byte g = ((data & 0x03E0) >>  5);
+			byte b = ((data & 0x001F) >>  0);
+			byte dY, dU, dV;
+
+			Graphics::PaletteLUT::RGB2YUV(r << 3, g << 3, b << 3, dY, dU, dV);
+
+			byte p = dither->dither(dY, dU, dV, j);
+
+			if ((dY == 0) || ((r == 0) && (g == 0) && (b == 0)))
+				*d++ = 0;
+			else
+				*d++ = p;
+		}
+
+		dither->nextLine();
+		dest += _vidMemWidth;
+		src += 2 * srcPitch;
+	}
+
+	delete dither;
+}
+
+void Vmd::blit24(byte *dest, byte *src, int16 srcPitch, int16 width, int16 height) {
+	assert(_palLUT);
+
+	Graphics::SierraLight *dither =
+		new Graphics::SierraLight(width, _palLUT);
+
+	for (int i = 0; i < height; i++) {
+		byte *d = dest;
+		byte *s = src;
+
+		for (int j = 0; j < width; j++, s += 3) {
+			byte r = s[2];
+			byte g = s[1];
+			byte b = s[0];
+			byte dY, dU, dV;
+
+			Graphics::PaletteLUT::RGB2YUV(r, g, b, dY, dU, dV);
+
+			byte p = dither->dither(dY, dU, dV, j);
+
+			if ((dY == 0) || ((r == 0) && (g == 0) && (b == 0)))
+				*d++ = 0;
+			else
+				*d++ = p;
+		}
+
+		dither->nextLine();
+		dest += _vidMemWidth;
+		src += 3 * srcPitch;
+	}
+
+	delete dither;
+}
+
 void Vmd::emptySoundSlice(uint32 size) {
+	if (!_audioStream)
+		return;
+
 	byte *soundBuf = new byte[size];
 	assert(soundBuf);
 
@@ -1312,6 +1648,9 @@ void Vmd::emptySoundSlice(uint32 size) {
 }
 
 void Vmd::soundSlice8bit(uint32 size) {
+	if (!_audioStream)
+		return;
+
 	byte *soundBuf = new byte[size];
 	assert(soundBuf);
 
@@ -1322,11 +1661,14 @@ void Vmd::soundSlice8bit(uint32 size) {
 }
 
 void Vmd::soundSlice16bit(uint32 size, int16 &init) {
+	if (!_audioStream)
+		return;
+
 	byte *dataBuf = new byte[size];
 	byte *soundBuf = new byte[size * 2];
 
 	_stream->read(dataBuf, size);
-	deDPCM(soundBuf, dataBuf, init, size);
+	deADPCM(soundBuf, dataBuf, init, size);
 	_audioStream->queueBuffer(soundBuf, size * 2);
 
 	delete[] dataBuf;
@@ -1337,7 +1679,7 @@ void Vmd::filledSoundSlice(uint32 size) {
 		soundSlice8bit(size);
 	} else if (_soundBytesPerSample == 2) {
 		int16 init = _stream->readSint16LE();
-		soundSlice16bit(size - 1, init);
+		soundSlice16bit(size - 2, init);
 	}
 }
 
@@ -1348,7 +1690,7 @@ void Vmd::filledSoundSlices(uint32 size, uint32 mask) {
 		if (mask & 1)
 			emptySoundSlice(_soundSliceSize * _soundBytesPerSample);
 		else
-			filledSoundSlice(_soundSliceSize);
+			filledSoundSlice(_soundSliceSize + 1);
 
 		mask >>= 1;
 	}
@@ -1356,15 +1698,15 @@ void Vmd::filledSoundSlices(uint32 size, uint32 mask) {
 		filledSoundSlice((_soundSlicesCount - 32) * _soundSliceSize);
 }
 
-void Vmd::deDPCM(byte *soundBuf, byte *dataBuf, int16 &init, uint32 n) {
+void Vmd::deADPCM(byte *soundBuf, byte *dataBuf, int16 &init, uint32 n) {
 	int16 *out = (int16 *) soundBuf;
 
 	int32 s = init;
 	for (uint32 i = 0; i < n; i++) {
 		if (dataBuf[i] & 0x80)
-			s -= _tableDPCM[dataBuf[i] & 0x7F];
+			s -= _tableADPCM[dataBuf[i] & 0x7F];
 		else
-			s += _tableDPCM[dataBuf[i]];
+			s += _tableADPCM[dataBuf[i]];
 
 		s = CLIP<int32>(s, -32768, 32767);
 		*out++ = TO_BE_16(s);
@@ -1387,7 +1729,7 @@ bool Vmd::getAnchor(int16 frame, uint16 partType,
 	for (i = 0; i < _partsPerFrame; i++) {
 		byte type = _stream->readByte();
 
-		if ((type == 0) || (type == partType))
+		if ((type == kPartTypeSeparator) || (type == partType))
 			break;
 
 		_stream->skip(15);
@@ -1408,6 +1750,47 @@ bool Vmd::getAnchor(int16 frame, uint16 partType,
 
 	_stream->seek(pos);
 	return true;
+}
+
+bool Vmd::hasExtraData(const char *fileName) const {
+	for (uint i = 0; i < _extraData.size(); i++)
+		if (!scumm_stricmp(_extraData[i].name, fileName))
+			return true;
+
+	return false;
+}
+
+Common::MemoryReadStream *Vmd::getExtraData(const char *fileName) {
+	uint i = 0;
+
+	for (i = 0; i < _extraData.size(); i++)
+		if (!scumm_stricmp(_extraData[i].name, fileName))
+			break;
+
+	if (i >= _extraData.size())
+		return 0;
+
+	if ((_extraData[i].size - 20) != _extraData[i].realSize) {
+		warning("Vmd::getExtraData(): Sizes for \"%s\" differ! (%d, %d)",
+				fileName, (_extraData[i].size - 20), _extraData[i].realSize);
+		return 0;
+	}
+
+	byte *data = (byte *) malloc(_extraData[i].realSize);
+
+	_stream->seek(_extraData[i].offset);
+	if (_stream->ioFailed() || (((uint32) _stream->pos()) != _extraData[i].offset)) {
+		warning("Vmd::getExtraData(): Can't seek to offset %d to get extra data file \"%s\"",
+				_extraData[i].offset, fileName);
+		return 0;
+	}
+
+	_stream->read(data, _extraData[i].realSize);
+
+	Common::MemoryReadStream *stream =
+		new Common::MemoryReadStream(data, _extraData[i].realSize, true);
+
+	return stream;
 }
 
 } // End of namespace Gob

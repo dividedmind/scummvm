@@ -204,8 +204,8 @@ void Inter_Bargon::setupOpcodes() {
 		/* 40 */
 		OPCODE(o2_totSub),
 		OPCODE(o2_switchTotSub),
-		OPCODE(o2_copyVars),
-		OPCODE(o2_pasteVars),
+		OPCODE(o2_pushVars),
+		OPCODE(o2_popVars),
 		/* 44 */
 		{NULL, ""},
 		{NULL, ""},
@@ -492,7 +492,7 @@ void Inter_Bargon::setupOpcodes() {
 		/* 24 */
 		OPCODE(o1_putPixel),
 		OPCODE(o2_goblinFunc),
-		OPCODE(o2_createSprite),
+		OPCODE(o1_createSprite),
 		OPCODE(o1_freeSprite),
 		/* 28 */
 		{NULL, ""},
@@ -745,12 +745,14 @@ void Inter_Bargon::oBargon_intro2(OpGobParams &params) {
 	_vm->_video->drawPackedSprite("2ille4.ims", surface);
 	_vm->_video->drawSprite(surface, _vm->_draw->_frontSurface, 0, 0, 319, 199, 320, 0, 0);
 	_vm->_util->setScrollOffset(320, 0);
+	_vm->_video->dirtyRectsAll();
 	_vm->_palAnim->fade(_vm->_global->_pPaletteDesc, -2, 0);
 	_vm->_util->longDelay(1000);
 	for (i = 320; i >= 0; i--) {
 		_vm->_util->setScrollOffset(i, 0);
+		_vm->_video->dirtyRectsAll();
 		if ((_vm->_game->checkKeys(&mouseX, &mouseY, &buttons, 0) == 0x11B) ||
-				_vm->quit()) {
+				_vm->shouldQuit()) {
 			_vm->_palAnim->fade(0, -2, 0);
 			_vm->_video->clearSurf(_vm->_draw->_frontSurface);
 			memset((char *) _vm->_draw->_vgaPalette, 0, 768);
@@ -760,14 +762,16 @@ void Inter_Bargon::oBargon_intro2(OpGobParams &params) {
 			break;
 		}
 	}
-	if (!_vm->quit())
+	if (!_vm->shouldQuit()) {
 		_vm->_util->setScrollOffset(0, 0);
+		_vm->_video->dirtyRectsAll();
+	}
 	surface = 0;
 	if (VAR(57) == ((uint32) -1))
 		return;
 
 	for (i = 0; i < 4; i++)
-		_vm->_sound->sampleLoad(&samples[i], sndFiles[i]);
+		_vm->_sound->sampleLoad(&samples[i], SOUND_SND, sndFiles[i]);
 	_vm->_sound->blasterPlayComposition(comp, 0, samples, 4);
 	_vm->_sound->blasterWaitEndPlay(true, false);
 	_vm->_palAnim->fade(0, 0, 0);
@@ -786,7 +790,7 @@ void Inter_Bargon::oBargon_intro3(OpGobParams &params) {
 	static const char *palFiles[] = {"2ou2.clt", "2ou3.clt", "2ou4.clt", "2ou5.clt"};
 
 	for (int i = 0; i < 2; i++)
-		_vm->_sound->sampleLoad(&samples[i], sndFiles[i]);
+		_vm->_sound->sampleLoad(&samples[i], SOUND_SND, sndFiles[i]);
 	for (int i = 0; i < 4; i++)
 		palettes[i] = _vm->_dataIO->getData(palFiles[i]);
 	palBak = _vm->_global->_pPaletteDesc->vgaPal;
@@ -799,7 +803,7 @@ void Inter_Bargon::oBargon_intro3(OpGobParams &params) {
 			_vm->_util->longDelay(_vm->_util->getRandom(200));
 		}
 		if ((_vm->_game->checkKeys(&mouseX, &mouseY, &buttons, 0) == 0x11B) ||
-				_vm->quit()) {
+				_vm->shouldQuit()) {
 			_vm->_sound->blasterStop(10);
 			_vm->_palAnim->fade(0, -2, 0);
 			_vm->_video->clearSurf(_vm->_draw->_frontSurface);

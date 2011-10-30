@@ -11,6 +11,7 @@ MODULE_OBJS := \
 	game.o \
 	game_v1.o \
 	game_v2.o \
+	game_v6.o \
 	global.o \
 	gob.o \
 	goblin.o \
@@ -18,6 +19,7 @@ MODULE_OBJS := \
 	goblin_v2.o \
 	goblin_v3.o \
 	goblin_v4.o \
+	indeo3.o \
 	coktelvideo.o \
 	videoplayer.o \
 	init.o \
@@ -47,6 +49,7 @@ MODULE_OBJS := \
 	saveload_v2.o \
 	saveload_v3.o \
 	saveload_v4.o \
+	saveload_v6.o \
 	scenery.o \
 	scenery_v1.o \
 	scenery_v2.o \

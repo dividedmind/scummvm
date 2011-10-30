@@ -25,6 +25,7 @@
 
 #include "base/plugins.h"
 
+#include "common/archive.h"
 #include "common/config-manager.h"
 #include "common/fs.h"
 #include "common/list.h"
@@ -98,7 +99,13 @@ Common::String ScummEngine::generateFilename(const int room) const {
 				switch (disk) {
 				case 2:
 					id = 'b';
-					snprintf(buf, sizeof(buf), "%s.(b)", _filenamePattern.pattern);
+					// Special cases for Blue's games, which share common (b) files
+					if (_game.id == GID_BIRTHDAY)
+						strcpy(buf, "Blue'sBirthday.(b)");
+					else if (_game.id == GID_TREASUREHUNT)
+						strcpy(buf, "Blue'sTreasureHunt.(b)");
+					else
+						snprintf(buf, sizeof(buf), "%s.(b)", _filenamePattern.pattern);
 					break;
 				case 1:
 					id = 'a';
@@ -177,7 +184,7 @@ static Common::String generateFilenameForDetection(const char *pattern, Filename
 }
 
 struct DetectorDesc {
-	Common::FilesystemNode node;
+	Common::FSNode node;
 	Common::String md5;
 	const MD5Table *md5Entry;	// Entry of the md5 table corresponding to this file, if any.
 };
@@ -191,7 +198,7 @@ static bool testGame(const GameSettings *g, const DescMap &fileMD5Map, const Com
 // when performing the matching. The first match is returned, so if you
 // search for "resource" and two nodes "RESOURE and "resource" are present,
 // the first match is used.
-static bool searchFSNode(const Common::FSList &fslist, const Common::String &name, Common::FilesystemNode &result) {
+static bool searchFSNode(const Common::FSList &fslist, const Common::String &name, Common::FSNode &result) {
 	for (Common::FSList::const_iterator file = fslist.begin(); file != fslist.end(); ++file) {
 		if (!scumm_stricmp(file->getName().c_str(), name.c_str())) {
 			result = *file;
@@ -212,14 +219,16 @@ static Common::Language detectLanguage(const Common::FSList &fslist, byte id) {
 	// switch to MD5 based detection).
 	const char *filename = (id == GID_CMI) ? "LANGUAGE.TAB" : "LANGUAGE.BND";
 	Common::File tmp;
-	Common::FilesystemNode langFile;
-	if (!searchFSNode(fslist, filename, langFile) || !tmp.open(langFile)) {
+	Common::FSNode langFile;
+	if (searchFSNode(fslist, filename, langFile))
+		tmp.open(langFile);
+	if (!tmp.isOpen()) {
 		// try loading in RESOURCE sub dir...
-		Common::FilesystemNode resDir;
+		Common::FSNode resDir;
 		Common::FSList tmpList;
 		if (searchFSNode(fslist, "RESOURCE", resDir)
 			&& resDir.isDirectory()
-			&& resDir.getChildren(tmpList, Common::FilesystemNode::kListFilesOnly)
+			&& resDir.getChildren(tmpList, Common::FSNode::kListFilesOnly)
 			&& searchFSNode(tmpList, filename, langFile)) {
 			tmp.open(langFile);
 		}
@@ -674,28 +683,36 @@ public:
 	virtual const char *getName() const;
 	virtual const char *getCopyright() const;
 
-	virtual bool hasFeature(MetaEngineFeature f) const;	
+	virtual bool hasFeature(MetaEngineFeature f) const;
 	virtual GameList getSupportedGames() const;
 	virtual GameDescriptor findGame(const char *gameid) const;
 	virtual GameList detectGames(const Common::FSList &fslist) const;
-	
-	virtual PluginError createInstance(OSystem *syst, Engine **engine) const;
+
+	virtual Common::Error createInstance(OSystem *syst, Engine **engine) const;
 
 	virtual SaveStateList listSaves(const char *target) const;
+	virtual int getMaximumSaveSlot() const;
 	virtual void removeSaveState(const char *target, int slot) const;
 	virtual SaveStateDescriptor querySaveMetaInfos(const char *target, int slot) const;
 };
 
 bool ScummMetaEngine::hasFeature(MetaEngineFeature f) const {
 	return
-		(f == kSupportsRTL) ||
 		(f == kSupportsListSaves) ||
-		(f == kSupportsDirectLoad) ||
+		(f == kSupportsLoadingDuringStartup) ||
 		(f == kSupportsDeleteSave) ||
-		(f == kSupportsMetaInfos) ||
-		(f == kSupportsThumbnails) ||
-		(f == kSupportsSaveDate) ||
-		(f == kSupportsSavePlayTime);
+		(f == kSavesSupportMetaInfo) ||
+		(f == kSavesSupportThumbnail) ||
+		(f == kSavesSupportCreationDate) ||
+		(f == kSavesSupportPlayTime);
+}
+
+bool ScummEngine::hasFeature(EngineFeature f) const {
+	return
+		(f == kSupportsRTL) ||
+		(f == kSupportsLoadingDuringRuntime) ||
+		(f == kSupportsSavingDuringRuntime) ||
+		(f == kSupportsSubtitleOptions);
 }
 
 GameList ScummMetaEngine::getSupportedGames() const {
@@ -703,7 +720,7 @@ GameList ScummMetaEngine::getSupportedGames() const {
 }
 
 GameDescriptor ScummMetaEngine::findGame(const char *gameid) const {
-	return Common::AdvancedDetector::findGameID(gameid, gameDescriptions, obsoleteGameIDsTable);
+	return AdvancedDetector::findGameID(gameid, gameDescriptions, obsoleteGameIDsTable);
 }
 
 GameList ScummMetaEngine::detectGames(const Common::FSList &fslist) const {
@@ -759,7 +776,7 @@ GameList ScummMetaEngine::detectGames(const Common::FSList &fslist) const {
  *
  * This is heavily based on our MD5 detection scheme.
  */
-PluginError ScummMetaEngine::createInstance(OSystem *syst, Engine **engine) const {
+Common::Error ScummMetaEngine::createInstance(OSystem *syst, Engine **engine) const {
 	assert(syst);
 	assert(engine);
 	const char *gameid = ConfMan.get("gameid").c_str();
@@ -767,7 +784,7 @@ PluginError ScummMetaEngine::createInstance(OSystem *syst, Engine **engine) cons
 	// We start by checking whether the specified game ID is obsolete.
 	// If that is the case, we automatically upgrade the target to use
 	// the correct new game ID (and platform, if specified).
-	for (const Common::ADObsoleteGameID *o = obsoleteGameIDsTable; o->from; ++o) {
+	for (const ADObsoleteGameID *o = obsoleteGameIDsTable; o->from; ++o) {
 		if (!scumm_stricmp(gameid, o->from)) {
 			// Match found, perform upgrade
 			gameid = o->to;
@@ -784,19 +801,19 @@ PluginError ScummMetaEngine::createInstance(OSystem *syst, Engine **engine) cons
 
 	// Fetch the list of files in the current directory
 	Common::FSList fslist;
-	Common::FilesystemNode dir(ConfMan.get("path"));
-	if (!dir.getChildren(fslist, Common::FilesystemNode::kListFilesOnly)) {
-		return kInvalidPathError;
-	}
+	Common::FSNode dir(ConfMan.get("path"));
+	if (!dir.isDirectory())
+		return Common::kInvalidPathError;
+	if (!dir.getChildren(fslist, Common::FSNode::kListFilesOnly))
+		return Common::kNoGameDataFoundError;
 
 	// Invoke the detector, but fixed to the specified gameid.
 	Common::List<DetectorResult> results;
 	::detectGames(fslist, results, gameid);
 
 	// Unable to locate game data
-	if (results.empty()) {
-		return kNoGameDataFoundError;
-	}
+	if (results.empty())
+		return Common::kNoGameDataFoundError;
 
 	// No unique match found. If a platform override is present, try to
 	// narrow down the list a bit more.
@@ -822,9 +839,8 @@ PluginError ScummMetaEngine::createInstance(OSystem *syst, Engine **engine) cons
 	}
 
 	// Still no unique match found -> print a warning
-	if (results.size() > 1) {
+	if (results.size() > 1)
 		warning("Engine_SCUMM_create: No unique game candidate found, using first one");
-	}
 
 	// Simply use the first match
 	DetectorResult res(*(results.begin()));
@@ -937,11 +953,27 @@ PluginError ScummMetaEngine::createInstance(OSystem *syst, Engine **engine) cons
 		error("Engine_SCUMM_create(): Unknown version of game engine");
 	}
 
-	return kNoError;
+	return Common::kNoError;
 }
 
 const char *ScummMetaEngine::getName() const {
-	return "Scumm Engine";
+	return "SCUMM Engine ["
+
+#if defined(ENABLE_SCUMM_7_8) && defined(ENABLE_HE)
+		"all games"
+#else
+
+		"v0-v6 games"
+
+#if defined(ENABLE_SCUMM_7_8)
+		", v7 & v8 games"
+#endif
+#if defined(ENABLE_HE)
+		", HE71+ games"
+#endif
+
+#endif
+		"]";
 }
 
 const char *ScummMetaEngine::getCopyright() const {
@@ -952,6 +984,8 @@ const char *ScummMetaEngine::getCopyright() const {
 namespace Scumm {
 	extern bool getSavegameName(Common::InSaveFile *in, Common::String &desc, int heversion);
 }
+
+int ScummMetaEngine::getMaximumSaveSlot() const { return 99; }
 
 SaveStateList ScummMetaEngine::listSaves(const char *target) const {
 	Common::SaveFileManager *saveFileMan = g_system->getSavefileManager();
@@ -967,12 +1001,12 @@ SaveStateList ScummMetaEngine::listSaves(const char *target) const {
 	for (Common::StringList::const_iterator file = filenames.begin(); file != filenames.end(); ++file) {
 		// Obtain the last 2 digits of the filename, since they correspond to the save slot
 		int slotNum = atoi(file->c_str() + file->size() - 2);
-		
+
 		if (slotNum >= 0 && slotNum <= 99) {
 			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
 			if (in) {
 				Scumm::getSavegameName(in, saveDesc, 0);	// FIXME: heversion?!?
-				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc, *file));
+				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc));
 				delete in;
 			}
 		}
@@ -999,8 +1033,8 @@ SaveStateDescriptor ScummMetaEngine::querySaveMetaInfos(const char *target, int 
 
 	// TODO: Cleanup
 	Graphics::Surface *thumbnail = ScummEngine::loadThumbnailFromSlot(target, slot);
-	
-	SaveStateDescriptor desc(slot, saveDesc, filename);
+
+	SaveStateDescriptor desc(slot, saveDesc);
 	desc.setDeletableFlag(true);
 	desc.setThumbnail(thumbnail);
 
@@ -1012,7 +1046,7 @@ SaveStateDescriptor ScummMetaEngine::querySaveMetaInfos(const char *target, int 
 		int year = infos.date & 0xFFFF;
 
 		desc.setSaveDate(year, month, day);
-		
+
 		int hour = (infos.time >> 8) & 0xFF;
 		int minutes = infos.time & 0xFF;
 

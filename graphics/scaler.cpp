@@ -29,6 +29,20 @@
 
 int gBitFormat = 565;
 
+static const Graphics::PixelFormat gPixelFormat555 = {
+	2,
+	3, 3, 3, 8,
+	10, 5, 0, 0
+	};
+
+static const Graphics::PixelFormat gPixelFormat565 = {
+	2,
+	3, 2, 3, 8,
+	11, 5, 0, 0
+	};
+
+
+
 #ifndef DISABLE_HQ_SCALERS
 // RGB-to-YUV lookup table
 extern "C" {
@@ -39,12 +53,26 @@ extern "C" {
 
 #if !defined(_WIN32) && !defined(MACOSX) && !defined(__OS2__)
 #define RGBtoYUV _RGBtoYUV
-#define LUT16to32 _LUT16to32
+#define hqx_highbits _hqx_highbits
+#define hqx_lowbits _hqx_lowbits
+#define hqx_low2bits _hqx_low2bits
+#define hqx_low3bits _hqx_low3bits
+#define hqx_greenMask _hqx_greenMask
+#define hqx_redBlueMask _hqx_redBlueMask
+#define hqx_green_redBlue_Mask _hqx_green_redBlue_Mask
 #endif
 
 #endif
 
-// FIXME/TODO: The following two tables suck up 512 KB. This is bad.
+uint32 hqx_highbits = 0xF7DEF7DE;
+uint32 hqx_lowbits = 0x0821;
+uint32 hqx_low2bits = 0x0C63;
+uint32 hqx_low3bits = 0x1CE7;
+uint32 hqx_greenMask = 0;
+uint32 hqx_redBlueMask = 0;
+uint32 hqx_green_redBlue_Mask = 0;
+
+// FIXME/TODO: The RGBtoYUV table sucks up 256 KB. This is bad.
 // In addition we never free them...
 //
 // Note: a memory lookup table is *not* necessarily faster than computing
@@ -53,14 +81,7 @@ extern "C" {
 // systems, so main memory has to be accessed, which is about the worst thing
 // that can happen to code which tries to be fast...
 //
-// So we should think about ways to get these smaller / removed. The LUT16to32
-// is only used by the HQX asm right now; maybe somebody can modify the code
-// there to work w/o it (and do some benchmarking, too?). To do that, just
-// do the conversion on the fly, or even do w/o it (as the C++ code manages to),
-// by making different versions of the code based on gBitFormat (or by writing
-// bit masks into registers which are computed based on gBitFormat).
-//
-// RGBtoYUV is also used by the C(++) version of the HQX code. Maybe we can
+// So we should think about ways to get these smaller / removed. Maybe we can
 // use the same technique which is employed by our MPEG code to reduce the
 // size of the lookup tables at the cost of some additional computations? That
 // might actually result in a speedup, too, if done right (and the code code
@@ -70,53 +91,61 @@ extern "C" {
 // differences are likely to vary a lot between different architectures and
 // CPUs.
 uint32 *RGBtoYUV = 0;
-uint32 *LUT16to32 = 0;
 }
 
-template<class T>
-void InitLUT() {
-	int r, g, b;
+void InitLUT(Graphics::PixelFormat format) {
+	uint8 r, g, b;
 	int Y, u, v;
 
-	assert(T::kBytesPerPixel == 2);
+	assert(format.bytesPerPixel == 2);
 
 	// Allocate the YUV/LUT buffers on the fly if needed.
 	if (RGBtoYUV == 0)
 		RGBtoYUV = (uint32 *)malloc(65536 * sizeof(uint32));
-	if (LUT16to32 == 0)
-		LUT16to32 = (uint32 *)malloc(65536 * sizeof(uint32));
 
 	for (int color = 0; color < 65536; ++color) {
-		r = ((color & T::kRedMask) >> T::kRedShift) << (8 - T::kRedBits);
-		g = ((color & T::kGreenMask) >> T::kGreenShift) << (8 - T::kGreenBits);
-		b = ((color & T::kBlueMask) >> T::kBlueShift) << (8 - T::kBlueBits);
-		LUT16to32[color] = (r << 16) | (g << 8) | b;
-
+		format.colorToRGB(color, r, g, b);
 		Y = (r + g + b) >> 2;
 		u = 128 + ((r - b) >> 2);
 		v = 128 + ((-r + 2 * g - b) >> 3);
 		RGBtoYUV[color] = (Y << 16) | (u << 8) | v;
 	}
+
+#ifdef USE_NASM
+	hqx_lowbits  = (1 << format.rShift) | (1 << format.gShift) | (1 << format.bShift),
+	hqx_low2bits = (3 << format.rShift) | (3 << format.gShift) | (3 << format.bShift),
+	hqx_low3bits = (7 << format.rShift) | (7 << format.gShift) | (7 << format.bShift),
+
+	hqx_highbits = format.RGBToColor(255,255,255) ^ hqx_lowbits;
+	
+	// FIXME: The following code only does the right thing
+	// if the color order is RGB or BGR, i.e., green is in the middle.
+	hqx_greenMask = format.RGBToColor(0,255,0);
+	hqx_redBlueMask = format.RGBToColor(255,0,255);
+	
+	hqx_green_redBlue_Mask = (hqx_greenMask << 16) | hqx_redBlueMask;
+#endif
 }
 #endif
 
 
 void InitScalers(uint32 BitFormat) {
 	gBitFormat = BitFormat;
+
 #ifndef DISABLE_HQ_SCALERS
-	if (gBitFormat == 555)
-		InitLUT<ColorMasks<555> >();
-	if (gBitFormat == 565)
-		InitLUT<ColorMasks<565> >();
+	if (gBitFormat == 555) {
+		InitLUT(Graphics::createPixelFormat<555>());
+	}
+	if (gBitFormat == 565) {
+		InitLUT(Graphics::createPixelFormat<565>());
+	}
 #endif
 }
 
 void DestroyScalers(){
 #ifndef DISABLE_HQ_SCALERS
 	free(RGBtoYUV);
-	free(LUT16to32);
 	RGBtoYUV = 0;
-	LUT16to32 = 0;
 #endif
 }
 
@@ -127,6 +156,11 @@ void DestroyScalers(){
  */
 void Normal1x(const uint8 *srcPtr, uint32 srcPitch, uint8 *dstPtr, uint32 dstPitch,
 							int width, int height) {
+	// Spot the case when it can all be done in 1 hit
+	if (((int)srcPitch == 2 * width) && ((int)dstPitch == 2 * width)) {
+		width *= height;
+		height = 1;
+	}
 	while (height--) {
 		memcpy(dstPtr, srcPtr, 2 * width);
 		srcPtr += srcPitch;
@@ -188,8 +222,8 @@ void Normal3x(const uint8 *srcPtr, uint32 srcPitch, uint8 *dstPtr, uint32 dstPit
 	}
 }
 
-#define interpolate32_1_1		interpolate32_1_1<bitFormat>
-#define interpolate32_1_1_1_1	interpolate32_1_1_1_1<bitFormat>
+#define interpolate_1_1		interpolate16_1_1<Graphics::ColorMasks<bitFormat> >
+#define interpolate_1_1_1_1	interpolate16_1_1_1_1<Graphics::ColorMasks<bitFormat> >
 
 /**
  * Trivial nearest-neighbour 1.5x scaler.
@@ -212,13 +246,13 @@ void Normal1o5xTemplate(const uint8 *srcPtr, uint32 srcPitch, uint8 *dstPtr, uin
 			uint16 color3 = *(((const uint16 *)(srcPtr + srcPitch)) + i + 1);
 
 			*(uint16 *)(r + 0) = color0;
-			*(uint16 *)(r + 2) = interpolate32_1_1(color0, color1);
+			*(uint16 *)(r + 2) = interpolate_1_1(color0, color1);
 			*(uint16 *)(r + 4) = color1;
-			*(uint16 *)(r + 0 + dstPitch) = interpolate32_1_1(color0, color2);
-			*(uint16 *)(r + 2 + dstPitch) = interpolate32_1_1_1_1(color0, color1, color2, color3);
-			*(uint16 *)(r + 4 + dstPitch) = interpolate32_1_1(color1, color3);
+			*(uint16 *)(r + 0 + dstPitch) = interpolate_1_1(color0, color2);
+			*(uint16 *)(r + 2 + dstPitch) = interpolate_1_1_1_1(color0, color1, color2, color3);
+			*(uint16 *)(r + 4 + dstPitch) = interpolate_1_1(color1, color3);
 			*(uint16 *)(r + 0 + dstPitch2) = color2;
-			*(uint16 *)(r + 2 + dstPitch2) = interpolate32_1_1(color2, color3);
+			*(uint16 *)(r + 2 + dstPitch2) = interpolate_1_1(color2, color3);
 			*(uint16 *)(r + 4 + dstPitch2) = color3;
 		}
 		srcPtr += srcPitch2;

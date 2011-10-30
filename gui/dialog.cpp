@@ -24,7 +24,7 @@
 
 #include "common/events.h"
 
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
 #include "gui/dialog.h"
 #include "gui/widget.h"
 #include "gui/PopUpWidget.h"
@@ -42,18 +42,22 @@ namespace GUI {
  * ...
  */
 
-Dialog::Dialog(int x, int y, int w, int h, bool dimsInactive_)
+Dialog::Dialog(int x, int y, int w, int h)
 	: GuiObject(x, y, w, h),
-	  _mouseWidget(0), _focusedWidget(0), _dragWidget(0), _visible(false), _drawingHints(0),
-	  _dimsInactive(dimsInactive_) {
-	_drawingHints = THEME_HINT_FIRST_DRAW | THEME_HINT_SAVE_BACKGROUND;
+	  _mouseWidget(0), _focusedWidget(0), _dragWidget(0), _visible(false),
+	_backgroundType(GUI::ThemeEngine::kDialogBackgroundDefault) {
+	// Some dialogs like LauncherDialog use internally a fixed size, even though
+	// their widgets rely on the layout to be initialized correctly by the theme.
+	// Thus we need to catch screen changes here too. If we do not do that, it
+	// will for example crash after returning to the launcher when the user
+	// started a 640x480 game with a non 1x scaler.
+	g_gui.checkScreenChange();
 }
 
-Dialog::Dialog(const Common::String &name, bool dimsInactive_)
+Dialog::Dialog(const Common::String &name)
 	: GuiObject(name),
-	  _mouseWidget(0), _focusedWidget(0), _dragWidget(0), _visible(false), _drawingHints(0),
-	  _dimsInactive(dimsInactive_) {
-	_drawingHints = THEME_HINT_FIRST_DRAW | THEME_HINT_SAVE_BACKGROUND;
+	  _mouseWidget(0), _focusedWidget(0), _dragWidget(0), _visible(false),
+	_backgroundType(GUI::ThemeEngine::kDialogBackgroundDefault) {
 
 	// It may happen that we have 3x scaler in launcher (960xY) and then 640x480
 	// game will be forced to 1x. At this stage GUI will not be aware of
@@ -62,10 +66,7 @@ Dialog::Dialog(const Common::String &name, bool dimsInactive_)
 	//
 	// Fixes bug #1590596: "HE: When 3x graphics are choosen, F5 crashes game"
 	// and bug #1595627: "SCUMM: F5 crashes game (640x480)"
-	if (g_gui.theme()->needThemeReload()) {
-		debug(2, "Theme forced to reload");
-		g_gui.screenChange();
-	}
+	g_gui.checkScreenChange();
 }
 
 int Dialog::runModal() {
@@ -80,12 +81,12 @@ int Dialog::runModal() {
 }
 
 void Dialog::open() {
-	Widget *w = _firstWidget;
 
 	_result = 0;
 	_visible = true;
 	g_gui.openDialog(this);
 
+	Widget *w = _firstWidget;
 	// Search for the first objects that wantsFocus() (if any) and give it the focus
 	while (w && !w->wantsFocus()) {
 		w = w->_next;
@@ -113,11 +114,9 @@ void Dialog::reflowLayout() {
 	// changed, so any cached image may be invalid. The subsequent redraw
 	// should be treated as the very first draw.
 
-	_drawingHints |= THEME_HINT_FIRST_DRAW;
 	Widget *w = _firstWidget;
 	while (w) {
 		w->reflowLayout();
-		w->setHints(THEME_HINT_FIRST_DRAW);
 		w = w->_next;
 	}
 
@@ -132,7 +131,11 @@ void Dialog::releaseFocus() {
 }
 
 void Dialog::draw() {
-	g_gui._needRedraw = true;
+	//TANOKU - FIXME when is this enabled? what does this do?
+	// Update: called on tab drawing, mainly...
+	// we can pass this as open a new dialog or something
+//	g_gui._needRedraw = true;
+	g_gui._redrawStatus = GUI::GuiManager::kRedrawTopDialog;
 }
 
 void Dialog::drawDialog() {
@@ -140,12 +143,12 @@ void Dialog::drawDialog() {
 	if (!isVisible())
 		return;
 
-	g_gui.theme()->drawDialogBackground(Common::Rect(_x, _y, _x+_w, _y+_h), _drawingHints);
-	_drawingHints &= ~THEME_HINT_FIRST_DRAW;
+	g_gui.theme()->drawDialogBackground(Common::Rect(_x, _y, _x+_w, _y+_h), _backgroundType);
 
 	// Draw all children
 	Widget *w = _firstWidget;
 	while (w) {
+		//if (w->_debugVisible)
 		w->draw();
 		w = w->_next;
 	}
@@ -156,7 +159,8 @@ void Dialog::handleMouseDown(int x, int y, int button, int clickCount) {
 
 	w = findWidget(x, y);
 
-	_dragWidget = w;
+	if (w && !(w->getFlags() & WIDGET_IGNORE_DRAG))
+		_dragWidget = w;
 
 	// If the click occured inside a widget which is not the currently
 	// focused one, change the focus to that widget.
@@ -188,7 +192,10 @@ void Dialog::handleMouseUp(int x, int y, int button, int clickCount) {
 		}
 	}
 
-	w = _dragWidget;
+	if (_dragWidget)
+		w = _dragWidget;
+	else
+		w = findWidget(x, y);
 
 	if (w)
 		w->handleMouseUp(x - (w->getAbsX() - _x), y - (w->getAbsY() - _y), button, clickCount);
@@ -250,9 +257,6 @@ void Dialog::handleKeyUp(Common::KeyState state) {
 void Dialog::handleMouseMoved(int x, int y, int button) {
 	Widget *w;
 
-	//if (!button)
-	//	_dragWidget = 0;
-
 	if (_focusedWidget && !_dragWidget) {
 		w = _focusedWidget;
 		int wx = w->getAbsX() - _x;
@@ -271,27 +275,35 @@ void Dialog::handleMouseMoved(int x, int y, int button) {
 			w->handleMouseLeft(button);
 		}
 
-		w->handleMouseMoved(x - wx, y - wy, button);
+		if (w->getFlags() & WIDGET_TRACK_MOUSE)
+			w->handleMouseMoved(x - wx, y - wy, button);
 	}
 
-	// While a "drag" is in process (i.e. mouse is moved while a button is pressed),
-	// only deal with the widget in which the click originated.
-	if (_dragWidget)
-		w = _dragWidget;
-	else
+	// We process mouseEntered/Left events if we don't have any
+	// currently active dragged widget or if the currently dragged widget
+	// does not want to be informed about the mouse mouse events.
+	if (!_dragWidget || !(_dragWidget->getFlags() & WIDGET_TRACK_MOUSE))
 		w = findWidget(x, y);
+	else
+		w = _dragWidget;
 
 	if (_mouseWidget != w) {
 		if (_mouseWidget)
 			_mouseWidget->handleMouseLeft(button);
+
+		// If we have a widget in drag mode we prevent mouseEntered
+		// events from being sent to other widgets.
+		if (_dragWidget && w != _dragWidget)
+			w = 0;
+
 		if (w)
 			w->handleMouseEntered(button);
 		_mouseWidget = w;
 	}
 
-	if (w && (w->getFlags() & WIDGET_TRACK_MOUSE)) {
+	// We only sent mouse move events when the widget requests to be informed about them.
+	if (w && (w->getFlags() & WIDGET_TRACK_MOUSE))
 		w->handleMouseMoved(x - (w->getAbsX() - _x), y - (w->getAbsY() - _y), button);
-	}
 }
 
 void Dialog::handleTickle() {
@@ -331,32 +343,22 @@ void Dialog::removeWidget(Widget *del) {
 	Widget *w = _firstWidget;
 
 	if (del == _firstWidget) {
-		_firstWidget = _firstWidget->_next;
+		Widget *del_next = del->_next;
+		del->_next = 0;
+		_firstWidget = del_next;
 		return;
 	}
 
 	w = _firstWidget;
 	while (w) {
 		if (w->_next == del) {
-			w->_next = w->_next->_next;
+			Widget *del_next = del->_next;
+			del->_next = 0;
+			w->_next = del_next;
 			return;
 		}
 		w = w->_next;
 	}
-}
-
-ButtonWidget *Dialog::addButton(GuiObject *boss, int x, int y, const Common::String &label, uint32 cmd, char hotkey) {
-	int w, h;
-
-	if (g_gui.getWidgetSize() == kBigWidgetSize) {
-		w = kBigButtonWidth;
-		h = kBigButtonHeight;
-	} else {
-		w = kButtonWidth;
-		h = kButtonHeight;
-	}
-
-	return new ButtonWidget(boss, x, y, w, h, label, cmd, hotkey);
 }
 
 } // End of namespace GUI

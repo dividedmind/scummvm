@@ -55,9 +55,10 @@ namespace Sword1 {
 
 uint32 Logic::_scriptVars[NUM_SCRIPT_VARS];
 
-Logic::Logic(ObjectMan *pObjMan, ResMan *resMan, Screen *pScreen, Mouse *pMouse, Sound *pSound, Music *pMusic, Menu *pMenu, OSystem *system, Audio::Mixer *mixer) {
+Logic::Logic(SwordEngine *vm, ObjectMan *pObjMan, ResMan *resMan, Screen *pScreen, Mouse *pMouse, Sound *pSound, Music *pMusic, Menu *pMenu, OSystem *system, Audio::Mixer *mixer) {
 	g_system->getEventManager()->registerRandomSource(_rnd, "sword1");
 
+	_vm = vm;
 	_objMan = pObjMan;
 	_resMan = resMan;
 	_screen = pScreen;
@@ -963,7 +964,7 @@ int Logic::fnPlaySequence(Object *cpt, int32 id, int32 sequenceId, int32 d, int3
 		CreditsPlayer player(_system, _mixer);
 		player.play();
 	} else {
-		MoviePlayer *player = makeMoviePlayer(sequenceId, _screen, _textMan, _mixer, _system);
+		MoviePlayer *player = makeMoviePlayer(sequenceId, _vm, _screen, _textMan, _mixer, _system);
 		if (player) {
 			if (player->load(sequenceId))
 				player->play();
@@ -1636,7 +1637,7 @@ int Logic::fnQuitGame(Object *cpt, int32 id, int32 a, int32 b, int32 c, int32 d,
 	if (SwordEngine::_systemVars.isDemo) {
 		GUI::MessageDialog dialog("This is the end of the Broken Sword 1 Demo", "OK", NULL);
 		dialog.runModal();
-		g_engine->quitGame();
+		Engine::quitGame();
 	} else
 		error("fnQuitGame() called");
 	return fnQuit(cpt, id, 0, 0, 0, 0, 0, 0);

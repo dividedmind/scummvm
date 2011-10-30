@@ -57,12 +57,12 @@ public:
 
 	Screen *screen() { return _screen; }
 	Screen_v2 *screen_v2() const { return _screen; }
-	GUI_v2 *gui_v2() const { return _gui; }
+	GUI *gui() const { return _gui; }
 	SoundDigital *soundDigital() { return _soundDigital; }
 	int language() const { return _lang; }
 	bool heliumMode() const { return _configHelium; }
 
-	int go();
+	Common::Error go();
 
 	void playVQA(const char *name);
 
@@ -84,7 +84,7 @@ private:
 	Screen_MR *_screen;
 	SoundDigital *_soundDigital;
 
-	int init();
+	Common::Error init();
 
 	void preinit();
 	void startup();
@@ -252,7 +252,7 @@ private:
 	void drawMalcolmsMoodText();
 	void drawMalcolmsMoodPointer(int frame, int page);
 	void drawJestersStaff(int type, int page);
-	
+
 	void drawScore(int page, int x, int y);
 	void drawScoreCounting(int oldScore, int newScore, int drawOld, const int x);
 	int getScoreX(const char *str);
@@ -494,7 +494,7 @@ private:
 
 	// special script code
 	bool _useFrameTable;
-	
+
 	int o3a_setCharacterFrame(EMCState *script);
 
 	// special shape code
@@ -523,7 +523,7 @@ private:
 
 	int _score;
 	int _scoreMax;
-	
+
 	const uint8 *_scoreTable;
 	int _scoreTableSize;
 
@@ -564,7 +564,7 @@ private:
 
 	void printAlbumPageText();
 	void printAlbumText(int page, const char *str, int x, int y, uint8 c0);
-	
+
 	void processAlbum();
 
 	void albumNewPage();
@@ -583,8 +583,8 @@ private:
 	int albumClose(Button *caller);
 
 	// save/load
-	void saveGame(const char *fileName, const char *saveName, const Graphics::Surface *thumbnail);
-	void loadGame(const char *fileName);
+	Common::Error saveGameState(int slot, const char *saveName, const Graphics::Surface *thumbnail);
+	Common::Error loadGameState(int slot);
 
 	// opcodes
 	int o3_getMalcolmShapes(EMCState *script);

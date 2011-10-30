@@ -29,8 +29,7 @@
 #define __GP2X__
 #define USE_OSD
 
-#include "common/scummsys.h"
-#include "common/system.h"
+#include "backends/base-backend.h"
 #include "graphics/scaler.h"
 
 #include <SDL.h>
@@ -38,11 +37,6 @@
 
 namespace Audio {
 	class MixerImpl;
-}
-
-namespace Common {
-	class SaveFileManager;
-	class TimerManager;
 }
 
 //#define DISABLE_SCALERS
@@ -63,7 +57,7 @@ enum {
 };
 
 
-class OSystem_GP2X : public OSystem {
+class OSystem_GP2X : public BaseBackend {
 public:
 	OSystem_GP2X();
 	virtual ~OSystem_GP2X();
@@ -167,11 +161,6 @@ public:
 	int16 getWidth();
 	int16 getOverlayHeight()  { return _overlayHeight; }
 	int16 getOverlayWidth()   { return _overlayWidth; }
-
-	// Methods that convert RGB to/from colors suitable for the overlay.
-	OverlayColor RGBToColor(uint8 r, uint8 g, uint8 b);
-	void colorToRGB(OverlayColor color, uint8 &r, uint8 &g, uint8 &b);
-
 
 	const GraphicsMode *getSupportedGraphicsModes() const;
 	int getDefaultGraphicsMode() const;

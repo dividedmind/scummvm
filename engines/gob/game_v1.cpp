@@ -63,7 +63,7 @@ void Game_v1::playTot(int16 skipPlay) {
 	strcpy(savedTotName, _curTotFile);
 
 	if (skipPlay <= 0) {
-		while (!_vm->quit()) {
+		while (!_vm->shouldQuit()) {
 			for (int i = 0; i < 4; i++) {
 				_vm->_draw->_fontToSprite[i].sprite = -1;
 				_vm->_draw->_fontToSprite[i].base = -1;
@@ -251,7 +251,7 @@ void Game_v1::clearCollisions() {
 
 int16 Game_v1::addNewCollision(int16 id, uint16 left, uint16 top,
 		uint16 right, uint16 bottom, int16 flags, int16 key,
-		uint16 funcEnter, uint16 funcLeave) {
+		uint16 funcEnter, uint16 funcLeave, uint16 funcSub) {
 	Collision *ptr;
 
 	debugC(5, kDebugCollisions, "addNewCollision");
@@ -276,6 +276,9 @@ int16 Game_v1::addNewCollision(int16 id, uint16 left, uint16 top,
 		ptr->key = key;
 		ptr->funcEnter = funcEnter;
 		ptr->funcLeave = funcLeave;
+		ptr->funcSub = funcSub;
+		ptr->totFileData = 0;
+
 		return i;
 	}
 	error("Game_v1::addNewCollision(): Collision array full!\n");
@@ -314,7 +317,8 @@ void Game_v1::popCollisions(void) {
 	debugC(1, kDebugCollisions, "popCollision");
 
 	_collStackSize--;
-	for (destPtr = _collisionAreas; destPtr->left != 0xFFFF; destPtr++);
+	for (destPtr = _collisionAreas; destPtr->left != 0xFFFF; destPtr++)
+		;
 
 	srcPtr = _collStack[_collStackSize];
 	memcpy(destPtr, srcPtr,
@@ -997,7 +1001,7 @@ void Game_v1::collisionsBlock(void) {
 		WRITE_VAR(16, 0);
 		_activeCollResId = 0;
 	}
-	while ((_activeCollResId == 0) && !_vm->_inter->_terminate && !_vm->quit());
+	while ((_activeCollResId == 0) && !_vm->_inter->_terminate && !_vm->shouldQuit());
 
 	if (((uint16) _activeCollResId & ~0x8000) == collResId) {
 		collStackPos = 0;
@@ -1085,7 +1089,7 @@ void Game_v1::collisionsBlock(void) {
 }
 
 int16 Game_v1::multiEdit(int16 time, int16 index, int16 *pCurPos,
-		InputDesc * inpDesc, int16 *collResId, int16 *collIndex) {
+		InputDesc * inpDesc, int16 *collResId, int16 *collIndex, bool mono) {
 	Collision *collArea;
 	int16 descInd;
 	int16 key;
@@ -1247,7 +1251,7 @@ int16 Game_v1::multiEdit(int16 time, int16 index, int16 *pCurPos,
 
 int16 Game_v1::inputArea(int16 xPos, int16 yPos, int16 width, int16 height,
 		int16 backColor, int16 frontColor, char *str, int16 fontIndex,
-		char inpType, int16 *pTotTime, int16 *collResId, int16 *collIndex) {
+		char inpType, int16 *pTotTime, int16 *collResId, int16 *collIndex, bool mono) {
 	int16 handleMouse;
 	uint32 editSize;
 	Video::FontDesc *pFont;
@@ -1426,7 +1430,8 @@ int16 Game_v1::inputArea(int16 xPos, int16 yPos, int16 width, int16 height,
 			if (_vm->_global->_pressedKeys[1] == 0)
 				continue;
 
-			while (_vm->_global->_pressedKeys[1] != 0);
+			while (_vm->_global->_pressedKeys[1] != 0)
+				;
 			continue;
 
 		default:

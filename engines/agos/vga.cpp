@@ -152,8 +152,8 @@ void AGOSEngine::runVgaScript() {
 	for (;;) {
 		uint opcode;
 
-		if (_continousVgaScript) {
-			if (_vcPtr != (const byte *)&_vc_get_out_of_code) {
+		if (_dumpVgaOpcodes) {
+			if (_vcPtr != (const byte *)&_vcGetOutOfCode) {
 				printf("%.5d %.5X: %5d %4d ", _vgaTickCounter, (unsigned int)(_vcPtr - _curVgaFile1), _vgaCurSpriteId, _vgaCurZoneNum);
 				dumpVideoScript(_vcPtr, true);
 			}
@@ -176,7 +176,7 @@ void AGOSEngine::runVgaScript() {
 	}
 }
 
-bool AGOSEngine::itemIsSiblingOf(uint16 a) {
+bool AGOSEngine::ifObjectHere(uint16 a) {
 	Item *item;
 
 	CHECK_BOUNDS(a, _objectArray);
@@ -188,7 +188,7 @@ bool AGOSEngine::itemIsSiblingOf(uint16 a) {
 	return me()->parent == item->parent;
 }
 
-bool AGOSEngine::itemIsParentOf(uint16 a, uint16 b) {
+bool AGOSEngine::ifObjectAt(uint16 a, uint16 b) {
 	Item *item_a, *item_b;
 
 	CHECK_BOUNDS(a, _objectArray);
@@ -203,7 +203,7 @@ bool AGOSEngine::itemIsParentOf(uint16 a, uint16 b) {
 	return derefItem(item_a->parent) == item_b;
 }
 
-bool AGOSEngine::vc_maybe_skip_proc_1(uint16 a, int16 b) {
+bool AGOSEngine::ifObjectState(uint16 a, int16 b) {
 	Item *item;
 
 	CHECK_BOUNDS(a, _objectArray);
@@ -367,7 +367,7 @@ void AGOSEngine::vcSkipNextInstruction() {
 		_vcPtr += opcodeParamLenElvira1[opcode];
 	}
 
-	if (_continousVgaScript)
+	if (_dumpVgaOpcodes)
 		printf("; skipped\n");
 }
 
@@ -400,11 +400,6 @@ void AGOSEngine::vc3_loadSprite() {
 	uint16 windowNum, zoneNum, palette, vgaSpriteId;
 	int16 x, y;
 	byte *old_file_1;
-
-	if (getGameType() == GType_PP && getBitFlag(100)) {
-		startAnOverlayAnim();
-		return;
-	}
 
 	windowNum = vcReadNextWord();
 	if (getGameType() == GType_SIMON1 && windowNum == 3) {
@@ -449,30 +444,30 @@ void AGOSEngine::vc5_ifEqual() {
 }
 
 void AGOSEngine::vc6_ifObjectHere() {
-	if (!itemIsSiblingOf(vcReadNextWord()))
+	if (!ifObjectHere(vcReadNextWord()))
 		vcSkipNextInstruction();
 }
 
 void AGOSEngine::vc7_ifObjectNotHere() {
-	if (itemIsSiblingOf(vcReadNextWord()))
+	if (ifObjectHere(vcReadNextWord()))
 		vcSkipNextInstruction();
 }
 
 void AGOSEngine::vc8_ifObjectIsAt() {
 	uint16 a = vcReadNextWord();
 	uint16 b = vcReadNextWord();
-	if (!itemIsParentOf(a, b))
+	if (!ifObjectAt(a, b))
 		vcSkipNextInstruction();
 }
 
 void AGOSEngine::vc9_ifObjectStateIs() {
 	uint16 a = vcReadNextWord();
 	uint16 b = vcReadNextWord();
-	if (!vc_maybe_skip_proc_1(a, b))
+	if (!ifObjectState(a, b))
 		vcSkipNextInstruction();
 }
 
-byte *AGOSEngine::vc10_uncompressFlip(const byte *src, uint w, uint h) {
+byte *AGOSEngine::vc10_uncompressFlip(const byte *src, uint16 w, uint16 h) {
 	w *= 8;
 
 	byte *dst, *dstPtr, *srcPtr;
@@ -539,7 +534,7 @@ byte *AGOSEngine::vc10_uncompressFlip(const byte *src, uint w, uint h) {
 	return _videoBuf1;
 }
 
-byte *AGOSEngine::vc10_flip(const byte *src, uint w, uint h) {
+byte *AGOSEngine::vc10_flip(const byte *src, uint16 w, uint16 h) {
 	byte *dstPtr;
 	uint i;
 
@@ -717,7 +712,7 @@ void AGOSEngine::vc12_delay() {
 	num += _vgaBaseDelay;
 
 	addVgaEvent(num, ANIMATE_EVENT, _vcPtr, _vgaCurSpriteId, _vgaCurZoneNum);
-	_vcPtr = (byte *)&_vc_get_out_of_code;
+	_vcPtr = (byte *)&_vcGetOutOfCode;
 }
 
 void AGOSEngine::vc13_addToSpriteX() {
@@ -743,7 +738,7 @@ void AGOSEngine::vc15_sync() {
 	uint16 id = vcReadNextWord();
 	while (vfs->ident != 0) {
 		if (vfs->ident == id) {
-			addVgaEvent(_vgaBaseDelay, ANIMATE_EVENT, vfs->code_ptr, vfs->sprite_id, vfs->cur_vga_file);
+			addVgaEvent(_vgaBaseDelay, ANIMATE_EVENT, vfs->codePtr, vfs->id, vfs->zoneNum);
 			vfs_tmp = vfs;
 			do {
 				memcpy(vfs_tmp, vfs_tmp + 1, sizeof(VgaSleepStruct));
@@ -766,18 +761,18 @@ void AGOSEngine::vc16_waitSync() {
 		vfs++;
 
 	vfs->ident = vcReadNextWord();
-	vfs->code_ptr = _vcPtr;
-	vfs->sprite_id = _vgaCurSpriteId;
-	vfs->cur_vga_file = _vgaCurZoneNum;
+	vfs->codePtr = _vcPtr;
+	vfs->id = _vgaCurSpriteId;
+	vfs->zoneNum = _vgaCurZoneNum;
 
-	_vcPtr = (byte *)&_vc_get_out_of_code;
+	_vcPtr = (byte *)&_vcGetOutOfCode;
 }
 
 void AGOSEngine::checkWaitEndTable() {
 	VgaSleepStruct *vfs = _waitEndTable, *vfs_tmp;
 	while (vfs->ident != 0) {
 		if (vfs->ident == _vgaCurSpriteId) {
-			addVgaEvent(_vgaBaseDelay, ANIMATE_EVENT, vfs->code_ptr, vfs->sprite_id, vfs->cur_vga_file);
+			addVgaEvent(_vgaBaseDelay, ANIMATE_EVENT, vfs->codePtr, vfs->id, vfs->zoneNum);
 			vfs_tmp = vfs;
 			do {
 				memcpy(vfs_tmp, vfs_tmp + 1, sizeof(VgaSleepStruct));
@@ -798,10 +793,10 @@ void AGOSEngine::vc17_waitEnd() {
 
 	if (isSpriteLoaded(id, id / 100)) {
 		vfs->ident = id;
-		vfs->code_ptr = _vcPtr;
-		vfs->sprite_id = _vgaCurSpriteId;
-		vfs->cur_vga_file = _vgaCurZoneNum;
-		_vcPtr = (byte *)&_vc_get_out_of_code;
+		vfs->codePtr = _vcPtr;
+		vfs->id = _vgaCurSpriteId;
+		vfs->zoneNum = _vgaCurZoneNum;
+		_vcPtr = (byte *)&_vcGetOutOfCode;
 	}
 }
 
@@ -818,8 +813,8 @@ void AGOSEngine::vc19_loop() {
 	b = _curVgaFile1 + READ_BE_UINT16(bb + 10);
 	b += 20;
 
-	count = READ_BE_UINT16(&((VgaFileHeader2_Common *) b)->animationCount);
-	b = bb + READ_BE_UINT16(&((VgaFileHeader2_Common *) b)->animationTable);
+	count = READ_BE_UINT16(&((VgaFile1Header_Common *) b)->animationCount);
+	b = bb + READ_BE_UINT16(&((VgaFile1Header_Common *) b)->animationTable);
 
 	while (count--) {
 		if (READ_BE_UINT16(&((AnimationHeader_WW *) b)->id) == _vgaCurSpriteId)
@@ -975,7 +970,7 @@ void AGOSEngine::vc25_halt_sprite() {
 		memcpy(vsp, vsp + 1, sizeof(VgaSprite));
 		vsp++;
 	}
-	_vcPtr = (byte *)&_vc_get_out_of_code;
+	_vcPtr = (byte *)&_vcGetOutOfCode;
 
 	dirtyBackGround();
 	_vgaSpriteChanged++;
@@ -1031,7 +1026,7 @@ void AGOSEngine::vc27_resetSprite() {
 		if (vte->type == ANIMATE_INT) {
 			vte++;
 		// For animated heart in Elvira 2
-		} else if (getGameType() == GType_ELVIRA2 && vte->sprite_id == 100) {
+		} else if (getGameType() == GType_ELVIRA2 && vte->id == 100) {
 			vte++;
 		} else {
 			vte2 = vte;
@@ -1133,6 +1128,23 @@ void AGOSEngine::clearVideoBackGround(uint16 num, uint16 color) {
 	}
 }
 
+void AGOSEngine_Simon2::clearVideoWindow(uint16 num, uint16 color) {
+	const uint16 *vlut = &_videoWindows[num * 4];
+	uint16 xoffs = vlut[0] * 16;
+	uint16 yoffs = vlut[1];
+	uint16 dstWidth = _videoWindows[18] * 16;
+	byte *dst = _window4BackScn + xoffs + yoffs * dstWidth;
+
+	setMoveRect(0, 0, vlut[2] * 16, vlut[3]);
+
+	for (uint h = 0; h < vlut[3]; h++) {
+		memset(dst, color, vlut[2] * 16);
+		dst += dstWidth;
+	}
+
+	_window4Flag = 1;
+}
+
 void AGOSEngine::clearVideoWindow(uint16 num, uint16 color) {
 	if (getGameType() == GType_ELVIRA1) {
 		if (num == 2 || num == 6)
@@ -1145,12 +1157,16 @@ void AGOSEngine::clearVideoWindow(uint16 num, uint16 color) {
 			return;
 	}
 
-	if (getGameType() == GType_SIMON2) {
+	if (getGameType() == GType_ELVIRA1 && num == 3) {
+		Graphics::Surface *screen = _system->lockScreen();
+		memset((byte *)screen->pixels, color, _screenWidth * _screenHeight);
+		 _system->unlockScreen();
+	} else if (num == 4) {
 		const uint16 *vlut = &_videoWindows[num * 4];
-		uint16 xoffs = vlut[0] * 16;
-		uint16 yoffs = vlut[1];
+		uint16 xoffs = (vlut[0] - _videoWindows[16]) * 16;
+		uint16 yoffs = (vlut[1] - _videoWindows[17]);
 		uint16 dstWidth = _videoWindows[18] * 16;
-		byte *dst =  _window4BackScn + xoffs + yoffs * dstWidth;
+		byte *dst = _window4BackScn + xoffs + yoffs * dstWidth;
 
 		setMoveRect(0, 0, vlut[2] * 16, vlut[3]);
 
@@ -1160,27 +1176,6 @@ void AGOSEngine::clearVideoWindow(uint16 num, uint16 color) {
 		}
 
 		_window4Flag = 1;
-	} else {
-		if (getGameType() == GType_ELVIRA1 && num == 3) {
-			Graphics::Surface *screen = _system->lockScreen();
-			memset((byte *)screen->pixels, color, _screenWidth * _screenHeight);
-			 _system->unlockScreen();
-		} else if (num == 4) {
-			const uint16 *vlut = &_videoWindows[num * 4];
-			uint16 xoffs = (vlut[0] - _videoWindows[16]) * 16;
-			uint16 yoffs = (vlut[1] - _videoWindows[17]);
-			uint16 dstWidth = _videoWindows[18] * 16;
-			byte *dst =  _window4BackScn + xoffs + yoffs * dstWidth;
-
-			setMoveRect(0, 0, vlut[2] * 16, vlut[3]);
-
-			for (uint h = 0; h < vlut[3]; h++) {
-				memset(dst, color, vlut[2] * 16);
-				dst += dstWidth;
-			}
-
-			_window4Flag = 1;
-		}
 	}
 }
 
@@ -1262,7 +1257,6 @@ void AGOSEngine::vc40_scrollRight() {
 	int16 value = vcReadVar(var) + vcReadNextWord();
 
 	if (getGameType() == GType_SIMON2 && var == 15 && !getBitFlag(80)) {
-
 		if ((_scrollCount < 0) || (_scrollCount == 0 && _scrollFlag == 0)) {
 			_scrollCount = 0;
 			if (value - _scrollX >= 30) {
@@ -1280,7 +1274,6 @@ void AGOSEngine::vc41_scrollLeft() {
 	int16 value = vcReadVar(var) - vcReadNextWord();
 
 	if (getGameType() == GType_SIMON2 && var == 15 && !getBitFlag(80)) {
-
 		if ((_scrollCount > 0) || (_scrollCount == 0 && _scrollFlag == 0)) {
 			_scrollCount = 0;
 			if ((uint16)(value - _scrollX) < 11) {
@@ -1296,9 +1289,8 @@ void AGOSEngine::vc41_scrollLeft() {
 void AGOSEngine::vc42_delayIfNotEQ() {
 	uint16 val = vcReadVar(vcReadNextWord());
 	if (val != vcReadNextWord()) {
-
 		addVgaEvent(_frameCount + 1, ANIMATE_EVENT, _vcPtr - 4, _vgaCurSpriteId, _vgaCurZoneNum);
-		_vcPtr = (byte *)&_vc_get_out_of_code;
+		_vcPtr = (byte *)&_vcGetOutOfCode;
 	}
 }
 

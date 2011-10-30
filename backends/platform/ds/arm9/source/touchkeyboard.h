@@ -19,7 +19,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  *
  */
- 
+
 #ifndef _TOUCHKEYBOARD_H_
 #define _TOUCHKEYBOARD_H_
 
@@ -37,7 +37,7 @@ void restoreVRAM(int tileBase, int mapBase, u16* saveSpace);
 void addKeyboardEvents();
 bool getKeyboardClosed();
 
-void addAutoComplete(char* word);
+void addAutoComplete(const char* word);
 void clearAutoComplete();
 void setCharactersEntered(int count);
 void releaseAllKeys();

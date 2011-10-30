@@ -35,7 +35,7 @@
 #include "saga/palanim.h"
 #include "saga/render.h"
 #include "saga/sndres.h"
-#include "saga/rscfile.h"
+#include "saga/resource.h"
 #include "saga/music.h"
 #include "saga/actor.h"
 
@@ -43,9 +43,8 @@
 
 namespace Saga {
 
-Events::Events(SagaEngine *vm) : _vm(vm), _initialized(false) {
+Events::Events(SagaEngine *vm) : _vm(vm) {
 	debug(8, "Initializing event subsystem...");
-	_initialized = true;
 }
 
 Events::~Events(void) {
@@ -124,7 +123,6 @@ int Events::handleContinuous(Event *event) {
 	double event_pc = 0.0; // Event completion percentage
 	int event_done = 0;
 
-	Surface *backGroundSurface;
 	BGInfo bgInfo;
 	Rect rect;
 	if (event->duration != 0) {
@@ -157,9 +155,11 @@ int Events::handleContinuous(Event *event) {
 		case kEventPalToBlack:
 			_vm->_gfx->palToBlack((PalEntry *)event->data, event_pc);
 			break;
+#ifdef ENABLE_IHNM
 		case kEventPalFade:
 			_vm->_gfx->palFade((PalEntry *)event->data, event->param, event->param2, event->param3, event->param4, event_pc);
 			break;
+#endif
 		default:
 			break;
 		}
@@ -167,12 +167,12 @@ int Events::handleContinuous(Event *event) {
 	case kTransitionEvent:
 		switch (event->op) {
 		case kEventDissolve:
-			backGroundSurface = _vm->_render->getBackGroundSurface();
 			_vm->_scene->getBGInfo(bgInfo);
 			rect.left = rect.top = 0;
 			rect.right = bgInfo.bounds.width();
 			rect.bottom = bgInfo.bounds.height();
-			backGroundSurface->transitionDissolve(bgInfo.buffer, rect, 0, event_pc);
+			_vm->_render->getBackGroundSurface()->transitionDissolve(bgInfo.buffer, rect, 0, event_pc);
+			_vm->_render->setFullRefresh(true);
 			break;
 		case kEventDissolveBGMask:
 			// we dissolve it centered.
@@ -181,14 +181,14 @@ int Events::handleContinuous(Event *event) {
 			byte *maskBuffer;
 			size_t len;
 
-			backGroundSurface = _vm->_render->getBackGroundSurface();
 			_vm->_scene->getBGMaskInfo(w, h, maskBuffer, len);
-			rect.left = (_vm->getDisplayWidth() - w) / 2;
-			rect.top = (_vm->getDisplayHeight() - h) / 2;
+			rect.left = (_vm->getDisplayInfo().width - w) / 2;
+			rect.top = (_vm->getDisplayInfo().height - h) / 2;
 			rect.setWidth(w);
 			rect.setHeight(h);
 
-			backGroundSurface->transitionDissolve( maskBuffer, rect, 1, event_pc);
+			_vm->_render->getBackGroundSurface()->transitionDissolve( maskBuffer, rect, 1, event_pc);
+			_vm->_render->setFullRefresh(true);
 			break;
 		default:
 			break;
@@ -242,9 +242,11 @@ int Events::handleImmediate(Event *event) {
 		case kEventPalToBlack:
 			_vm->_gfx->palToBlack((PalEntry *)event->data, event_pc);
 			break;
+#ifdef ENABLE_IHNM
 		case kEventPalFade:
 			_vm->_gfx->palFade((PalEntry *)event->data, event->param, event->param2, event->param3, event->param4, event_pc);
 			break;
+#endif
 		default:
 			break;
 		}
@@ -273,7 +275,6 @@ int Events::handleImmediate(Event *event) {
 }
 
 int Events::handleOneShot(Event *event) {
-	Surface *backBuffer;
 	ScriptThread *sthread;
 	Rect rect;
 
@@ -313,19 +314,16 @@ int Events::handleOneShot(Event *event) {
 		break;
 	case kBgEvent:
 		{
-			Surface *backGroundSurface;
+			Surface *backGroundSurface = _vm->_render->getBackGroundSurface();
 			BGInfo bgInfo;
 
 			if (!(_vm->_scene->getFlags() & kSceneFlagISO)) {
-
-				backBuffer = _vm->_gfx->getBackBuffer();
-				backGroundSurface = _vm->_render->getBackGroundSurface();
 				_vm->_scene->getBGInfo(bgInfo);
 
 				backGroundSurface->blit(bgInfo.bounds, bgInfo.buffer);
 
 				// If it is inset scene then draw black border
-				if (bgInfo.bounds.width() < _vm->getDisplayWidth() || bgInfo.bounds.height() < _vm->_scene->getHeight()) {
+				if (bgInfo.bounds.width() < _vm->getDisplayInfo().width || bgInfo.bounds.height() < _vm->_scene->getHeight()) {
 					Common::Rect rect1(2, bgInfo.bounds.height() + 4);
 					Common::Rect rect2(bgInfo.bounds.width() + 4, 2);
 					Common::Rect rect3(2, bgInfo.bounds.height() + 4);
@@ -344,7 +342,8 @@ int Events::handleOneShot(Event *event) {
 				if (event->param == kEvPSetPalette) {
 					PalEntry *palPointer;
 
-					if (_vm->getGameType() == GType_IHNM) {
+#ifdef ENABLE_IHNM
+					if (_vm->getGameId() == GID_IHNM) {
 						if (_vm->_spiritualBarometer > 255)
 							_vm->_gfx->setPaletteColor(kIHNMColorPortrait, 0xff, 0xff, 0xff);
 						else
@@ -353,6 +352,7 @@ int Events::handleOneShot(Event *event) {
 								_vm->_spiritualBarometer * _vm->_interface->_portraitBgColor.green / 256,
 								_vm->_spiritualBarometer * _vm->_interface->_portraitBgColor.blue / 256);
 					}
+#endif
 
 					_vm->_scene->getBGPal(palPointer);
 					_vm->_gfx->setPalette(palPointer);
@@ -379,10 +379,10 @@ int Events::handleOneShot(Event *event) {
 
 		const PalEntry *palette = (const PalEntry *)_vm->getImagePal(resourceData, resourceDataLength);
 
-		Surface *bgSurface = _vm->_render->getBackGroundSurface();
 		const Rect profileRect(width, height);
 
-		bgSurface->blit(profileRect, buf);
+		_vm->_render->getBackGroundSurface()->blit(profileRect, buf);
+		_vm->_render->addDirtyRect(profileRect);
 		_vm->_frameCount++;
 
 		_vm->_gfx->setPalette(palette);
@@ -422,14 +422,10 @@ int Events::handleOneShot(Event *event) {
 		switch (event->op) {
 		case kEventDraw:
 			{
-				Surface *backGroundSurface;
 				BGInfo bgInfo;
-
-				backBuffer = _vm->_gfx->getBackBuffer();
-				backGroundSurface = _vm->_render->getBackGroundSurface();
 				_vm->_scene->getBGInfo(bgInfo);
-				backGroundSurface->blit(bgInfo.bounds, bgInfo.buffer);
-
+				_vm->_render->getBackGroundSurface()->blit(bgInfo.bounds, bgInfo.buffer);
+				_vm->_render->addDirtyRect(bgInfo.bounds);
 				_vm->_scene->draw();
 			}
 			break;
@@ -517,12 +513,14 @@ int Events::handleOneShot(Event *event) {
 			break;
 		case kEventSetNormalCursor:
 			// in ITE and IHNM demo there is just one cursor
-			if (_vm->getGameType() == GType_IHNM && _vm->getGameId() != GID_IHNM_DEMO)
+			// ITE never makes this call
+			if (!(_vm->getFeatures() & GF_IHNM_DEMO))
 				_vm->_gfx->setCursor(kCursorNormal);
 			break;
 		case kEventSetBusyCursor:
 			// in ITE and IHNM demo there is just one cursor
-			if (_vm->getGameType() == GType_IHNM && _vm->getGameId() != GID_IHNM_DEMO)
+			// ITE never makes this call
+			if (!(_vm->getFeatures() & GF_IHNM_DEMO))
 				_vm->_gfx->setCursor(kCursorBusy);
 			break;
 		default:
@@ -536,7 +534,7 @@ int Events::handleOneShot(Event *event) {
 			rect.bottom = event->param3;
 			rect.left = event->param4;
 			rect.right = event->param5;
-			((Surface *)event->data)->drawRect(rect, event->param);
+			_vm->_gfx->drawRect(rect, event->param);
 			break;
 		case kEventSetFlag:
 			_vm->_render->setFlag(event->param);
@@ -547,6 +545,7 @@ int Events::handleOneShot(Event *event) {
 		default:
 			break;
 		}
+#ifdef ENABLE_IHNM
 	case kCutawayEvent:
 		switch (event->op) {
 		case kEventClear:
@@ -558,6 +557,7 @@ int Events::handleOneShot(Event *event) {
 		default:
 			break;
 		}
+#endif
 	case kActorEvent:
 		switch (event->op) {
 		case kEventMove:
@@ -625,7 +625,7 @@ int Events::initializeEvent(Event *event) {
 	return SUCCESS;
 }
 
-int Events::clearList() {
+int Events::clearList(bool playQueuedMusic) {
 	Event *chain_walk;
 	Event *next_chain;
 	Event *event_p;
@@ -636,7 +636,16 @@ int Events::clearList() {
 
 		// Only remove events not marked kEvFNoDestory (engine events)
 		if (!(event_p->code & kEvFNoDestory)) {
-			// Remove any events chained off this one */
+			// Handle queued music change events before deleting them
+			// This can happen in IHNM by music events set by sfQueueMusic()
+			// Fixes bug #2057987 - "IHNM: Music stops in Ellen's chapter"
+			if (playQueuedMusic && ((event_p->code & EVENT_MASK) == kMusicEvent)) {
+				_vm->_music->stop();
+				if (event_p->op == kEventPlay)
+					_vm->_music->play(event_p->param, (MusicFlags)event_p->param2);
+			}
+
+			// Remove any events chained off this one
 			for (chain_walk = event_p->chain; chain_walk != NULL; chain_walk = next_chain) {
 				next_chain = chain_walk->chain;
 				free(chain_walk);

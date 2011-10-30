@@ -516,7 +516,7 @@ void Sound::processSfxQueues() {
 			}
 		}
 
-		if ((!ConfMan.getBool("subtitles") && finished && _vm->_game.version <= 6) || (finished && _vm->_talkDelay == 0)) {
+		if ((!ConfMan.getBool("subtitles") && finished) || (finished && _vm->_talkDelay == 0)) {
 			if (!(_vm->_game.version == 8 && _vm->VAR(_vm->VAR_HAVE_MSG) == 0))
 				_vm->stopTalk();
 		}
@@ -666,7 +666,7 @@ void Sound::startTalkSound(uint32 offset, uint32 b, int mode, Audio::SoundHandle
 	#endif
 			break;
 		default:
-			input = Audio::makeVOCStream(*_sfxFile);
+			input = Audio::makeVOCStream(*_sfxFile, Audio::Mixer::FLAG_UNSIGNED);
 			break;
 		}
 
@@ -1054,12 +1054,12 @@ void Sound::startCDTimer() {
 	// it too high, and there will be a nasty "hiccup" just as Chaos
 	// appears.
 
-	_vm->_timer->removeTimerProc(&cd_timer_handler);
-	_vm->_timer->installTimerProc(&cd_timer_handler, 100700, _vm);
+	_vm->getTimerManager()->removeTimerProc(&cd_timer_handler);
+	_vm->getTimerManager()->installTimerProc(&cd_timer_handler, 100700, _vm);
 }
 
 void Sound::stopCDTimer() {
-	_vm->_timer->removeTimerProc(&cd_timer_handler);
+	_vm->getTimerManager()->removeTimerProc(&cd_timer_handler);
 }
 
 void Sound::playCDTrack(int track, int numLoops, int startFrame, int duration) {

@@ -331,14 +331,14 @@ void ToucheEngine::handleMenuAction(void *menu, int actionId) {
 		break;
 	case kActionPerformSaveLoad:
 		if (menuData->mode == kMenuLoadStateMode) {
-			if (loadGameState(_saveLoadCurrentSlot)) {
+			if (loadGameState(_saveLoadCurrentSlot) == Common::kNoError) {
 				menuData->quit = true;
 			}
 		} else if (menuData->mode == kMenuSaveStateMode) {
 			_system->setFeatureState(OSystem::kFeatureVirtualKeyboard, false);
 			const char *description = menuData->saveLoadDescriptionsTable[_saveLoadCurrentSlot];
 			if (strlen(description) > 0) {
-				if (saveGameState(_saveLoadCurrentSlot, description)) {
+				if (saveGameState(_saveLoadCurrentSlot, description) == Common::kNoError) {
 					menuData->quit = true;
 				}
 			}
@@ -359,6 +359,7 @@ void ToucheEngine::handleMenuAction(void *menu, int actionId) {
 void ToucheEngine::handleOptions(int forceDisplay) {
 	if (_disabledInputCounter == 0 || forceDisplay != 0) {
 		setDefaultCursor(_currentKeyCharNum);
+		_gameState = kGameStateOptionsDialog;
 		MenuData menuData;
 		memset(&menuData, 0, sizeof(MenuData));
 		menuData.quit = false;
@@ -375,13 +376,16 @@ void ToucheEngine::handleOptions(int forceDisplay) {
 					for (int i = 0; i < kMaxSaveStates; ++i) {
 						menuData.saveLoadDescriptionsTable[i][0] = 0;
 					}
-					char gameStateFileName[16];
-					generateGameStateFileName(999, gameStateFileName, 15, true);
-					Common::StringList filenames = _saveFileMan->listSavefiles(gameStateFileName);
+					Common::String gameStateFileName = generateGameStateFileName(_targetName.c_str(), 0, true);
+					Common::StringList filenames = _saveFileMan->listSavefiles(gameStateFileName.c_str());
 					for (Common::StringList::const_iterator it = filenames.begin(); it != filenames.end(); ++it) {
 						int i = getGameStateFileSlot(it->c_str());
 						if (i >= 0 && i < kMaxSaveStates) {
-							readGameStateDescription(i, menuData.saveLoadDescriptionsTable[i], 32);
+							Common::InSaveFile *f = _saveFileMan->openForLoading(it->c_str());
+							if (f) {
+								readGameStateDescription(f, menuData.saveLoadDescriptionsTable[i], 32);
+								delete f;
+							}
 						}
 					}
 				}
@@ -433,10 +437,11 @@ void ToucheEngine::handleOptions(int forceDisplay) {
 			_system->delayMillis(10);
 		}
 		_fullRedrawCounter = 2;
-		if (!menuData.exit && quit()) {
+		if (!menuData.exit && shouldQuit()) {
 			if (displayQuitDialog())
 				quitGame();
 		}
+		_gameState = kGameStateGameLoop;
 	}
 }
 
@@ -549,6 +554,7 @@ void ToucheEngine::clearStatusString() {
 
 int ToucheEngine::displayQuitDialog() {
 	debug(kDebugMenu, "ToucheEngine::displayQuitDialog()");
+	_gameState = kGameStateQuitDialog;
 	_system->setFeatureState(OSystem::kFeatureVirtualKeyboard, true);
 	printStatusString(getString(-85));
 	int ret = 0;
@@ -602,6 +608,7 @@ int ToucheEngine::displayQuitDialog() {
 		_system->updateScreen();
 	}
 	clearStatusString();
+	_gameState = kGameStateGameLoop;
 	_system->setFeatureState(OSystem::kFeatureVirtualKeyboard, false);
 	return ret;
 }

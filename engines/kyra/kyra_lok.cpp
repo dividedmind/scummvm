@@ -28,6 +28,7 @@
 #include "common/file.h"
 #include "common/system.h"
 #include "common/savefile.h"
+#include "common/config-manager.h"
 
 #include "gui/message.h"
 
@@ -47,7 +48,6 @@ namespace Kyra {
 
 KyraEngine_LoK::KyraEngine_LoK(OSystem *system, const GameFlags &flags)
 	: KyraEngine_v1(system, flags) {
-	_skipFlag = false;
 
 	_seq_Forest = _seq_KallakWriting = _seq_KyrandiaLogo = _seq_KallakMalcolm =
 	_seq_MalcolmTree = _seq_WestwoodLogo = _seq_Demo1 = _seq_Demo2 = _seq_Demo3 =
@@ -91,6 +91,7 @@ KyraEngine_LoK::KyraEngine_LoK(OSystem *system, const GameFlags &flags)
 	memset(_sceneAnimTable, 0, sizeof(_sceneAnimTable));
 	_currHeadShape = 0;
 	_speechPlayTime = 0;
+	_seqPlayerFlag = false;
 
 	memset(&_itemBkgBackUp, 0, sizeof(_itemBkgBackUp));
 }
@@ -109,7 +110,7 @@ KyraEngine_LoK::~KyraEngine_LoK() {
 		_emc->unload(&_scriptClickData);
 	}
 
-	Common::clearAllSpecialDebugLevels();
+	Common::clearAllDebugChannels();
 
 	delete _screen;
 	delete _sprites;
@@ -155,7 +156,7 @@ KyraEngine_LoK::~KyraEngine_LoK() {
 		delete[] _sceneAnimTable[i];
 }
 
-int KyraEngine_LoK::init() {
+Common::Error KyraEngine_LoK::init() {
 	_screen = new Screen_LoK(this, _system);
 	assert(_screen);
 	_screen->setResolution();
@@ -219,8 +220,6 @@ int KyraEngine_LoK::init() {
 
 	memset(_flagsTable, 0, sizeof(_flagsTable));
 
-	_abortWalkFlag = false;
-	_abortWalkFlag2 = false;
 	_talkingCharNum = -1;
 	_charSayUnk3 = -1;
 	memset(_currSentenceColor, 0, 3);
@@ -246,12 +245,9 @@ int KyraEngine_LoK::init() {
 	assert(_movFacingTable);
 	_movFacingTable[0] = 8;
 
-	_skipFlag = false;
-
 	_marbleVaseItem = -1;
 	memset(_foyerItemTable, -1, sizeof(_foyerItemTable));
 	_itemInHand = -1;
-	_handleInput = false;
 
 	_currentRoom = 0xFFFF;
 	_scenePhasingFlag = 0;
@@ -278,16 +274,14 @@ int KyraEngine_LoK::init() {
 	_kyragemFadingState.gOffset = 0x13;
 	_kyragemFadingState.bOffset = 0x13;
 
-	_mousePressFlag = false;
-
 	_menuDirectlyToLoad = false;
 
 	_lastMusicCommand = 0;
 
-	return 0;
+	return Common::kNoError;
 }
 
-int KyraEngine_LoK::go() {
+Common::Error KyraEngine_LoK::go() {
 	if (_res->getFileSize("6.FNT"))
 		_screen->loadFont(Screen::FID_6_FNT, "6.FNT");
 	_screen->loadFont(Screen::FID_8_FNT, "8FAT.FNT");
@@ -296,23 +290,28 @@ int KyraEngine_LoK::go() {
 	_abortIntroFlag = false;
 
 	if (_flags.isDemo) {
+		_seqPlayerFlag = true;
 		seq_demo();
+		_seqPlayerFlag = false;
 	} else {
 		setGameFlag(0xF3);
 		setGameFlag(0xFD);
 		if (_gameToLoad == -1) {
 			setGameFlag(0xEF);
+			_seqPlayerFlag = true;
 			seq_intro();
-			if (quit())
-				return 0;
+			if (shouldQuit())
+				return Common::kNoError;
 			if (_skipIntroFlag && _abortIntroFlag)
 				resetGameFlag(0xEF);
+			_seqPlayerFlag = false;
 		}
+		_eventList.clear();
 		startup();
 		resetGameFlag(0xEF);
 		mainLoop();
 	}
-	return 0;
+	return Common::kNoError;
 }
 
 
@@ -391,10 +390,10 @@ void KyraEngine_LoK::startup() {
 			_gui->buttonMenuCallback(0);
 			_menuDirectlyToLoad = false;
 		} else
-			saveGame(getSavegameFilename(0), "New game", 0);
+			saveGameState(0, "New game", 0);
 	} else {
 		_screen->setFont(Screen::FID_8_FNT);
-		loadGame(getSavegameFilename(_gameToLoad));
+		loadGameStateCheck(_gameToLoad);
 		_gameToLoad = -1;
 	}
 }
@@ -402,9 +401,10 @@ void KyraEngine_LoK::startup() {
 void KyraEngine_LoK::mainLoop() {
 	debugC(9, kDebugLevelMain, "KyraEngine_LoK::mainLoop()");
 
-	while (!quit()) {
+	_eventList.clear();
+
+	while (!shouldQuit()) {
 		int32 frameTime = (int32)_system->getMillis();
-		_skipFlag = false;
 
 		checkAutosave();
 
@@ -433,23 +433,29 @@ void KyraEngine_LoK::mainLoop() {
 			_brandonStatusBit0x20Flag = 0;
 		}
 
+		// FIXME: Why is this here?
 		_screen->showMouse();
 
-		_gui->processButtonList(_buttonList, 0, 0);
+		int inputFlag = checkInput(_buttonList, true);
+		removeInputTop();
+
 		updateMousePointer();
 		_timer->update();
+		_sound->process();
 		updateTextFade();
 
-		_handleInput = true;
-		delay((frameTime + _gameSpeed) - _system->getMillis(), true, true);
-		_handleInput = false;
+		if (inputFlag == 198 || inputFlag == 199)
+			processInput(_mouseX, _mouseY);
 
-		_sound->process();
+		if (skipFlag())
+			resetSkipFlag();
+
+		delay((frameTime + _gameSpeed) - _system->getMillis(), true, true);
 	}
 }
 
 void KyraEngine_LoK::delayUntil(uint32 timestamp, bool updateTimers, bool update, bool isMainLoop) {
-	while (_system->getMillis() < timestamp && !quit()) {
+	while (_system->getMillis() < timestamp && !shouldQuit()) {
 		if (updateTimers)
 			_timer->update();
 
@@ -463,61 +469,6 @@ void KyraEngine_LoK::delay(uint32 amount, bool update, bool isMainLoop) {
 
 	uint32 start = _system->getMillis();
 	do {
-		while (_eventMan->pollEvent(event)) {
-			switch (event.type) {
-			case Common::EVENT_KEYDOWN:
-				if (event.kbd.keycode >= '1' && event.kbd.keycode <= '9' &&
-						(event.kbd.flags == Common::KBD_CTRL || event.kbd.flags == Common::KBD_ALT) && isMainLoop) {
-					const char *saveLoadSlot = getSavegameFilename(9 - (event.kbd.keycode - '0') + 990);
-
-					if (event.kbd.flags == Common::KBD_CTRL)
-						loadGame(saveLoadSlot);
-					else {
-						char savegameName[14];
-						sprintf(savegameName, "Quicksave %d", event.kbd.keycode - '0');
-						saveGame(saveLoadSlot, savegameName, 0);
-					}
-				} else if (event.kbd.flags == Common::KBD_CTRL) {
-					if (event.kbd.keycode == 'd')
-						_debugger->attach();
-					else if (event.kbd.keycode == 'q')
-						quitGame();
-				} else if (event.kbd.keycode == '.') {
-					_skipFlag = true;
-				} else if (event.kbd.keycode == Common::KEYCODE_RETURN || event.kbd.keycode == Common::KEYCODE_SPACE || event.kbd.keycode == Common::KEYCODE_ESCAPE) {
-					_abortIntroFlag = true;
-					_skipFlag = true;
-				}
-
-				break;
-			case Common::EVENT_MOUSEMOVE:
-				_animator->_updateScreen = true;
-				break;
-			case Common::EVENT_LBUTTONDOWN:
-				_mousePressFlag = true;
-				break;
-			case Common::EVENT_LBUTTONUP:
-				_mousePressFlag = false;
-
-				if (_abortWalkFlag2)
-					_abortWalkFlag = true;
-
-				if (_handleInput) {
-					_handleInput = false;
-					processInput();
-					_handleInput = true;
-				} else
-					_skipFlag = true;
-
-				break;
-			default:
-				break;
-			}
-		}
-
-		if (_debugger->isAttached())
-			_debugger->onFrame();
-
 		if (update) {
 			_sprites->updateSceneAnims();
 			_animator->updateAllObjectShapes();
@@ -525,44 +476,35 @@ void KyraEngine_LoK::delay(uint32 amount, bool update, bool isMainLoop) {
 			updateMousePointer();
 		}
 
+		_isSaveAllowed = isMainLoop;
+		updateInput();
+		_isSaveAllowed = false;
+
 		if (_currentCharacter && _currentCharacter->sceneId == 210 && update)
 			updateKyragemFading();
 
-		if (_skipFlag && !_abortIntroFlag && !queryGameFlag(0xFE))
-			_skipFlag = false;
-
-		if (amount > 0 && !_skipFlag && !quit())
+		if (amount > 0 && !skipFlag() && !shouldQuit())
 			_system->delayMillis(10);
 
-		if (_skipFlag)
-			_sound->voiceStop();
-	} while (!_skipFlag && _system->getMillis() < start + amount && !quit());
-}
-
-void KyraEngine_LoK::waitForEvent() {
-	bool finished = false;
-	Common::Event event;
-
-	while (!finished && !quit()) {
-		while (_eventMan->pollEvent(event)) {
-			switch (event.type) {
-			case Common::EVENT_KEYDOWN:
-				finished = true;
-				break;
-			case Common::EVENT_LBUTTONDOWN:
-				finished = true;
-				_skipFlag = true;
-				break;
-			default:
-				break;
+		// FIXME: Major hackery to allow skipping the intro
+		if (_seqPlayerFlag) {
+			for (Common::List<Event>::iterator i = _eventList.begin(); i != _eventList.end(); ++i) {
+				if (i->causedSkip) {
+					if (i->event.type == Common::EVENT_KEYDOWN && i->event.kbd.keycode == Common::KEYCODE_ESCAPE)
+						_abortIntroFlag = true;
+					else
+						i->causedSkip = false;
+				}
 			}
 		}
 
-		if (_debugger->isAttached())
-			_debugger->onFrame();
+		if (skipFlag())
+			snd_stopVoice();
+	} while (!skipFlag() && _system->getMillis() < start + amount && !shouldQuit());
+}
 
-		_system->delayMillis(10);
-	}
+bool KyraEngine_LoK::skipFlag() const {
+	return KyraEngine_v1::skipFlag() || shouldQuit();
 }
 
 void KyraEngine_LoK::delayWithTicks(int ticks) {
@@ -577,7 +519,7 @@ void KyraEngine_LoK::delayWithTicks(int ticks) {
 			seq_playEnd();
 		}
 
-		if (_skipFlag)
+		if (skipFlag())
 			break;
 
 		if (nextTime - _system->getMillis() >= 10)
@@ -667,13 +609,8 @@ void KyraEngine_LoK::resetBrandonPoisonFlags() {
 #pragma mark - Input
 #pragma mark -
 
-void KyraEngine_LoK::processInput() {
-	Common::Point mouse = getMousePos();
-	int xpos = mouse.x;
-	int ypos = mouse.y;
-
+void KyraEngine_LoK::processInput(int xpos, int ypos) {
 	debugC(9, kDebugLevelMain, "KyraEngine_LoK::processInput(%d, %d)", xpos, ypos);
-	_abortWalkFlag2 = false;
 
 	if (processInputHelper(xpos, ypos))
 		return;
@@ -689,20 +626,18 @@ void KyraEngine_LoK::processInput() {
 	// XXX _deathHandler specific
 	if (ypos <= 158) {
 		uint16 exit = 0xFFFF;
-		if (xpos < 12) {
+
+		if (xpos < 12)
 			exit = _walkBlockWest;
-		} else if (xpos >= 308) {
+		else if (xpos >= 308)
 			exit = _walkBlockEast;
-		} else if (ypos >= 136) {
+		else if (ypos >= 136)
 			exit = _walkBlockSouth;
-		} else if (ypos < 12) {
+		else if (ypos < 12)
 			exit = _walkBlockNorth;
-		}
 
 		if (exit != 0xFFFF) {
-			_abortWalkFlag2 = true;
 			handleSceneChange(xpos, ypos, 1, 1);
-			_abortWalkFlag2 = false;
 			return;
 		} else {
 			int script = checkForNPCScriptRun(xpos, ypos);
@@ -713,19 +648,14 @@ void KyraEngine_LoK::processInput() {
 			if (_itemInHand != -1) {
 				if (ypos < 155) {
 					if (hasClickedOnExit(xpos, ypos)) {
-						_abortWalkFlag2 = true;
 						handleSceneChange(xpos, ypos, 1, 1);
-						_abortWalkFlag2 = false;
 						return;
 					}
 					dropItem(0, _itemInHand, xpos, ypos, 1);
 				}
 			} else {
-				if (ypos <= 155) {
-					_abortWalkFlag2 = true;
+				if (ypos <= 155)
 					handleSceneChange(xpos, ypos, 1, 1);
-					_abortWalkFlag2 = false;
-				}
 			}
 		}
 	}

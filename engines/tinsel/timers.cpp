@@ -23,7 +23,7 @@
  *
  * Handles timers.
  *
- * Note: As part of the transition to ScummVM, the ticks field of a timer has been changed 
+ * Note: As part of the transition to ScummVM, the ticks field of a timer has been changed
  * to a millisecond value, rather than ticks at 24Hz. Most places should be able to use
  * the timers without change, since the ONE_SECOND constant has been set to be in MILLISECONDS
  */
@@ -151,7 +151,7 @@ void FettleTimers(void) {
 /**
  * Start a timer up.
  */
-void DwSetTimer(int num, int sval, bool up, bool frame) {
+void StartTimer(int num, int sval, bool up, bool frame) {
 	TIMER *pt;
 
 	assert(num); // zero is not allowed as a timer number

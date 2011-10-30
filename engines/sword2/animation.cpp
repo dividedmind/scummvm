@@ -75,6 +75,7 @@ MoviePlayer::MoviePlayer(Sword2Engine *vm, const char *name) {
 	_name = strdup(name);
 	_mixer = _vm->_mixer;
 	_system = _vm->_system;
+	_pauseTicks = 0;
 	_textSurface = NULL;
 	_bgSoundStream = NULL;
 	_ticks = 0;
@@ -96,6 +97,10 @@ MoviePlayer::MoviePlayer(Sword2Engine *vm, const char *name) {
 
 MoviePlayer::~MoviePlayer() {
 	free(_name);
+}
+
+uint32 MoviePlayer::getTick() {
+	return _system->getMillis() - _pauseTicks;
 }
 
 void MoviePlayer::updatePalette(byte *pal, bool packed) {
@@ -167,7 +172,7 @@ bool MoviePlayer::checkSkipFrame() {
 		if ((_mixer->getSoundElapsedTime(_bgSoundHandle) * 12) / 1000 < _currentFrame + 1)
 			return false;
 	} else {
-		if (_system->getMillis() <= _ticks)
+		if (getTick() <= _ticks)
 			return false;
 	}
 
@@ -192,9 +197,9 @@ bool MoviePlayer::syncFrame() {
 		// so that we can still fall back on the no-sound sync case for
 		// the subsequent frames.
 
-		_ticks = _system->getMillis();
+		_ticks = getTick();
 	} else {
-		while (_system->getMillis() < _ticks) {
+		while (getTick() < _ticks) {
 			_system->delayMillis(10);
 		}
 	}
@@ -379,7 +384,7 @@ void MoviePlayer::play(SequenceTextInfo *textList, uint32 numLines, int32 leadIn
 	bool startNextText = false;
 
 	// This happens if the user quits during the "eye" cutscene.
-	if (_vm->quit())
+	if (_vm->shouldQuit())
 		return;
 
 	_numSpeechLines = numLines;
@@ -392,7 +397,7 @@ void MoviePlayer::play(SequenceTextInfo *textList, uint32 numLines, int32 leadIn
 	savePalette();
 
 	_framesSkipped = 0;
-	_ticks = _system->getMillis();
+	_ticks = getTick();
 	_bgSoundStream = Audio::AudioStream::openStreamFile(_name);
 
 	if (_bgSoundStream) {
@@ -497,6 +502,16 @@ void MoviePlayer::play(SequenceTextInfo *textList, uint32 numLines, int32 leadIn
 	restorePalette();
 }
 
+void MoviePlayer::pauseMovie(bool pause) {
+	_mixer->pauseHandle(_bgSoundHandle, pause);
+
+	if (pause) {
+		_pauseStartTick = _system->getMillis();
+	} else {
+		_pauseTicks += (_system->getMillis() - _pauseStartTick);
+	}
+}
+
 #ifdef USE_ZLIB
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -532,7 +547,7 @@ bool MoviePlayerDXA::load() {
 
 	if (loadFile(filename)) {
 		// The Broken Sword games always use external audio tracks.
-		if (_fd->readUint32BE() != MKID_BE('NULL'))
+		if (_fileStream->readUint32BE() != MKID_BE('NULL'))
 			return false;
 
 		_frameBuffer = _vm->_screen->getScreen();
@@ -654,8 +669,9 @@ void AnimationState::drawTextObject(SpriteInfo *s, byte *src) {
 
 	OverlayColor *dst = _overlay + textY * moviePitch + textX;
 
-	OverlayColor pen = _sys->RGBToColor(255, 255, 255);
-	OverlayColor border = _sys->RGBToColor(0, 0, 0);
+	Graphics::PixelFormat format = _sys->getOverlayFormat();
+	OverlayColor pen = format.RGBToColor(255, 255, 255);
+	OverlayColor border = format.RGBToColor(0, 0, 0);
 
 	// TODO: Use the AdvMame scalers for the text? Pre-scale it?
 
@@ -702,7 +718,8 @@ void AnimationState::clearFrame() {
 #ifdef BACKEND_8BIT
 	memset(_vm->_screen->getScreen(), 0, _movieWidth * _movieHeight);
 #else
-	OverlayColor black = _sys->RGBToColor(0, 0, 0);
+	Graphics::PixelFormat format = _sys->getOverlayFormat();
+	OverlayColor black = format.RGBToColor(0, 0, 0);
 
 	for (int i = 0; i < _movieScale * _movieWidth * _movieScale * _movieHeight; i++)
 		_overlay[i] = black;
@@ -838,7 +855,7 @@ bool MoviePlayerDummy::decodeFrame() {
 
 bool MoviePlayerDummy::syncFrame() {
 	if ((_numSpeechLines == 0 || _currentFrame < _firstSpeechFrame) && !_mixer->isSoundHandleActive(_bgSoundHandle)) {
-		_ticks = _system->getMillis();
+		_ticks = getTick();
 		return false;
 	}
 

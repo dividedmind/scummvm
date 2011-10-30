@@ -107,8 +107,9 @@ void KyraEngine_LoK::seq_intro() {
 	if ((in = _saveFileMan->openForLoading(getSavegameFilename(0)))) {
 		delete in;
 		_skipIntroFlag = true;
-	} else
+	} else {
 		_skipIntroFlag = false;
+	}
 
 	_seq->setCopyViewOffs(true);
 	_screen->setFont(Screen::FID_8_FNT);
@@ -163,7 +164,7 @@ void KyraEngine_LoK::seq_introLogos() {
 	_screen->updateScreen();
 	_screen->fadeFromBlack();
 
-	if (_seq->playSequence(_seq_WestwoodLogo, _skipFlag) || quit()) {
+	if (_seq->playSequence(_seq_WestwoodLogo, skipFlag()) || shouldQuit()) {
 		_screen->fadeToBlack();
 		_screen->clearPage(0);
 		return;
@@ -175,14 +176,14 @@ void KyraEngine_LoK::seq_introLogos() {
 		_screen->setScreenPalette(_screen->_currentPalette);
 	}
 
-	if ((_seq->playSequence(_seq_KyrandiaLogo, _skipFlag) && !seq_skipSequence()) || quit()) {
+	if ((_seq->playSequence(_seq_KyrandiaLogo, skipFlag()) && !seq_skipSequence()) || shouldQuit()) {
 		_screen->fadeToBlack();
 		_screen->clearPage(0);
 		return;
 	}
 	_screen->fillRect(0, 179, 319, 199, 0);
 
-	if (quit())
+	if (shouldQuit())
 		return;
 
 	if (_flags.platform == Common::kPlatformAmiga) {
@@ -222,10 +223,10 @@ void KyraEngine_LoK::seq_introLogos() {
 
 			oldDistance = distance;
 			delay(10);
-		} while (!doneFlag && !quit() && !_abortIntroFlag);
+		} while (!doneFlag && !shouldQuit() && !_abortIntroFlag);
 	}
 
-	if (quit())
+	if (shouldQuit())
 		return;
 
 	_seq->playSequence(_seq_Forest, true);
@@ -274,7 +275,7 @@ void KyraEngine_LoK::seq_introStory() {
 	}
 
 	_screen->updateScreen();
-	//debugC(0, kDebugLevelMain, "skipFlag %i, %i", _skipFlag, _tickLength);
+	//debugC(0, kDebugLevelMain, "skipFlag %i, %i", skipFlag(), _tickLength);
 	delay(360 * _tickLength);
 }
 
@@ -1029,7 +1030,7 @@ void KyraEngine_LoK::seq_brandonToStone() {
 
 void KyraEngine_LoK::seq_playEnding() {
 	debugC(9, kDebugLevelMain, "KyraEngine_LoK::seq_playEnding()");
-	if (quit())
+	if (shouldQuit())
 		return;
 	_screen->hideMouse();
 	_screen->_curPage = 0;
@@ -1044,8 +1045,10 @@ void KyraEngine_LoK::seq_playEnding() {
 	memset(_screen->getPalette(2), 0, sizeof(uint8)*768);
 	_screen->setScreenPalette(_screen->getPalette(2));
 
+	_seqPlayerFlag = true;
 	_seq->playSequence(_seq_Reunion, false);
 	_screen->fadeToBlack();
+	_seqPlayerFlag = false;
 
 	_screen->showMouse();
 	seq_playCredits();
@@ -1210,7 +1213,7 @@ void KyraEngine_LoK::seq_playCredits() {
 
 bool KyraEngine_LoK::seq_skipSequence() const {
 	debugC(9, kDebugLevelMain, "KyraEngine_LoK::seq_skipSequence()");
-	return quit() || _abortIntroFlag;
+	return shouldQuit() || _abortIntroFlag;
 }
 
 int KyraEngine_LoK::handleMalcolmFlag() {

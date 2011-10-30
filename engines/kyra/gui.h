@@ -27,6 +27,7 @@
 #define KYRA_GUI_H
 
 #include "kyra/kyra_v1.h"
+#include "kyra/screen.h"
 
 #include "common/ptr.h"
 #include "common/array.h"
@@ -157,6 +158,7 @@ public:
 
 	// utilities for thumbnail creation
 	virtual void createScreenThumbnail(Graphics::Surface &dst) = 0;
+
 protected:
 	KyraEngine_v1 *_vm;
 	Screen *_screen;
@@ -194,6 +196,10 @@ protected:
 	Common::Array<int> _saveSlots;
 	void updateSaveList();
 	int getNextSavegameSlot();
+
+	uint32 _lastScreenUpdate;
+	Common::KeyState _keyPressed;
+	void checkTextfieldInput();
 };
 
 class Movie;
@@ -213,11 +219,13 @@ public:
 	};
 
 	struct StaticData {
-		const char *strings[4];
+		const char *strings[5];
 
-		uint8 menuTable[11];
+		uint8 menuTable[7];
 		uint8 colorTable[4];
-		uint8 colorNormal, colorFlash;
+
+		Screen::FontId font;
+		uint8 altColor;
 	};
 
 	void init(StaticData data, Animation anim);

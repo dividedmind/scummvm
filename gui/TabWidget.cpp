@@ -25,8 +25,9 @@
 #include "common/util.h"
 #include "gui/TabWidget.h"
 #include "gui/dialog.h"
-#include "gui/newgui.h"
-#include "gui/eval.h"
+#include "gui/GuiManager.h"
+
+#include "gui/ThemeEval.h"
 
 namespace GUI {
 
@@ -46,30 +47,24 @@ TabWidget::TabWidget(GuiObject *boss, const String &name)
 }
 
 void TabWidget::init() {
-	_tabOffset = 0;	// TODO
-	_tabSpacing = g_gui.theme()->getTabSpacing();
-	_tabPadding = g_gui.theme()->getTabPadding();
-
 	setFlags(WIDGET_ENABLED);
 	_type = kTabWidget;
 	_activeTab = -1;
 	_firstVisibleTab = 0;
 
-	_tabWidth = g_gui.evaluator()->getVar("TabWidget.tabWidth");
-	_tabHeight = g_gui.evaluator()->getVar("TabWidget.tabHeight");
-	_titleVPad = g_gui.evaluator()->getVar("TabWidget.titleVPad");
+	_tabWidth = g_gui.xmlEval()->getVar("Globals.TabWidget.Tab.Width");
+	_tabHeight = g_gui.xmlEval()->getVar("Globals.TabWidget.Tab.Height");
+	_titleVPad = g_gui.xmlEval()->getVar("Globals.TabWidget.Tab.Padding.Top");
 
-	_butRP = g_gui.evaluator()->getVar("TabWidget.navButtonRightPad", 0);
-	_butTP = g_gui.evaluator()->getVar("TabWidget.navButtonTopPad", 0);
-	_butW = g_gui.evaluator()->getVar("TabWidget.navButtonW", 10);
-	_butH = g_gui.evaluator()->getVar("TabWidget.navButtonH", 10);
+	_butRP = g_gui.xmlEval()->getVar("Globals.TabWidget.navButtonPadding.Right", 0);
+	_butTP = g_gui.xmlEval()->getVar("Globals.TabWidget.NavButton.Padding.Top", 0);
+	_butW = g_gui.xmlEval()->getVar("Globals.TabWidget.NavButton.Width", 10);
+	_butH = g_gui.xmlEval()->getVar("Globals.TabWidget.NavButton.Height", 10);
 
 	int x = _w - _butRP - _butW * 2 - 2;
 	int y = _butTP - _tabHeight;
 	_navLeft = new ButtonWidget(this, x, y, _butW, _butH, "<", kCmdLeft, 0);
-	_navLeft->setHints(THEME_HINT_NO_BACKGROUND_RESTORE);
 	_navRight = new ButtonWidget(this, x + _butW + 2, y, _butW, _butH, ">", kCmdRight, 0);
-	_navRight->setHints(THEME_HINT_NO_BACKGROUND_RESTORE);
 }
 
 TabWidget::~TabWidget() {
@@ -96,7 +91,7 @@ int TabWidget::addTab(const String &title) {
 
 	int numTabs = _tabs.size();
 
-	if (g_gui.evaluator()->getVar("TabWidget.tabWidth") == 0) {
+	if (g_gui.xmlEval()->getVar("Globals.TabWidget.Tab.Width") == 0) {
 		if (_tabWidth == 0)
 			_tabWidth = 40;
 		// Determine the new tab width
@@ -186,8 +181,8 @@ void TabWidget::handleMouseDown(int x, int y, int button, int clickCount) {
 
 	// Determine which tab was clicked
 	int tabID = -1;
-	if (x >= 0 && x % (_tabWidth + _tabSpacing) < _tabWidth) {
-		tabID = x / (_tabWidth + _tabSpacing);
+	if (x >= 0 && (x % _tabWidth) < _tabWidth) {
+		tabID = x / _tabWidth;
 		if (tabID >= (int)_tabs.size())
 			tabID = -1;
 	}
@@ -216,9 +211,9 @@ void TabWidget::reflowLayout() {
 		}
 	}
 
-	_tabHeight = g_gui.evaluator()->getVar("TabWidget.tabHeight");
-	_tabWidth = g_gui.evaluator()->getVar("TabWidget.tabWidth");
-	_titleVPad = g_gui.evaluator()->getVar("TabWidget.titleVPad");
+	_tabHeight = g_gui.xmlEval()->getVar("Globals.TabWidget.Tab.Height");
+	_tabWidth = g_gui.xmlEval()->getVar("Globals.TabWidget.Tab.Width");
+	_titleVPad = g_gui.xmlEval()->getVar("Globals.TabWidget.Tab.Padding.Top");
 
 	if (_tabWidth == 0) {
 		_tabWidth = 40;
@@ -234,19 +229,15 @@ void TabWidget::reflowLayout() {
 		}
 	}
 
-	_butRP = g_gui.evaluator()->getVar("TabWidget.navButtonRightPad", 0);
-	_butTP = g_gui.evaluator()->getVar("TabWidget.navButtonTopPad", 0);
-	_butW = g_gui.evaluator()->getVar("TabWidget.navButtonW", 10);
-	_butH = g_gui.evaluator()->getVar("TabWidget.navButtonH", 10);
+	_butRP = g_gui.xmlEval()->getVar("Globals.TabWidget.NavButton.PaddingRight", 0);
+	_butTP = g_gui.xmlEval()->getVar("Globals.TabWidget.NavButton.Padding.Top", 0);
+	_butW = g_gui.xmlEval()->getVar("GlobalsTabWidget.NavButton.Width", 10);
+	_butH = g_gui.xmlEval()->getVar("Globals.TabWidget.NavButton.Height", 10);
 
 	int x = _w - _butRP - _butW * 2 - 2;
 	int y = _butTP - _tabHeight;
 	_navLeft->resize(x, y, _butW, _butH);
 	_navRight->resize(x + _butW + 2, y, _butW, _butH);
-
-	_tabOffset = 0;	// TODO
-	_tabSpacing = g_gui.theme()->getTabSpacing();
-	_tabPadding = g_gui.theme()->getTabPadding();
 }
 
 void TabWidget::drawWidget() {
@@ -254,7 +245,7 @@ void TabWidget::drawWidget() {
 	for (int i = _firstVisibleTab; i < (int)_tabs.size(); ++i) {
 		tabs.push_back(_tabs[i].title);
 	}
-	g_gui.theme()->drawTab(Common::Rect(_x, _y, _x+_w, _y+_h), _tabHeight, _tabWidth, tabs, _activeTab - _firstVisibleTab, _hints, _titleVPad);
+	g_gui.theme()->drawTab(Common::Rect(_x, _y, _x+_w, _y+_h), _tabHeight, _tabWidth, tabs, _activeTab - _firstVisibleTab, 0, _titleVPad);
 }
 
 void TabWidget::draw() {

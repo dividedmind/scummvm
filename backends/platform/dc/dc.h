@@ -23,8 +23,9 @@
  *
  */
 
-#include <common/system.h>
+#include "backends/base-backend.h"
 #include <graphics/surface.h>
+#include <graphics/colormasks.h>
 #include <ronin/soundcommon.h>
 #include "backends/timer/default/default-timer.h"
 #include "backends/fs/fs-factory.h"
@@ -42,7 +43,7 @@ class Interactive
 
 #include "softkbd.h"
 
-class OSystem_Dreamcast : public OSystem, public FilesystemFactory {
+class OSystem_Dreamcast : public BaseBackend, public FilesystemFactory {
 
  public:
   OSystem_Dreamcast();
@@ -155,19 +156,7 @@ class OSystem_Dreamcast : public OSystem, public FilesystemFactory {
   void clearOverlay();
   void grabOverlay(int16 *buf, int pitch);
   void copyRectToOverlay(const int16 *buf, int pitch, int x, int y, int w, int h);
-  OverlayColor RGBToColor(uint8 r, uint8 g, uint8 b) { return ARGBToColor(255, r, g, b); }
-  void colorToRGB(OverlayColor color, uint8 &r, uint8 &g, uint8 &b) {
-    uint8 tmp; colorToARGB(color, tmp, r, g, b);
-  }
-  OverlayColor ARGBToColor(uint8 a, uint8 r, uint8 g, uint8 b) {
-    return ((a&0xf0)<<8)|((r&0xf0)<<4)|(g&0xf0)|(b>>4);
-  }
-  void colorToARGB(OverlayColor color, uint8 &a, uint8 &r, uint8 &g, uint8 &b) {
-    a = ((color>>8)&0xf0)|((color>>12)&0x0f);
-    r = ((color>>4)&0xf0)|((color>>8)&0x0f);
-    g = (color&0xf0)|((color>>4)&0x0f);
-    b = ((color<<4)&0xf0)|(color&0x0f);
-  }
+  virtual Graphics::PixelFormat getOverlayFormat() const { return Graphics::createPixelFormat<4444>(); }
 
   // Mutex handling
   MutexRef createMutex();
@@ -189,9 +178,9 @@ class OSystem_Dreamcast : public OSystem, public FilesystemFactory {
 
   // Filesystem
   FilesystemFactory *getFilesystemFactory() { return this; }
-  AbstractFilesystemNode *makeRootFileNode() const;
-  AbstractFilesystemNode *makeCurrentDirectoryFileNode() const;
-  AbstractFilesystemNode *makeFileNodePath(const Common::String &path) const;
+  AbstractFSNode *makeRootFileNode() const;
+  AbstractFSNode *makeCurrentDirectoryFileNode() const;
+  AbstractFSNode *makeFileNodePath(const Common::String &path) const;
 
  private:
 

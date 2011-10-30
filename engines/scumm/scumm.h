@@ -83,6 +83,9 @@ enum {
  * Note that some of them could be replaced by checks for the SCUMM version.
  */
 enum GameFeatures {
+	/** A demo, not a full blown game. */
+	GF_DEMO                = 1 << 0,
+
 	/** Games with the AKOS costume system (ScummEngine_v7 and subclasses, HE games). */
 	GF_NEW_COSTUMES        = 1 << 2,
 
@@ -114,7 +117,7 @@ enum GameFeatures {
 	GF_HE_LOCALIZED        = 1 << 13,
 
 	/**
-	 *  HE Games with more global scripts and different sprite handling
+	 *  HE games with more global scripts and different sprite handling
 	 *  i.e. read it as HE version 9.85. Used for HE98 only.
 	 */
 	GF_HE_985             = 1 << 14,
@@ -123,14 +126,11 @@ enum GameFeatures {
 	GF_16BIT_COLOR         = 1 << 15,
 
 	/** HE games which use sprites for subtitles */
-	GF_HE_NOSUBTITLES      = 1 << 16,
-
-	/** A demo, not a full blown game. */
-	GF_DEMO                = 1 << 17
+	GF_HE_NOSUBTITLES      = 1 << 16
 };
 
 /* SCUMM Debug Channels */
-void CDECL debugC(int level, const char *s, ...);
+void debugC(int level, const char *s, ...);
 
 enum {
 	DEBUG_GENERAL	=	1 << 0,		// General debug
@@ -219,12 +219,16 @@ enum ScummGameId {
 	GID_HEGAME,      // Generic name for all HE games with default behaviour
 	GID_PUTTDEMO,
 	GID_FBEAR,
+	GID_PUTTMOON,
 	GID_FUNPACK,
 	GID_FREDDI3,
+	GID_BIRTHDAY,
+	GID_TREASUREHUNT,
 	GID_PUTTRACE,
 	GID_FUNSHOP,	// Used for all three funshops
 	GID_FOOTBALL,
 	GID_SOCCER,
+	GID_MOONBASE,
 	GID_HECUP		// CUP demos
 };
 
@@ -443,10 +447,18 @@ public:
 	virtual ~ScummEngine();
 
 	// Engine APIs
-	virtual int init();
-	virtual int go();
-	virtual void errorString(const char *buf_input, char *buf_output);
+	virtual Common::Error init();
+	virtual Common::Error go();
+	virtual void errorString(const char *buf_input, char *buf_output, int buf_output_size);
 	virtual GUI::Debugger *getDebugger();
+	virtual bool hasFeature(EngineFeature f) const;
+	virtual void syncSoundSettings();
+
+	virtual Common::Error loadGameState(int slot);
+	virtual bool canLoadGameStateCurrently();
+	virtual Common::Error saveGameState(int slot, const char *desc);
+	virtual bool canSaveGameStateCurrently();
+
 	virtual void pauseEngineIntern(bool pause);
 
 protected:
@@ -462,7 +474,6 @@ protected:
 	virtual void loadLanguageBundle() {}
 	void loadCJKFont();
 	void setupMusic(int midi);
-	virtual void syncSoundSettings();
 	void setTalkDelay(int talkdelay);
 	int getTalkDelay();
 
@@ -616,7 +627,7 @@ protected:
 	void loadResource(Serializer *ser, int type, int index);
 
 	Common::String makeSavegameName(int slot, bool temporary) const {
-		return makeSavegameName(_targetName, slot, temporary);		
+		return makeSavegameName(_targetName, slot, temporary);
 	}
 
 	int getKeyState(int key);
@@ -627,7 +638,7 @@ public:
 	bool getSavegameName(int slot, Common::String &desc);
 	void listSavegames(bool *marks, int num);
 
-	void requestSave(int slot, const char *name, bool temporary = false);
+	void requestSave(int slot, const char *name);
 	void requestLoad(int slot);
 
 // thumbnail + info stuff
@@ -918,7 +929,7 @@ public:
 	// Generic costume code
 	bool isCostumeInUse(int i) const;
 
-	Common::Rect _actorClipOverride;
+	Common::Rect _actorClipOverride;	// HE specific
 
 protected:
 	/* Should be in Graphics class? */
@@ -1017,6 +1028,7 @@ protected:
 	virtual void palManipulateInit(int resID, int start, int end, int time);
 	void palManipulate();
 public:
+	int convert16BitColor(uint16 color, uint8 r, uint8 g, uint8 b);
 	int remapPaletteColor(int r, int g, int b, int threshold);		// Used by Actor::remapActorPalette
 protected:
 	void moveMemInPalRes(int start, int end, byte direction);
@@ -1092,6 +1104,7 @@ public:
 	// HE specific
 	byte _HEV7ActorPalette[256];
 	uint8 *_hePalettes;
+	int16 *_hePaletteCache;
 
 protected:
 	int _shadowPaletteSize;

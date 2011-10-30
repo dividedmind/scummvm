@@ -20,8 +20,14 @@
 
 GLOBAL _hq3x_16
 
-EXTERN _LUT16to32
 EXTERN _RGBtoYUV
+EXTERN _hqx_highbits
+EXTERN _hqx_lowbits
+EXTERN _hqx_low2bits
+EXTERN _hqx_low3bits
+EXTERN _hqx_greenMask
+EXTERN _hqx_redBlueMask
+EXTERN _hqx_green_redBlue_Mask
 
 SECTION .bss
 linesleft resd 1
@@ -39,12 +45,13 @@ w7        resd 1
 w8        resd 1
 w9        resd 1
 
+tmpData        resd 1
+
 SECTION .data
 
 reg_blank    dd  0,0
 const7       dd  0x00070007,0x00000007
 threshold    dd  0x00300706,0x00000000
-zerolowbits  dd  0xF7DEF7DE
 moduloSrc    dd  0
 moduloDst    dd  0
 
@@ -124,98 +131,137 @@ SECTION .text
 %%fin:
 %endmacro
 
+; interpolate16_3_1
+; Mix two pixels with weight 3 and 1, respectively: (c1*3+c2)/4;
 %macro Interp1 3
     mov edx,%2
     mov ecx,%3
-    cmp edx,ecx
-    je  %%fin
-    and edx,[zerolowbits]
-    and ecx,[zerolowbits]
+    and edx,[_hqx_highbits]
+    and ecx,[_hqx_highbits]
     add ecx,edx
     shr ecx,1
-    add ecx,0x0821
-    and ecx,[zerolowbits]
+    add ecx,[_hqx_lowbits]
+    and ecx,[_hqx_highbits]
     add edx,ecx
     shr edx,1
-%%fin:
     mov %1,dx
 %endmacro
 
+; interpolate16_2_1_1
+; Mix three pixels with weight 2, 1, and 1, respectively: (c1*2+c2+c3)/4;
 %macro Interp2 4
     mov edx,%3
     mov ecx,%4
-    cmp edx,ecx
-    je  %%fin1
-    and edx,[zerolowbits]
-    and ecx,[zerolowbits]
+    and edx,[_hqx_highbits]
+    and ecx,[_hqx_highbits]
     add ecx,edx
     shr ecx,1
-    add ecx,0x0821
-%%fin1:
+    add ecx,[_hqx_lowbits]
     mov edx,%2
-    cmp edx,ecx
-    je  %%fin2
-    and ecx,[zerolowbits]
-    and edx,[zerolowbits]
+    and ecx,[_hqx_highbits]
+    and edx,[_hqx_highbits]
     add edx,ecx
     shr edx,1
-%%fin2:
     mov %1,dx
 %endmacro
 
+; interpolate16_7_1
+; Mix two pixels with weight 7 and 1, respectively: (c1*7+c2)/8;
 %macro Interp3 2
-    mov        ecx, [_LUT16to32]
-    movd       mm1, [ecx+eax*4]
-    mov        edx, %2
-    movd       mm2, [ecx+edx*4]
-    punpcklbw  mm1, [reg_blank]
-    punpcklbw  mm2, [reg_blank]
-    pmullw     mm1, [const7]
-    paddw      mm1, mm2
-    psrlw      mm1, 5
-    packuswb   mm1, [reg_blank]
-    movd       edx, mm1
-    shl        dl,  2
-    shr        edx, 1
-    shl        dx,  3
-    shr        edx, 5
-    mov        %1,  dx
+	; ((p1&kLowBitsMask)<<2)
+	mov ecx,eax
+	and ecx,[_hqx_lowbits]
+	shl ecx,2
+	
+	; + ((p1&kLow2Bits)<<1)
+	mov edx,eax
+	and edx,[_hqx_low2bits]
+	shl edx,1
+	add ecx,edx
+	
+	; + (p1&kLow3Bits)
+	mov edx,eax
+	and edx,[_hqx_low3bits]
+	add ecx,edx
+	
+	; + (p2&kLow3Bits)
+	mov edx,%2
+	and edx,[_hqx_low3bits]
+	add ecx,edx
+	
+	; & kLow3Bits  -> ecx
+	and ecx,[_hqx_low3bits]
+	
+	; compute ((p1*7+p2) - ecx) >> 3;
+	mov edx,eax
+	shl edx,3
+	sub edx,eax
+	sub edx,ecx
+	mov ecx,%2
+	add edx,ecx
+	shr edx,3
+
+    mov %1,dx
 %endmacro
 
+; interpolate16_2_7_7
+; Mix three pixels with weight 2, 7, and 7, respectively: (c1*2+(c2+c3)*7)/16;
 %macro Interp4 3
-    mov        ecx, [_LUT16to32]
-    movd       mm1, [ecx+eax*4]
-    mov        edx, %2
-    movd       mm2, [ecx+edx*4]
-    mov        edx, %3
-    movd       mm3, [ecx+edx*4]
-    punpcklbw  mm1, [reg_blank]
-    punpcklbw  mm2, [reg_blank]
-    punpcklbw  mm3, [reg_blank]
-    psllw      mm1, 1
-    paddw      mm2, mm3
-    pmullw     mm2, [const7]
-    paddw      mm1, mm2
-    psrlw      mm1, 6
-    packuswb   mm1, [reg_blank]
-    movd       edx, mm1
-    shl        dl,  2
-    shr        edx, 1
-    shl        dx,  3
-    shr        edx, 5
-    mov        %1,  dx
+	; unpack c2
+	mov edx, %2
+	shl edx, 16
+	or  edx, %2
+	and edx, [_hqx_green_redBlue_Mask]
+	
+	; unpack c3
+	mov ecx, %3
+	shl ecx, 16
+	or  ecx, %3
+	and ecx, [_hqx_green_redBlue_Mask]
+	
+	; sum c2 and c3
+	add edx, ecx
+
+	; multiply (c2+c3) by 7
+	;imul edx, 7	; imul works, too, but might be slower on older systems?
+	mov ecx, edx
+	shl edx, 3
+	sub edx, ecx
+	
+	; unpack eax and multiply by 2
+	mov ecx, eax
+	shl ecx, 16
+	or  ecx, eax
+	and ecx, [_hqx_green_redBlue_Mask]
+	add ecx, ecx	; multiply by 2
+	
+	; sum 2*eax + 7*(c2+c3), divide by 16, mask the result
+	add edx, ecx
+	shr edx, 4
+	and edx, [_hqx_green_redBlue_Mask]
+	
+	; finally, repack the mixed pixel
+	mov ecx, edx
+	shr ecx, 16
+	or  edx, ecx
+
+    mov %1,  dx
 %endmacro
 
+; interpolate16_1_1
+; Mix two pixels with weight 1 and 1, respectively: (c1+c2)/2;
 %macro Interp5 3
     mov edx,%2
     mov ecx,%3
-    cmp edx,ecx
-    je  %%fin
-    and edx,[zerolowbits]
-    and ecx,[zerolowbits]
-    add edx,ecx
+     
+    xor edx,ecx       ; xor pixels
+    mov [tmpData],edx ; store tmp result
+    xor edx,ecx       ; restore original value of edx (avoids a reload)
+    add edx,ecx       ; sum pixels
+    mov ecx,[tmpData]
+    and ecx,[_hqx_lowbits]
+    sub edx,ecx
     shr edx,1
-%%fin:
     mov %1,dx
 %endmacro
 
@@ -2290,12 +2336,12 @@ _hq3x_16:
     shl eax,16
     or  eax,edx
     mov ecx,[w2]
-    and edx,[zerolowbits]
-    and ecx,[zerolowbits]
+    and edx,[_hqx_highbits]
+    and ecx,[_hqx_highbits]
     add ecx,edx
     shr ecx,1
-    add ecx,0x0821
-    and ecx,[zerolowbits]
+    add ecx,[_hqx_lowbits]
+    and ecx,[_hqx_highbits]
     add edx,ecx
     shr edx,1
     mov [edi],dx
@@ -2311,12 +2357,12 @@ _hq3x_16:
     shl eax,16
     or  eax,edx
     mov ecx,[w4]
-    and edx,[zerolowbits]
-    and ecx,[zerolowbits]
+    and edx,[_hqx_highbits]
+    and ecx,[_hqx_highbits]
     add ecx,edx
     shr ecx,1
-    add ecx,0x0821
-    and ecx,[zerolowbits]
+    add ecx,[_hqx_lowbits]
+    and ecx,[_hqx_highbits]
     add edx,ecx
     shr edx,1
     mov [edi],dx
@@ -2331,12 +2377,12 @@ _hq3x_16:
     shl eax,16
     or  eax,edx
     mov ecx,[w6]
-    and edx,[zerolowbits]
-    and ecx,[zerolowbits]
+    and edx,[_hqx_highbits]
+    and ecx,[_hqx_highbits]
     add ecx,edx
     shr ecx,1
-    add ecx,0x0821
-    and ecx,[zerolowbits]
+    add ecx,[_hqx_lowbits]
+    and ecx,[_hqx_highbits]
     add edx,ecx
     shr edx,1
     mov [edi],eax
@@ -2351,12 +2397,12 @@ _hq3x_16:
     shl eax,16
     or  eax,edx
     mov ecx,[w8]
-    and edx,[zerolowbits]
-    and ecx,[zerolowbits]
+    and edx,[_hqx_highbits]
+    and ecx,[_hqx_highbits]
     add ecx,edx
     shr ecx,1
-    add ecx,0x0821
-    and ecx,[zerolowbits]
+    add ecx,[_hqx_lowbits]
+    and ecx,[_hqx_highbits]
     add edx,ecx
     shr edx,1
     mov [edi],eax

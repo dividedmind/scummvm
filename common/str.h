@@ -54,7 +54,7 @@ protected:
 	 * than 8 makes no sense, since that's the size of member _extern
 	 * (on 32 bit machines; 12 bytes on systems with 64bit pointers).
 	 */
-	static const uint32 _builtinCapacity = 32;
+	static const uint32 _builtinCapacity = 32 - sizeof(uint32) - sizeof(char*);
 
 	/**
 	 * Length of the string. Stored to avoid having to call strlen
@@ -104,15 +104,15 @@ public:
 
 	/** Construct a new string containing exactly len characters read from address str. */
 	String(const char *str, uint32 len);
-	
+
 	/** Construct a new string containing the characters between beginP (including) and endP (excluding). */
 	String(const char *beginP, const char *endP);
-	
+
 	/** Construct a copy of the given string. */
 	String(const String &str);
-	
+
 	/** Construct a string consisting of the given character. */
-	String(char c);
+	explicit String(char c);
 
 	~String();
 
@@ -186,7 +186,7 @@ public:
 
 	/** Remove the last character from the string. */
 	void deleteLastChar();
-	
+
 	/** Remove the character at position p from the string. */
 	void deleteChar(uint32 p);
 
@@ -204,7 +204,7 @@ public:
 
 	/** Convert all characters in the string to uppercase. */
 	void toUppercase();
-	
+
 	/**
 	 * Removes trailing and leading whitespaces. Uses isspace() to decide
 	 * what is whitespace and what not.

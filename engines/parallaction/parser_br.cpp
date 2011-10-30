@@ -472,7 +472,6 @@ DECLARE_LOCATION_PARSER(mask)  {
 	ctxt.info->layers[3] = atoi(_tokens[4]);
 
 	_vm->_disk->loadScenery(*ctxt.info, 0, _tokens[1], 0);
-	ctxt.info->hasMask = true;
 }
 
 
@@ -564,9 +563,13 @@ DECLARE_COMMAND_PARSER(math)  {
 
 	createCommand(_parser->_lookup);
 
-	ctxt.cmd->u._lvalue = _vm->_countersNames->lookup(_tokens[1]);
+	if (!_vm->counterExists(_tokens[1])) {
+		error("counter '%s' doesn't exists", _tokens[1]);
+	}
+
+	ctxt.cmd->u._counterName = _tokens[1];
 	ctxt.nextToken++;
-	ctxt.cmd->u._rvalue = atoi(_tokens[2]);
+	ctxt.cmd->u._counterValue = atoi(_tokens[2]);
 	ctxt.nextToken++;
 
 	parseCommandFlags();
@@ -578,19 +581,17 @@ DECLARE_COMMAND_PARSER(test)  {
 	debugC(7, kDebugParser, "COMMAND_PARSER(test) ");
 
 	createCommand(_parser->_lookup);
-
-	uint counter = _vm->_countersNames->lookup(_tokens[1]);
 	ctxt.nextToken++;
 
-	if (counter == Table::notFound) {
+	if (!_vm->counterExists(_tokens[1])) {
 		if (!scumm_stricmp("SFX", _tokens[1])) {
 			ctxt.cmd->_id = CMD_TEST_SFX;
 		} else {
 			error("unknown counter '%s' in test opcode", _tokens[1]);
 		}
 	} else {
-		ctxt.cmd->u._lvalue = counter;
-		ctxt.cmd->u._rvalue = atoi(_tokens[3]);
+		ctxt.cmd->u._counterName = _tokens[1];
+		ctxt.cmd->u._counterValue = atoi(_tokens[3]);
 		ctxt.nextToken++;
 
 		if (_tokens[2][0] == '>') {
@@ -704,7 +705,7 @@ DECLARE_COMMAND_PARSER(unary)  {
 
 	createCommand(_parser->_lookup);
 
-	ctxt.cmd->u._rvalue = atoi(_tokens[1]);
+	ctxt.cmd->u._counterValue = atoi(_tokens[1]);
 	ctxt.nextToken++;
 
 	parseCommandFlags();
@@ -717,10 +718,10 @@ DECLARE_ZONE_PARSER(limits)  {
 
 	if (isalpha(_tokens[1][1])) {
 		ctxt.z->_flags |= kFlagsAnimLinked;
-		ctxt.z->_linkedAnim = _vm->findAnimation(_tokens[1]);
+		ctxt.z->_linkedAnim = _vm->_location.findAnimation(_tokens[1]);
 		ctxt.z->_linkedName = strdup(_tokens[1]);
 	} else {
-		ctxt.z->setBox(atoi(_tokens[1]), atoi(_tokens[2]), atoi(_tokens[3]), atoi(_tokens[4]));
+		ctxt.z->setRect(atoi(_tokens[1]), atoi(_tokens[2]), atoi(_tokens[3]), atoi(_tokens[4]));
 	}
 }
 
@@ -787,21 +788,11 @@ void LocationParser_br::parseGetData(ZonePtr z) {
 		}
 
 		if (!scumm_stricmp(_tokens[0], "mask")) {
-			if (ctxt.info->hasMask) {
-				Common::Rect rect;
-				data->gfxobj->getRect(0, rect);
-				data->_mask[0].create(rect.width(), rect.height());
-				_vm->_disk->loadMask(_tokens[1], data->_mask[0]);
-				data->_mask[1].create(rect.width(), rect.height());
-				data->_mask[1].bltCopy(0, 0, ctxt.info->mask, data->gfxobj->x, data->gfxobj->y, data->_mask->w, data->_mask->h);
-				data->hasMask = true;
-			} else {
-				warning("Mask for zone '%s' ignored, since background doesn't have one", z->_name);
-			}
+			ctxt.info->loadGfxObjMask(_tokens[1], data->gfxobj);
 		}
 
 		if (!scumm_stricmp(_tokens[0], "path")) {
-
+			ctxt.info->loadGfxObjPath(_tokens[1], data->gfxobj);
 		}
 
 		if (!scumm_stricmp(_tokens[0], "icon")) {
@@ -901,6 +892,45 @@ DECLARE_ANIM_PARSER(endanimation)  {
 }
 
 
+void LocationParser_br::parseAnswerCounter(Answer *answer) {
+	if (!_tokens[1][0]) {
+		return;
+	}
+
+	if (scumm_stricmp(_tokens[1], "counter")) {
+		return;
+	}
+
+	if (!_vm->counterExists(_tokens[2])) {
+		error("unknown counter '%s' in dialogue", _tokens[2]);
+	}
+
+	answer->_hasCounterCondition = true;
+
+	answer->_counterName = _tokens[2];
+	answer->_counterValue = atoi(_tokens[4]);
+
+	if (_tokens[3][0] == '>') {
+		answer->_counterOp = CMD_TEST_GT;
+	} else
+	if (_tokens[3][0] == '<') {
+		answer->_counterOp = CMD_TEST_LT;
+	} else {
+		answer->_counterOp = CMD_TEST;
+	}
+
+}
+
+
+
+Answer *LocationParser_br::parseAnswer() {
+	Answer *answer = new Answer;
+	assert(answer);
+	parseAnswerFlags(answer);
+	parseAnswerCounter(answer);
+	parseAnswerBody(answer);
+	return answer;
+}
 
 
 
@@ -912,7 +942,7 @@ DECLARE_ANIM_PARSER(endanimation)  {
 DECLARE_INSTRUCTION_PARSER(zone)  {
 	debugC(7, kDebugParser, "INSTRUCTION_PARSER(zone) ");
 
-	ctxt.inst->_z = _vm->findZone(_tokens[1]);
+	ctxt.inst->_z = _vm->_location.findZone(_tokens[1]);
 	ctxt.inst->_index = _parser->_lookup;
 }
 
@@ -1029,7 +1059,7 @@ void ProgramParser_br::parseRValue(ScriptVar &v, const char *str) {
 
 	AnimationPtr a;
 	if (str[1] == '.') {
-		a = _vm->findAnimation(&str[2]);
+		a = _vm->_location.findAnimation(&str[2]);
 		if (!a) {
 			error("unknown animation '%s' in script", &str[2]);
 		}
@@ -1216,41 +1246,20 @@ void ProgramParser_br::init() {
 	INSTRUCTION_PARSER(endscript);
 }
 
-
-/*
-	Ancillary routine to support hooking preprocessor and
-	parser.
-*/
-Common::ReadStream *getStream(StatementList &list) {
-	Common::String text;
-	StatementList::iterator it = list.begin();
-	for ( ; it != list.end(); it++) {
-		text += (*it)._text;
-	}
-	return new ReadStringStream(text);
-}
-
 void LocationParser_br::parse(Script *script) {
-
-	PreProcessor pp;
-	StatementList list;
-	pp.preprocessScript(*script, list);
-	Script *script2 = new Script(getStream(list), true);
-
 	ctxt.numZones = 0;
 	ctxt.characterName = 0;
 	ctxt.info = new BackgroundInfo;
 
-	LocationParser_ns::parse(script2);
+	LocationParser_ns::parse(script);
 
 	_vm->_gfx->setBackground(kBackgroundLocation, ctxt.info);
-	_vm->_pathBuffer = &ctxt.info->path;
-
 
 	ZoneList::iterator it = _vm->_location._zones.begin();
 	for ( ; it != _vm->_location._zones.end(); it++) {
 		bool visible = ((*it)->_flags & kFlagsRemove) == 0;
-		_vm->showZone((*it), visible);
+		if (visible)
+			_vm->showZone((*it), visible);
 	}
 
 	if (ctxt.characterName) {
@@ -1258,8 +1267,6 @@ void LocationParser_br::parse(Script *script) {
 	}
 
 	free(ctxt.characterName);
-
-	delete script2;
 }
 
 } // namespace Parallaction

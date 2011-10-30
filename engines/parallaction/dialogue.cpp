@@ -82,6 +82,7 @@ class DialogueManager {
 	bool			isNpc;
 	GfxObj			*_questioner;
 	GfxObj			*_answerer;
+	int				_faceId;
 
 	Question		*_q;
 
@@ -101,7 +102,7 @@ class DialogueManager {
 
 public:
 	DialogueManager(Parallaction *vm, ZonePtr z);
-	~DialogueManager();
+	virtual ~DialogueManager();
 
 	bool isOver() {
 		return _state == DIALOGUE_OVER;
@@ -114,7 +115,8 @@ public:
 protected:
 	bool displayQuestion();
 	bool displayAnswers();
-	bool displayAnswer(uint16 i);
+	bool testAnswerFlags(Answer *a);
+	virtual bool canDisplayAnswer(Answer *a) = 0;
 
 	int16 selectAnswer1();
 	int16 selectAnswerN();
@@ -130,6 +132,39 @@ protected:
 	void resetPassword();
 	void accumPassword(uint16 ascii);
 };
+
+class DialogueManager_ns : public DialogueManager {
+	Parallaction_ns *_vm;
+
+public:
+	DialogueManager_ns(Parallaction_ns *vm, ZonePtr z) : DialogueManager(vm, z), _vm(vm) {
+	}
+
+	virtual bool canDisplayAnswer(Answer *a) {
+		return testAnswerFlags(a);
+	}
+};
+
+class DialogueManager_br : public DialogueManager {
+	Parallaction_br *_vm;
+
+public:
+	DialogueManager_br(Parallaction_br *vm, ZonePtr z) : DialogueManager(vm, z), _vm(vm) {
+	}
+
+	virtual bool canDisplayAnswer(Answer *a) {
+		if (!a)
+			return false;
+
+		if (a->_hasCounterCondition) {
+			_vm->testCounterCondition(a->_counterName, a->_counterOp, a->_counterValue);
+			return (_vm->getLocationFlags() & kFlagsTestTrue) != 0;
+		}
+
+		return testAnswerFlags(a);
+	}
+};
+
 
 DialogueManager::DialogueManager(Parallaction *vm, ZonePtr z) : _vm(vm), _z(z) {
 	int gtype = vm->getGameType();
@@ -162,65 +197,61 @@ DialogueManager::~DialogueManager() {
 	_z = nullZonePtr;
 }
 
-bool DialogueManager::displayAnswer(uint16 i) {
 
-	Answer *a = _q->_answers[i];
-
+bool DialogueManager::testAnswerFlags(Answer *a) {
 	uint32 flags = _vm->getLocationFlags();
 	if (a->_yesFlags & kFlagsGlobal)
 		flags = _globalFlags | kFlagsGlobal;
-
-	// display suitable answers
-	if (((a->_yesFlags & flags) == a->_yesFlags) && ((a->_noFlags & ~flags) == a->_noFlags)) {
-
-		int id = _vm->_balloonMan->setDialogueBalloon(a->_text, 1, BalloonManager::kUnselectedColor);
-		assert(id >= 0);
-		_visAnswers[id] = i;
-
-		_askPassword = (strstr(a->_text, "%P") != NULL);
-		_numVisAnswers++;
-
-		return true;
-	}
-
-	return false;
+	return ((a->_yesFlags & flags) == a->_yesFlags) && ((a->_noFlags & ~flags) == a->_noFlags);
 }
 
 bool DialogueManager::displayAnswers() {
 
 	_numVisAnswers = 0;
 
+	Answer *a;
 	for (int i = 0; i < NUM_ANSWERS && _q->_answers[i]; i++) {
-		displayAnswer(i);
+		a = _q->_answers[i];
+		if (!canDisplayAnswer(a)) {
+			continue;
+		}
+
+		int id = _vm->_balloonMan->setDialogueBalloon(a->_text.c_str(), 1, BalloonManager::kUnselectedColor);
+		assert(id >= 0);
+		_visAnswers[id] = i;
+		_askPassword = a->_text.contains("%P");
+
+		_numVisAnswers++;
 	}
+
+	int mood = 0;
 
 	if (_askPassword) {
 		resetPassword();
-//		_vm->_balloonMan->setDialogueBalloon(_q->_answers[0]->_text, 1, 3);
-		int id = _vm->_gfx->setItem(_answerer, _ballonPos._answerChar.x, _ballonPos._answerChar.y);
-		_vm->_gfx->setItemFrame(id, 0);
 	} else
 	if (_numVisAnswers == 1) {
-		int id = _vm->_gfx->setItem(_answerer, _ballonPos._answerChar.x, _ballonPos._answerChar.y);
-		_vm->_gfx->setItemFrame(id, _q->_answers[0]->_mood & 0xF);
-		_vm->_balloonMan->setBalloonText(0, _q->_answers[_visAnswers[0]]->_text, BalloonManager::kNormalColor);
+		a = _q->_answers[_visAnswers[0]];
+		mood = a->_mood & 0xF;
+		_vm->_balloonMan->setBalloonText(0, a->_text.c_str(), BalloonManager::kNormalColor);
 	} else
 	if (_numVisAnswers > 1) {
-		int id = _vm->_gfx->setItem(_answerer, _ballonPos._answerChar.x, _ballonPos._answerChar.y);
-		_vm->_gfx->setItemFrame(id, _q->_answers[_visAnswers[0]]->_mood & 0xF);
+		mood = _q->_answers[_visAnswers[0]]->_mood & 0xF;
 		_oldSelection = -1;
 		_selection = 0;
 	}
+
+	_faceId = _vm->_gfx->setItem(_answerer, _ballonPos._answerChar.x, _ballonPos._answerChar.y);
+	_vm->_gfx->setItemFrame(_faceId, mood);
 
 	return _numVisAnswers > 0;
 }
 
 bool DialogueManager::displayQuestion() {
-	if (!scumm_stricmp(_q->_text, "NULL")) return false;
+	if (!_q->_text.compareToIgnoreCase("NULL")) return false;
 
-	_vm->_balloonMan->setSingleBalloon(_q->_text, _ballonPos._questionBalloon.x, _ballonPos._questionBalloon.y, _q->_mood & 0x10, BalloonManager::kNormalColor);
-	int id = _vm->_gfx->setItem(_questioner, _ballonPos._questionChar.x, _ballonPos._questionChar.y);
-	_vm->_gfx->setItemFrame(id, _q->_mood & 0xF);
+	_vm->_balloonMan->setSingleBalloon(_q->_text.c_str(), _ballonPos._questionBalloon.x, _ballonPos._questionBalloon.y, _q->_mood & 0x10, BalloonManager::kNormalColor);
+	_faceId = _vm->_gfx->setItem(_questioner, _ballonPos._questionChar.x, _ballonPos._questionChar.y);
+	_vm->_gfx->setItemFrame(_faceId, _q->_mood & 0xF);
 
 	return true;
 }
@@ -256,7 +287,7 @@ int16 DialogueManager::askPassword() {
 	}
 
 	if (_passwordChanged) {
-		_vm->_balloonMan->setBalloonText(0, _q->_answers[0]->_text, BalloonManager::kNormalColor);
+		_vm->_balloonMan->setBalloonText(0, _q->_answers[0]->_text.c_str(), BalloonManager::kNormalColor);
 		_passwordChanged = false;
 	}
 
@@ -272,9 +303,12 @@ int16 DialogueManager::askPassword() {
 }
 
 int16 DialogueManager::selectAnswer1() {
+	if (!_q->_answers[_visAnswers[0]]->_text.compareToIgnoreCase("null")) {
+		return _visAnswers[0];
+	}
 
 	if (_mouseButtons == kMouseLeftUp) {
-		return 0;
+		return _visAnswers[0];
 	}
 
 	return -1;
@@ -286,12 +320,12 @@ int16 DialogueManager::selectAnswerN() {
 
 	if (_selection != _oldSelection) {
 		if (_oldSelection != -1) {
-			_vm->_balloonMan->setBalloonText(_oldSelection, _q->_answers[_visAnswers[_oldSelection]]->_text, BalloonManager::kUnselectedColor);
+			_vm->_balloonMan->setBalloonText(_oldSelection, _q->_answers[_visAnswers[_oldSelection]]->_text.c_str(), BalloonManager::kUnselectedColor);
 		}
 
 		if (_selection != -1) {
-			_vm->_balloonMan->setBalloonText(_selection, _q->_answers[_visAnswers[_selection]]->_text, BalloonManager::kSelectedColor);
-			_vm->_gfx->setItemFrame(0, _q->_answers[_visAnswers[_selection]]->_mood & 0xF);
+			_vm->_balloonMan->setBalloonText(_selection, _q->_answers[_visAnswers[_selection]]->_text.c_str(), BalloonManager::kSelectedColor);
+			_vm->_gfx->setItemFrame(_faceId, _q->_answers[_visAnswers[_selection]]->_mood & 0xF);
 		}
 	}
 
@@ -308,7 +342,7 @@ void DialogueManager::runQuestion() {
 	debugC(9, kDebugDialogue, "runQuestion\n");
 
 	if (_mouseButtons == kMouseLeftUp) {
-		_vm->hideDialogueStuff();
+		_vm->_gfx->freeDialogueObjects();
 		_state = NEXT_ANSWER;
 	}
 
@@ -323,7 +357,7 @@ void DialogueManager::nextAnswer() {
 		return;
 	}
 
-	if (!scumm_stricmp(_q->_answers[0]->_text, "NULL")) {
+	if (!_q->_answers[0]->_text.compareToIgnoreCase("NULL")) {
 		_answerId = 0;
 		_state = NEXT_QUESTION;
 		return;
@@ -346,7 +380,7 @@ void DialogueManager::runAnswer() {
 
 	if (_answerId != -1) {
 		_cmdList = &_q->_answers[_answerId]->_commands;
-		_vm->hideDialogueStuff();
+		_vm->_gfx->freeDialogueObjects();
 		_state = NEXT_QUESTION;
 	}
 }
@@ -354,7 +388,7 @@ void DialogueManager::runAnswer() {
 void DialogueManager::nextQuestion() {
 	debugC(9, kDebugDialogue, "nextQuestion\n");
 
-	_q = _q->_answers[_answerId]->_following._question;
+	_q = _q->_answers[_answerId]->_followingQuestion;
 	if (_q == 0) {
 		_state = DIALOGUE_OVER;
 	} else {
@@ -399,7 +433,7 @@ void DialogueManager::run() {
 
 void Parallaction::enterDialogueMode(ZonePtr z) {
 	debugC(1, kDebugDialogue, "Parallaction::enterDialogueMode(%s)", z->u.speak->_name);
-	_dialogueMan = new DialogueManager(this, z);
+	_dialogueMan = _vm->createDialogueManager(z);
 	_input->_inputMode = Input::kInputModeDialogue;
 }
 
@@ -408,7 +442,7 @@ void Parallaction::exitDialogueMode() {
 	_input->_inputMode = Input::kInputModeGame;
 
 	if (_dialogueMan->_cmdList) {
-		_vm->_cmdExec->run(*_dialogueMan->_cmdList);
+		_cmdExec->run(*_dialogueMan->_cmdList);
 	}
 
 	// The current instance of _dialogueMan must be destroyed before the zone commands
@@ -435,5 +469,12 @@ void Parallaction::runDialogueFrame() {
 	return;
 }
 
+DialogueManager *Parallaction_ns::createDialogueManager(ZonePtr z) {
+	return new DialogueManager_ns(this, z);
+}
+
+DialogueManager *Parallaction_br::createDialogueManager(ZonePtr z) {
+	return new DialogueManager_br(this, z);
+}
 
 } // namespace Parallaction

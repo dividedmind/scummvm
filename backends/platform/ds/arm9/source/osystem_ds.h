@@ -19,11 +19,12 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  *
  */
- 
- 
+
+
 #ifndef _OSYSTEM_DS_H_
 #define _OSYSTEM_DS_H_
-#include "common/system.h"
+
+#include "backends/base-backend.h"
 #include "common/events.h"
 #include "nds.h"
 #include "ramsave.h"
@@ -32,32 +33,23 @@
 #include "backends/timer/default/default-timer.h"
 #include "sound/mixer_intern.h"
 #include "graphics/surface.h"
+#include "graphics/colormasks.h"
 
-class DSAudioMixer : public Audio::MixerImpl {	
-
-public:
-	DSAudioMixer(OSystem* system) : Audio::MixerImpl(system) { }
-};
-
-class DSTimerManager : public DefaultTimerManager {	
-};
-
-
-class OSystem_DS : public OSystem {
+class OSystem_DS : public BaseBackend {
 protected:
 
 	int eventNum;
 	int lastPenFrame;
-	
+
 	Common::Event eventQueue[96];
 	int queuePos;
-	
+
 #ifdef GBA_SRAM_SAVE
 	DSSaveFileManager saveManager;
 #endif
 	GBAMPSaveFileManager mpSaveManager;
-	DSAudioMixer* _mixer;
-	DSTimerManager* _timer;
+	Audio::MixerImpl* _mixer;
+	DefaultTimerManager* _timer;
 	Graphics::Surface _framebuffer;
 	bool _frameBufferExists;
 	bool _graphicsEnable;
@@ -75,7 +67,7 @@ protected:
 	byte _cursorKey;
 	int _cursorScale;
 
-	
+
 	Graphics::Surface* createTempFrameBuffer();
 	bool _disableCursorPalette;
 
@@ -113,10 +105,8 @@ public:
 	virtual void copyRectToOverlay(const OverlayColor *buf, int pitch, int x, int y, int w, int h);
 	virtual int16 getOverlayHeight();
 	virtual int16 getOverlayWidth();
+	virtual Graphics::PixelFormat getOverlayFormat() const { return Graphics::createPixelFormat<1555>(); }
 
-	inline virtual OverlayColor RGBToColor(uint8 r, uint8 g, uint8 b);
-	inline virtual void colorToRGB(OverlayColor color, uint8 &r, uint8 &g, uint8 &b);
-	
 	virtual bool showMouse(bool visible);
 
 	virtual void warpMouse(int x, int y);
@@ -148,21 +138,21 @@ public:
 	virtual void displayMessageOnOSD(const char *msg);
 
 	virtual Common::SaveFileManager *getSavefileManager();
-	
+
 	void addEvent(Common::Event& e);
 	bool isEventQueueEmpty() { return queuePos == 0; }
-	
+
 	virtual bool grabRawScreen(Graphics::Surface* surf);
-	
+
 	virtual void setFocusRectangle(const Common::Rect& rect);
-	
+
 	virtual void clearFocusRectangle();
-	
+
 	virtual void initBackend();
-	
+
 	virtual Graphics::Surface *lockScreen();
 	virtual void unlockScreen();
-	
+
 	virtual Audio::Mixer* getMixer() { return _mixer; }
 	Audio::MixerImpl* getMixerImpl() { return _mixer; }
 
@@ -189,20 +179,5 @@ public:
 static const OSystem::GraphicsMode s_supportedGraphicsModes[] = {
 	{0, 0, 0},
 };
-
-OverlayColor OSystem_DS::RGBToColor(uint8 r, uint8 g, uint8 b)
-{
-	return 0x8000 | (r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10);
-	//consolePrintf("rgbtocol\n");
-	//return 0;
-}
-
-void OSystem_DS::colorToRGB(OverlayColor color, uint8 &r, uint8 &g, uint8 &b)
-{
-	r = (color & 0x001F) << 3;
-	g = ((color & 0x03E0) >> 5) << 3;
-	b = ((color & 0x7C00) >> 10) << 3;
-	//consolePrintf("coltorgb\n");
-}
 
 #endif

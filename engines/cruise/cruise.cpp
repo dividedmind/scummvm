@@ -40,9 +40,8 @@ namespace Cruise {
 
 //SoundDriver *g_soundDriver;
 //SfxPlayer *g_sfxPlayer;
-Common::SaveFileManager * g_saveFileMan;
 
-CruiseEngine *g_cruise;
+CruiseEngine *_vm;
 
 CruiseEngine::CruiseEngine(OSystem * syst, const CRUISEGameDescription *gameDesc) : Engine(syst), _gameDescription(gameDesc) {
 
@@ -50,16 +49,16 @@ CruiseEngine::CruiseEngine(OSystem * syst, const CRUISEGameDescription *gameDesc
 	_currentVolumeFile = new Common::File();
 #endif
 
-	Common::addSpecialDebugLevel(kCruiseDebugScript, "Script",
-	    "Script debug level");
+	Common::addDebugChannel(kCruiseDebugScript, "Script",
+	                             "Script debug level");
 
 	// Setup mixer
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType,
-	    ConfMan.getInt("sfx_volume"));
+	                              ConfMan.getInt("sfx_volume"));
 	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType,
-	    ConfMan.getInt("music_volume"));
+	                              ConfMan.getInt("music_volume"));
 
-	g_cruise = this;
+	_vm = this;
 
 	syst->getEventManager()->registerRandomSource(_rnd, "cruise");
 }
@@ -70,25 +69,22 @@ CruiseEngine::~CruiseEngine() {
 #endif
 }
 
-int CruiseEngine::init() {
+Common::Error CruiseEngine::init() {
 	// Initialize backend
-	_system->beginGFXTransaction();
-	initCommonGFX(false);
-	_system->initSize(320, 200);
-	_system->endGFXTransaction();
+	initGraphics(320, 200, false);
 
 	initialize();
 
-	return 0;
+	return Common::kNoError;
 }
 
-int CruiseEngine::go() {
+Common::Error CruiseEngine::go() {
 	Cruise::changeCursor(Cruise::CURSOR_NORMAL);
 	CursorMan.showMouse(true);
 
 	Cruise::mainLoop();
 
-	return 0;
+	return Common::kNoError;
 }
 
 void CruiseEngine::initialize() {

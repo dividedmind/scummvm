@@ -39,6 +39,7 @@ class WriteStream;
 
 namespace Scumm {
 
+class ActorHE;
 class ResExtractor;
 #ifdef ENABLE_HE
 class LogicHE;
@@ -243,7 +244,7 @@ public:
 	AuxEntry _auxEntries[16];
 	uint16 _auxEntriesNum;
 
-	void queueAuxBlock(Actor *a);
+	void queueAuxBlock(ActorHE *a);
 	void queueAuxEntry(int actorNum, int subIndex);
 
 	void remapHEPalette(const uint8 *src, uint8 *dst);
@@ -392,7 +393,7 @@ protected:
 
 	const OpcodeEntryV80he *_opcodesV80he;
 
-	int32 _heSndResId, _curSndId, _sndPtrOffs, _sndTmrOffs;
+	int32 _heSndResId, _curSndId, _sndPtrOffs, _sndTmrOffs, _sndDataSize;
 
 public:
 	ScummEngine_v80he(OSystem *syst, const DetectorResult &dr);
@@ -668,8 +669,8 @@ public:
 	ScummEngine_vCUPhe(OSystem *syst, const DetectorResult &dr);
 	~ScummEngine_vCUPhe();
 
-	int init();
-	int go();
+	Common::Error init();
+	Common::Error go();
 
 	void parseEvents();
 

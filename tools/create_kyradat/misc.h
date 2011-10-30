@@ -481,12 +481,49 @@ const int kyra3Need[] = {
 	-1
 };
 
+const int lolCDFile2Need[] = {
+	lolCharacterDefs,
+	lolIngameSfxFiles,
+	lolIngameSfxIndex,
+	lolMusicTrackMap,
+	lolGMSfxIndex,
+	lolMT32SfxIndex,
+	lolSpellProperties,
+	lolGameShapeMap,
+	lolLevelShpList,
+	lolLevelDatList,
+	lolCompassDefs,
+	lolDscUnk1,
+	lolDscShapeIndex1,
+	lolDscShapeIndex2,
+	lolDscScaleWidthData,
+	lolDscScaleHeightData,
+	lolDscX,
+	lolDscY,
+	lolDscTileIndex,
+	lolDscUnk2,
+	lolDscDoorShapeIndex,
+	lolDscDimData1,
+	lolDscDimData2,
+	lolDscBlockMap,
+	lolDscDimMap,
+	lolDscShapeOvlIndex,
+	lolDscBlockIndex,
+	lolDscDoor1,
+	lolDscDoorScale,
+	lolDscDoor4,
+	lolDscDoorX,
+	lolDscDoorY,
+
+	-1
+};
+
 const int lolDemoNeed[] = {
 	k2SeqplayPakFiles,
 	k2SeqplayStrings,
 	k2SeqplaySeqData,
 	k2SeqplaySfxFiles,
-	lSeqplayIntroTracks,
+	lolSeqplayIntroTracks,
 	-1
 };
 
@@ -519,6 +556,8 @@ const GameNeed gameNeedTable[] = {
 
 	{ kKyra3, -1, kyra3Need },
 
+	{ kLol, kLolCD, lolCDFile2Need },
+
 	{ -1, -1, 0 }
 };
 
@@ -536,13 +575,15 @@ const SpecialExtension specialTable[] = {
 	{ k2CDFile2E, "CD" },
 	{ k2CDFile2F, "CD" },
 	{ k2CDFile2G, "CD" },
-	
+
 	{ k2TownsFile1E, "TNS" },
 	{ k2TownsFile1J, "TNS" },
 	{ k2TownsFile2E, "TNS" },
 	{ k2TownsFile2J, "TNS" },
 	{ k2DemoVersion, "DEM" },
-	{ k2DemoLol, "DEM" },	
+	{ k2DemoLol, "DEM" },
+
+	{ kLolCD, "CD" },
 
 	{ -1, 0 }
 };

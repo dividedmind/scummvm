@@ -27,7 +27,6 @@
 
 #include "common/scummsys.h"
 #include "common/str.h"
-#include "common/list.h"
 
 #ifdef MIN
 #undef MIN
@@ -49,6 +48,7 @@ template<typename T> inline T CLIP (T v, T amin, T amax)
 template<typename T> inline void SWAP(T &a, T &b) { T tmp = a; a = b; b = tmp; }
 
 #define ARRAYSIZE(x) ((int)(sizeof(x) / sizeof(x[0])))
+
 
 namespace Common {
 
@@ -87,6 +87,18 @@ private:
  */
 extern void hexdump(const byte * data, int len, int bytesPerLine = 16);
 
+
+/**
+ * Take a 32 bit value and turn it into a four character string, where each of
+ * the four bytes is turned into one character. Most significant byte is printed
+ * first.
+ */
+String tag2string(uint32 tag);
+#define tag2str(x)	Common::tag2string(x).c_str()
+
+
+
+
 /**
  * Simple random number generator. Although it is definitely not suitable for
  * cryptographic purposes, it serves our purposes just fine.
@@ -106,20 +118,20 @@ public:
 	/**
 	 * Generates a random unsigned integer in the interval [0, max].
 	 * @param max	the upper bound
-	 * @return	a random number in the interval [0, max].
+	 * @return	a random number in the interval [0, max]
 	 */
 	uint getRandomNumber(uint max);
 	/**
-	 * Generates a random unsigned integer in the interval [0, 1].
+	 * Generates a random bit, i.e. either 0 or 1.
 	 * Identical to getRandomNumber(1), but faster, hopefully.
-	 * @return	a random number in the interval [0, max].
+	 * @return	a random bit, either 0 or 1
 	 */
 	uint getRandomBit(void);
 	/**
 	 * Generates a random unsigned integer in the interval [min, max].
 	 * @param min	the lower bound
 	 * @param max	the upper bound
-	 * @return	a random number in the interval [min, max].
+	 * @return	a random number in the interval [min, max]
 	 */
 	uint getRandomNumberRng(uint min, uint max);
 };
@@ -243,87 +255,30 @@ extern const char *getRenderModeCode(RenderMode id);
 extern const char *getRenderModeDescription(RenderMode id);
 
 
-struct EngineDebugLevel {
-	EngineDebugLevel() : option(""), description(""), level(0), enabled(false) {}
-	EngineDebugLevel(uint32 l, const String &o, const String &d)
-		: option(o), description(d), level(l), enabled(false) {}
-
-	String option;
-	String description;
-
-	uint32 level;
-	bool enabled;
-};
-
-/**
- * Adds a engine debug level.
- * @param level the level flag (should be OR-able i.e. first one should be 1 than 2,4,...)
- * @param option the option name which is used in the debugger/on the command line to enable
- *               this special debug level, the option will be compared case !insentiv! later
- * @param description the description which shows up in the debugger
- * @return true on success false on failure
- */
-bool addSpecialDebugLevel(uint32 level, const String &option, const String &description);
-
-/**
- * Resets all engine debug levels
- */
-void clearAllSpecialDebugLevels();
-
-/**
- * Enables a engine debug level
- * @param option the option which should be enabled
- * @return true on success false on failure
- */
-bool enableSpecialDebugLevel(const String &option);
-
-// only used for parsing the levels from the commandline
-void enableSpecialDebugLevelList(const String &option);
-
-/**
- * Disables a engine debug level
- * @param option the option to disable
- * @return true on success false on failure
- */
-bool disableSpecialDebugLevel(const String &option);
-
-typedef List<EngineDebugLevel> DebugLevelContainer;
-
-/**
- * Lists all debug levels
- * @return returns a arry with all debug levels
- */
-const DebugLevelContainer &listSpecialDebugLevels();
-
-/**
- * Return the active debug flag mask (i.e. all active debug flags ORed
- * together into a single uint32).
- */
-uint32 getEnabledSpecialDebugLevels();
-
-
 }	// End of namespace Common
 
 
 #if defined(__GNUC__)
-void CDECL error(const char *s, ...) GCC_PRINTF(1, 2) NORETURN;
+void error(const char *s, ...) GCC_PRINTF(1, 2) NORETURN;
 #else
-void CDECL NORETURN error(const char *s, ...);
+void NORETURN error(const char *s, ...);
 #endif
 
-void CDECL warning(const char *s, ...) GCC_PRINTF(1, 2);
+#ifdef DISABLE_TEXT_CONSOLE
 
-void CDECL debug(int level, const char *s, ...) GCC_PRINTF(2, 3);
-void CDECL debug(const char *s, ...) GCC_PRINTF(1, 2);
-void CDECL debugN(int level, const char *s, ...) GCC_PRINTF(2, 3);
-void CDECL debugC(int level, uint32 engine_level, const char *s, ...) GCC_PRINTF(3, 4);
+inline int printf(const char *s, ...) { return 0; }
 
-extern int gDebugLevel;
+inline void warning(const char *s, ...) {}
 
-char *scumm_strrev(char *str);
+#else
 
-Common::String tag2string(uint32 tag);
-#define tag2str(x)	tag2string(x).c_str()
+/**
+ * Print a warning message to the text console (stdout).
+ * Automatically prepends the text "WARNING: " and appends
+ * an exclamation mark and a newline.
+ */
+void warning(const char *s, ...) GCC_PRINTF(1, 2);
 
+#endif
 
 #endif

@@ -28,8 +28,10 @@
  * Multi-slots by Claudio Matsuoka <claudio@helllabs.org>
  */
 
+#include <time.h>	// for extended infos
 
 #include "common/file.h"
+#include "graphics/thumbnail.h"
 
 #include "agi/agi.h"
 #include "agi/graphics.h"
@@ -37,13 +39,14 @@
 #include "agi/keyboard.h"
 #include "agi/menu.h"
 
-#define SAVEGAME_VERSION 3
+#define SAVEGAME_VERSION 4
 
 /*
  * Version 0 (Sarien): view table has 64 entries
  * Version 1 (Sarien): view table has 256 entries (needed in KQ3)
  * Version 2 (ScummVM): first ScummVM version
- * Version 3 (ScummVM): adding AGIPAL save/load support
+ * Version 3 (ScummVM): added AGIPAL save/load support
+ * Version 4 (ScummVM): added thumbnails and save creation date/time
  */
 
 namespace Agi {
@@ -70,6 +73,22 @@ int AgiEngine::saveGame(const char *fileName, const char *description) {
 	out->writeByte(SAVEGAME_VERSION);
 	debugC(5, kDebugLevelMain | kDebugLevelSavegame, "Writing save game version (%d)", SAVEGAME_VERSION);
 
+	// Thumbnail
+	Graphics::saveThumbnail(*out);
+
+	// Creation date/time
+	tm curTime;
+	_system->getTimeAndDate(curTime);
+
+	uint32 saveDate = ((curTime.tm_mday & 0xFF) << 24) | (((curTime.tm_mon + 1) & 0xFF) << 16) | ((curTime.tm_year + 1900) & 0xFFFF);
+	uint16 saveTime = ((curTime.tm_hour & 0xFF) << 8) | ((curTime.tm_min) & 0xFF);
+
+	out->writeUint32BE(saveDate);
+	debugC(5, kDebugLevelMain | kDebugLevelSavegame, "Writing save date (%d)", saveDate);
+	out->writeUint16BE(saveTime);
+	debugC(5, kDebugLevelMain | kDebugLevelSavegame, "Writing save time (%d)", saveTime);
+	// TODO: played time
+
 	out->writeByte(_game.state);
 	debugC(5, kDebugLevelMain | kDebugLevelSavegame, "Writing game state (%d)", _game.state);
 
@@ -91,7 +110,7 @@ int AgiEngine::saveGame(const char *fileName, const char *description) {
 	out->writeSint16BE((int16)_game.lognum);
 
 	out->writeSint16BE((int16)_game.playerControl);
-	out->writeSint16BE((int16)quit());
+	out->writeSint16BE((int16)shouldQuit());
 	out->writeSint16BE((int16)_game.statusLine);
 	out->writeSint16BE((int16)_game.clockEnabled);
 	out->writeSint16BE((int16)_game.exitAllLogics);
@@ -250,8 +269,24 @@ int AgiEngine::loadGame(const char *fileName, bool checkId) {
 	debugC(6, kDebugLevelMain | kDebugLevelSavegame, "Description is: %s", description);
 
 	saveVersion = in->readByte();
-	if (saveVersion != SAVEGAME_VERSION)
+	if (saveVersion < 2)	// is the save game pre-ScummVM?
 		warning("Old save game version (%d, current version is %d). Will try and read anyway, but don't be surprised if bad things happen", saveVersion, SAVEGAME_VERSION);
+
+	if (saveVersion < 3)
+		warning("This save game contains no AGIPAL data, if the game is using the AGIPAL hack, it won't work correctly");
+
+	if (saveVersion >= 4) {
+		// We don't need the thumbnail here, so just read it and discard it
+		Graphics::Surface *thumbnail = new Graphics::Surface();
+		assert(thumbnail);
+		Graphics::loadThumbnail(*in, *thumbnail);
+		delete thumbnail;
+		thumbnail = 0;
+
+		in->readUint32BE();	// save date
+		in->readUint16BE(); // save time
+		// TODO: played time
+	}
 
 	_game.state = in->readByte();
 
@@ -261,6 +296,8 @@ int AgiEngine::loadGame(const char *fileName, bool checkId) {
 		warning("This save seems to be from a different AGI game (save from %s, running %s), not loaded", loadId, _game.id);
 		return errBadFileOpen;
 	}
+
+	strncpy(_game.id, loadId, 8);
 
 	for (i = 0; i < MAX_FLAGS; i++)
 		_game.flags[i] = in->readByte();
@@ -472,7 +509,7 @@ int AgiEngine::loadGame(const char *fileName, bool checkId) {
 
 const char *AgiEngine::getSavegameFilename(int num) {
 	static char saveLoadSlot[12];
-	sprintf(saveLoadSlot, "%s.%.3d", _targetName.c_str(), num + _firstSlot);
+	sprintf(saveLoadSlot, "%s.%.3d", _targetName.c_str(), num);
 	return saveLoadSlot;
 }
 
@@ -513,7 +550,7 @@ int AgiEngine::selectSlot() {
 	const char *buttonText[] = { "  OK  ", "Cancel", NULL };
 
 	for (i = 0; i < NUM_VISIBLE_SLOTS; i++) {
-		getSavegameDescription(i, desc[i]);
+		getSavegameDescription(_firstSlot + i, desc[i]);
 	}
 
 	textCentre = GFX_WIDTH / CHAR_LINES / 2;
@@ -529,8 +566,23 @@ int AgiEngine::selectSlot() {
 	int oldFirstSlot = _firstSlot + 1;
 	int oldActive = active + 1;
 
-	for (;;) {
+	while (!shouldQuit()) {
 		int sbPos = 0;
+
+		// Use the extreme scrollbar positions only if the extreme
+		// slots are in sight. (We have to calculate this even if we
+		// don't redraw the save slots, because it's also used for
+		// clicking in the scrollbar.
+
+		if (_firstSlot == 0)
+			sbPos = 1;
+		else if (_firstSlot == NUM_SLOTS - NUM_VISIBLE_SLOTS)
+			sbPos = NUM_VISIBLE_SLOTS - 2;
+		else {
+			sbPos = 2 + (_firstSlot * (NUM_VISIBLE_SLOTS - 4)) / (NUM_SLOTS - NUM_VISIBLE_SLOTS - 1);
+			if (sbPos >= NUM_VISIBLE_SLOTS - 3)
+				sbPos = NUM_VISIBLE_SLOTS - 3;
+		}
 
 		if (oldFirstSlot != _firstSlot || oldActive != active) {
 			char dstr[64];
@@ -544,19 +596,6 @@ int AgiEngine::selectSlot() {
 			char upArrow[] = "^";
 			char downArrow[] = "v";
 			char scrollBar[] = " ";
-
-			// Use the extreme scrollbar positions only if the
-			// extreme slots are in sight.
-
-			if (_firstSlot == 0)
-				sbPos = 1;
-			else if (_firstSlot == NUM_SLOTS - NUM_VISIBLE_SLOTS)
-				sbPos = NUM_VISIBLE_SLOTS - 2;
-			else {
-				sbPos = 2 + (_firstSlot * (NUM_VISIBLE_SLOTS - 4)) / (NUM_SLOTS - NUM_VISIBLE_SLOTS - 1);
-				if (sbPos >= NUM_VISIBLE_SLOTS - 3)
-					sbPos = NUM_VISIBLE_SLOTS - 3;
-			}
 
 			for (i = 1; i < NUM_VISIBLE_SLOTS - 1; i++)
 				printText(scrollBar, 35, hm + 1, vm + 4 + i, 1, MSG_BOX_COLOUR, 7, true);
@@ -618,7 +657,7 @@ int AgiEngine::selectSlot() {
 					_firstSlot++;
 					for (i = 1; i < NUM_VISIBLE_SLOTS; i++)
 						memcpy(desc[i - 1], desc[i], sizeof(desc[0]));
-					getSavegameDescription(NUM_VISIBLE_SLOTS - 1, desc[NUM_VISIBLE_SLOTS - 1]);
+					getSavegameDescription(_firstSlot + NUM_VISIBLE_SLOTS - 1, desc[NUM_VISIBLE_SLOTS - 1]);
 				}
 				active = NUM_VISIBLE_SLOTS - 1;
 			}
@@ -631,7 +670,7 @@ int AgiEngine::selectSlot() {
 					_firstSlot--;
 					for (i = NUM_VISIBLE_SLOTS - 1; i > 0; i--)
 						memcpy(desc[i], desc[i - 1], sizeof(desc[0]));
-					getSavegameDescription(0, desc[0]);
+					getSavegameDescription(_firstSlot, desc[0]);
 				}
 			}
 			break;
@@ -644,7 +683,7 @@ int AgiEngine::selectSlot() {
 				_firstSlot++;
 				for (i = 1; i < NUM_VISIBLE_SLOTS; i++)
 					memcpy(desc[i - 1], desc[i], sizeof(desc[0]));
-				getSavegameDescription(NUM_VISIBLE_SLOTS - 1, desc[NUM_VISIBLE_SLOTS - 1]);
+				getSavegameDescription(_firstSlot + NUM_VISIBLE_SLOTS - 1, desc[NUM_VISIBLE_SLOTS - 1]);
 			}
 			break;
 		case WHEEL_UP:
@@ -652,7 +691,7 @@ int AgiEngine::selectSlot() {
 				_firstSlot--;
 				for (i = NUM_VISIBLE_SLOTS - 1; i > 0; i--)
 					memcpy(desc[i], desc[i - 1], sizeof(desc[0]));
-				getSavegameDescription(0, desc[0]);
+				getSavegameDescription(_firstSlot, desc[0]);
 			}
 			break;
 		case KEY_DOWN_RIGHT:
@@ -662,7 +701,7 @@ int AgiEngine::selectSlot() {
 				_firstSlot = NUM_SLOTS - NUM_VISIBLE_SLOTS;
 			}
 			for (i = 0; i < NUM_VISIBLE_SLOTS; i++)
-				getSavegameDescription(i, desc[i]);
+				getSavegameDescription(_firstSlot + i, desc[i]);
 			break;
 		case KEY_UP_RIGHT:
 			// This is probably triggered by Page Up.
@@ -671,7 +710,7 @@ int AgiEngine::selectSlot() {
 				_firstSlot = 0;
 			}
 			for (i = 0; i < NUM_VISIBLE_SLOTS; i++)
-				getSavegameDescription(i, desc[i]);
+				getSavegameDescription(_firstSlot + i, desc[i]);
 			break;
 		}
 		_gfx->doUpdate();
@@ -699,9 +738,6 @@ int AgiEngine::saveGameDialog() {
 	hp = hm * CHAR_COLS;
 	vp = vm * CHAR_LINES;
 	w = (40 - 2 * hm) - 1;
-
-	sprintf(fileName, "%s", getSavegameFilename(slot));
-
 
 	do {
 		drawWindow(hp, vp, GFX_WIDTH - hp, GFX_HEIGHT - vp);
@@ -738,7 +774,7 @@ int AgiEngine::saveGameDialog() {
 	char name[40];
 	int numChars;
 
-	getSavegameDescription(slot, name, false);
+	getSavegameDescription(_firstSlot + slot, name, false);
 
 	for (numChars = 0; numChars < 28 && name[numChars]; numChars++)
 		handleGetstring(name[numChars]);
@@ -751,7 +787,7 @@ int AgiEngine::saveGameDialog() {
 
 	desc = _game.strings[MAX_STRINGS];
 	sprintf(dstr, "Are you sure you want to save the game "
-			"described as:\n\n%s\n\nin slot %d?\n\n\n", desc, slot + _firstSlot);
+			"described as:\n\n%s\n\nin slot %d?\n\n\n", desc, _firstSlot + slot);
 
 	rc = selectionBox(dstr, buttons);
 
@@ -760,7 +796,7 @@ int AgiEngine::saveGameDialog() {
 		return errOK;
 	}
 
-	sprintf(fileName, "%s", getSavegameFilename(slot));
+	sprintf(fileName, "%s", getSavegameFilename(_firstSlot + slot));
 	debugC(8, kDebugLevelMain | kDebugLevelResources, "file is [%s]", fileName);
 
 	int result = saveGame(fileName, desc);
@@ -795,8 +831,6 @@ int AgiEngine::loadGameDialog() {
 	vp = vm * CHAR_LINES;
 	w = (40 - 2 * hm) - 1;
 
-	sprintf(fileName, "%s", getSavegameFilename(slot));
-
 	_sprites->eraseBoth();
 	_sound->stopSound();
 
@@ -811,7 +845,7 @@ int AgiEngine::loadGameDialog() {
 		return errOK;
 	}
 
-	sprintf(fileName, "%s", getSavegameFilename(slot));
+	sprintf(fileName, "%s", getSavegameFilename(_firstSlot + slot));
 
 	if ((rc = loadGame(fileName)) == errOK) {
 		messageBox("Game restored.");

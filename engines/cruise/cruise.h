@@ -41,11 +41,13 @@ enum CruiseGameType {
 
 struct CRUISEGameDescription;
 
-class CruiseEngine:public Engine {
+class CruiseEngine: public Engine {
 
 protected:
-	int init();
-	int go();
+	// Engine APIs
+	virtual Common::Error init();
+	virtual Common::Error go();
+
 	void shutdown();
 
 	bool initGame();
@@ -74,7 +76,7 @@ private:
 	bool _preLoad;
 };
 
-extern CruiseEngine *g_cruise;
+extern CruiseEngine *_vm;
 
 #define BOOT_PRC_NAME "AUTO00.PRC"
 
@@ -101,7 +103,6 @@ enum {
 	kCmpLT = (1 << 2)
 };
 
-extern Common::SaveFileManager * g_saveFileMan;	// TEMP
 
 } // End of namespace Cruise
 

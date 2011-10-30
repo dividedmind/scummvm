@@ -191,6 +191,8 @@ void KyraEngine_MR::enterNewScene(uint16 sceneId, int facing, int unk1, int unk2
 			setMousePos(pos.x, 179);
 	}
 	_screen->showMouse();
+
+	_currentScene = sceneId;
 }
 
 void KyraEngine_MR::enterNewSceneUnk1(int facing, int unk1, int unk2) {
@@ -361,7 +363,7 @@ void KyraEngine_MR::loadSceneMsc() {
 	strcat(filename, ".MSC");
 
 	_res->exists(filename, true);
-	Common::SeekableReadStream *stream = _res->getFileStream(filename);
+	Common::SeekableReadStream *stream = _res->createReadStream(filename);
 	assert(stream);
 	int16 minY = 0, height = 0;
 	minY = stream->readSint16LE();
@@ -397,7 +399,7 @@ void KyraEngine_MR::initSceneScript(int unk1) {
 	strcat(filename, ".DAT");
 
 	_res->exists(filename, true);
-	Common::SeekableReadStream *stream = _res->getFileStream(filename);
+	Common::SeekableReadStream *stream = _res->createReadStream(filename);
 	assert(stream);
 	stream->seek(2, SEEK_CUR);
 
@@ -654,7 +656,7 @@ int KyraEngine_MR::trySceneChange(int *moveTable, int unk1, int updateChar) {
 	const int *moveTableStart = moveTable;
 	_unk4 = 0;
 
-	while (running && !quit()) {
+	while (running && !shouldQuit()) {
 		if (*moveTable >= 0 && *moveTable <= 7) {
 			_mainCharacter.facing = getOppositeFacingDirection(*moveTable);
 			unkFlag = true;
@@ -765,7 +767,7 @@ int KyraEngine_MR::runSceneScript1(int x, int y) {
 		return 0;
 	if (_deathHandler >= 0)
 		return 0;
-	
+
 	_emc->init(&_sceneScriptState, &_sceneScriptData);
 	_sceneScriptState.regs[1] = x;
 	_sceneScriptState.regs[2] = y;

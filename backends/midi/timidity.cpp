@@ -59,6 +59,12 @@
 #define INADDR_NONE 0xffffffff
 #endif
 
+// BeOS BONE uses snooze (x/1000) in place of usleep(x)
+#ifdef __BEOS__
+#define usleep(v) snooze(v/1000)
+#endif
+
+
 #define SEQ_MIDIPUTC 5
 
 #define TIMIDITY_LOW_DELAY
@@ -487,11 +493,11 @@ void MidiDriver_TIMIDITY::send(uint32 b) {
 
 void MidiDriver_TIMIDITY::sysEx(const byte *msg, uint16 length) {
 	fprintf(stderr, "Timidity::sysEx\n");
-	unsigned char buf[1024];
+	unsigned char buf[266*4];
 	int position = 0;
 	const byte *chr = msg;
 
-	assert(length + 2 <= 256);
+	assert(length + 2 <= 266);
 
 	buf[position++] = SEQ_MIDIPUTC;
 	buf[position++] = 0xF0;
@@ -525,7 +531,7 @@ public:
 	}
 
 	MusicDevices getDevices() const;
-	PluginError createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const;
+	Common::Error createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const;
 };
 
 MusicDevices TimidityMusicPlugin::getDevices() const {
@@ -534,10 +540,10 @@ MusicDevices TimidityMusicPlugin::getDevices() const {
 	return devices;
 }
 
-PluginError TimidityMusicPlugin::createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const {
+Common::Error TimidityMusicPlugin::createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const {
 	*mididriver = new MidiDriver_TIMIDITY();
 
-	return kNoError;
+	return Common::kNoError;
 }
 
 MidiDriver *MidiDriver_TIMIDITY_create(Audio::Mixer *mixer) {

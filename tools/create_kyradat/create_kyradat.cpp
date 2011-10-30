@@ -31,7 +31,7 @@
 #include "md5.h"
 
 enum {
-	kKyraDatVersion = 32,
+	kKyraDatVersion = 35,
 	kIndexSize = 12
 };
 
@@ -53,6 +53,7 @@ enum {
 
 #include "malcolm.h"
 
+#include "lol_cd.h"
 #include "lol_demo.h"
 
 const Game kyra1FanTranslations[] = {
@@ -72,6 +73,7 @@ bool extractStringsWoSuffix(PAKFile &out, const Game *g, const byte *data, const
 bool extractPaddedStrings(PAKFile &out, const Game *g, const byte *data, const uint32 size, const char *filename, int fmtPatch = 0);
 bool extractRaw16to8(PAKFile &out, const Game *g, const byte *data, const uint32 size, const char *filename, int fmtPatch = 0);
 bool extractMrShapeAnimData(PAKFile &out, const Game *g, const byte *data, const uint32 size, const char *filename, int fmtPatch = 0);
+bool extractRaw16(PAKFile &out, const Game *g, const byte *data, const uint32 size, const char *filename, int fmtPatch = 0);
 
 int extractHofSeqData_checkString(const void *ptr, uint8 checkSize);
 int extractHofSeqData_isSequence(const void *ptr, const Game *g, uint32 maxCheckSize);
@@ -91,10 +93,12 @@ const ExtractType extractTypeTable[] = {
 	{ k2TypeShpDataV1, extractHofShapeAnimDataV1, createFilename },
 	{ k2TypeShpDataV2, extractHofShapeAnimDataV2, createFilename },
 	{ k2TypeSoundList, extractStringsWoSuffix, createFilename },
-	{ k2TypeLangSoundList, extractStringsWoSuffix, createLangFilename },	
+	{ k2TypeLangSoundList, extractStringsWoSuffix, createLangFilename },
 	{ k2TypeSfxList, extractPaddedStrings, createFilename },
 	{ k3TypeRaw16to8, extractRaw16to8, createFilename },
 	{ k3TypeShpData, extractMrShapeAnimData, createFilename },
+
+	{ lolTypeRaw16, extractRaw16, createFilename },
 
 	{ -1, 0, 0}
 };
@@ -239,7 +243,7 @@ const ExtractFilename extractFilenames[] = {
 	{ k2IngameCDA, kTypeRawData, "I_TRACKS.CDA" },
 	{ k2IngameTalkObjIndex, kTypeRawData, "I_TALKOBJECTS.MAP" },
 	{ k2IngameTimJpStrings, kTypeStringList, "I_TIMJPSTR.TXT" },
-	{ k2IngameItemAnimData, k2TypeShpDataV2, "I_INVANIM.SHP" },	
+	{ k2IngameItemAnimData, k2TypeShpDataV2, "I_INVANIM.SHP" },
 	{ k2IngameTlkDemoStrings, kTypeLanguageList, "I_TLKDEMO.TXT" },
 
 
@@ -256,7 +260,42 @@ const ExtractFilename extractFilenames[] = {
 	// LANDS OF LORE
 
 	// Demo Sequence Player
-	{ lSeqplayIntroTracks, k2TypeSoundList, "S_INTRO.TRA" },
+	{ lolSeqplayIntroTracks, k2TypeSoundList, "S_INTRO.TRA" },
+
+	// Ingame
+	{ lolCharacterDefs, kTypeRawData, "CHARACTER.DEF" },
+	{ lolIngameSfxFiles, k2TypeSfxList, "SFXFILES.TRA" },
+	{ lolIngameSfxIndex, kTypeRawData, "SFXINDEX.MAP" },
+	{ lolMusicTrackMap, kTypeRawData, "MUSIC.MAP" },
+	{ lolGMSfxIndex, kTypeRawData, "SFX_GM.MAP" },
+	{ lolMT32SfxIndex, kTypeRawData, "SFX_MT32.MAP" },
+	{ lolSpellProperties, kTypeRawData, "SPELLS.DEF" },
+	{ lolGameShapeMap, kTypeRawData, "GAMESHP.MAP" },
+	{ lolLevelShpList, kTypeStringList, "SHPFILES.TXT" },
+	{ lolLevelDatList, kTypeStringList, "DATFILES.TXT" },
+	{ lolCompassDefs, k3TypeRaw16to8, "COMPASS.DEF" },
+
+	{ lolDscUnk1, kTypeRawData, "DSCSHPU1.DEF" },
+	{ lolDscShapeIndex1, kTypeRawData, "DSCSHPI1.DEF" },
+	{ lolDscShapeIndex2, kTypeRawData, "DSCSHPI2.DEF" },
+	{ lolDscScaleWidthData, lolTypeRaw16, "DSCSHPW.DEF" },
+	{ lolDscScaleHeightData, lolTypeRaw16, "DSCSHPH.DEF" },
+	{ lolDscX, lolTypeRaw16, "DSCSHPX.DEF" },
+	{ lolDscY, kTypeRawData, "DSCSHPY.DEF" },
+	{ lolDscTileIndex, kTypeRawData, "DSCSHPT.DEF" },
+	{ lolDscUnk2, kTypeRawData, "DSCSHPU2.DEF" },
+	{ lolDscDoorShapeIndex, kTypeRawData, "DSCDOOR.DEF" },
+	{ lolDscDimData1, kTypeRawData, "DSCDIM1.DEF" },
+	{ lolDscDimData2, kTypeRawData, "DSCDIM2.DEF" },
+	{ lolDscBlockMap, kTypeRawData, "DSCBLOCK1.DEF" },
+	{ lolDscDimMap, kTypeRawData, "DSCDIM.DEF" },
+	{ lolDscDoorScale, lolTypeRaw16, "DSCDOOR3.DEF" },
+	{ lolDscShapeOvlIndex, k3TypeRaw16to8, "DSCBLOCK2.DEF" },
+	{ lolDscBlockIndex, kTypeRawData, "DSCBLOCKX.DEF" },
+	{ lolDscDoor4, lolTypeRaw16, "DSCDOOR4.DEF" },
+	{ lolDscDoor1, kTypeRawData, "DSCDOOR1.DEF" },
+	{ lolDscDoorX, lolTypeRaw16, "DSCDOORX.DEF" },
+	{ lolDscDoorY, lolTypeRaw16, "DSCDOORY.DEF" },
 
 	{ -1, 0, 0 }
 };
@@ -295,7 +334,7 @@ bool getFilename(char *dstFilename, const Game *g, const int id) {
 void createFilename(char *dstFilename, const int gid, const int lang, const int special, const char *filename) {
 	strcpy(dstFilename, filename);
 
-	static const char *gidExtensions[] = { "", ".K2", ".K3", 0, ".LOL" };	
+	static const char *gidExtensions[] = { "", ".K2", ".K3", 0, ".LOL" };
 	strcat(dstFilename, gidExtensions[gid]);
 
 	for (const SpecialExtension *specialE = specialTable; specialE->special != -1; ++specialE) {
@@ -318,7 +357,7 @@ void createLangFilename(char *dstFilename, const int gid, const int lang, const 
 		}
 	}
 
-	static const char *gidExtensions[] = { "", ".K2", ".K3", 0, ".LOL" };	
+	static const char *gidExtensions[] = { "", ".K2", ".K3", 0, ".LOL" };
 	strcat(dstFilename, gidExtensions[gid]);
 
 	for (const SpecialExtension *specialE = specialTable; specialE->special != -1; ++specialE) {
@@ -633,7 +672,7 @@ bool extractHofSeqData(PAKFile &out, const Game *g, const byte *data, const uint
 				uint16 relOffs = (uint16) (output - buffer);
 				WRITE_BE_UINT16(hdout, relOffs);
 				hdout++;
-				
+
 				WRITE_BE_UINT16(output, READ_LE_UINT16(ptr)); // flags
 				ptr += 2;
 				output += 2;
@@ -683,9 +722,9 @@ bool extractHofSeqData(PAKFile &out, const Game *g, const byte *data, const uint
 						extractHofSeqData_isControl(ctrStart, ctrSize)) {
 						controlOffs = (uint16) (output - buffer);
 						*output++ = ctrSize >> 2;
-												
+
 						for (int cc = 0; cc < ctrSize; cc += 2)
-							WRITE_BE_UINT16(output + cc, READ_LE_UINT16(ctrStart + cc)); // frame control					
+							WRITE_BE_UINT16(output + cc, READ_LE_UINT16(ctrStart + cc)); // frame control
 						output += ctrSize;
 					}
 				}
@@ -708,7 +747,7 @@ bool extractHofSeqData(PAKFile &out, const Game *g, const byte *data, const uint
 				ptr += 2;
 				output += 2;
 
-				// endFrame				
+				// endFrame
 				WRITE_BE_UINT16(output, (ctrSize && ((ctrSize >> 2)  < READ_LE_UINT16(ptr))) ? (ctrSize >> 2) : READ_LE_UINT16(ptr));
 				ptr += 2;
 				output += 2;
@@ -717,7 +756,7 @@ bool extractHofSeqData(PAKFile &out, const Game *g, const byte *data, const uint
 				WRITE_BE_UINT16(output, READ_LE_UINT16(ptr));
 				ptr += 2;
 				output += 2;
-				
+
 				ptr += 4;
 
 				for (int w = 0; w < 2; w++) { //x, y
@@ -744,7 +783,7 @@ bool extractHofSeqData(PAKFile &out, const Game *g, const byte *data, const uint
 					memset(output, 0, 4);
 					output += 4;
 				}
-				
+
 				if (g->special == k2TownsFile1E)
 					ptr += 2;
 
@@ -891,7 +930,7 @@ bool extractHofShapeAnimDataV1(PAKFile &out, const Game *g, const byte *data, co
 		src += 4;
 		dst += 2;
 		outsize += 4;
-		
+
 		for (int j = 0; j < 20; j++) {
 			WRITE_BE_UINT16(dst, READ_LE_UINT16(src));
 			src += 2;
@@ -923,12 +962,12 @@ bool extractHofShapeAnimDataV2(PAKFile &out, const Game *g, const byte *data, co
 		WRITE_BE_UINT16(dst, READ_LE_UINT16(src));
 		src += 2;
 		dst += 2;
-		
+
 		uint8 numFrames = *src;
 		*dst++ = numFrames;
 		src += 6;
 		outsize += 3;
-		
+
 		for (int i = 0; i < (numFrames << 1); i++) {
 			WRITE_BE_UINT16(dst, READ_LE_UINT16(src));
 			src += 2;
@@ -1012,6 +1051,20 @@ bool extractRaw16to8(PAKFile &out, const Game *g, const byte *data, const uint32
 	return out.addFile(filename, buffer, outsize);
 }
 
+bool extractRaw16(PAKFile &out, const Game *g, const byte *data, const uint32 size, const char *filename, int fmtPatch) {
+	uint8 *buffer = new uint8[size];
+	const uint8 *src = data;
+	uint8 *dst = buffer;
+
+	for (int i = 0; i < (size >> 1); i++) {
+		WRITE_BE_UINT16(dst, READ_LE_UINT16(src));
+		src += 2;
+		dst += 2;
+	}
+
+	return out.addFile(filename, buffer, size);
+}
+
 bool extractMrShapeAnimData(PAKFile &out, const Game *g, const byte *data, const uint32 size, const char *filename, int fmtPatch) {
 	int outsize = 1;
 	uint8 *buffer = new uint8[size + 1];
@@ -1030,12 +1083,12 @@ bool extractMrShapeAnimData(PAKFile &out, const Game *g, const byte *data, const
 		WRITE_BE_UINT16(dst, READ_LE_UINT16(src1));
 		src1 += 2;
 		dst += 2;
-		
+
 		uint8 numFrames = *src1;
 		*dst++ = numFrames;
 		src1 += 10;
 		outsize += 3;
-		
+
 		for (int i = 0; i < (numFrames << 1); i++) {
 			WRITE_BE_UINT16(dst, READ_LE_UINT16(src2));
 			src2 += 2;
@@ -1070,7 +1123,7 @@ enum {
 uint32 getFeatures(const Game *g) {
 	uint32 features = 0;
 
-	if (g->special == kTalkieVersion || g->special == k2CDFile1E || g->special == k2CDFile1F || g->special == k2CDFile1G || g->special == k2CDFile1I || g->special == k2CDFile2E || g->special == k2CDFile2F || g->special == k2CDFile2G || g->game == kKyra3)
+	if (g->special == kTalkieVersion || g->special == k2CDFile1E || g->special == k2CDFile1F || g->special == k2CDFile1G || g->special == k2CDFile1I || g->special == k2CDFile2E || g->special == k2CDFile2F || g->special == k2CDFile2G || g->special == kLolCD || g->game == kKyra3)
 		features |= GF_TALKIE;
 	else if (g->special == kDemoVersion || g->special == k2DemoVersion || g->special == k2DemoLol)
 		features |= GF_DEMO;
@@ -1352,6 +1405,7 @@ const Game *gameDescs[] = {
 	kyra3Games,
 
 	lolDemos,
+	lolGames,
 
 	0
 };

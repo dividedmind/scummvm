@@ -90,7 +90,7 @@ int32 LogicHE::dispatch(int op, int numArgs, int32 *args) {
 	}
 	strncat(str, "])", 256);
 
-	debug(0, str);
+	debug(0, "%s", str);
 #else
 	// Used for parallel trace utility
 	for (int i = 0; i < numArgs; i++)
@@ -957,6 +957,18 @@ int LogicHEsoccer::op_1021(int32 *args) {
 	// TODO: Used during a match (ball movement?)
 
 	return 1;
+}
+
+/***********************
+ * Moonbase Commander
+ *
+ */
+
+int LogicHEmoonbase::versionID() {
+	if (_vm->_game.features & GF_DEMO)
+		return -100;
+	else
+		return 100;
 }
 
 } // End of namespace Scumm

@@ -30,10 +30,11 @@
 
 #include "engines/metaengine.h"
 
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
 #include "gui/widget.h"
 #include "gui/browser.h"
 #include "gui/message.h"
+#include "gui/ThemeEval.h"
 
 #include "common/config-manager.h"
 
@@ -48,16 +49,18 @@ public:
 
 		// FIXME: Fingolfin asks: why is there a FIXME here? Please either clarify what
 		// needs fixing, or remove it!
-		addButton(this,(_w - kButtonWidth) / 2, 45, "OK", kCloseCmd, '\r');	// Close dialog - FIXME
+		const int buttonWidth = g_gui.xmlEval()->getVar("Globals.Button.Width", 0);
+		const int buttonHeight = g_gui.xmlEval()->getVar("Globals.Button.Height", 0);
+		new ButtonWidget(this, (_w - buttonWidth) / 2, 45, buttonWidth, buttonHeight, "OK", kCloseCmd, '\r');	// Close dialog - FIXME
 
 		Common::String videoDriver("Using SDL driver ");
 		SDL_VideoDriverName(tempo, sizeof(tempo));
 		videoDriver += tempo;
-		new StaticTextWidget(this, 0, 10, _w, kLineHeight, videoDriver, kTextAlignCenter);
+		new StaticTextWidget(this, 0, 10, _w, kLineHeight, videoDriver, Graphics::kTextAlignCenter);
 		Common::String displayInfos("Display ");
 		sprintf(tempo, "%dx%d (real %dx%d)", GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), OSystem_WINCE3::getScreenWidth(), OSystem_WINCE3::getScreenHeight());
 		displayInfos += tempo;
-		new StaticTextWidget(this, 0, 20, _w, kLineHeight, displayInfos, kTextAlignCenter);
+		new StaticTextWidget(this, 0, 20, _w, kLineHeight, displayInfos, Graphics::kTextAlignCenter);
 	}
 };
 
@@ -72,10 +75,10 @@ void CELauncherDialog::handleCommand(CommandSender *sender, uint32 cmd, uint32 d
 	}
 }
 
-void CELauncherDialog::automaticScanDirectory(const Common::FilesystemNode &node) {
+void CELauncherDialog::automaticScanDirectory(const Common::FSNode &node) {
 	// First check if we have a recognized game in the current directory
 	Common::FSList files;
-	node.getChildren(files, Common::FilesystemNode::kListFilesOnly);
+	node.getChildren(files, Common::FSNode::kListFilesOnly);
 	// detect
 	GameList candidates(EngineMan.detectGames(files));
 	// insert
@@ -86,7 +89,7 @@ void CELauncherDialog::automaticScanDirectory(const Common::FilesystemNode &node
 	}
 	// Then recurse on the subdirectories
 	Common::FSList dirs;
-	node.getChildren(dirs, Common::FilesystemNode::kListDirectoriesOnly);
+	node.getChildren(dirs, Common::FSNode::kListDirectoriesOnly);
 	for (Common::FSList::const_iterator currentDir = dirs.begin(); currentDir != dirs.end(); ++currentDir)
 		automaticScanDirectory(*currentDir);
 

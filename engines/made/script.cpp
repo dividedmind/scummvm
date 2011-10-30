@@ -30,6 +30,7 @@
 #include "made/script.h"
 #include "made/database.h"
 #include "made/scriptfuncs.h"
+#include "made/screen.h"
 
 namespace Made {
 
@@ -44,47 +45,47 @@ ScriptStack::ScriptStack() {
 ScriptStack::~ScriptStack() {
 }
 
-int16 ScriptStack::top() {
+inline int16 ScriptStack::top() {
 	return _stack[_stackPos];
 }
 
-int16 ScriptStack::pop() {
+inline int16 ScriptStack::pop() {
 	if (_stackPos == kScriptStackSize)
 		error("ScriptStack::pop() Stack underflow");
 	return _stack[_stackPos++];
 }
 
-void ScriptStack::push(int16 value) {
+inline void ScriptStack::push(int16 value) {
 	if (_stackPos == 0)
 		error("ScriptStack::push() Stack overflow");
 	_stack[--_stackPos] = value;
 }
 
-void ScriptStack::setTop(int16 value) {
+inline void ScriptStack::setTop(int16 value) {
 	_stack[_stackPos] = value;
 }
 
-int16 ScriptStack::peek(int16 index) {
+inline int16 ScriptStack::peek(int16 index) {
 	return _stack[index];
 }
 
-void ScriptStack::poke(int16 index, int16 value) {
+inline void ScriptStack::poke(int16 index, int16 value) {
 	_stack[index] = value;
 }
 
-void ScriptStack::alloc(int16 count) {
+inline void ScriptStack::alloc(int16 count) {
 	_stackPos -= count;
 }
 
-void ScriptStack::free(int16 count) {
+inline void ScriptStack::free(int16 count) {
 	_stackPos += count;
 }
 
-void ScriptStack::setStackPos(int16 stackPtr) {
+inline void ScriptStack::setStackPos(int16 stackPtr) {
 	_stackPos = stackPtr;
 }
 
-int16 *ScriptStack::getStackPtr() {
+inline int16 *ScriptStack::getStackPtr() {
 	return &_stack[_stackPos];
 }
 
@@ -178,7 +179,7 @@ ScriptInterpreter::ScriptInterpreter(MadeEngine *vm) : _vm(vm) {
 
 	_functions = new ScriptFunctions(_vm);
 	_functions->setupExternalsTable();
-	
+
 #undef COMMAND
 }
 
@@ -187,26 +188,36 @@ ScriptInterpreter::~ScriptInterpreter() {
 }
 
 void ScriptInterpreter::runScript(int16 scriptObjectIndex) {
-	_vm->_quit = false;
+
+	uint32 opcodeSleepCounter = 0;
+
 	_runningScriptObjectIndex = scriptObjectIndex;
 
 	_localStackPos = _stack.getStackPos();
 
 	_codeBase = _vm->_dat->getObject(_runningScriptObjectIndex)->getData();
 	_codeIp = _codeBase;
-	
-	while (!_vm->_quit) {
+
+	while (!_vm->shouldQuit()) {
 
 		_vm->handleEvents();
 
 		byte opcode = readByte();
+
 		if (opcode >= 1 && opcode <= _commandsMax) {
 			debug(4, "[%04X:%04X] %s", _runningScriptObjectIndex, (uint) (_codeIp - _codeBase), _commands[opcode - 1].desc);
 			(this->*_commands[opcode - 1].proc)();
 		} else {
 			warning("ScriptInterpreter::runScript(%d) Unknown opcode %02X", _runningScriptObjectIndex, opcode);
 		}
-		
+
+		/* We sleep a little after 500 opcodes to reduce the CPU load.
+		*/
+		if (++opcodeSleepCounter > 500) {
+			_vm->_screen->updateScreenAndWait(5);
+			opcodeSleepCounter = 0;
+		}
+
 	}
 }
 
@@ -415,14 +426,18 @@ void ScriptInterpreter::cmd_vsize() {
 }
 
 void ScriptInterpreter::cmd_exit() {
-	_vm->_quit = true;
+	_vm->quitGame();
+	// Make sure the "quit" event is handled immediately
+	_vm->handleEvents();
 }
 
 void ScriptInterpreter::cmd_return() {
 
 	// Check if returning from main function
 	if (_localStackPos == kScriptStackSize) {
-		_vm->_quit = true;
+		_vm->quitGame();
+		// Make sure the "quit" event is handled immediately
+		_vm->handleEvents();
 		return;
 	}
 
@@ -454,27 +469,27 @@ void ScriptInterpreter::cmd_call() {
 }
 
 void ScriptInterpreter::cmd_svar() {
-	// Never used in LGOP2, RTZ, Manhole:NE
+	// Never used in LGOP2, RTZ, Manhole:NE, Rodney
 	warning("Unimplemented command: cmd_svar");
 }
 
 void ScriptInterpreter::cmd_sset() {
-	// Never used in LGOP2, RTZ, Manhole:NE
+	// Never used in LGOP2, RTZ, Manhole:NE, Rodney
 	warning("Unimplemented command: cmd_sset");
 }
 
 void ScriptInterpreter::cmd_split() {
-	// Never used in LGOP2, RTZ, Manhole:NE
+	// Never used in LGOP2, RTZ, Manhole:NE, Rodney
 	warning("Unimplemented command: cmd_split");
 }
 
 void ScriptInterpreter::cmd_snlit() {
-	// Never used in LGOP2, RTZ, Manhole:NE
+	// Never used in LGOP2, RTZ, Manhole:NE, Rodney
 	warning("Unimplemented command: cmd_snlit");
 }
 
 void ScriptInterpreter::cmd_yorn() {
-	// Never used in LGOP2, RTZ, Manhole:NE
+	// Never used in LGOP2, RTZ, Manhole:NE, Rodney
 	warning("Unimplemented command: cmd_yorn");
 }
 
@@ -525,7 +540,7 @@ void ScriptInterpreter::cmd_tspace() {
 }
 
 void ScriptInterpreter::cmd_class() {
-	// Never used in LGOP2, RTZ, Manhole:NE
+	// Never used in LGOP2, RTZ, Manhole:NE, Rodney
 	warning("Unimplemented command: cmd_class");
 }
 
@@ -538,13 +553,15 @@ void ScriptInterpreter::cmd_objectp() {
 }
 
 void ScriptInterpreter::cmd_vectorp() {
-	// Never used in LGOP2, RTZ, Manhole:NE
+	// Never used in LGOP2, RTZ, Manhole:NE, Rodney
 	warning("Unimplemented command: cmd_vectorp");
 }
 
 void ScriptInterpreter::cmd_restart() {
-	// TODO: Used in RTZ
-	warning("Unimplemented command: cmd_restart");
+	_vm->_dat->reload();
+	_vm->_screen->clearChannels();
+	_vm->resetAllTimers();
+	_stack.setTop(0);
 }
 
 void ScriptInterpreter::cmd_rand() {
@@ -561,20 +578,20 @@ void ScriptInterpreter::cmd_send() {
 	debug(4, "\nENTER: stackPtr = %d; _localStackPos = %d", _stack.getStackPos(), _localStackPos);
 
 	byte argc = readByte();
-	
+
 	debug(4, "argc = %d", argc);
-	
+
 	_stack.push(argc);
 	_stack.push(_codeIp - _codeBase);
 	_stack.push(_runningScriptObjectIndex);
 	_stack.push(kScriptStackLimit - _localStackPos);
  	_localStackPos = _stack.getStackPos();
- 	
+
  	int16 propertyId = _stack.peek(_localStackPos + argc + 2);
 	int16 objectIndex = _stack.peek(_localStackPos + argc + 4);
 
 	debug(4, "objectIndex = %d (%04X); propertyId = %d(%04X)", objectIndex, objectIndex, propertyId, propertyId);
-		
+
 	if (objectIndex != 0) {
 		objectIndex = _vm->_dat->getObject(objectIndex)->getClass();
 	} else {
@@ -612,30 +629,30 @@ void ScriptInterpreter::cmd_extend() {
 
 	int16 result = _functions->callFunction(func, argc, argv);
 	debug(2, "result = %04X (%d)", result, result);
-	
+
 	_stack.free(argc);
-	
+
 	_stack.setTop(result);
 
 }
 
 void ScriptInterpreter::cmd_catch() {
-	// Never used in LGOP2, RTZ, Manhole:NE
+	// Never used in LGOP2, RTZ, Manhole:NE, Rodney
 	warning("Unimplemented command: cmd_catch");
 }
 
 void ScriptInterpreter::cmd_cdone() {
-	// Never used in LGOP2, RTZ, Manhole:NE
+	// Never used in LGOP2, RTZ, Manhole:NE, Rodney
 	warning("Unimplemented command: cmd_cdone");
 }
 
 void ScriptInterpreter::cmd_throw() {
-	// Never used in LGOP2, RTZ, Manhole:NE
+	// Never used in LGOP2, RTZ, Manhole:NE, Rodney
 	warning("Unimplemented command: cmd_throw");
 }
 
 void ScriptInterpreter::cmd_functionp() {
-	// Never used in LGOP2, RTZ, Manhole:NE
+	// Never used in LGOP2, RTZ, Manhole:NE, Rodney
 	warning("Unimplemented command: cmd_functionp");
 }
 
@@ -656,12 +673,12 @@ void ScriptInterpreter::cmd_ge() {
 }
 
 void ScriptInterpreter::cmd_varx() {
-	// Never used in LGOP2, RTZ, Manhole:NE
+	// Never used in LGOP2, RTZ, Manhole:NE, Rodney
 	warning("Unimplemented command: cmd_varx");
 }
 
 void ScriptInterpreter::cmd_setx() {
-	// Never used in LGOP2, RTZ, Manhole:NE
+	// Never used in LGOP2, RTZ, Manhole:NE, Rodney
 	warning("Unimplemented command: cmd_setx");
 }
 
@@ -672,7 +689,7 @@ void ScriptInterpreter::dumpScript(int16 objectIndex, int *opcodeStats, int *ext
 
 	Object *obj = _vm->_dat->getObject(objectIndex);
 	byte *code = obj->getData(), *codeStart = code, *codeEnd = code + obj->getSize();
-	
+
 	while (code < codeEnd) {
 		byte opcode = *code++;
 		if (opcode >= 1 && opcode <= _commandsMax) {

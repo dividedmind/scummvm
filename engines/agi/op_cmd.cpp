@@ -1331,7 +1331,7 @@ cmd(get_string) {
 
 	do {
 		g_agi->mainCycle();
-	} while (game.inputMode == INPUT_GETSTRING);
+	} while (game.inputMode == INPUT_GETSTRING && !g_agi->shouldQuit());
 }
 
 cmd(get_num) {
@@ -1349,7 +1349,7 @@ cmd(get_num) {
 
 	do {
 		g_agi->mainCycle();
-	} while (game.inputMode == INPUT_GETSTRING);
+	} while (game.inputMode == INPUT_GETSTRING && !g_agi->shouldQuit());
 
 	_v[p1] = atoi(game.strings[MAX_STRINGS]);
 	debugC(4, kDebugLevelScripts, "[%s] -> %d", game.strings[MAX_STRINGS], _v[p1]);
@@ -1387,7 +1387,13 @@ cmd(set_string) {
 }
 
 cmd(display) {
-	g_agi->printText(curLogic->texts[p2 - 1], p1, 0, p0, 40, game.colorFg, game.colorBg);
+	int len = 40;
+
+	char *s = g_agi->wordWrapString(curLogic->texts[p2 - 1], &len);
+
+	g_agi->printText(s, p1, 0, p0, 40, game.colorFg, game.colorBg);
+
+	free(s);
 }
 
 cmd(display_f) {
@@ -1739,7 +1745,7 @@ int AgiEngine::runLogic(int n) {
 	curLogic->cIP = curLogic->sIP;
 
 	timerHack = 0;
-	while (ip < _game.logics[n].size && !quit()) {
+	while (ip < _game.logics[n].size && !shouldQuit()) {
 		if (_debug.enabled) {
 			if (_debug.steps > 0) {
 				if (_debug.logic0 || n) {

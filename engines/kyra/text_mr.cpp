@@ -58,8 +58,8 @@ char *TextDisplayer_MR::preprocessString(const char *str) {
 			offs = dropCRIntoString(p, count, getCharLength(p, maxTextWidth));
 			p += count + offs;
 			// No update of textWidth here
-		} 
-		
+		}
+
 		if (textWidth > (2*maxTextWidth)) {
 			count = getCharLength(p, textWidth/3);
 			offs = dropCRIntoString(p, count, getCharLength(p, maxTextWidth));
@@ -68,13 +68,13 @@ char *TextDisplayer_MR::preprocessString(const char *str) {
 		}
 
 		count = getCharLength(p, textWidth/2);
-		offs = dropCRIntoString(p, count, getCharLength(p, maxTextWidth));	
+		offs = dropCRIntoString(p, count, getCharLength(p, maxTextWidth));
 		p += count + offs;
 		textWidth = _screen->getTextWidth(p);
 
 		if (textWidth > maxTextWidth) {
 			count = getCharLength(p, textWidth/2);
-			offs = dropCRIntoString(p, count, getCharLength(p, maxTextWidth));	
+			offs = dropCRIntoString(p, count, getCharLength(p, maxTextWidth));
 		}
 	}
 
@@ -250,7 +250,7 @@ void KyraEngine_MR::objectChatInit(const char *str, int object, int vocHigh, int
 	debugC(9, kDebugLevelMain, "KyraEngine_MR::objectChatInit('%s', %d, %d, %d)", str, object, vocHigh, vocLow);
 	str = _text->preprocessString(str);
 	int lineNum = _text->buildMessageSubstrings(str);
-	
+
 	int xPos = 0, yPos = 0;
 
 	if (!object) {
@@ -349,12 +349,12 @@ void KyraEngine_MR::objectChatWaitToFinish() {
 	const uint32 endTime = _chatEndTime;
 	resetSkipFlag();
 
-	while (running && !quit()) {
+	while (running && !shouldQuit()) {
 		if (!_emc->isValid(&_chatScriptState))
 			_emc->start(&_chatScriptState, 1);
 
 		_animNeedUpdate = false;
-		while (!_animNeedUpdate && _emc->isValid(&_chatScriptState)) {
+		while (!_animNeedUpdate && _emc->isValid(&_chatScriptState) && !shouldQuit()) {
 			musicUpdate(0);
 			_emc->run(&_chatScriptState);
 		}
@@ -367,7 +367,7 @@ void KyraEngine_MR::objectChatWaitToFinish() {
 
 		uint32 nextFrame = _system->getMillis() + delayTime * _tickLength;
 
-		while (_system->getMillis() < nextFrame && !quit()) {
+		while (_system->getMillis() < nextFrame && !shouldQuit()) {
 			updateWithText();
 
 			const uint32 curTime = _system->getMillis();
@@ -419,7 +419,7 @@ void KyraEngine_MR::badConscienceChatWaitToFinish() {
 	uint32 nextFrame = _system->getMillis() + _rnd.getRandomNumberRng(4, 8) * _tickLength;
 
 	int frame = _badConscienceFrameTable[_badConscienceAnim+24];
-	while (running && !quit()) {
+	while (running && !shouldQuit()) {
 		if (nextFrame < _system->getMillis()) {
 			++frame;
 			if (_badConscienceFrameTable[_badConscienceAnim+32] < frame)
@@ -477,7 +477,7 @@ void KyraEngine_MR::goodConscienceChatWaitToFinish() {
 	uint32 nextFrame = _system->getMillis() + _rnd.getRandomNumberRng(3, 6) * _tickLength;
 
 	int frame = _goodConscienceFrameTable[_goodConscienceAnim+15];
-	while (running && !quit()) {
+	while (running && !shouldQuit()) {
 		if (nextFrame < _system->getMillis()) {
 			++frame;
 			if (_goodConscienceFrameTable[_goodConscienceAnim+20] < frame)
@@ -508,7 +508,7 @@ void KyraEngine_MR::albumChat(const char *str, int vocHigh, int vocLow) {
 
 	_talkObjectList[1].x = 190;
 	_talkObjectList[1].y = 188;
-	
+
 	_chatVocHigh = _chatVocLow = -1;
 	_albumChatActive = true;
 	albumChatInit(str, 1, vocHigh, vocLow);
@@ -543,7 +543,7 @@ void KyraEngine_MR::albumChatInit(const char *str, int object, int vocHigh, int 
 
 	str = _text->preprocessString(str);
 	int lineNum = _text->buildMessageSubstrings(str);
-	
+
 	int xPos = 0, yPos = 0;
 
 	if (!object) {
@@ -597,7 +597,7 @@ void KyraEngine_MR::albumChatWaitToFinish() {
 
 	uint32 nextFrame = 0;
 	int frame = 12;
-	while (running && !quit()) {
+	while (running && !shouldQuit()) {
 		if (nextFrame < _system->getMillis()) {
 			++frame;
 			if (frame > 22)
@@ -670,14 +670,14 @@ void KyraEngine_MR::updateDlgBuffer() {
 	snprintf(dlgFile, 16, "CH%.02d-S%.02d.", _currentChapter, _mainCharacter.dlgIndex);
 	appendLanguage(dlgFile, _lang, 16);
 	snprintf(cnvFile, 16, "CH%.02d-S%.02d.CNV", _currentChapter, _mainCharacter.dlgIndex);
-	
+
 	delete _cnvFile;
 	delete _dlgBuffer;
 
 	_res->exists(cnvFile, true);
 	_res->exists(dlgFile, true);
-	_cnvFile = _res->getFileStream(cnvFile);
-	_dlgBuffer = _res->getFileStream(dlgFile);
+	_cnvFile = _res->createReadStream(cnvFile);
+	_dlgBuffer = _res->createReadStream(dlgFile);
 	assert(_cnvFile);
 	assert(_dlgBuffer);
 }
@@ -750,7 +750,7 @@ void KyraEngine_MR::processDialog(int vocHighIndex, int vocHighBase, int funcNum
 	while (running) {
 		uint16 cmd = _cnvFile->readUint16LE();
 		int object = cmd - 12;
-		
+
 		if (cmd == 10) {
 			break;
 		} else if (cmd == 4) {
@@ -861,7 +861,7 @@ void KyraEngine_MR::npcChatSequence(const char *str, int object, int vocHigh, in
 
 	uint32 endTime = _chatEndTime;
 	bool running = true;
-	while (running) {
+	while (running && !shouldQuit()) {
 		if (!_emc->run(&_dialogScriptState)) {
 			_emc->init(&_dialogScriptState, &_dialogScriptData);
 			_emc->start(&_dialogScriptState, _dialogScriptFuncProc);
@@ -901,12 +901,12 @@ void KyraEngine_MR::randomSceneChat() {
 
 void KyraEngine_MR::runDialog(int dlgIndex, int funcNum) {
 	debugC(9, kDebugLevelMain, "KyraEngine_MR::runDialog(%d, %d)", dlgIndex, funcNum);
-	
+
 	switch (_currentChapter-2) {
 	case 0:
 		dlgIndex -= 34;
 		break;
-	
+
 	case 1:
 		dlgIndex -= 54;
 		break;

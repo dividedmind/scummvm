@@ -28,7 +28,7 @@
 #include "common/str.h"
 #include "common/rect.h"
 #include "gui/widget.h"
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
 
 namespace GUI {
 
@@ -50,7 +50,7 @@ protected:
 
 	int			_editScrollOffset;
 
-	Theme::FontStyle  _font;
+	ThemeEngine::FontStyle  _font;
 
 public:
 	EditableWidget(GuiObject *boss, int x, int y, int w, int h);
@@ -79,7 +79,7 @@ protected:
 	bool adjustOffset();
 	void makeCaretVisible();
 
-	void setFontStyle(Theme::FontStyle font) { _font = font; }
+	void setFontStyle(ThemeEngine::FontStyle font) { _font = font; }
 
 	virtual bool tryInsertChar(byte c, int pos);
 };

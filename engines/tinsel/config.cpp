@@ -24,6 +24,8 @@
  * This file contains configuration functionality
  */
 
+//#define USE_3FLAGS 1
+
 #include "tinsel/config.h"
 #include "tinsel/dw.h"
 #include "tinsel/sound.h"
@@ -39,9 +41,9 @@ namespace Tinsel {
 //----------------- GLOBAL GLOBAL DATA --------------------
 
 int dclickSpeed = DOUBLE_CLICK_TIME;
-int volMidi = MAXMIDIVOL;
-int volSound = MAXSAMPVOL;
-int volVoice = MAXSAMPVOL;
+int volMusic = Audio::Mixer::kMaxChannelVolume;
+int volSound = Audio::Mixer::kMaxChannelVolume;
+int volVoice = Audio::Mixer::kMaxChannelVolume;
 int speedText = DEFTEXTSPEED;
 int bSubtitles = false;
 int bSwapButtons = 0;
@@ -49,21 +51,18 @@ LANGUAGE g_language = TXT_ENGLISH;
 int bAmerica = 0;
 
 
-// Shouldn't really be here, but time is short...
-bool bNoBlocking;
 
 /**
  * Write settings to config manager and flush the config file to disk.
  */
 void WriteConfig(void) {
 	ConfMan.setInt("dclick_speed", dclickSpeed);
-	ConfMan.setInt("music_volume", (volMidi * Audio::Mixer::kMaxChannelVolume) / MAXMIDIVOL);
-	ConfMan.setInt("sfx_volume", (volSound * Audio::Mixer::kMaxChannelVolume) / MAXSAMPVOL);
-	ConfMan.setInt("speech_volume", (volVoice * Audio::Mixer::kMaxChannelVolume) / MAXSAMPVOL);
+	ConfMan.setInt("music_volume", volMusic);
+	ConfMan.setInt("sfx_volume", volSound);
+	ConfMan.setInt("speech_volume", volVoice);
 	ConfMan.setInt("talkspeed", (speedText * 255) / 100);
 	ConfMan.setBool("subtitles", bSubtitles);
 	//ConfMan.setBool("swap_buttons", bSwapButtons ? 1 : 0);
-	//ConfigData.bAmerica = bAmerica;		// EN_USA / EN_GRB
 
 	// Store language for multilingual versions
 	if ((_vm->getFeatures() & GF_USE_3FLAGS) || (_vm->getFeatures() & GF_USE_4FLAGS) || (_vm->getFeatures() & GF_USE_5FLAGS)) {
@@ -84,26 +83,29 @@ void WriteConfig(void) {
 		default:
 			lang = Common::EN_ANY;
 		}
-		
+
 		ConfMan.set("language", Common::getLanguageCode(lang));
 	}
-	
+
 	// Write to disk
 	ConfMan.flushToDisk();
 }
 
-/*---------------------------------------------------------------------*\
-|	ReadConfig()							|
-|-----------------------------------------------------------------------|
-|
-\*---------------------------------------------------------------------*/
+/**
+ * Read configuration settings from the config file into memory
+ */
 void ReadConfig(void) {
 	if (ConfMan.hasKey("dclick_speed"))
 		dclickSpeed = ConfMan.getInt("dclick_speed");
 
-	volMidi = (ConfMan.getInt("music_volume") * MAXMIDIVOL) / Audio::Mixer::kMaxChannelVolume;
-	volSound = (ConfMan.getInt("sfx_volume") * MAXSAMPVOL) / Audio::Mixer::kMaxChannelVolume;
-	volVoice = (ConfMan.getInt("speech_volume") * MAXSAMPVOL) / Audio::Mixer::kMaxChannelVolume;
+	// HACK/FIXME:
+	// We need to clip the volumes from [0, 256] to [0, 255]
+	// here, since for example Tinsel's internal options dialog
+	// and also the midi playback code rely on the volumes to be
+	// in [0, 255]
+	volMusic = CLIP(ConfMan.getInt("music_volume"), 0, 255);
+	volSound = CLIP(ConfMan.getInt("sfx_volume"), 0, 255);
+	volVoice = CLIP(ConfMan.getInt("speech_volume"), 0, 255);
 
 	if (ConfMan.hasKey("talkspeed"))
 		speedText = (ConfMan.getInt("talkspeed") * 100) / 255;

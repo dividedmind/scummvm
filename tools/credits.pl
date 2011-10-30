@@ -264,11 +264,11 @@ sub begin_section {
 		  # TODO: Would be nice to have a 'fat' or 'large' mode for
 		  # headlines...
 		  $title = html_entities_to_cpp($title);
-		  print '"\\\\C\\\\c1""'.$title.'",' . "\n";
-		  print '"\\\\C\\\\c0""",' . "\n";
+		  print '"C1""'.$title.'",' . "\n";
+		  print '"",' . "\n";
 		} else {
 		  $title = html_entities_to_cpp($title);
-		  print '"\\\\C\\\\c1""'.$title.'",' . "\n";
+		  print '"C1""'.$title.'",' . "\n";
 		}
 	} elsif ($mode eq "XML") {
 		print "  <row><entry namest='start' nameend='job'>";
@@ -310,7 +310,7 @@ sub end_section {
 	} elsif ($mode eq "RTF") {
 		# nothing
 	} elsif ($mode eq "CPP") {
-		print '"\\\\C\\\\c0""",' . "\n";
+		print '"",' . "\n";
 	} elsif ($mode eq "XML") {
 		print "  <row><entry namest='start' nameend='job'> </entry></row>\n\n";
 	} elsif ($mode eq "HTML") {
@@ -389,12 +389,12 @@ sub add_person {
 		$name = $nick if $name eq "";
 		$name = html_entities_to_cpp($name);
 
-		print '"\\\\C\\\\c0""'.$name.'",' . "\n";
+		print '"C0""'.$name.'",' . "\n";
 
 		# Print desc wrapped
 		if (length $desc > 0) {
 			$desc = html_entities_to_cpp($desc);
-			print '"\\\\C\\\\c2""'.$desc.'",' . "\n";
+			print '"C2""'.$desc.'",' . "\n";
 		}
 	} elsif ($mode eq "XML") {
 		$name = $nick if $name eq "";
@@ -433,7 +433,7 @@ sub add_paragraph {
 		print "\\\n";
 		print $text . "\\\n";
 	} elsif ($mode eq "CPP") {
-		my $line_start = '"\\\\C\\\\c0""';
+		my $line_start = '"C0""';
 		my $line_end = '",';
 		print $line_start . $text . $line_end . "\n";
 		print $line_start . $line_end . "\n";
@@ -457,7 +457,6 @@ begin_credits("Credits");
   begin_section("ScummVM Team");
     begin_section("Project Leaders");
 	  begin_persons();
-		add_person("James Brown", "ender", "");
 		add_person("Max Horn", "Fingolfin", "");
 		add_person("Eugene Sandulenko", "sev", "");
 	  end_persons();
@@ -465,6 +464,7 @@ begin_credits("Credits");
 
     begin_section("Retired Project Leaders");
 	  begin_persons();
+		add_person("James Brown", "ender", "");
 		add_person("Vincent Hamm", "yaz0r", "ScummVM co-founder, Original Cruise/CinE author");
 		add_person("Ludvig Strigeus", "ludde", "Original ScummVM and SimonVM author");
 	  end_persons();
@@ -473,16 +473,14 @@ begin_credits("Credits");
     begin_section("Engine Teams");
 	  begin_section("SCUMM");
 		  add_person("Torbj&ouml;rn Andersson", "eriktorbjorn", "");
-		  add_person("James Brown", "ender", "");
-		  add_person("Jonathan Gray", "khalek", "");
 		  add_person("Max Horn", "Fingolfin", "");
 		  add_person("Travis Howell", "Kirben", "");
 		  add_person("Pawe&#322; Ko&#322;odziejski", "aquadran", "Codecs, iMUSE, Smush, etc.");
+		  add_person("Gregory Montoir", "cyx", "");
 		  add_person("Eugene Sandulenko", "sev", "FT INSANE, MM NES, MM C64, game detection, Herc/CGA");
 	  end_section();
 
 	  begin_section("HE");
-		  add_person("Jonathan Gray", "khalek", "");
 		  add_person("Travis Howell", "Kirben", "");
 		  add_person("Gregory Montoir", "cyx", "");
 		  add_person("Eugene Sandulenko", "sev", "");
@@ -495,28 +493,22 @@ begin_credits("Credits");
 		  add_person("Pawe&#322; Ko&#322;odziejski", "aquadran", "");
 		  add_person("Kari Salminen", "Buddha^", "");
 		  add_person("Eugene Sandulenko", "sev", "");
-		  add_person("David Symonds", "dsymonds", "");
 	  end_section();
 
 	  begin_section("AGOS");
 		  add_person("Torbj&ouml;rn Andersson", "eriktorbjorn", "");
 		  add_person("Travis Howell", "Kirben", "");
-		  add_person("Oliver Kiehl", "olki", "");
 	  end_section();
 
 	  begin_section("BASS");	# Beneath a Steel Sky
-		  add_person("Robert G&ouml;ffringmann", "lavosspawn", "");
-		  add_person("Oliver Kiehl", "olki", "");
 		  add_person("Joost Peters", "joostp", "");
 	  end_section();
 
 	  begin_section("Broken Sword 1");
-		  add_person("Robert G&ouml;ffringmann", "lavosspawn", "");
 	  end_section();
 
 	  begin_section("Broken Sword 2");
 		  add_person("Torbj&ouml;rn Andersson", "eriktorbjorn", "");
-		  add_person("Jonathan Gray", "khalek", "");
 	  end_section();
 
 	  begin_section("Cinematique evo 1");
@@ -531,7 +523,6 @@ begin_credits("Credits");
 	  end_section();
 
 	  begin_section("FOTAQ");	# Flight of the Amazon Queen
-		  add_person("David Eriksson", "twogood", "");
 		  add_person("Gregory Montoir", "cyx", "");
 		  add_person("Joost Peters", "joostp", "");
 	  end_section();
@@ -541,6 +532,12 @@ begin_credits("Credits");
 		  add_person("Sven Hesse", "DrMcCoy", "");
 		  add_person("Willem Jan Palenstijn", "wjp", "");
 		  add_person("Eugene Sandulenko", "sev", "");
+	  end_section();
+
+	  begin_section("Groovie");
+		  add_person("Henry Bush", "spookypeanut", "");
+		  add_person("Scott Thomas", "ST", "");
+		  add_person("Jordi Vilalta Prat", "jvprat", "");
 	  end_section();
 
 	  begin_section("Kyra");
@@ -578,7 +575,7 @@ begin_credits("Credits");
 		  add_person("Eugene Sandulenko", "sev", "");
 	  end_section();
 
-	  begin_section("Tinsel;");
+	  begin_section("Tinsel");
 		  add_person("Torbj&ouml;rn Andersson", "eriktorbjorn", "");
 		  add_person("Paul Gilbert", "dreammaster", "");
 		  add_person("Sven Hesse", "DrMcCoy", "");
@@ -588,6 +585,10 @@ begin_credits("Credits");
 	  end_section();
 
 	  begin_section("Touch&eacute;");
+		  add_person("Gregory Montoir", "cyx", "");
+	  end_section();
+
+	  begin_section("Tucker");
 		  add_person("Gregory Montoir", "cyx", "");
 	  end_section();
 
@@ -624,7 +625,6 @@ begin_credits("Credits");
 	  end_section();
 
 	  begin_section("PlayStation 2");
-		  add_person("Robert G&ouml;ffringmann", "lavosspawn", "");
 		  add_person("Max Lingua", "sunmax", "");
 	  end_section();
 
@@ -674,7 +674,7 @@ begin_credits("Credits");
 
     begin_section("Documentation");
 	begin_persons();
-		add_person("Joachim Eberhard", "joachimeberhard", "Documentation manager");
+		add_person("Joachim Eberhard", "joachimeberhard", "Numerous contributions to documentation");
 		add_person("Matthew Hoops", "clone2727", "Wiki editor");
 		end_persons();
     end_section();
@@ -685,13 +685,20 @@ begin_credits("Credits");
 		add_person("Nicolas Bacca", "arisme", "Former WinCE porter");
 		add_person("Ralph Brorsen", "painelf", "Help with GUI implementation");
 		add_person("Jamieson Christian", "jamieson630", "iMUSE, MIDI, all things musical");
+		add_person("David Eriksson", "twogood", "Engines: FOTAQ");
+		add_person("Hans-J&ouml;rg Frieden", "", "Former AmigaOS 4 packager");
+		add_person("Robert G&ouml;ffringmann", "lavosspawn", "Original PS2 porter; Engines: BASS, BS1");
+		add_person("Jonathan Gray", "khalek", "Engines: SCUMM, HE, BS2");
 		add_person("R&uuml;diger Hanke", "", "Port: MorphOS");
 		add_person("Felix Jakschitsch", "yot", "Zak256 reverse engineering");
+		add_person("Oliver Kiehl", "olki", "Engines: AGOS, BASS");
 		add_person("Mutwin Kraus", "mutle", "Original MacOS porter");
 		add_person("Peter Moraliyski", "ph0x", "Port: GP32");
+		add_person("Juha Niemim&auml;ki", "", "Former AmigaOS 4 packager");
 		add_person("Jeremy Newman", "laxdragon", "Former webmaster");
 		add_person("Lionel Ulmer", "bbrox", "Port: X11");
 		add_person("Won Star", "wonst719", "Former GP32 porter");
+		add_person("David Symonds", "dsymonds", "Engines: AGI");
 	  end_persons();
     end_section();
   end_section();
@@ -701,9 +708,7 @@ begin_credits("Credits");
 
 	begin_section("Packages");
 	  begin_section("AmigaOS 4");
-		  add_person("Hans-J&ouml;rg Frieden", "", "");
 		  add_person("Hubert Maier", "Raziel_AOne", "");
-		  add_person("Juha Niemim&auml;ki", "", "");
 	  end_section();
 
 	  begin_section("Atari/FreeMiNT");
@@ -778,6 +783,7 @@ begin_credits("Credits");
 		  add_person("Stuart Caie", "", "Decoders for Simon 1 Amiga data files");
 		  add_person("Paolo Costabel", "", "PSP port contributions");
 		  add_person("Thierry Crozat", "criezy", "Support for Broken Sword 1 Macintosh version");
+		  add_person("Martin Doucha", "next_ghost", "CinE engine objectification");
 		  add_person("Thomas Fach-Pedersen", "madmoose", "ProTracker module player");
 		  add_person("Benjamin Haisch", "john_doe", "Heavily improved de-/encoder for DXA videos");
 		  add_person("Janne Huttunen", "", "V3 actor mask support, Dig/FT SMUSH audio");
@@ -812,14 +818,17 @@ begin_credits("Credits");
 	  add_person("Sander Buskens", "", "For his work on the initial reversing of Monkey2");
 	  add_person("", "Canadacow", "For the original MT-32 emulator");
 	  add_person("Kevin Carnes", "", "For Scumm16, the basis of ScummVM's older gfx codecs");
+	  add_person("Curt Coder", "", "For the original TrollVM (preAGI) code");
 	  add_person("Patrick Combet", "Dorian Gray", "For the original Gobliiins ADL player");
 	  add_person("Ivan Dubrov", "", "For contributing the initial version of the Gobliiins engine");
+	  add_person("Till Kresslein", "Krest", "For design of modern ScummVM GUI");
 	  add_person("", "Jezar", "For his freeverb filter implementation");
 	  add_person("Jim Leiterman", "", "Various info on his FM-TOWNS/Marty SCUMM ports");
 	  add_person("", "lloyd", "For deep tech details about C64 Zak &amp; MM");
 	  add_person("Sarien Team", "", "Original AGI engine code");
 	  add_person("Jimmi Th&oslash;gersen", "", "For ScummRev, and much obscure code/documentation");
 	  add_person("", "Tristan", "For additional work on the original MT-32 emulator");
+	  add_person("James Woodcock", "", "Soundtrack enhancements");
     end_persons();
 
   add_paragraph(
@@ -846,8 +855,7 @@ begin_credits("Credits");
 
   add_paragraph(
   "Alan Bridgman, Simon Woodroffe and everyone at Adventure Soft for ".
-  "sharing the source code of The Feeble Files and Simon the Sorcerer's ".
-  "Puzzle Pack with us.");
+  "sharing the source code of some of their games with us.");
 
   end_section();
 

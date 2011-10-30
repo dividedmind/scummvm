@@ -1,19 +1,38 @@
-# this enables port specific debug messages and redirects stdout/err over
-# usbgecko in memcard slot b
-DEBUG_WII = 1
+# This toggle redirects stdout/err over a USB Gecko adapter in memcard slot b.
+# It is safe to keep this enabled, even if no such adapter is present.
+DEBUG_WII_USBGECKO = 1
 
-# builds a gamecube version. cleanup object files before flipping this
+# This toggle enables simple memory statistics. The amount of physical
+# available memory will be printed to stderr when it shrinks.
+# The buckets of the allocator are not taken into account.
+DEBUG_WII_MEMSTATS = 0
+
+# This toggle sets up the GDB stub. Upon a crash or a reset button press
+# attach a remote GDB via `make debug` (requires a USB Gecko adapter).
+DEBUG_WII_GDB = 0
+
+# Builds a Gamecube version. Cleanup object files before flipping this!
 GAMECUBE = 0
 
+# Enable DVD ISO9660/Joliet support using libdi (included in libogc)
+# This requires a working DVDX install to function, not available on Gamecube
+ifeq ($(GAMECUBE),1)
+USE_WII_DI = 0
+else
+USE_WII_DI = 1
+endif
+
+# List of game engines to compile in. Comment a to disable the engine.
 ENABLE_SCUMM = STATIC_PLUGIN
 ENABLE_SCUMM_7_8 = STATIC_PLUGIN
 ENABLE_HE = STATIC_PLUGIN
-# ENABLE_AGI = STATIC_PLUGIN
+ENABLE_AGI = STATIC_PLUGIN
 ENABLE_AGOS = STATIC_PLUGIN
 ENABLE_CINE = STATIC_PLUGIN
 ENABLE_CRUISE = STATIC_PLUGIN
 ENABLE_DRASCULA = STATIC_PLUGIN
 ENABLE_GOB = STATIC_PLUGIN
+ENABLE_GROOVIE = STATIC_PLUGIN
 ENABLE_IGOR = STATIC_PLUGIN
 ENABLE_KYRA = STATIC_PLUGIN
 ENABLE_LURE = STATIC_PLUGIN
@@ -22,25 +41,38 @@ ENABLE_MADE = STATIC_PLUGIN
 ENABLE_PARALLACTION = STATIC_PLUGIN
 ENABLE_QUEEN = STATIC_PLUGIN
 ENABLE_SAGA = STATIC_PLUGIN
+ENABLE_IHNM = STATIC_PLUGIN
+ENABLE_SAGA2 = STATIC_PLUGIN
 ENABLE_SKY = STATIC_PLUGIN
 ENABLE_SWORD1 = STATIC_PLUGIN
 ENABLE_SWORD2 = STATIC_PLUGIN
 ENABLE_TINSEL = STATIC_PLUGIN
 ENABLE_TOUCHE = STATIC_PLUGIN
+ENABLE_TUCKER = STATIC_PLUGIN
 
+# Scalers are currently not supported by this port.
 DISABLE_HQ_SCALERS = 1
 DISABLE_SCALERS = 1
 
-USE_ZLIB = 1
-USE_MAD = 1
-USE_TREMOR = 1
-USE_FLAC = 1
-USE_MPEG2 = 1
+# MT32 emulation, included in ScummVM. The Gamecube does not have enough
+# memory to use it.
 ifeq ($(GAMECUBE),1)
 USE_MT32EMU = 0
 else
 USE_MT32EMU = 1
 endif
+
+# Additional features to compile in. zLib and MAD are inluded in libogc, the
+# others require installed headers and crosscompiled static libraries.
+USE_ZLIB = 1
+USE_MAD = 1
+USE_TREMOR = 1
+USE_FLAC = 1
+#USE_MPEG2 = 1
+
+#
+# Don't change anything below this line unless you know what you are doing.
+#
 
 srcdir = ../../..
 VPATH = $(srcdir)
@@ -59,9 +91,10 @@ LD      = $(PREFIX)gcc
 AR      = $(PREFIX)ar cru
 RANLIB  = $(PREFIX)ranlib
 STRIP   = $(PREFIX)strip -g
-OBJCOPY = $(PREFIX)objcopy
+GDB     = $(PREFIX)gdb
 MKDIR   = mkdir -p
 RM      = rm -f
+RM_REC  = rm -rf
 CP      = cp -f
 
 ifeq ($(GAMECUBE),1)
@@ -75,7 +108,7 @@ TARGET  = scummvm-wii
 MACHDEP  = -DGEKKO -mrvl -mcpu=750 -meabi -mhard-float \
 			-ffunction-sections -fdata-sections -fmodulo-sched
 LIBDIR   = $(DEVKITPRO)/libogc/lib/wii
-LIBS      = -lstdc++ -lfat -lwiiuse -lbte -logc -lm
+LIBS      = -lstdc++ -ldi -lfat -lwiiuse -lbte -logc -lm
 endif
 
 INCDIR   = $(srcdir) . $(srcdir)/engines/ $(DEVKITPRO)/libogc/include
@@ -90,42 +123,55 @@ LDFLAGS  += $(addprefix -L,$(LIBDIR))
 CXXFLAGS += -I$(DEVKITPRO)/3rd/wii/include
 LDFLAGS  += -L$(DEVKITPRO)/3rd/wii/lib
 
-ifdef DEBUG_WII
-CXXFLAGS += -DDEBUG_WII
+CXXFLAGS += -DENABLE_VKEYBD -DENABLE_KEYMAPPER
+
+ifeq ($(DEBUG_WII_USBGECKO),1)
+CXXFLAGS += -DDEBUG_WII_USBGECKO
+endif
+
+ifeq ($(DEBUG_WII_MEMSTATS),1)
+CXXFLAGS += -DDEBUG_WII_MEMSTATS
+endif
+
+ifeq ($(DEBUG_WII_GDB),1)
+CXXFLAGS += -DDEBUG_WII_GDB
 LIBS     += -ldb
 endif
 
-ifdef USE_ZLIB
+ifeq ($(USE_WII_DI),1)
+CXXFLAGS += -DUSE_WII_DI
+endif
+
+ifeq ($(USE_ZLIB),1)
 CXXFLAGS += -DUSE_ZLIB
 LIBS     += -lz
 endif
 
-ifdef USE_MAD
+ifeq ($(USE_MAD),1)
 CXXFLAGS += -DUSE_MAD -I$(DEVKITPRO)/libogc/include/mad
 LIBS     += -lmad
 endif
 
-ifdef USE_TREMOR
+ifeq ($(USE_TREMOR),1)
 CXXFLAGS += -DUSE_VORBIS -DUSE_TREMOR
 LIBS     += -lvorbisidec
 endif
 
-ifdef USE_FLAC
+ifeq ($(USE_FLAC),1)
 CXXFLAGS += -DUSE_FLAC
 LIBS     += -lFLAC
 endif
 
-ifdef USE_MPEG2
+ifeq ($(USE_MPEG2),1)
 CXXFLAGS += -DUSE_MPEG2
 LIBS     += -lmpeg2
 endif
 
-ifdef USE_MT32EMU
+ifeq ($(USE_MT32EMU),1)
 CXXFLAGS += -DUSE_MT32EMU
 endif
 
 OBJS := backends/platform/wii/main.o \
-		backends/platform/wii/gecko_console.o \
 		backends/platform/wii/gx_supp.o \
 		backends/platform/wii/osystem.o \
 		backends/platform/wii/osystem_gfx.o \
@@ -139,7 +185,7 @@ include $(srcdir)/Makefile.common
 all: $(TARGET).dol
 
 $(TARGET).dol: $(TARGET).elf
-	$(OBJCOPY) -O binary $< $@
+	$(DEVKITPPC)/bin/elf2dol $< $@
 
 $(TARGET).elf: $(OBJS)
 	$(LD) $^ $(LDFLAGS) $(LIBS) -o $@
@@ -147,19 +193,25 @@ $(TARGET).elf: $(OBJS)
 clean: clean-wii
 
 clean-wii:
-	@-$(RM) $(TARGET).elf $(TARGET).elf.map $(TARGET).dol
+	@$(RM) $(TARGET).elf $(TARGET).elf.map $(TARGET).dol
 
 distclean: distclean-wii
 
 distclean-wii:
-	@-$(RM) dist
+	@$(RM_REC) dist
 
-upload:
+upload: $(TARGET).dol
 ifeq ($(GAMECUBE),1)
 	$(DEVKITPPC)/bin/geckoupload $(TARGET).dol
 else
 	$(DEVKITPPC)/bin/wiiload $(TARGET).dol
 endif
+
+gdb:
+	$(GDB) -n $(TARGET).elf
+
+debug:
+	$(GDB) -n $(TARGET).elf -x gdb.txt
 
 dist:
 	$(MKDIR) dist/scummvm
@@ -177,5 +229,7 @@ endif
 	$(CP) $(srcdir)/NEWS dist/scummvm/
 	$(CP) $(srcdir)/README dist/scummvm/
 	$(CP) $(DIST_FILES_THEMES) dist/scummvm/
+ifneq ($(DIST_FILES_ENGINEDATA),)
 	$(CP) $(DIST_FILES_ENGINEDATA) dist/scummvm/
+endif
 

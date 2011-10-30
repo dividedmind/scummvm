@@ -27,23 +27,31 @@
 
 #include "base/plugins.h"
 
-#include "common/advancedDetector.h"
+#include "engines/advancedDetector.h"
 
 #include "cruise/cruise.h"
 
 namespace Cruise {
 
 struct CRUISEGameDescription {
-	Common::ADGameDescription desc;
+	ADGameDescription desc;
 
 	int gameType;
 	uint32 features;
 };
 
-int CruiseEngine::getGameType() const { return _gameDescription->gameType; }
-uint32 CruiseEngine::getFeatures() const { return _gameDescription->features; }
-Common::Language CruiseEngine::getLanguage() const { return _gameDescription->desc.language; }
-Common::Platform CruiseEngine::getPlatform() const { return _gameDescription->desc.platform; }
+int CruiseEngine::getGameType() const {
+	return _gameDescription->gameType;
+}
+uint32 CruiseEngine::getFeatures() const {
+	return _gameDescription->features;
+}
+Common::Language CruiseEngine::getLanguage() const {
+	return _gameDescription->desc.language;
+}
+Common::Platform CruiseEngine::getPlatform() const {
+	return _gameDescription->desc.platform;
+}
 
 }
 
@@ -53,7 +61,7 @@ static const PlainGameDescriptor cruiseGames[] = {
 	{0, 0}
 };
 
-static const Common::ADObsoleteGameID obsoleteGameIDsTable[] = {
+static const ADObsoleteGameID obsoleteGameIDsTable[] = {
 	{"cruise", "cruise", Common::kPlatformUnknown},
 	{0, 0, Common::kPlatformUnknown}
 };
@@ -62,17 +70,29 @@ namespace Cruise {
 
 static const CRUISEGameDescription gameDescriptions[] = {
 	{
-	    {
+		{
 			"cruise",
 			"16 colors",
 			AD_ENTRY1("D1", "41a7a4d426dbd048eb369cfee4bb2717"),
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_CRUISE,
 		0,
-    },
+	},
+	{
+		{
+			"cruise",
+			"256 colors",
+			AD_ENTRY1("D1", "a90d2b9ead6b4d812cd14268672cf178"),
+			Common::EN_ANY,
+			Common::kPlatformPC,
+			ADGF_NO_FLAGS
+		},
+		GType_CRUISE,
+		0,
+	},
 	{
 		{
 			"cruise",
@@ -80,19 +100,43 @@ static const CRUISEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("D1", "e258865807ea31b2d523340e6f0a606b"),
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_CRUISE,
 		0,
 	},
 	{
-	    {
+		{
 			"cruise",
 			"256 colors",
-			AD_ENTRY1("D1", "a90d2b9ead6b4d812cd14268672cf178"),
-			Common::EN_ANY,
+			AD_ENTRY1("D1", "f2a26522d49983c4ae32bcccbb801b02"),
+			Common::DE_DEU,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
+		},
+		GType_CRUISE,
+		0,
+	},
+	{
+		{
+			"cruise",
+			"256 colors",
+			AD_ENTRY1("D1", "e19a4ab2e24a69087e4ea994a5506231"),
+			Common::IT_ITA,
+			Common::kPlatformPC,
+			ADGF_NO_FLAGS
+		},
+		GType_CRUISE,
+		0,
+	},
+	{
+		{
+			"cruise",
+			"256 colors",
+			AD_ENTRY1("D1", "9a302ada55600d96061fda1d63a6ccda"),
+			Common::ES_ESP,
+			Common::kPlatformPC,
+			ADGF_NO_FLAGS
 		},
 		GType_CRUISE,
 		0,
@@ -102,7 +146,7 @@ static const CRUISEGameDescription gameDescriptions[] = {
 
 }
 
-static const Common::ADParams detectionParams = {
+static const ADParams detectionParams = {
 	// Pointer to ADGameDescription or its superset structure
 	(const byte *)Cruise::gameDescriptions,
 	// Size of that superset structure
@@ -121,9 +165,9 @@ static const Common::ADParams detectionParams = {
 	0
 };
 
-class CruiseMetaEngine : public Common::AdvancedMetaEngine {
+class CruiseMetaEngine : public AdvancedMetaEngine {
 public:
-	CruiseMetaEngine() : Common::AdvancedMetaEngine(detectionParams) {}
+	CruiseMetaEngine() : AdvancedMetaEngine(detectionParams) {}
 
 	virtual const char *getName() const {
 		return "Cinematique evo 2 engine";
@@ -133,10 +177,10 @@ public:
 		return "Cruise for a Corpse (C) Delphine Software";
 	}
 
-	virtual bool createInstance(OSystem *syst, Engine **engine, const Common::ADGameDescription *desc) const;
+	virtual bool createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const;
 };
 
-bool CruiseMetaEngine::createInstance(OSystem *syst, Engine **engine, const Common::ADGameDescription *desc) const {
+bool CruiseMetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const {
 	const Cruise::CRUISEGameDescription *gd = (const Cruise::CRUISEGameDescription *)desc;
 	if (gd) {
 		*engine = new Cruise::CruiseEngine(syst, gd);
@@ -145,7 +189,7 @@ bool CruiseMetaEngine::createInstance(OSystem *syst, Engine **engine, const Comm
 }
 
 #if PLUGIN_ENABLED_DYNAMIC(CRUISE)
-	REGISTER_PLUGIN_DYNAMIC(CRUISE, PLUGIN_TYPE_ENGINE, CruiseMetaEngine);
+REGISTER_PLUGIN_DYNAMIC(CRUISE, PLUGIN_TYPE_ENGINE, CruiseMetaEngine);
 #else
-	REGISTER_PLUGIN_STATIC(CRUISE, PLUGIN_TYPE_ENGINE, CruiseMetaEngine);
+REGISTER_PLUGIN_STATIC(CRUISE, PLUGIN_TYPE_ENGINE, CruiseMetaEngine);
 #endif

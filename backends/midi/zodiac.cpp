@@ -112,7 +112,7 @@ void MidiDriver_Zodiac::send(uint32 b) {
 }
 
 void MidiDriver_Zodiac::sysEx(const byte *msg, uint16 length) {
-	unsigned char buf[256];
+	unsigned char buf[266];
 
 	buf[0] = 0xF0;
 	memcpy(buf + 1, msg, length);
@@ -135,7 +135,7 @@ public:
 	}
 
 	MusicDevices getDevices() const;
-	PluginError createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const;
+	Common::Error createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const;
 };
 
 MusicDevices ZodiacMusicPlugin::getDevices() const {
@@ -146,10 +146,10 @@ MusicDevices ZodiacMusicPlugin::getDevices() const {
 	return devices;
 }
 
-PluginError ZodiacMusicPlugin::createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const {
+Common::Error ZodiacMusicPlugin::createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const {
 	*mididriver = new MidiDriver_Zodiac();
 
-	return kNoError;
+	return Common::kNoError;
 }
 
 MidiDriver *MidiDriver_Zodiac_create(Audio::Mixer *mixer) {

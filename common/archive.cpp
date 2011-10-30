@@ -26,14 +26,27 @@
 #include "common/archive.h"
 #include "common/fs.h"
 #include "common/util.h"
+#include "common/system.h"
 
 namespace Common {
 
+GenericArchiveMember::GenericArchiveMember(String name, Archive *parent)
+	: _parent(parent), _name(name) {
+}
 
-int Archive::matchPattern(StringList &list, const String &pattern) {
+String GenericArchiveMember::getName() const {
+	return _name;
+}
+
+SeekableReadStream *GenericArchiveMember::createReadStream() const {
+	return _parent->createReadStreamForMember(_name);
+}
+
+
+int Archive::listMatchingMembers(ArchiveMemberList &list, const String &pattern) {
 	// Get all "names" (TODO: "files" ?)
-	StringList allNames;
-	getAllNames(allNames);
+	ArchiveMemberList allNames;
+	listMembers(allNames);
 
 	int matches = 0;
 
@@ -41,9 +54,9 @@ int Archive::matchPattern(StringList &list, const String &pattern) {
 	String lowercasePattern = pattern;
 	lowercasePattern.toLowercase();
 
-	StringList::iterator it = allNames.begin();
-	for ( ; it != allNames.end(); it++) {
-		if (it->matchString(lowercasePattern)) {
+	ArchiveMemberList::iterator it = allNames.begin();
+	for ( ; it != allNames.end(); ++it) {
+		if ((*it)->getName().matchString(lowercasePattern)) {
 			list.push_back(*it);
 			matches++;
 		}
@@ -52,96 +65,127 @@ int Archive::matchPattern(StringList &list, const String &pattern) {
 	return matches;
 }
 
-
-FSDirectory::FSDirectory(const FilesystemNode &node, int depth)
+FSDirectory::FSDirectory(const FSNode &node, int depth)
   : _node(node), _cached(false), _depth(depth) {
+}
+
+FSDirectory::FSDirectory(const String &prefix, const FSNode &node, int depth)
+  : _node(node), _cached(false), _depth(depth) {
+
+	setPrefix(prefix);
 }
 
 FSDirectory::FSDirectory(const String &name, int depth)
   : _node(name), _cached(false), _depth(depth) {
 }
 
+FSDirectory::FSDirectory(const String &prefix, const String &name, int depth)
+  : _node(name), _cached(false), _depth(depth) {
+
+	setPrefix(prefix);
+}
+
 FSDirectory::~FSDirectory() {
 }
 
-FilesystemNode FSDirectory::getFSNode() const {
+void FSDirectory::setPrefix(const String &prefix) {
+	_prefix = prefix;
+
+	if (!_prefix.empty() && !_prefix.hasSuffix("/"))
+		_prefix += "/";
+}
+
+FSNode FSDirectory::getFSNode() const {
 	return _node;
 }
 
-FilesystemNode FSDirectory::lookupCache(NodeCache &cache, const String &name) {
+FSNode FSDirectory::lookupCache(NodeCache &cache, const String &name) const {
 	// make caching as lazy as possible
 	if (!name.empty()) {
-		if (!_cached) {
-			cacheDirectoryRecursive(_node, _depth, "");
-			_cached = true;
-		}
+		ensureCached();
 
 		if (cache.contains(name))
 			return cache[name];
 	}
 
-	return FilesystemNode();
+	return FSNode();
 }
 
 bool FSDirectory::hasFile(const String &name) {
-	if (name.empty() || !_node.isDirectory()) {
+	if (name.empty() || !_node.isDirectory())
 		return false;
-	}
 
-	FilesystemNode node = lookupCache(_fileCache, name);
+	FSNode node = lookupCache(_fileCache, name);
 	return node.exists();
 }
 
-SeekableReadStream *FSDirectory::openFile(const String &name) {
-	if (name.empty() || !_node.isDirectory()) {
-		return 0;
-	}
+ArchiveMemberPtr FSDirectory::getMember(const String &name) {
+	if (name.empty() || !_node.isDirectory())
+		return ArchiveMemberPtr();
 
-	FilesystemNode node = lookupCache(_fileCache, name);
+	FSNode node = lookupCache(_fileCache, name);
 
 	if (!node.exists()) {
-		warning("FSDirectory::openFile: FilesystemNode does not exist");
+		warning("FSDirectory::getMember: FSNode does not exist");
+		return ArchiveMemberPtr();
+	} else if (node.isDirectory()) {
+		warning("FSDirectory::getMember: FSNode is a directory");
+		return ArchiveMemberPtr();
+	}
+
+	return ArchiveMemberPtr(new FSNode(node));
+}
+
+SeekableReadStream *FSDirectory::createReadStreamForMember(const String &name) const {
+	if (name.empty() || !_node.isDirectory())
+		return 0;
+
+	FSNode node = lookupCache(_fileCache, name);
+
+	if (!node.exists()) {
+		warning("FSDirectory::createReadStreamForMember: FSNode does not exist");
 		return 0;
 	} else if (node.isDirectory()) {
-		warning("FSDirectory::openFile: FilesystemNode is a directory");
+		warning("FSDirectory::createReadStreamForMember: FSNode is a directory");
 		return 0;
 	}
 
-	SeekableReadStream *stream = node.openForReading();
-	if (!stream) {
-		warning("FSDirectory::openFile: Can't create stream for file '%s'", name.c_str());
-	}
+	SeekableReadStream *stream = node.createReadStream();
+	if (!stream)
+		warning("FSDirectory::createReadStreamForMember: Can't create stream for file '%s'", name.c_str());
 
 	return stream;
 }
 
-FSDirectory *FSDirectory::getSubDirectory(const String &name) {
-	if (name.empty() || !_node.isDirectory()) {
-		return 0;
-	}
-
-	FilesystemNode node = lookupCache(_subDirCache, name);
-	return new FSDirectory(node);
+FSDirectory *FSDirectory::getSubDirectory(const String &name, int depth) {
+	return getSubDirectory(String::emptyString, name, depth);
 }
 
-void FSDirectory::cacheDirectoryRecursive(FilesystemNode node, int depth, const String& prefix) {
-	if (depth <= 0) {
+FSDirectory *FSDirectory::getSubDirectory(const String &prefix, const String &name, int depth) {
+	if (name.empty() || !_node.isDirectory())
+		return 0;
+
+	FSNode node = lookupCache(_subDirCache, name);
+	return new FSDirectory(prefix, node, depth);
+}
+
+void FSDirectory::cacheDirectoryRecursive(FSNode node, int depth, const String& prefix) const {
+	if (depth <= 0)
 		return;
-	}
 
 	FSList list;
-	node.getChildren(list, FilesystemNode::kListAll, false);
+	node.getChildren(list, FSNode::kListAll, false);
 
 	FSList::iterator it = list.begin();
-	for ( ; it != list.end(); it++) {
-		String name = prefix + (*it).getName();
+	for ( ; it != list.end(); ++it) {
+		String name = prefix + it->getName();
 
 		// don't touch name as it might be used for warning messages
 		String lowercaseName = name;
 		lowercaseName.toLowercase();
 
 		// since the hashmap is case insensitive, we need to check for clashes when caching
-		if ((*it).isDirectory()) {
+		if (it->isDirectory()) {
 			if (_subDirCache.contains(lowercaseName)) {
 				warning("FSDirectory::cacheDirectory: name clash when building cache, ignoring sub-directory '%s'", name.c_str());
 			} else {
@@ -159,59 +203,110 @@ void FSDirectory::cacheDirectoryRecursive(FilesystemNode node, int depth, const 
 
 }
 
-int FSDirectory::matchPattern(StringList &list, const String &pattern) {
-	if (!_node.isDirectory())
-		return 0;
-
-	// Cache dir data
-	if (!_cached) {
-		cacheDirectoryRecursive(_node, _depth, "");
-		_cached = true;
-	}
-
-	// Small optimization: Ensure the StringList has to grow at most once
-	list.reserve(list.size() + _fileCache.size());
-	
-	// Add all filenames from our cache
-	NodeCache::iterator it = _fileCache.begin();
-	for ( ; it != _fileCache.end(); it++) {
-		if (it->_key.matchString(pattern));
-			list.push_back(it->_key);
-	}
-	
-	return _fileCache.size();
+void FSDirectory::ensureCached() const  {
+	if (_cached)
+		return;
+	cacheDirectoryRecursive(_node, _depth, _prefix);
+	_cached = true;
 }
 
-int FSDirectory::getAllNames(StringList &list) {
-	if (!_node.isDirectory())
-		return 0;
+bool matchPath(const char *str, const char *pat) {
+	assert(str);
+	assert(pat);
 
-	// Cache dir data
-	if (!_cached) {
-		cacheDirectoryRecursive(_node, _depth, "");
-		_cached = true;
-	}
+	const char *p = 0;
+	const char *q = 0;
 
-	// Small optimization: Ensure the StringList has to grow at most once
-	list.reserve(list.size() + _fileCache.size());
-	
-	// Add all filenames from our cache
-	NodeCache::iterator it = _fileCache.begin();
-	for ( ; it != _fileCache.end(); it++) {
-		list.push_back((*it)._key);
-	}
-	
-	return _fileCache.size();
-}
-
-
-
-SearchSet::ArchiveList::iterator SearchSet::find(const String &name) const {
-	ArchiveList::iterator it = _list.begin();
-	for ( ; it != _list.end(); it++) {
-		if ((*it)._name == name) {
-			break;
+	for (;;) {
+		if (*str == '/') {
+			p = 0;
+			q = 0;
 		}
+
+		switch (*pat) {
+		case '*':
+			// Record pattern / string possition for backtracking
+			p = ++pat;
+			q = str;
+			// If pattern ended with * -> match
+			if (!*pat)
+				return true;
+			break;
+
+		default:
+			if (*pat != *str) {
+				if (p) {
+					// No match, oops -> try to backtrack
+					pat = p;
+					str = ++q;
+					if (!*str)
+						return !*pat;
+					break;
+				}
+				else
+					return false;
+			}
+			if (!*str)
+				return !*pat;
+			pat++;
+			str++;
+			break;
+
+		case '?':
+			if (!*str || *str == '/')
+				return !*pat;
+			pat++;
+			str++;
+		}
+	}
+}
+
+int FSDirectory::listMatchingMembers(ArchiveMemberList &list, const String &pattern) {
+	if (!_node.isDirectory())
+		return 0;
+
+	// Cache dir data
+	ensureCached();
+
+	String lowercasePattern(pattern);
+	lowercasePattern.toLowercase();
+
+	int matches = 0;
+	NodeCache::iterator it = _fileCache.begin();
+	for ( ; it != _fileCache.end(); ++it) {
+		if (matchPath(it->_key.c_str(), lowercasePattern.c_str())) {
+			list.push_back(ArchiveMemberPtr(new FSNode(it->_value)));
+			matches++;
+		}
+	}
+	return matches;
+}
+
+int FSDirectory::listMembers(ArchiveMemberList &list) {
+	if (!_node.isDirectory())
+		return 0;
+
+	// Cache dir data
+	ensureCached();
+
+	int files = 0;
+	for (NodeCache::iterator it = _fileCache.begin(); it != _fileCache.end(); ++it) {
+		list.push_back(ArchiveMemberPtr(new FSNode(it->_value)));
+		++files;
+	}
+
+	return files;
+}
+
+
+
+
+
+SearchSet::ArchiveNodeList::iterator SearchSet::find(const String &name) const {
+	ArchiveNodeList::iterator it = _list.begin();
+	for ( ; it != _list.end(); ++it) {
+		if (it->_name == name)
+			break;
 	}
 	return it;
 }
@@ -222,28 +317,44 @@ SearchSet::ArchiveList::iterator SearchSet::find(const String &name) const {
 	order prevails.
 */
 void SearchSet::insert(const Node &node) {
-	ArchiveList::iterator it = _list.begin();
-	for ( ; it != _list.end(); it++) {
-		if ((*it)._priority < node._priority) {
+	ArchiveNodeList::iterator it = _list.begin();
+	for ( ; it != _list.end(); ++it) {
+		if (it->_priority < node._priority)
 			break;
-		}
 	}
 	_list.insert(it, node);
 }
 
-void SearchSet::add(const String& name, ArchivePtr archive, uint priority) {
+void SearchSet::add(const String &name, Archive *archive, int priority, bool autoFree) {
 	if (find(name) == _list.end()) {
-		Node node = { priority, name, archive };
+		Node node(priority, name, archive, autoFree);
 		insert(node);
 	} else {
+		if (autoFree)
+			delete archive;
 		warning("SearchSet::add: archive '%s' already present", name.c_str());
 	}
 
 }
 
-void SearchSet::remove(const String& name) {
-	ArchiveList::iterator it = find(name);
+void SearchSet::addDirectory(const String &name, const String &directory, int priority, int depth) {
+	FSNode dir(directory);
+	addDirectory(name, dir, priority, depth);
+}
+
+void SearchSet::addDirectory(const String &name, const FSNode &dir, int priority, int depth) {
+	if (!dir.exists() || !dir.isDirectory())
+		return;
+
+	add(name, new FSDirectory(dir, depth), priority);
+}
+
+
+void SearchSet::remove(const String &name) {
+	ArchiveNodeList::iterator it = find(name);
 	if (it != _list.end()) {
+		if (it->_autoFree)
+			delete it->_arc;
 		_list.erase(it);
 	}
 }
@@ -253,19 +364,23 @@ bool SearchSet::hasArchive(const String &name) const {
 }
 
 void SearchSet::clear() {
+	for (ArchiveNodeList::iterator i = _list.begin(); i != _list.end(); ++i) {
+		if (i->_autoFree)
+			delete i->_arc;
+	}
+
 	_list.clear();
 }
 
-void SearchSet::setPriority(const String& name, uint priority) {
-	ArchiveList::iterator it = find(name);
+void SearchSet::setPriority(const String &name, int priority) {
+	ArchiveNodeList::iterator it = find(name);
 	if (it == _list.end()) {
 		warning("SearchSet::setPriority: archive '%s' is not present", name.c_str());
 		return;
 	}
 
-	if (priority == (*it)._priority) {
+	if (priority == it->_priority)
 		return;
-	}
 
 	Node node(*it);
 	_list.erase(it);
@@ -274,52 +389,59 @@ void SearchSet::setPriority(const String& name, uint priority) {
 }
 
 bool SearchSet::hasFile(const String &name) {
-	if (name.empty()) {
+	if (name.empty())
 		return false;
-	}
 
-	ArchiveList::iterator it = _list.begin();
-	for ( ; it != _list.end(); it++) {
-		if ((*it)._arc->hasFile(name)) {
+	ArchiveNodeList::iterator it = _list.begin();
+	for ( ; it != _list.end(); ++it) {
+		if (it->_arc->hasFile(name))
 			return true;
-		}
 	}
 
 	return false;
 }
 
-int SearchSet::matchPattern(StringList &list, const String &pattern) {
+int SearchSet::listMatchingMembers(ArchiveMemberList &list, const String &pattern) {
 	int matches = 0;
 
-	ArchiveList::iterator it = _list.begin();
-	for ( ; it != _list.end(); it++) {
-		matches += (*it)._arc->matchPattern(list, pattern);
-	}
+	ArchiveNodeList::iterator it = _list.begin();
+	for ( ; it != _list.end(); ++it)
+		matches += it->_arc->listMatchingMembers(list, pattern);
 
 	return matches;
 }
 
-int SearchSet::getAllNames(StringList &list) {
+int SearchSet::listMembers(ArchiveMemberList &list) {
 	int matches = 0;
 
-	ArchiveList::iterator it = _list.begin();
-	for ( ; it != _list.end(); it++) {
-		matches += (*it)._arc->getAllNames(list);
-	}
+	ArchiveNodeList::iterator it = _list.begin();
+	for ( ; it != _list.end(); ++it)
+		matches += it->_arc->listMembers(list);
 
 	return matches;
 }
 
-SeekableReadStream *SearchSet::openFile(const String &name) {
-	if (name.empty()) {
+ArchiveMemberPtr SearchSet::getMember(const String &name) {
+	if (name.empty())
+		return ArchiveMemberPtr();
+
+	ArchiveNodeList::iterator it = _list.begin();
+	for ( ; it != _list.end(); ++it) {
+		if (it->_arc->hasFile(name))
+			return it->_arc->getMember(name);
+	}
+
+	return ArchiveMemberPtr();
+}
+
+SeekableReadStream *SearchSet::createReadStreamForMember(const String &name) const {
+	if (name.empty())
 		return 0;
-	}
 
-	ArchiveList::iterator it = _list.begin();
-	for ( ; it != _list.end(); it++) {
-		if ((*it)._arc->hasFile(name)) {
-			return (*it)._arc->openFile(name);
-		}
+	ArchiveNodeList::iterator it = _list.begin();
+	for ( ; it != _list.end(); ++it) {
+		if (it->_arc->hasFile(name))
+			return it->_arc->createReadStreamForMember(name);
 	}
 
 	return 0;
@@ -328,17 +450,22 @@ SeekableReadStream *SearchSet::openFile(const String &name) {
 
 DECLARE_SINGLETON(SearchManager);
 
-void SearchManager::addArchive(const String &name, ArchivePtr archive) {
-	add(name, archive);
+SearchManager::SearchManager() {
+	clear();	// Force a reset
 }
 
-void SearchManager::addDirectory(const String &name, const String &directory) {
-	addDirectoryRecursive(name, 1);
-}
+void SearchManager::clear() {
+	SearchSet::clear();
 
-void SearchManager::addDirectoryRecursive(const String &name, const String &directory, int depth) {
-	add(name, SharedPtr<FSDirectory>(new FSDirectory(directory, depth)));
-}
+	// Always keep system specific archives in the SearchManager.
+	// But we give them a lower priority than the default priority (which is 0),
+	// so that archives added by client code are searched first.
+	if (g_system)
+		g_system->addSysArchivesToSearchSet(*this, -1);
 
+	// Add the current dir as a very last resort.
+	// See also bug #2137680.
+	addDirectory(".", ".", -2);
+}
 
 } // namespace Common

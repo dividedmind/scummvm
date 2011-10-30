@@ -85,6 +85,7 @@
 	#define fseek(handle, offset, whence)		DS::std_fseek(handle, offset, whence)
 	#define clearerr(handle)					DS::std_clearerr(handle)
 	#define fflush(file)						DS::std_fflush(file)
+	#undef ferror
 	#define ferror(handle)						DS::std_ferror(handle)
 
 #endif
@@ -154,6 +155,11 @@ StdioStream *StdioStream::makeFromPath(const Common::String &path, bool writeMod
 	}
 #endif
 
+#if defined(__WII__)
+	// disable newlib's buffering, the device libraries handle caching
+	if (handle)
+		setvbuf(handle, NULL, _IONBF, 0);
+#endif
 
 	if (handle)
 		return new StdioStream(handle);

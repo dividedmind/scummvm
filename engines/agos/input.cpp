@@ -123,7 +123,7 @@ void AGOSEngine::setup_cond_c_helper() {
 	clearName();
 	_lastNameOn = last;
 
-	while (!quit()) {
+	while (!shouldQuit()) {
 		_lastHitArea = NULL;
 		_lastHitArea3 = 0;
 		_leftButtonDown = 0;
@@ -145,15 +145,15 @@ void AGOSEngine::setup_cond_c_helper() {
 			}
 
 			delay(100);
-		} while ((_lastHitArea3 == (HitArea *) -1 || _lastHitArea3 == 0) && !quit());
+		} while ((_lastHitArea3 == (HitArea *) -1 || _lastHitArea3 == 0) && !shouldQuit());
 
 		if (_lastHitArea == NULL) {
 		} else if (_lastHitArea->id == 0x7FFB) {
 			inventoryUp(_lastHitArea->window);
 		} else if (_lastHitArea->id == 0x7FFC) {
 			inventoryDown(_lastHitArea->window);
-		} else if (_lastHitArea->item_ptr != NULL) {
-			_hitAreaObjectItem = _lastHitArea->item_ptr;
+		} else if (_lastHitArea->itemPtr != NULL) {
+			_hitAreaObjectItem = _lastHitArea->itemPtr;
 			setVerbText(_lastHitArea);
 			break;
 		}
@@ -189,12 +189,12 @@ void AGOSEngine::waitForInput() {
 		resetVerbs();
 	}
 
-	while (!quit()) {
+	while (!shouldQuit()) {
 		_lastHitArea = NULL;
 		_lastHitArea3 = NULL;
 		_dragAccept = 1;
 
-		while (!quit()) {
+		while (!shouldQuit()) {
 			if ((getGameType() == GType_SIMON1 || getGameType() == GType_SIMON2) &&
 					_keyPressed.keycode == Common::KEYCODE_F10)
 				displayBoxStars();
@@ -218,7 +218,7 @@ void AGOSEngine::waitForInput() {
 		if (!_lastHitArea3 && _dragMode) {
 			ha = _lastClickRem;
 
-			if (ha == 0 || ha->item_ptr == NULL || !(ha->flags & kBFDragBox)) {
+			if (ha == 0 || ha->itemPtr == NULL || !(ha->flags & kBFDragBox)) {
 				_dragFlag = 0;
 				_dragMode = 0;
 				_dragCount = 0;
@@ -226,7 +226,7 @@ void AGOSEngine::waitForInput() {
 				continue;
 			}
 
-			_hitAreaSubjectItem = ha->item_ptr;
+			_hitAreaSubjectItem = ha->itemPtr;
 			_verbHitArea = 500;
 
 			do {
@@ -250,7 +250,7 @@ void AGOSEngine::waitForInput() {
 			boxController(_mouse.x, _mouse.y, 1);
 
 			if (_currentBox != NULL) {
-				_hitAreaObjectItem = _currentBox->item_ptr;
+				_hitAreaObjectItem = _currentBox->itemPtr;
 				setVerbText(ha);
 			}
 
@@ -299,10 +299,10 @@ void AGOSEngine::waitForInput() {
 					waitForSync(34);
 				}
 			}
-			if (ha->item_ptr && (!ha->verb || _verbHitArea ||
-					(_hitAreaSubjectItem != ha->item_ptr && (ha->flags & kBFBoxItem)))
+			if (ha->itemPtr && (!ha->verb || _verbHitArea ||
+					(_hitAreaSubjectItem != ha->itemPtr && (ha->flags & kBFBoxItem)))
 				) {
-				_hitAreaSubjectItem = ha->item_ptr;
+				_hitAreaSubjectItem = ha->itemPtr;
 				id = setVerbText(ha);
 				_nameLocked = 0;
 				displayName(ha);
@@ -313,21 +313,21 @@ void AGOSEngine::waitForInput() {
 				}
 
 				if (getGameType() == GType_WW)
-					doMenuStrip(menuFor_ww(ha->item_ptr, id));
+					doMenuStrip(menuFor_ww(ha->itemPtr, id));
 				else if (getGameType() == GType_ELVIRA2)
-					doMenuStrip(menuFor_e2(ha->item_ptr));
+					doMenuStrip(menuFor_e2(ha->itemPtr));
 				else if (getGameType() == GType_ELVIRA1)
-					lightMenuStrip(getUserFlag1(ha->item_ptr, 6));
+					lightMenuStrip(getUserFlag1(ha->itemPtr, 6));
 			} else {
 				if (ha->verb) {
 					if (getGameType() == GType_WW && _mouseCursor && _mouseCursor < 4) {
-						_hitAreaSubjectItem = ha->item_ptr;
+						_hitAreaSubjectItem = ha->itemPtr;
 						break;
 					}
 
 					_verbHitArea = ha->verb & 0xBFFF;
 					if (ha->verb & 0x4000) {
-						_hitAreaSubjectItem = ha->item_ptr;
+						_hitAreaSubjectItem = ha->itemPtr;
 						break;
 					}
 					if (_hitAreaSubjectItem != NULL)
@@ -422,9 +422,8 @@ void AGOSEngine::hitarea_stuff_helper_2() {
 }
 
 void AGOSEngine::permitInput() {
-	if (!_mortalFlag)
+	if (_mortalFlag)
 		return;
-
 
 	_mortalFlag = true;
 	justifyOutPut(0);
@@ -465,6 +464,9 @@ bool AGOSEngine::processSpecialKeys() {
 			_lastMinute = t1;
 		}
 	}
+	
+	if (shouldQuit())
+		_exitCutscene = true;		
 
 	switch (_keyPressed.keycode) {
 	case Common::KEYCODE_UP:
@@ -560,6 +562,7 @@ bool AGOSEngine::processSpecialKeys() {
 			if (_subtitles)
 				_speech ^= 1;
 		}
+		break;
 	case Common::KEYCODE_PLUS:
 	case Common::KEYCODE_KP_PLUS:
 		if (_midiEnabled) {
@@ -595,19 +598,19 @@ bool AGOSEngine::processSpecialKeys() {
 		break;
 	case Common::KEYCODE_r:
 		if (_debugMode)
-			_startMainScript ^= 1;
+			_dumpScripts ^= 1;
 		break;
 	case Common::KEYCODE_o:
 		if (_debugMode)
-			_continousMainScript ^= 1;
+			_dumpOpcodes ^= 1;
 		break;
 	case Common::KEYCODE_a:
 		if (_debugMode)
-			_startVgaScript ^= 1;
+			_dumpVgaScripts ^= 1;
 		break;
 	case Common::KEYCODE_g:
 		if (_debugMode)
-			_continousVgaScript ^= 1;
+			_dumpVgaOpcodes ^= 1;
 		break;
 	case Common::KEYCODE_d:
 		if (_debugMode)

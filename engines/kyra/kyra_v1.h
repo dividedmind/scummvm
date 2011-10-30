@@ -30,6 +30,7 @@
 
 #include "common/array.h"
 #include "common/events.h"
+#include "common/system.h"
 
 #include "kyra/script.h"
 
@@ -105,18 +106,18 @@ class TextDisplayer;
 class StaticResource;
 class TimerManager;
 class Debugger;
+class GUI;
+
+struct Button;
 
 class KyraEngine_v1 : public Engine {
 friend class Debugger;
 friend class ::KyraMetaEngine;
 friend class GUI;
+friend class SoundMidiPC;		// For _eventMan
 public:
 	KyraEngine_v1(OSystem *system, const GameFlags &flags);
 	virtual ~KyraEngine_v1();
-
-	::GUI::Debugger *getDebugger();
-
-	virtual void pauseEngineIntern(bool pause);
 
 	uint8 game() const { return _flags.gameID; }
 	const GameFlags &gameFlags() const { return _flags; }
@@ -125,6 +126,7 @@ public:
 	Resource *resource() { return _res; }
 	virtual Screen *screen() = 0;
 	virtual TextDisplayer *text() { return _text; }
+	virtual GUI *gui() const { return 0; }
 	Sound *sound() { return _sound; }
 	StaticResource *staticres() { return _staticres; }
 	TimerManager *timer() { return _timer; }
@@ -151,6 +153,8 @@ public:
 	void setVolume(kVolumeEntry vol, uint8 value);
 	uint8 getVolume(kVolumeEntry vol);
 
+	virtual void syncSoundSettings();
+
 	// game flag handling
 	int setGameFlag(int flag);
 	int queryGameFlag(int flag) const;
@@ -170,8 +174,11 @@ public:
 	virtual void delayWithTicks(int ticks);
 
 protected:
-	virtual int go() = 0;
-	virtual int init();
+	// Engine APIs
+	virtual Common::Error init();
+	virtual ::GUI::Debugger *getDebugger();
+	virtual bool hasFeature(EngineFeature f) const;
+	virtual void pauseEngineIntern(bool pause);
 
 	// intern
 	Resource *_res;
@@ -181,6 +188,25 @@ protected:
 	TimerManager *_timer;
 	EMCInterpreter *_emc;
 	Debugger *_debugger;
+
+	// input
+	void updateInput();
+	int checkInput(Button *buttonList, bool mainLoop = false);
+	void removeInputTop();
+
+	int _mouseX, _mouseY;
+
+	struct Event {
+		Common::Event event;
+		bool causedSkip;
+
+		Event() : event(), causedSkip(false) {}
+		Event(Common::Event e) : event(e), causedSkip(false) {}
+		Event(Common::Event e, bool skip) : event(e), causedSkip(skip) {}
+
+		operator Common::Event() const { return event; }
+	};
+	Common::List<Event> _eventList;
 
 	// config specific
 	virtual void registerDefaultSettings();
@@ -194,8 +220,8 @@ protected:
 	uint8 _configVoice;
 
 	// game speed
-	virtual bool skipFlag() const = 0;
-	virtual void resetSkipFlag(bool removeEvent = true) = 0;
+	virtual bool skipFlag() const;
+	virtual void resetSkipFlag(bool removeEvent = true);
 
 	uint16 _tickLength;
 	uint16 _gameSpeed;
@@ -264,7 +290,7 @@ protected:
 	static const int8 _addYPosTable[];
 
 	// Character
-	
+
 	static const int8 _charAddXPosTable[];
 	static const int8 _charAddYPosTable[];
 
@@ -273,6 +299,11 @@ protected:
 
 	uint32 _lastAutosave;
 	void checkAutosave();
+
+	bool _isSaveAllowed;
+
+	bool canLoadGameStateCurrently() { return _isSaveAllowed; }
+	bool canSaveGameStateCurrently() { return _isSaveAllowed; }
 
 	const char *getSavegameFilename(int num);
 	static Common::String getSavegameFilename(const Common::String &target, int num);
@@ -299,7 +330,10 @@ protected:
 
 	static kReadSaveHeaderError readSaveHeader(Common::SeekableReadStream *file, bool loadThumbnail, SaveHeader &header);
 
-	virtual void saveGame(const char *fileName, const char *saveName, const Graphics::Surface *thumbnail) = 0;
+	void loadGameStateCheck(int slot);
+	virtual Common::Error loadGameState(int slot) = 0;
+	Common::Error saveGameState(int slot, const char *saveName) { return saveGameState(slot, saveName, 0); }
+	virtual Common::Error saveGameState(int slot, const char *saveName, const Graphics::Surface *thumbnail) = 0;
 
 	Common::SeekableReadStream *openSaveForReading(const char *filename, SaveHeader &header);
 	Common::WriteStream *openSaveForWriting(const char *filename, const char *saveName, const Graphics::Surface *thumbnail) const;

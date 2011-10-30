@@ -27,10 +27,14 @@
 #define GOB_COKTELVIDEO_H
 
 #include "common/stream.h"
+#include "common/array.h"
+#include "graphics/dither.h"
 #include "sound/mixer.h"
 #include "sound/audiostream.h"
 
 namespace Gob {
+
+class Indeo3;
 
 /** Common interface for handling Coktel Vision videos and derivated formats. */
 class CoktelVideo {
@@ -50,7 +54,9 @@ public:
 		/** Has a frame positions table. */
 		kFeaturesFramesPos = 0x200,
 		/** Has video. */
-		kFeaturesVideo = 0x400
+		kFeaturesVideo = 0x400,
+		/** Is a full color (non-paletted) video. */
+		kFeaturesFullColor = 0x4000
 	};
 
 	enum StateFlags {
@@ -118,6 +124,11 @@ public:
 	/** Reads the video's anchor pointer */
 	virtual bool getAnchor(int16 frame, uint16 partType,
 			int16 &x, int16 &y, int16 &width, int16 &height) = 0;
+
+	/** Returns whether that extra data file exists */
+	virtual bool hasExtraData(const char *fileName) const = 0;
+	/** Returns an extra data file */
+	virtual Common::MemoryReadStream *getExtraData(const char *fileName) = 0;
 
 	/** Load a video out of a stream. */
 	virtual bool load(Common::SeekableReadStream &stream) = 0;
@@ -201,6 +212,11 @@ public:
 	bool getAnchor(int16 frame, uint16 partType,
 			int16 &x, int16 &y, int16 &width, int16 &height) { return false; }
 
+	bool hasExtraData(const char *fileName) const { return false; }
+	Common::MemoryReadStream *getExtraData(const char *fileName) { return 0; }
+
+	void notifyPaused(uint32 duration) { }
+
 	void setFrameRate(int16 frameRate);
 
 	bool load(Common::SeekableReadStream &stream);
@@ -219,8 +235,6 @@ public:
 
 	State nextFrame();
 	void waitEndFrame();
-
-	void notifyPaused(uint32 duration);
 
 	void copyCurrentFrame(byte *dest,
 			uint16 left, uint16 top, uint16 width, uint16 height,
@@ -247,6 +261,7 @@ protected:
 
 	uint32 _frameDataSize, _vidBufferSize;
 	byte *_frameData, *_vidBuffer;
+	uint32 _frameDataLen;
 
 	byte _palette[768];
 
@@ -257,7 +272,6 @@ protected:
 	bool _hasSound;
 	bool _soundEnabled;
 	uint8 _soundStage; // (0: no sound, 1: loaded, 2: playing)
-	uint32 _soundStartTime;
 	uint32 _skipFrames;
 
 	uint16 _soundFlags;
@@ -289,14 +303,19 @@ protected:
 
 class Vmd : public Imd {
 public:
-	Vmd();
+	Vmd(Graphics::PaletteLUT *palLUT = 0);
 	~Vmd();
 
 	bool getAnchor(int16 frame, uint16 partType,
 			int16 &x, int16 &y, int16 &width, int16 &height);
 
+	bool hasExtraData(const char *fileName) const;
+	Common::MemoryReadStream *getExtraData(const char *fileName);
+
 	bool load(Common::SeekableReadStream &stream);
 	void unload();
+
+	int16 getWidth() const;
 
 	void setXY(int16 x, int16 y);
 
@@ -306,11 +325,21 @@ public:
 
 protected:
 	enum PartType {
+		kPartTypeSeparator = 0,
 		kPartTypeAudio = 1,
-		kPartTypeVideo = 2
+		kPartTypeVideo = 2,
+		kPartTypeExtraData = 3
 	};
+	struct ExtraData {
+		char name[16];
+		uint32 offset;
+		uint32 size;
+		uint32 realSize;
+	} PACKED_STRUCT;
 	struct Part {
 		PartType type;
+		byte field_1;
+		byte field_E;
 		uint32 size;
 		int16 left;
 		int16 top;
@@ -326,7 +355,7 @@ protected:
 		~Frame() { delete[] parts; }
 	} PACKED_STRUCT;
 
-	static const uint16 _tableDPCM[128];
+	static const uint16 _tableADPCM[128];
 
 	bool _hasVideo;
 
@@ -334,22 +363,42 @@ protected:
 	uint16 _partsPerFrame;
 	Frame *_frames;
 
+	Common::Array<ExtraData> _extraData;
+
 	byte _soundBytesPerSample;
 	byte _soundStereo; // (0: mono, 1: old-style stereo, 2: new-style stereo)
+
+	bool _externalCodec;
+	byte _blitMode;
+	byte _bytesPerPixel;
+	byte _preScaleX;
+	byte _postScaleX;
+	byte _scaleExternalX;
+	byte *_vidMemBuffer;
+
+	Graphics::PaletteLUT *_palLUT;
+	Indeo3 *_codecIndeo3;
 
 	void clear(bool del = true);
 
 	State processFrame(uint16 frame);
-	uint32 renderFrame(int16 left, int16 top, int16 right, int16 bottom);
+	uint32 renderFrame(int16 &left, int16 &top, int16 &right, int16 &bottom);
 
 	void deRLE(byte *&srcPtr, byte *&destPtr, int16 len);
+
+	inline int32 preScaleX(int32 x) const;
+	inline int32 postScaleX(int32 x) const;
+
+	void blit(byte *dest, byte *src, int16 width, int16 height);
+	void blit16(byte *dest, byte *src, int16 srcPitch, int16 width, int16 height);
+	void blit24(byte *dest, byte *src, int16 srcPitch, int16 width, int16 height);
 
 	void emptySoundSlice(uint32 size);
 	void soundSlice8bit(uint32 size);
 	void soundSlice16bit(uint32 size, int16 &init);
 	void filledSoundSlice(uint32 size);
 	void filledSoundSlices(uint32 size, uint32 mask);
-	void deDPCM(byte *soundBuf, byte *dataBuf, int16 &init, uint32 n);
+	void deADPCM(byte *soundBuf, byte *dataBuf, int16 &init, uint32 n);
 };
 
 } // End of namespace Gob

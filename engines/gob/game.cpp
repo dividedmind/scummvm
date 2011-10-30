@@ -34,6 +34,7 @@
 #include "gob/parse.h"
 #include "gob/draw.h"
 #include "gob/mult.h"
+#include "gob/videoplayer.h"
 #include "gob/sound/sound.h"
 
 namespace Gob {
@@ -44,6 +45,7 @@ Game::Game(GobEngine *vm) : _vm(vm) {
 	_totResourceTable = 0;
 	_imFileData = 0;
 	_extHandle = 0;
+	_lomHandle = -1;
 	_collisionAreas = 0;
 	_shouldPushColls = 0;
 
@@ -79,6 +81,8 @@ Game::Game(GobEngine *vm) : _vm(vm) {
 	_preventScroll = false;
 	_scrollHandleMouse = false;
 
+	_noCd = false;
+
 	_tempStr[0] = 0;
 	_curImaFile[0] = 0;
 	_collStr[0] = 0;
@@ -101,6 +105,16 @@ Game::Game(GobEngine *vm) : _vm(vm) {
 }
 
 Game::~Game() {
+	delete[] _vm->_game->_totFileData;
+	if (_vm->_game->_totTextData) {
+		if (_vm->_game->_totTextData->items)
+			delete[] _vm->_game->_totTextData->items;
+		delete _vm->_game->_totTextData;
+	}
+	if (_vm->_game->_totResourceTable) {
+		delete[] _vm->_game->_totResourceTable->items;
+		delete _vm->_game->_totResourceTable;
+	}
 }
 
 byte *Game::loadExtData(int16 itemId, int16 *pResWidth,
@@ -266,14 +280,27 @@ void Game::capturePop(char doDraw) {
 	_vm->_draw->freeSprite(30 + _captureCount);
 }
 
-byte *Game::loadTotResource(int16 id, int16 *dataSize) {
+byte *Game::loadTotResource(int16 id,
+		int16 *dataSize, int16 *width, int16 *height) {
+
 	TotResItem *itemPtr;
 	int32 offset;
 
+	if (id >= _vm->_game->_totResourceTable->itemsCount) {
+		warning("Trying to load non-existent TOT resource (%s, %d/%d)",
+				_curTotFile, id, _totResourceTable->itemsCount - 1);
+		return 0;
+	}
+
 	itemPtr = &_totResourceTable->items[id];
 	offset = itemPtr->offset;
+
 	if (dataSize)
 		*dataSize = itemPtr->size;
+	if (width)
+		*width = itemPtr->width;
+	if (height)
+		*height = itemPtr->height;
 
 	if (offset < 0) {
 		offset = (-offset - 1) * 4;
@@ -304,12 +331,14 @@ void Game::evaluateScroll(int16 x, int16 y) {
 		off = MIN(_vm->_draw->_cursorWidth, _vm->_draw->_scrollOffsetX);
 		off = MAX(off / 2, 1);
 		_vm->_draw->_scrollOffsetX -= off;
+		_vm->_video->dirtyRectsAll();
 	} else if ((y == 0) && (_vm->_draw->_scrollOffsetY > 0)) {
 		uint16 off;
 
 		off = MIN(_vm->_draw->_cursorHeight, _vm->_draw->_scrollOffsetY);
 		off = MAX(off / 2, 1);
 		_vm->_draw->_scrollOffsetY -= off;
+		_vm->_video->dirtyRectsAll();
 	}
 
 	int16 cursorRight = x + _vm->_draw->_cursorWidth;
@@ -326,6 +355,7 @@ void Game::evaluateScroll(int16 x, int16 y) {
 		off = MAX(off / 2, 1);
 
 		_vm->_draw->_scrollOffsetX += off;
+		_vm->_video->dirtyRectsAll();
 
 		_vm->_util->setMousePos(_vm->_width - _vm->_draw->_cursorWidth, y);
 	} else if ((cursorBottom >= (_vm->_height - _vm->_video->_splitHeight2)) &&
@@ -337,6 +367,7 @@ void Game::evaluateScroll(int16 x, int16 y) {
 		off = MAX(off / 2, 1);
 
 		_vm->_draw->_scrollOffsetY += off;
+		_vm->_video->dirtyRectsAll();
 
 		_vm->_util->setMousePos(x, _vm->_height - _vm->_video->_splitHeight2 -
 				_vm->_draw->_cursorHeight);
@@ -388,14 +419,46 @@ int32 Game::loadTotFile(const char *path) {
 	int16 handle;
 	int32 size;
 
+	_lomHandle = -1;
+
 	size = -1;
 	handle = _vm->_dataIO->openData(path);
 	if (handle >= 0) {
-		_vm->_dataIO->closeData(handle);
-		size = _vm->_dataIO->getDataSize(path);
-		_totFileData = _vm->_dataIO->getData(path);
-	} else
-		_totFileData = 0;
+
+		if (!scumm_stricmp(path + strlen(path) - 3, "LOM")) {
+			warning("Urban Stub: loadTotFile %s", path);
+
+			_lomHandle = handle;
+
+			DataStream *stream = _vm->_dataIO->openAsStream(handle);
+
+			stream->seek(48);
+			size = stream->readUint32LE();
+			stream->seek(0);
+
+			_totFileData = new byte[size];
+			stream->read(_totFileData, size);
+
+			delete stream;
+		} else {
+			_vm->_dataIO->closeData(handle);
+			size = _vm->_dataIO->getDataSize(path);
+			_totFileData = _vm->_dataIO->getData(path);
+		}
+
+	} else {
+		Common::MemoryReadStream *videoExtraData = _vm->_vidPlayer->getExtraData(path);
+
+		if (videoExtraData) {
+			warning("Found \"%s\" in video file", path);
+
+			size = videoExtraData->size();
+			_totFileData = new byte[size];
+			videoExtraData->read(_totFileData, size);
+			delete videoExtraData;
+		} else
+			_totFileData = 0;
+	}
 
 	return size;
 }
@@ -704,7 +767,7 @@ byte *Game::loadLocTexts(int32 *dataSize) {
 	return 0;
 }
 
-void Game::setCollisions(void) {
+void Game::setCollisions(byte arg_0) {
 	byte *savedIP;
 	uint16 left;
 	uint16 top;

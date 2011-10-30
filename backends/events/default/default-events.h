@@ -28,27 +28,51 @@
 
 #include "common/events.h"
 #include "common/savefile.h"
+#include "common/mutex.h"
+#include "common/queue.h"
 
-/*
-At some point we will remove pollEvent from OSystem and change
-DefaultEventManager to use a "boss" derived from this class:
+namespace Common {
+#ifdef ENABLE_KEYMAPPER
+	class Keymapper;
+#endif
+#ifdef ENABLE_VKEYBD
+	class VirtualKeyboard;
+#endif
+}
+
+
 class EventProvider {
-public
+public:
+	virtual ~EventProvider() {}
+	/**
+	 * Get the next event in the event queue.
+	 * @param event	point to an Common::Event struct, which will be filled with the event data.
+	 * @return true if an event was retrieved.
+	 */
 	virtual bool pollEvent(Common::Event &event) = 0;
 };
 
-Backends which wish to use the DefaultEventManager then simply can
-use a subclass of EventProvider.
-*/
 
 class DefaultEventManager : public Common::EventManager {
-	OSystem *_boss;
+	EventProvider *_boss;
+
+#ifdef ENABLE_VKEYBD
+	Common::VirtualKeyboard *_vk;
+#endif
+
+#ifdef ENABLE_KEYMAPPER
+	Common::Keymapper *_keymapper;
+	bool _remap;
+#endif
+
+	Common::Queue<Common::Event> _artificialEventQueue;
 
 	Common::Point _mousePos;
 	int _buttonState;
 	int _modifierState;
 	bool _shouldQuit;
 	bool _shouldRTL;
+	bool _confirmExitDialogActive;
 
 	class RandomSourceRecord {
 	public:
@@ -104,11 +128,12 @@ class DefaultEventManager : public Common::EventManager {
 	void record(Common::Event &event);
 	bool playback(Common::Event &event);
 public:
-	DefaultEventManager(OSystem *boss);
+	DefaultEventManager(EventProvider *boss);
 	~DefaultEventManager();
 
+	virtual void init();
 	virtual bool pollEvent(Common::Event &event);
-	virtual void pushEvent(Common::Event event);
+	virtual void pushEvent(const Common::Event &event);
 	virtual void registerRandomSource(Common::RandomSource &rnd, const char *name);
 	virtual void processMillis(uint32 &millis);
 
@@ -118,6 +143,10 @@ public:
 	virtual int shouldQuit() const { return _shouldQuit; }
 	virtual int shouldRTL() const { return _shouldRTL; }
 	virtual void resetRTL() { _shouldRTL = false; }
+	
+#ifdef ENABLE_KEYMAPPER
+	virtual Common::Keymapper *getKeymapper() { return _keymapper; }
+#endif
 };
 
 #endif

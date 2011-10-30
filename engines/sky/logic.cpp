@@ -27,6 +27,7 @@
 #include "common/endian.h"
 #include "common/rect.h"
 #include "common/events.h"
+#include "common/system.h"
 
 #include "sky/autoroute.h"
 #include "sky/compact.h"
@@ -2490,7 +2491,7 @@ bool Logic::fnFadeUp(uint32 a, uint32 b, uint32 c) {
 }
 
 bool Logic::fnQuitToDos(uint32 a, uint32 b, uint32 c) {
-	g_engine->quitGame();
+	Engine::quitGame();
 	return false;
 }
 

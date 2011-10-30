@@ -19,7 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
  * $URL$
- * $Id$ 
+ * $Id$
  */
 
 #include "base/version.h"
@@ -32,10 +32,11 @@
 #include "graphics/scaler.h"
 
 #include "gui/about.h"
-#include "gui/eval.h"
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
+#include "gui/launcher.h"
 #include "gui/ListWidget.h"
-#include "gui/theme.h"
+#include "gui/ThemeEval.h"
+#include "gui/saveload.h"
 
 #include "engines/dialogs.h"
 #include "engines/engine.h"
@@ -47,21 +48,11 @@
 
 using GUI::CommandSender;
 using GUI::StaticTextWidget;
-using GUI::kButtonWidth;
-using GUI::kButtonHeight;
-using GUI::kBigButtonWidth;
-using GUI::kBigButtonHeight;
 using GUI::kCloseCmd;
-using GUI::kTextAlignCenter;
-using GUI::kTextAlignLeft;
 using GUI::WIDGET_ENABLED;
 
 typedef GUI::OptionsDialog GUI_OptionsDialog;
 typedef GUI::Dialog GUI_Dialog;
-
-GlobalDialog::GlobalDialog(String name)
-	: GUI::Dialog(name) {
-_drawingHints |= GUI::THEME_HINT_SPECIAL_COLOR;}
 
 enum {
 	kSaveCmd = 'SAVE',
@@ -76,52 +67,111 @@ enum {
 };
 
 MainMenuDialog::MainMenuDialog(Engine *engine)
-	: GlobalDialog("globalmain"), _engine(engine) {
+	: GUI::Dialog("GlobalMenu"), _engine(engine) {
+	_backgroundType = GUI::ThemeEngine::kDialogBackgroundSpecial;
 
 #ifndef DISABLE_FANCY_THEMES
 	_logo = 0;
-	if (g_gui.evaluator()->getVar("global_logo.visible") == 1 && g_gui.theme()->supportsImages()) {
-		_logo = new GUI::GraphicsWidget(this, "global_logo");
+	if (g_gui.xmlEval()->getVar("Globals.ShowGlobalMenuLogo", 0) == 1 && g_gui.theme()->supportsImages()) {
+		_logo = new GUI::GraphicsWidget(this, "GlobalMenu.Logo");
 		_logo->useThemeTransparency(true);
-		_logo->setGfx(g_gui.theme()->getImageSurface(GUI::Theme::kImageLogoSmall));
+		_logo->setGfx(g_gui.theme()->getImageSurface(GUI::ThemeEngine::kImageLogoSmall));
 	} else {
-		new StaticTextWidget(this, "global_title", "ScummVM");
+		StaticTextWidget *title = new StaticTextWidget(this, "GlobalMenu.Title", "ScummVM");
+		title->setAlign(Graphics::kTextAlignCenter);
 	}
 #else
-	new StaticTextWidget(this, "global_title", "ScummVM");
+	StaticTextWidget *title = new StaticTextWidget(this, "GlobalMenu.Title", "ScummVM");
+	title->setAlign(Graphics::kTextAlignCenter);
 #endif
 
-	new StaticTextWidget(this, "global_version", gScummVMVersionDate);
-		
-	new GUI::ButtonWidget(this, "globalmain_resume", "Resume", kPlayCmd, 'P');
+	StaticTextWidget *version = new StaticTextWidget(this, "GlobalMenu.Version", gScummVMVersionDate);
+	version->setAlign(Graphics::kTextAlignCenter);
 
-//	new GUI::ButtonWidget(this, "globalmain_load", "Load", kLoadCmd, 'L');
-//	new GUI::ButtonWidget(this, "globalmain_save", "Save", kSaveCmd, 'S');
+	new GUI::ButtonWidget(this, "GlobalMenu.Resume", "Resume", kPlayCmd, 'P');
 
-	new GUI::ButtonWidget(this, "globalmain_options", "Options", kOptionsCmd, 'O');
+	_loadButton = new GUI::ButtonWidget(this, "GlobalMenu.Load", "Load", kLoadCmd, 'L');
+	// TODO: setEnabled -> setVisible
+	_loadButton->setEnabled(_engine->hasFeature(Engine::kSupportsLoadingDuringRuntime));
 
-	new GUI::ButtonWidget(this, "globalmain_about", "About", kAboutCmd, 'A');
+	_saveButton = new GUI::ButtonWidget(this, "GlobalMenu.Save", "Save", kSaveCmd, 'S');
+	// TODO: setEnabled -> setVisible
+	_saveButton->setEnabled(_engine->hasFeature(Engine::kSupportsSavingDuringRuntime));
 
-	_rtlButton = new GUI::ButtonWidget(this, "globalmain_rtl", "Return to Launcher", kRTLCmd, 'R');	
-	// '0' corresponds to the kSupportsRTL MetaEngineFeature
-	_rtlButton->setEnabled(_engine->hasFeature(0));
+	new GUI::ButtonWidget(this, "GlobalMenu.Options", "Options", kOptionsCmd, 'O');
+
+	new GUI::ButtonWidget(this, "GlobalMenu.About", "About", kAboutCmd, 'A');
+
+	_rtlButton = new GUI::ButtonWidget(this, "GlobalMenu.RTL", "Return to Launcher", kRTLCmd, 'R');
+	_rtlButton->setEnabled(_engine->hasFeature(Engine::kSupportsRTL));
 
 
-	new GUI::ButtonWidget(this, "globalmain_quit", "Quit", kQuitCmd, 'Q');
+	new GUI::ButtonWidget(this, "GlobalMenu.Quit", "Quit", kQuitCmd, 'Q');
 
 	_aboutDialog = new GUI::AboutDialog();
-	_optionsDialog = new ConfigDialog();
+	_optionsDialog = new ConfigDialog(_engine->hasFeature(Engine::kSupportsSubtitleOptions));
+	_loadDialog = new GUI::SaveLoadChooser("Load game:", "Load");
+	_loadDialog->setSaveMode(false);
+	_saveDialog = new GUI::SaveLoadChooser("Save game:", "Save");
+	_saveDialog->setSaveMode(true);
 }
 
 MainMenuDialog::~MainMenuDialog() {
 	delete _aboutDialog;
 	delete _optionsDialog;
+	delete _loadDialog;
+	delete _saveDialog;
 }
 
 void MainMenuDialog::handleCommand(CommandSender *sender, uint32 cmd, uint32 data) {
 	switch (cmd) {
 	case kPlayCmd:
 		close();
+		break;
+	case kLoadCmd:
+		{
+		Common::String gameId = ConfMan.get("gameid");
+
+		const EnginePlugin *plugin = 0;
+		EngineMan.findGame(gameId, &plugin);
+
+		int slot = _loadDialog->runModal(plugin, ConfMan.getActiveDomainName());
+
+		if (slot >= 0) {
+			// FIXME: For now we just ignore the return
+			// value, which is quite bad since it could
+			// be a fatal loading error, which renders
+			// the engine unusable.
+			_engine->loadGameState(slot);
+			close();
+		}
+
+		}
+		break;
+	case kSaveCmd:
+		{
+		Common::String gameId = ConfMan.get("gameid");
+
+		const EnginePlugin *plugin = 0;
+		EngineMan.findGame(gameId, &plugin);
+
+		int slot = _saveDialog->runModal(plugin, ConfMan.getActiveDomainName());
+
+		if (slot >= 0) {
+			Common::String result(_saveDialog->getResultString());
+			if (result.empty()) {
+				// If the user was lazy and entered no save name, come up with a default name.
+				char buf[20];
+				snprintf(buf, 20, "Save %d", slot + 1);
+				_engine->saveGameState(slot, buf);
+			} else {
+				_engine->saveGameState(slot, result.c_str());
+			}
+
+			close();
+		}
+
+		}
 		break;
 	case kOptionsCmd:
 		_optionsDialog->runModal();
@@ -134,7 +184,7 @@ void MainMenuDialog::handleCommand(CommandSender *sender, uint32 cmd, uint32 dat
 		eventRTL.type = Common::EVENT_RTL;
 		g_system->getEventManager()->pushEvent(eventRTL);
 		close();
-		}	
+		}
 		break;
 	case kQuitCmd: {
 		Common::Event eventQ;
@@ -144,28 +194,35 @@ void MainMenuDialog::handleCommand(CommandSender *sender, uint32 cmd, uint32 dat
 		}
 		break;
 	default:
-		GlobalDialog::handleCommand(sender, cmd, data);
+		GUI::Dialog::handleCommand(sender, cmd, data);
 	}
 }
 
 void MainMenuDialog::reflowLayout() {
-#ifndef DISABLE_FANCY_THEMES
-	if (g_gui.evaluator()->getVar("global_logo.visible") == 1 && g_gui.theme()->supportsImages()) {
-		if (!_logo)
-			_logo = new GUI::GraphicsWidget(this, "global_logo");
-		_logo->useThemeTransparency(true);
-		_logo->setGfx(g_gui.theme()->getImageSurface(GUI::Theme::kImageLogoSmall));
+	if (_engine->hasFeature(Engine::kSupportsLoadingDuringRuntime))
+		_loadButton->setEnabled(_engine->canLoadGameStateCurrently());
+	if (_engine->hasFeature(Engine::kSupportsSavingDuringRuntime))
+		_saveButton->setEnabled(_engine->canSaveGameStateCurrently());
 
-		GUI::StaticTextWidget *title = (StaticTextWidget *)findWidget("global_title");
+#ifndef DISABLE_FANCY_THEMES
+	if (g_gui.xmlEval()->getVar("Globals.ShowGlobalMenuLogo", 0) == 1 && g_gui.theme()->supportsImages()) {
+		if (!_logo)
+			_logo = new GUI::GraphicsWidget(this, "GlobalMenu.Logo");
+		_logo->useThemeTransparency(true);
+		_logo->setGfx(g_gui.theme()->getImageSurface(GUI::ThemeEngine::kImageLogoSmall));
+
+		GUI::StaticTextWidget *title = (StaticTextWidget *)findWidget("GlobalMenu.Title");
 		if (title) {
 			removeWidget(title);
 			title->setNext(0);
 			delete title;
 		}
 	} else {
-		GUI::StaticTextWidget *title = (StaticTextWidget *)findWidget("global_title");
-		if (!title)
-			new StaticTextWidget(this, "global_title", "ScummVM");
+		GUI::StaticTextWidget *title = (StaticTextWidget *)findWidget("GlobalMenu.Title");
+		if (!title) {
+			title = new StaticTextWidget(this, "GlobalMenu.Title", "ScummVM");
+			title->setAlign(Graphics::kTextAlignCenter);
+		}
 
 		if (_logo) {
 			removeWidget(_logo);
@@ -212,31 +269,33 @@ enum {
 // These changes will achieve two things at once: Allow us to get rid of using
 //  "" as value for the domain, and in fact provide a somewhat better user
 // experience at the same time.
-ConfigDialog::ConfigDialog()
-	: GUI::OptionsDialog("", "scummconfig") {
+ConfigDialog::ConfigDialog(bool subtitleControls)
+	: GUI::OptionsDialog("", "ScummConfig") {
 
 	//
 	// Sound controllers
 	//
 
-	addVolumeControls(this, "scummconfig_");
+	addVolumeControls(this, "ScummConfig.");
 
 	//
-	// Some misc options
+	// Subtitle speed and toggle controllers
 	//
 
-	// SCUMM has a talkspeed range of 0-9
-	addSubtitleControls(this, "scummconfig_", 9);
+	if (subtitleControls) {
+		// Global talkspeed range of 0-255
+		addSubtitleControls(this, "ScummConfig.", 255);
+	}
 
 	//
 	// Add the buttons
 	//
 
-	new GUI::ButtonWidget(this, "scummconfig_ok", "OK", GUI::OptionsDialog::kOKCmd, 'O');
-	new GUI::ButtonWidget(this, "scummconfig_cancel", "Cancel", kCloseCmd, 'C');
+	new GUI::ButtonWidget(this, "ScummConfig.Ok", "OK", GUI::OptionsDialog::kOKCmd, 'O');
+	new GUI::ButtonWidget(this, "ScummConfig.Cancel", "Cancel", kCloseCmd, 'C');
 
 #ifdef SMALL_SCREEN_DEVICE
-	new GUI::ButtonWidget(this, "scummconfig_keys", "Keys", kKeysCmd, 'K');
+	new GUI::ButtonWidget(this, "ScummConfig.Keys", "Keys", kKeysCmd, 'K');
 
 	//
 	// Create the sub dialog(s)

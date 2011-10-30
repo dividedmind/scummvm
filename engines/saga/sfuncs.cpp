@@ -40,7 +40,7 @@
 #include "saga/render.h"
 #include "saga/sound.h"
 #include "saga/sndres.h"
-#include "saga/rscfile.h"
+#include "saga/resource.h"
 
 #include "saga/script.h"
 #include "saga/objectmap.h"
@@ -52,10 +52,8 @@
 
 namespace Saga {
 
-#define OPCODE(x) {&Script::x, #x}
-
-void Script::setupScriptFuncList(void) {
-	static const ScriptFunctionDescription ITEscriptFunctionsList[ITE_SCRIPT_FUNCTION_MAX] = {
+void Script::setupITEScriptFuncList() {
+	static const ScriptFunctionDescription ITEScriptFunctionsList[ITE_SCRIPT_FUNCTION_MAX] = {
 		OPCODE(sfPutString),
 		OPCODE(sfWait),
 		OPCODE(sfTakeObject),
@@ -80,7 +78,7 @@ void Script::setupScriptFuncList(void) {
 		OPCODE(sfScriptOpenDoor),
 		OPCODE(sfScriptCloseDoor),
 		OPCODE(sfSetBgdAnimSpeed),
-		OPCODE(SF_cycleColors),
+		OPCODE(sfCycleColors),
 		OPCODE(sfDoCenterActor),
 		OPCODE(sfStartBgdAnimSpeed),
 		OPCODE(sfScriptWalkToAsync),
@@ -136,117 +134,7 @@ void Script::setupScriptFuncList(void) {
 		OPCODE(sfPlayVoice)
 	};
 
-static const ScriptFunctionDescription IHNMscriptFunctionsList[IHNM_SCRIPT_FUNCTION_MAX] = {
-		OPCODE(sfNull),
-		OPCODE(sfWait),
-		OPCODE(sfTakeObject),
-		OPCODE(sfIsCarried),
-		OPCODE(sfStatusBar),
-		OPCODE(sfMainMode),
-		OPCODE(sfScriptWalkTo),
-		OPCODE(sfScriptDoAction),
-		OPCODE(sfSetActorFacing),
-		OPCODE(sfStartBgdAnim),
-		OPCODE(sfStopBgdAnim),
-		OPCODE(sfLockUser),
-		OPCODE(sfPreDialog),
-		OPCODE(sfKillActorThreads),
-		OPCODE(sfFaceTowards),
-		OPCODE(sfSetFollower),
-		OPCODE(sfScriptGotoScene),
-		OPCODE(sfSetObjImage),
-		OPCODE(sfSetObjName),
-		OPCODE(sfGetObjImage),
-		OPCODE(sfGetNumber),
-		OPCODE(sfScriptOpenDoor),
-		OPCODE(sfScriptCloseDoor),
-		OPCODE(sfSetBgdAnimSpeed),
-		OPCODE(SF_cycleColors),
-		OPCODE(sfDoCenterActor),
-		OPCODE(sfStartBgdAnimSpeed),
-		OPCODE(sfScriptWalkToAsync),
-		OPCODE(sfEnableZone),
-		OPCODE(sfSetActorState),
-		OPCODE(sfScriptMoveTo),
-		OPCODE(sfSceneEq),
-		OPCODE(sfDropObject),
-		OPCODE(sfFinishBgdAnim),
-		OPCODE(sfSwapActors),
-		OPCODE(sfSimulSpeech),
-		OPCODE(sfScriptWalk),
-		OPCODE(sfCycleFrames),
-		OPCODE(sfSetFrame),
-		OPCODE(sfSetPortrait),
-		OPCODE(sfSetProtagPortrait),
-		OPCODE(sfChainBgdAnim),
-		OPCODE(sfScriptSpecialWalk),
-		OPCODE(sfPlaceActor),
-		OPCODE(sfCheckUserInterrupt),
-		OPCODE(sfScriptWalkRelative),
-		OPCODE(sfScriptMoveRelative),
-		OPCODE(sfSimulSpeech2),
-		OPCODE(sfPsychicProfile),
-		OPCODE(sfPsychicProfileOff),
-		OPCODE(sfSetProtagState),
-		OPCODE(sfResumeBgdAnim),
-		OPCODE(sfThrowActor),
-		OPCODE(sfWaitWalk),
-		OPCODE(sfScriptSceneID),
-		OPCODE(sfChangeActorScene),
-		OPCODE(sfScriptClimb),
-		OPCODE(sfSetDoorState),
-		OPCODE(sfSetActorZ),
-		OPCODE(sfScriptText),
-		OPCODE(sfGetActorX),
-		OPCODE(sfGetActorY),
-		OPCODE(sfEraseDelta),
-		OPCODE(sfPlayMusic),
-		OPCODE(sfNull),
-		OPCODE(sfEnableEscape),
-		OPCODE(sfPlaySound),
-		OPCODE(sfPlayLoopedSound),
-		OPCODE(sfGetDeltaFrame),
-		OPCODE(sfNull),
-		OPCODE(sfNull),
-		OPCODE(sfRand),
-		OPCODE(sfFadeMusic),
-		OPCODE(sfNull),
-		OPCODE(sfSetChapterPoints),
-		OPCODE(sfSetPortraitBgColor),
-		OPCODE(sfScriptStartCutAway),
-		OPCODE(sfReturnFromCutAway),
-		OPCODE(sfEndCutAway),
-		OPCODE(sfGetMouseClicks),
-		OPCODE(sfResetMouseClicks),
-		OPCODE(sfWaitFrames),
-		OPCODE(sfScriptFade),
-		OPCODE(sfScriptStartVideo),
-		OPCODE(sfScriptReturnFromVideo),
-		OPCODE(sfScriptEndVideo),
-		OPCODE(sfSetActorZ),
-		OPCODE(sfShowIHNMDemoHelpBg),
-		OPCODE(sfAddIHNMDemoHelpTextLine),
-		OPCODE(sfShowIHNMDemoHelpPage),
-		OPCODE(sfVstopFX),
-		OPCODE(sfVstopLoopedFX),
-		OPCODE(sfDemoSetInteractive),	// only used in the demo version of IHNM
-		OPCODE(sfDemoIsInteractive),
-		OPCODE(sfVsetTrack),
-		OPCODE(sfGetPoints),
-		OPCODE(sfSetGlobalFlag),
-		OPCODE(sfClearGlobalFlag),
-		OPCODE(sfTestGlobalFlag),
-		OPCODE(sfSetPoints),
-		OPCODE(sfSetSpeechBox),
-		OPCODE(sfDebugShowData),
-		OPCODE(sfWaitFramesEsc),
-		OPCODE(sfQueueMusic),
-		OPCODE(sfDisableAbortSpeeches)
-	};
-	if (_vm->getGameType() == GType_IHNM)
-		_scriptFunctionsList = IHNMscriptFunctionsList;
-	else
-		_scriptFunctionsList = ITEscriptFunctionsList;
+	_scriptFunctionsList = ITEScriptFunctionsList;
 }
 
 // Script function #0 (0x00)
@@ -279,10 +167,10 @@ void Script::sfTakeObject(SCRIPTFUNC_PARAMS) {
 		// Normally, when objects are picked up, they should always have the same
 		// _spriteListResourceId as their _index value. Some don't in IHNM, so
 		// we fix their sprite here
-		// Fixes bugs #2057200 - "IHNM: Invisible inventory objects", 
+		// Fixes bugs #2057200 - "IHNM: Invisible inventory objects",
 		// #1861126 - "IHNM: Crash when Gorrister cuts sheet in the mooring ring"
 		// and some incorrect objects in the IHNM demo
-		if (_vm->getGameType() == GType_IHNM)
+		if (_vm->getGameId() == GID_IHNM)
 			obj->_spriteListResourceId = obj->_index;
 
 		_vm->_interface->addToInventory(objectId);
@@ -324,7 +212,7 @@ void Script::sfMainMode(SCRIPTFUNC_PARAMS) {
 	// by an incorrect stored mode
 	_vm->_interface->rememberMode();
 
-	if (_vm->getGameType() == GType_ITE)
+	if (_vm->getGameId() == GID_ITE)
 		setPointerVerb();
 
 	// The early Windows and Mac demos of ITE were non-interactive. In those demos,
@@ -393,7 +281,7 @@ void Script::sfScriptDoAction(SCRIPTFUNC_PARAMS) {
 				return;
 			}
 			moduleNumber = 0;
-			if (_vm->getGameType() == GType_IHNM)
+			if (_vm->getGameId() == GID_IHNM)
 				moduleNumber = _vm->_scene->getScriptModuleNumber();
 			break;
 		case kGameObjectActor:
@@ -407,7 +295,7 @@ void Script::sfScriptDoAction(SCRIPTFUNC_PARAMS) {
 			} else {
 				moduleNumber = _vm->_scene->getScriptModuleNumber();
 			}
-			if (_vm->getGameType() == GType_IHNM)
+			if (_vm->getGameId() == GID_IHNM)
 				moduleNumber = _vm->_scene->getScriptModuleNumber();
 			break;
 		case kGameObjectHitZone:
@@ -550,19 +438,23 @@ void Script::sfScriptGotoScene(SCRIPTFUNC_PARAMS) {
 	int16 sceneNumber = thread->pop();
 	int16 entrance = thread->pop();
 
-	if (_vm->getGameType() == GType_IHNM) {
+#ifdef ENABLE_IHNM
+	if (_vm->getGameId() == GID_IHNM) {
 		_vm->_gfx->setCursor(kCursorBusy);
 	}
+#endif
 
-	if (_vm->getGameType() == GType_ITE && sceneNumber < 0) {
+	if (_vm->getGameId() == GID_ITE && sceneNumber < 0) {
 		_vm->quitGame();
 		return;
 	}
 
-	if (_vm->getGameType() == GType_IHNM && sceneNumber == 0) {
+#ifdef ENABLE_IHNM
+	if (_vm->getGameId() == GID_IHNM && sceneNumber == 0) {
 		_vm->_scene->creditsScene();
 		return;
 	}
+#endif
 
 	// It is possible to leave scene when converse panel is on,
 	// particulalrly it may happen at Moneychanger tent. This
@@ -572,7 +464,7 @@ void Script::sfScriptGotoScene(SCRIPTFUNC_PARAMS) {
 	}
 
 	// changeScene calls loadScene which calls setVerb. setVerb resets all pending objects and object flags
-	if (sceneNumber == -1 && _vm->getGameType() == GType_IHNM) {
+	if (sceneNumber == -1 && _vm->getGameId() == GID_IHNM) {
 		// Return back to the character selection screen in IHNM
 		_vm->_scene->changeScene(154, entrance, kTransitionFade, 8);
 	} else {
@@ -590,13 +482,16 @@ void Script::sfScriptGotoScene(SCRIPTFUNC_PARAMS) {
 	_currentObject[0] = _currentObject[1] = ID_NOTHING;
 	showVerb();	// calls setStatusText("")
 
-	if (_vm->getGameType() == GType_IHNM) {
+#ifdef ENABLE_IHNM
+	if (_vm->getGameId() == GID_IHNM) {
 		// There are some cutaways which are not removed by game scripts, like the cutaway
 		// after the intro of IHNM or the cutaway at the end of Ellen's part in the IHNM demo.
 		// Clear any remaining cutaways here
 		_vm->_anim->clearCutaway();
 		_vm->_gfx->setCursor(kCursorNormal);
 	}
+#endif
+
 }
 
 // Script function #17 (0x11)
@@ -605,12 +500,8 @@ void Script::sfScriptGotoScene(SCRIPTFUNC_PARAMS) {
 void Script::sfSetObjImage(SCRIPTFUNC_PARAMS) {
 	uint16 objectId = thread->pop();
 	uint16 spriteId = thread->pop();
-	ObjectData *obj = _vm->_actor->getObj(objectId);
 
-	if (_vm->getGameType() == GType_IHNM)
-		obj->_spriteListResourceId = spriteId;
-	else
-		obj->_spriteListResourceId = OBJ_SPRITE_BASE + spriteId;
+	_vm->_actor->getObj(objectId)->_spriteListResourceId = spriteId + (_vm->getGameId() == GID_ITE ? 9 : 0);
 	_vm->_interface->refreshInventory();
 }
 
@@ -620,21 +511,14 @@ void Script::sfSetObjImage(SCRIPTFUNC_PARAMS) {
 void Script::sfSetObjName(SCRIPTFUNC_PARAMS) {
 	uint16 objectId = thread->pop();
 	uint16 nameIdx = thread->pop();
-	ObjectData *obj = _vm->_actor->getObj(objectId);
-
-	obj->_nameIndex = nameIdx;
+	_vm->_actor->getObj(objectId)->_nameIndex = nameIdx;
 }
 
 // Script function #19 (0x13)
 // Param1: object id
 void Script::sfGetObjImage(SCRIPTFUNC_PARAMS) {
 	uint16 objectId = thread->pop();
-	ObjectData *obj = _vm->_actor->getObj(objectId);
-
-	if (_vm->getGameType() == GType_IHNM)
-		thread->_returnValue = obj->_spriteListResourceId;
-	else
-		thread->_returnValue = obj->_spriteListResourceId - OBJ_SPRITE_BASE;
+	thread->_returnValue = _vm->_actor->getObj(objectId)->_spriteListResourceId - (_vm->getGameId() == GID_ITE ? 9 : 0);
 }
 
 // Script function #20 (0x14)
@@ -688,8 +572,8 @@ void Script::sfSetBgdAnimSpeed(SCRIPTFUNC_PARAMS) {
 }
 
 // Script function #24 (0x18)
-void Script::SF_cycleColors(SCRIPTFUNC_PARAMS) {
-	SF_stub("SF_cycleColors", thread, nArgs);
+void Script::sfCycleColors(SCRIPTFUNC_PARAMS) {
+	sfStub("sfCycleColors", thread, nArgs);
 
 	error("Please, report this to sev");
 }
@@ -825,11 +709,11 @@ void Script::sfDropObject(SCRIPTFUNC_PARAMS) {
 	// Change the scene number of the compact disk so that it's not shown. It will be shown
 	// once Ellen says that there's something different (i.e. after speaking with AM)
 	// See Actor::actorSpeech for the other part of this hack
-	if (_vm->getGameType() == GType_IHNM && _vm->_scene->currentChapterNumber() == 3 &&
+	if (_vm->getGameId() == GID_IHNM && _vm->_scene->currentChapterNumber() == 3 &&
 		_vm->_scene->currentSceneNumber() == 59 && obj->_id == 16385)
 			obj->_sceneNumber = -1;
 
-	if (_vm->getGameType() == GType_IHNM) {
+	if (_vm->getGameId() == GID_IHNM) {
 		// Don't update _spriteListResourceId if spriteId is 0 and the object is not the
 		// psychic profile. If spriteId == 0, the object's sprite is incorrectly reset.
 		// This occurs in the IHNM demo and with some incorrect scripts in the retail version
@@ -837,7 +721,7 @@ void Script::sfDropObject(SCRIPTFUNC_PARAMS) {
 		if (spriteId > 0 || (spriteId == 0 && objectId == IHNM_OBJ_PROFILE))
 			obj->_spriteListResourceId = spriteId;
 	} else {
-		obj->_spriteListResourceId = OBJ_SPRITE_BASE + spriteId;
+		obj->_spriteListResourceId = spriteId + 9;
 	}
 }
 
@@ -865,13 +749,13 @@ void Script::sfSwapActors(SCRIPTFUNC_PARAMS) {
 		actor1->_flags &= ~kProtagonist;
 		actor2->_flags |= kProtagonist;
 		_vm->_actor->_protagonist = _vm->_actor->_centerActor = actor2;
-		if (_vm->getGameType() == GType_IHNM)
+		if (_vm->getGameId() == GID_IHNM)
 			_vm->_scene->setProtag(actorId2);
 	} else if (actor2->_flags & kProtagonist) {
 		actor2->_flags &= ~kProtagonist;
 		actor1->_flags |= kProtagonist;
 		_vm->_actor->_protagonist = _vm->_actor->_centerActor = actor1;
-		if (_vm->getGameType() == GType_IHNM)
+		if (_vm->getGameId() == GID_IHNM)
 			_vm->_scene->setProtag(actorId1);
 	}
 }
@@ -897,7 +781,7 @@ void Script::sfSimulSpeech(SCRIPTFUNC_PARAMS) {
 		actorsIds[i] = thread->pop();
 
 	if (thread->_voiceLUT->voices) {
-		if (_vm->getGameType() == GType_IHNM && stringId >= 338) {
+		if (_vm->getGameId() == GID_IHNM && stringId >= 338) {
 			sampleResourceId = -1;
 		} else {
 			sampleResourceId = thread->_voiceLUT->voices[stringId];
@@ -964,7 +848,7 @@ void Script::sfCycleFrames(SCRIPTFUNC_PARAMS) {
 		actor->_actorFlags |= kActorRandom;
 	}
 	if (flags & kCycleReverse) {
-		if (_vm->getGameType() == GType_IHNM &&
+		if (_vm->getGameId() == GID_IHNM &&
 			_vm->_scene->currentChapterNumber() == 2 && _vm->_scene->currentSceneNumber() == 41) {
 			// WORKAROUND: Prevent Benny from walking backwards after talking to the child via the monitor. This
 			// occurs in the original as well, and is fixed by not setting the kActorBackwards flag at this point
@@ -1171,7 +1055,6 @@ void Script::sfSimulSpeech2(SCRIPTFUNC_PARAMS) {
 // Param1: string rid
 void Script::sfPlacard(SCRIPTFUNC_PARAMS) {
 	int stringId = thread->pop();
-	Surface *backBuffer = _vm->_gfx->getBackBuffer();
 	static PalEntry cur_pal[PAL_ENTRIES];
 	PalEntry *pal;
 	Event event;
@@ -1216,12 +1099,11 @@ void Script::sfPlacard(SCRIPTFUNC_PARAMS) {
 	event.type = kEvTOneshot;
 	event.code = kGraphicsEvent;
 	event.op = kEventFillRect;
-	event.data = backBuffer;
 	event.param = 138;
 	event.param2 = 0;
 	event.param3 = _vm->_scene->getHeight();
 	event.param4 = 0;
-	event.param5 = _vm->getDisplayWidth();
+	event.param5 = _vm->getDisplayInfo().width;
 	q_event = _vm->_events->chain(q_event, &event);
 
 	// Put the text in the center of the viewport, assuming it will fit on
@@ -1234,7 +1116,7 @@ void Script::sfPlacard(SCRIPTFUNC_PARAMS) {
 
 	textEntry.knownColor = kKnownColorBrightWhite;
 	textEntry.effectKnownColor = kKnownColorBlack;
-	textEntry.point.x = _vm->getDisplayWidth() / 2;
+	textEntry.point.x = _vm->getDisplayInfo().width / 2;
 	textEntry.point.y = (_vm->_scene->getHeight() - _vm->_font->getHeight(kKnownFontMedium)) / 2;
 	textEntry.font = kKnownFontMedium;
 	textEntry.flags = (FontEffectFlags)(kFontOutline | kFontCentered);
@@ -1279,8 +1161,6 @@ void Script::sfPsychicProfile(SCRIPTFUNC_PARAMS) {
 }
 
 void Script::sfPsychicProfileOff(SCRIPTFUNC_PARAMS) {
-	thread->wait(kWaitTypePlacard);
-
 	// This is called a while after the psychic profile is
 	// opened, to close it automatically
 	_vm->_scene->clearPsychicProfile();
@@ -1452,16 +1332,15 @@ void Script::sfGetActorY(SCRIPTFUNC_PARAMS) {
 
 // Script function #62 (0x3E)
 void Script::sfEraseDelta(SCRIPTFUNC_PARAMS) {
-	Surface *backGroundSurface = _vm->_render->getBackGroundSurface();
 	BGInfo backGroundInfo;
-
 	_vm->_scene->getBGInfo(backGroundInfo);
-	backGroundSurface->blit(backGroundInfo.bounds, backGroundInfo.buffer);
+	_vm->_render->getBackGroundSurface()->blit(backGroundInfo.bounds, backGroundInfo.buffer);
+	_vm->_render->addDirtyRect(backGroundInfo.bounds);
 }
 
 // Script function #63 (0x3F)
 void Script::sfPlayMusic(SCRIPTFUNC_PARAMS) {
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		int16 param = thread->pop() + 9;
 
 		if (param >= 9 && param <= 34) {
@@ -1470,7 +1349,8 @@ void Script::sfPlayMusic(SCRIPTFUNC_PARAMS) {
 		} else {
 			_vm->_music->stop();
 		}
-	} else {
+#ifdef ENABLE_IHNM
+	} else if (_vm->getGameId() == GID_IHNM) {
 		int16 param1 = thread->pop();
 		int16 param2 = thread->pop();
 
@@ -1492,6 +1372,7 @@ void Script::sfPlayMusic(SCRIPTFUNC_PARAMS) {
 				_vm->_scene->setChapterPointsChanged(false);
 			}
 		}
+#endif
 	}
 }
 
@@ -1571,7 +1452,7 @@ void Script::sfPlaySound(SCRIPTFUNC_PARAMS) {
 
 	if (param >= 0 && param < _vm->_sndRes->_fxTableLen) {
 		res = _vm->_sndRes->_fxTable[param].res;
-		if (_vm->getFeatures() & GF_CD_FX)
+		if (_vm->getGameId() == GID_ITE && !(_vm->getFeatures() & GF_ITE_FLOPPY))
 			res -= 14;
 		_vm->_sndRes->playSound(res, _vm->_sndRes->_fxTable[param].vol, false);
 	} else {
@@ -1586,7 +1467,7 @@ void Script::sfPlayLoopedSound(SCRIPTFUNC_PARAMS) {
 
 	if (param >= 0 && param < _vm->_sndRes->_fxTableLen) {
 		res = _vm->_sndRes->_fxTable[param].res;
-		if (_vm->getFeatures() & GF_CD_FX)
+		if (_vm->getGameId() == GID_ITE && !(_vm->getFeatures() & GF_ITE_FLOPPY))
 			res -= 14;
 
 		_vm->_sndRes->playSound(res, _vm->_sndRes->_fxTable[param].vol, true);
@@ -1645,13 +1526,13 @@ void Script::sfPlayVoice(SCRIPTFUNC_PARAMS) {
 
 void Script::finishDialog(int strID, int replyID, int flags, int bitOffset) {
 	byte *addr;
-	const char *str;
 
 	if (_conversingThread) {
 		_vm->_interface->setMode(kPanelNull);
 
-		if (_vm->getGameType() == GType_IHNM) {
-			str = _conversingThread->_strings->getString(strID);
+#ifdef ENABLE_IHNM
+		if (_vm->getGameId() == GID_IHNM) {
+			const char *str = _conversingThread->_strings->getString(strID);
 			if (*str != '[') {
 				int sampleResourceId = -1;
 				sampleResourceId = _conversingThread->_voiceLUT->voices[strID];
@@ -1661,6 +1542,7 @@ void Script::finishDialog(int strID, int replyID, int flags, int bitOffset) {
 				_vm->_actor->actorSpeech(_vm->_actor->_protagonist->_id, &str, 1, sampleResourceId, 0);
 			}
 		}
+#endif
 
 		_conversingThread->_flags &= ~kTFlagWaiting;
 
@@ -1676,291 +1558,12 @@ void Script::finishDialog(int strID, int replyID, int flags, int bitOffset) {
 	wakeUpThreads(kWaitTypeDialogBegin);
 }
 
-void Script::sfSetChapterPoints(SCRIPTFUNC_PARAMS) {
-	int chapter = _vm->_scene->currentChapterNumber();
-	_vm->_ethicsPoints[chapter] = thread->pop();
-	int16 barometer = thread->pop();
-	static PalEntry cur_pal[PAL_ENTRIES];
-
-	_vm->_spiritualBarometer = _vm->_ethicsPoints[chapter] * 256 / barometer;
-	_vm->_scene->setChapterPointsChanged(true);		// don't save this music when saving in IHNM
-
-	if (_vm->_spiritualBarometer > 255)
-		_vm->_gfx->setPaletteColor(kIHNMColorPortrait, 0xff, 0xff, 0xff);
-	else
-		_vm->_gfx->setPaletteColor(kIHNMColorPortrait,
-			_vm->_spiritualBarometer * _vm->_interface->_portraitBgColor.red / 256,
-			_vm->_spiritualBarometer * _vm->_interface->_portraitBgColor.green / 256,
-			_vm->_spiritualBarometer * _vm->_interface->_portraitBgColor.blue / 256);
-
-	_vm->_gfx->getCurrentPal(cur_pal);
-	_vm->_gfx->setPalette(cur_pal);
-}
-
-void Script::sfSetPortraitBgColor(SCRIPTFUNC_PARAMS) {
-	int16 red = thread->pop();
-	int16 green = thread->pop();
-	int16 blue = thread->pop();
-
-	_vm->_interface->setPortraitBgColor(red, green, blue);
-}
-
-void Script::sfScriptStartCutAway(SCRIPTFUNC_PARAMS) {
-	int16 cut = thread->pop();
-	thread->pop();		// Not used
-	int16 fade = thread->pop();
-
-	_vm->_anim->setCutAwayMode(kPanelCutaway);
-	_vm->_anim->playCutaway(cut, fade != 0);
-}
-
-void Script::sfReturnFromCutAway(SCRIPTFUNC_PARAMS) {
-	_vm->_anim->returnFromCutaway();
-	thread->wait(kWaitTypeWakeUp);
-}
-
-void Script::sfEndCutAway(SCRIPTFUNC_PARAMS) {
-	_vm->_anim->endCutaway();
-}
-
-void Script::sfGetMouseClicks(SCRIPTFUNC_PARAMS) {
-	thread->_returnValue = _vm->getMouseClickCount();
-}
-
-void Script::sfResetMouseClicks(SCRIPTFUNC_PARAMS) {
-	_vm->resetMouseClickCount();
-}
-
-// Used in IHNM only
-// Param1: frames
-void Script::sfWaitFrames(SCRIPTFUNC_PARAMS) {
-	int16 frames = thread->pop();
-
-	if (!_skipSpeeches)
-		thread->waitFrames(_vm->_frameCount + frames);
-}
-
-void Script::sfScriptFade(SCRIPTFUNC_PARAMS) {
-	int16 firstPalEntry = thread->pop();
-	int16 lastPalEntry = thread->pop();
-	int16 startingBrightness = thread->pop();
-	int16 endingBrightness = thread->pop();
-	Event event;
-	static PalEntry cur_pal[PAL_ENTRIES];
-
-	_vm->_gfx->getCurrentPal(cur_pal);
-	event.type = kEvTImmediate;
-	event.code = kPalEvent;
-	event.op = kEventPalFade;
-	event.time = 0;
-	event.duration = kNormalFadeDuration;
-	event.data = cur_pal;
-	event.param = startingBrightness;
-	event.param2 = endingBrightness;
-	event.param3 = firstPalEntry;
-	event.param4 = lastPalEntry - firstPalEntry + 1;
-	_vm->_events->queue(&event);
-}
-
-void Script::sfScriptStartVideo(SCRIPTFUNC_PARAMS) {
-	int16 vid = thread->pop();
-	int16 fade = thread->pop();
-
-	_vm->_anim->setCutAwayMode(kPanelVideo);
-	_vm->_anim->startVideo(vid, fade != 0);
-}
-
-void Script::sfScriptReturnFromVideo(SCRIPTFUNC_PARAMS) {
-	_vm->_anim->returnFromVideo();
-}
-
-void Script::sfScriptEndVideo(SCRIPTFUNC_PARAMS) {
-	_vm->_anim->endVideo();
-}
-
-void Script::sfShowIHNMDemoHelpBg(SCRIPTFUNC_PARAMS) {
-	_ihnmDemoCurrentY = 0;
-	_vm->_scene->_textList.clear();
-	_vm->_interface->setMode(kPanelConverse);
-	_vm->_scene->showPsychicProfile(NULL);
-}
-
-void Script::sfAddIHNMDemoHelpTextLine(SCRIPTFUNC_PARAMS) {
-	int stringId = thread->pop();
-	TextListEntry textEntry;
-	Event event;
-
-	textEntry.knownColor = kKnownColorBlack;
-	textEntry.useRect = true;
-	textEntry.rect.left = 245;
-	textEntry.rect.setHeight(210 + 76);
-	textEntry.rect.setWidth(226);
-	textEntry.rect.top = 76 + _ihnmDemoCurrentY;
-	textEntry.font = kKnownFontVerb;
-	textEntry.flags = (FontEffectFlags)(kFontCentered);
-	textEntry.text = thread->_strings->getString(stringId);
-
-	TextListEntry *_psychicProfileTextEntry = _vm->_scene->_textList.addEntry(textEntry);
-
-	event.type = kEvTOneshot;
-	event.code = kTextEvent;
-	event.op = kEventDisplay;
-	event.data = _psychicProfileTextEntry;
-	_vm->_events->queue(&event);
-
-	_ihnmDemoCurrentY += _vm->_font->getHeight(kKnownFontVerb, thread->_strings->getString(stringId), 226, kFontCentered);
-}
-
-void Script::sfShowIHNMDemoHelpPage(SCRIPTFUNC_PARAMS) {
-	// Note: The IHNM demo changes panel mode to 8 (kPanelProtect in ITE)
-	// when changing pages
-	_vm->_interface->setMode(kPanelPlacard);
-	_ihnmDemoCurrentY = 0;
-}
-
-void Script::sfVstopFX(SCRIPTFUNC_PARAMS) {
-	_vm->_sound->stopSound();
-}
-
-void Script::sfVstopLoopedFX(SCRIPTFUNC_PARAMS) {
-	_vm->_sound->stopSound();
-}
-
-void Script::sfDemoSetInteractive(SCRIPTFUNC_PARAMS) {
-	if (thread->pop() == 0) {
-		_vm->_interface->deactivate();
-		_vm->_interface->setMode(kPanelNull);
-	}
-
-	// Note: the original also sets an appropriate flag here, but we don't,
-	// as we don't use it
-}
-
-void Script::sfDemoIsInteractive(SCRIPTFUNC_PARAMS) {
-	thread->_returnValue = 0;
-}
-
-void Script::sfVsetTrack(SCRIPTFUNC_PARAMS) {
-	int16 chapter = thread->pop();
-	int16 sceneNumber = thread->pop();
-	int16 actorsEntrance = thread->pop();
-
-	debug(2, "sfVsetTrrack(%d, %d, %d)", chapter, sceneNumber, actorsEntrance);
-
-	_vm->_scene->changeScene(sceneNumber, actorsEntrance, kTransitionFade, chapter);
-}
-
-void Script::sfGetPoints(SCRIPTFUNC_PARAMS) {
-	int16 index = thread->pop();
-
-	if (index >= 0 && index < ARRAYSIZE(_vm->_ethicsPoints))
-		thread->_returnValue = _vm->_ethicsPoints[index];
-	else
-		thread->_returnValue = 0;
-}
-
-void Script::sfSetGlobalFlag(SCRIPTFUNC_PARAMS) {
-	int16 flag = thread->pop();
-
-	if (flag >= 0 && flag < 32)
-		_vm->_globalFlags |= (1 << flag);
-}
-
-void Script::sfClearGlobalFlag(SCRIPTFUNC_PARAMS) {
-	int16 flag = thread->pop();
-
-	if (flag >= 0 && flag < 32)
-		_vm->_globalFlags &= ~(1 << flag);
-}
-
-void Script::sfTestGlobalFlag(SCRIPTFUNC_PARAMS) {
-	int16 flag = thread->pop();
-
-	if (flag >= 0 && flag < 32 && _vm->_globalFlags & (1 << flag))
-		thread->_returnValue = 1;
-	else
-		thread->_returnValue = 0;
-}
-
-void Script::sfSetPoints(SCRIPTFUNC_PARAMS) {
-	int16 index = thread->pop();
-	int16 points = thread->pop();
-
-	if (index >= 0 && index < ARRAYSIZE(_vm->_ethicsPoints))
-		_vm->_ethicsPoints[index] = points;
-}
-
-void Script::sfSetSpeechBox(SCRIPTFUNC_PARAMS) {
-	int16 param1 = thread->pop();
-	int16 param2 = thread->pop();
-	int16 param3 = thread->pop();
-	int16 param4 = thread->pop();
-
-	_vm->_actor->_speechBoxScript.left = param1;
-	_vm->_actor->_speechBoxScript.top = param2;
-	_vm->_actor->_speechBoxScript.setWidth(param3 - param1);
-	_vm->_actor->_speechBoxScript.setHeight(param4 - param2);
-}
-
-void Script::sfDebugShowData(SCRIPTFUNC_PARAMS) {
-	int16 param = thread->pop();
-	char buf[50];
-
-	snprintf(buf, 50, "Reached breakpoint %d", param);
-
-	_vm->_interface->setStatusText(buf);
-}
-
-void Script::sfWaitFramesEsc(SCRIPTFUNC_PARAMS) {
-	thread->_returnValue = _vm->_framesEsc;
-}
-
-void Script::sfQueueMusic(SCRIPTFUNC_PARAMS) {
-	int16 param1 = thread->pop();
-	int16 param2 = thread->pop();
-	Event event;
-
-	if (param1 < 0) {
-		_vm->_music->stop();
-		return;
-	}
-
-	if (param1 >= _vm->_music->_songTableLen) {
-		warning("sfQueueMusic: Wrong song number (%d > %d)", param1, _vm->_music->_songTableLen - 1);
-	} else {
-		_vm->_music->setVolume(_vm->_musicVolume, 1);
-		event.type = kEvTOneshot;
-		event.code = kMusicEvent;
-		event.param = _vm->_music->_songTable[param1];
-		event.param2 = param2 ? MUSIC_LOOP : MUSIC_NORMAL;
-		event.op = kEventPlay;
-		event.time = _vm->ticksToMSec(500);		// I find the delay in the original to be too long, so I've set it to
-												// wait for half the time, which sounds better when chapter points
-												// change
-												// FIXME: If this is too short for other cases apart from chapter
-												// point change, set it back to 1000
-		_vm->_events->queue(&event);
-
-		if (!_vm->_scene->haveChapterPointsChanged()) {
-			_vm->_scene->setCurrentMusicTrack(param1);
-			_vm->_scene->setCurrentMusicRepeat(param2);
-		} else {
-			// Don't save this music track when saving in IHNM
-			_vm->_scene->setChapterPointsChanged(false);
-		}
-	}
-}
-
-void Script::sfDisableAbortSpeeches(SCRIPTFUNC_PARAMS) {
-	_vm->_interface->disableAbortSpeeches(thread->pop() != 0);
-}
-
 void Script::sfNull(SCRIPTFUNC_PARAMS) {
 	for (int i = 0; i < nArgs; i++)
 		thread->pop();
 }
 
-void Script::SF_stub(const char *name, ScriptThread *thread, int nArgs) {
+void Script::sfStub(const char *name, ScriptThread *thread, int nArgs) {
 	char buf[256], buf1[100];
 
 	snprintf(buf, 256, "STUB: %s(", name);

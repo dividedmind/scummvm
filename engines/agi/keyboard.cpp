@@ -274,7 +274,7 @@ void AgiEngine::handleGetstring(int key) {
 void AgiEngine::handleKeys(int key) {
 	uint8 *p = NULL;
 	int c = 0;
-	static uint8 formatedEntry[256];
+	static uint8 formattedEntry[256];
 	int l = _game.lineUserInput;
 	int fg = _game.colorFg, bg = _game.colorBg;
 	int promptLength = strlen(agiSprintf(_game.strings[0]));
@@ -289,7 +289,8 @@ void AgiEngine::handleKeys(int key) {
 		_game.keypress = 0;
 
 		/* Remove all leading spaces */
-		for (p = _game.inputBuffer; *p && *p == 0x20; p++);
+		for (p = _game.inputBuffer; *p && *p == 0x20; p++)
+			;
 
 		/* Copy to internal buffer */
 		for (; *p; p++) {
@@ -298,14 +299,14 @@ void AgiEngine::handleKeys(int key) {
 				p++;
 				continue;
 			}
-			formatedEntry[c++] = tolower(*p);
+			formattedEntry[c++] = tolower(*p);
 		}
-		formatedEntry[c++] = 0;
+		formattedEntry[c++] = 0;
 
 		/* Handle string only if it's not empty */
-		if (formatedEntry[0]) {
+		if (formattedEntry[0]) {
 			strcpy((char *)_game.echoBuffer, (const char *)_game.inputBuffer);
-			strcpy(_lastSentence, (const char *)formatedEntry);
+			strcpy(_lastSentence, (const char *)formattedEntry);
 			dictionaryWords(_lastSentence);
 		}
 
@@ -365,7 +366,7 @@ void AgiEngine::handleKeys(int key) {
 }
 
 int AgiEngine::waitKey() {
-	int key;
+	int key = 0;
 
 	/* clear key queue */
 	while (_gfx->keypress()) {
@@ -373,7 +374,7 @@ int AgiEngine::waitKey() {
 	}
 
 	debugC(3, kDebugLevelInput, "waiting...");
-	for (;;) {
+	while (!shouldQuit()) {
 		_gfx->pollTimer();	/* msdos driver -> does nothing */
 		key = doPollKeyboard();
 		if (key == KEY_ENTER || key == KEY_ESCAPE || key == BUTTON_LEFT)
@@ -388,7 +389,7 @@ int AgiEngine::waitKey() {
 }
 
 int AgiEngine::waitAnyKey() {
-	int key;
+	int key = 0;
 
 	/* clear key queue */
 	while (_gfx->keypress()) {
@@ -396,7 +397,7 @@ int AgiEngine::waitAnyKey() {
 	}
 
 	debugC(3, kDebugLevelInput, "waiting...");
-	for (;;) {
+	while (!shouldQuit()) {
 		_gfx->pollTimer();	/* msdos driver -> does nothing */
 		key = doPollKeyboard();
 		if (key)

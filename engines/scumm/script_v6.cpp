@@ -920,6 +920,14 @@ void ScummEngine_v6::o6_drawObjectAt() {
 	int y = pop();
 	int x = pop();
 	int obj = pop();
+
+	// WORKAROUND bug #1846746 : Adjust x and y position of
+	// objects in credits sequence, to match other ports
+	if (_game.id == GID_PUTTMOON && _game.platform == Common::kPlatform3DO &&
+		_roomResource == 38 && vm.slot[_currentScript].number == 206) {
+		x = y = -1;
+	}
+
 	setObjectState(obj, 1, x, y);
 }
 
@@ -2613,7 +2621,7 @@ void ScummEngine_v7::o6_kernelSetFunctions() {
 		enqueueText(getStringAddressVar(VAR_STRING2DRAW), args[3], args[4], args[2], args[1], (args[0] == 16));
 		break;
 	case 20:
-		// it's used for turn on/off 'RadioChatter' effect for voice in the dig, but i's not needed
+		_imuseDigital->setRadioChatterSFX(args[1]);
 		break;
 	case 107:
 		a = derefActor(args[1], "o6_kernelSetFunctions: 107");

@@ -233,7 +233,7 @@ int Actor::fillPathArray(const Point &fromPoint, const Point &toPoint, Point &be
 	const PathDirectionData *samplePathDirection;
 	Point nextPoint;
 	int directionCount;
-	int16 compressX = (_vm->getGameType() == GType_ITE) ? 2 : 1;
+	int16 compressX = (_vm->getGameId() == GID_ITE) ? 2 : 1;
 
 	_pathDirectionListCount = 0;
 	pointCounter = 0;
@@ -589,8 +589,8 @@ void Actor::removePathPoints() {
 	_pathNodeListIndex = j - 1;
 }
 
-void Actor::drawPathTest() {
 #ifdef ACTOR_DEBUG
+void Actor::drawPathTest() {
 	int i;
 	Surface *surface;
 	surface = _vm->_gfx->getBackBuffer();
@@ -601,7 +601,7 @@ void Actor::drawPathTest() {
 	for (i = 0; i < _debugPointsCount; i++) {
 		*((byte *)surface->pixels + (_debugPoints[i].point.y * surface->pitch) + _debugPoints[i].point.x) = _debugPoints[i].color;
 	}
-#endif
 }
+#endif
 
 } // End of namespace Saga

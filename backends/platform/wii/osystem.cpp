@@ -93,7 +93,7 @@ OSystem_Wii::~OSystem_Wii() {
 
 void OSystem_Wii::initBackend() {
 	_startup_time = gettime();
-	
+
 	char buf[MAXPATHLEN];
 	if (!getcwd(buf, MAXPATHLEN))
 		strcpy(buf, "/");
@@ -115,6 +115,9 @@ void OSystem_Wii::quit() {
 	deinitEvents();
 	deinitSfx();
 	deinitGfx();
+
+	// umount all async filesystems
+	WiiFilesystemFactory::asyncHandler(false, NULL);
 }
 
 bool OSystem_Wii::hasFeature(Feature f) {
@@ -152,7 +155,7 @@ void OSystem_Wii::delayMillis(uint msecs) {
 
 OSystem::MutexRef OSystem_Wii::createMutex() {
 	mutex_t *mutex = (mutex_t *) malloc(sizeof(mutex_t));
-	s32 res = LWP_MutexInit(mutex, false);
+	s32 res = LWP_MutexInit(mutex, true);
 
 	if (res) {
 		printf("ERROR creating mutex\n");
@@ -210,5 +213,10 @@ FilesystemFactory *OSystem_Wii::getFilesystemFactory() {
 void OSystem_Wii::getTimeAndDate(struct tm &t) const {
 	time_t curTime = time(0);
 	t = *localtime(&curTime);
+}
+
+void OSystem_Wii::engineInit() {
+	// umount not required filesystems for this game
+	WiiFilesystemFactory::asyncHandler(false, &ConfMan.get("path"));
 }
 

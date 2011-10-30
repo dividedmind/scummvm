@@ -34,6 +34,7 @@
 #include "made/database.h"
 #include "made/screen.h"
 #include "made/script.h"
+#include "made/sound.h"
 #include "made/pmvplayer.h"
 #include "made/scriptfuncs.h"
 #include "made/music.h"
@@ -93,7 +94,7 @@ void ScriptFunctions::setupExternalsTable() {
 	External(sfLoadMouseCursor);
 	External(sfSetSpriteGround);
 	External(sfLoadResText);
-	
+
 	if (_vm->getGameID() == GID_MANHOLE || _vm->getGameID() == GID_LGOP2 || _vm->getGameID() == GID_RODNEY) {
 		External(sfAddScreenMask);
 		External(sfSetSpriteMask);
@@ -113,7 +114,7 @@ void ScriptFunctions::setupExternalsTable() {
 		External(sfGetCdTime);
 		External(sfPlayCdSegment);
 	}
-	
+
 	if (_vm->getGameID() == GID_RTZ) {
 		External(sfPrintf);
 		External(sfClearMono);
@@ -195,7 +196,10 @@ int16 ScriptFunctions::sfClearScreen(int16 argc, int16 *argv) {
 
 int16 ScriptFunctions::sfShowPage(int16 argc, int16 *argv) {
 	_vm->_screen->show();
-	return 0;
+	// NOTE: We need to return something != 0 here or some game scripts won't
+	//       work correctly. The actual meaning of this value is unknown to me.
+	//       0x38 was found out by analyzing debug output of the original engine.
+	return 0x38;
 }
 
 int16 ScriptFunctions::sfPollEvent(int16 argc, int16 *argv) {
@@ -233,22 +237,41 @@ int16 ScriptFunctions::sfPlaySound(int16 argc, int16 *argv) {
 		_vm->_autoStopSound = (argv[0] == 1);
 	}
 	if (soundNum > 0) {
-		_vm->_mixer->playInputStream(Audio::Mixer::kPlainSoundType, &_audioStreamHandle, 
-			_vm->_res->getSound(soundNum)->getAudioStream(_vm->_soundRate, false));
+		SoundResource *soundRes = _vm->_res->getSound(soundNum);
+		_vm->_mixer->playInputStream(Audio::Mixer::kPlainSoundType, &_audioStreamHandle,
+			soundRes->getAudioStream(_vm->_soundRate, false));
+		_vm->_soundEnergyArray = soundRes->getSoundEnergyArray();
+		_vm->_soundEnergyIndex = 0;
 	}
 	return 0;
 }
 
 int16 ScriptFunctions::sfPlayMusic(int16 argc, int16 *argv) {
-	// TODO: Music in LGOP2 and Manhole isn't supported yet
+	int16 musicNum = argv[0];
+
+	_vm->_musicBeatStart = _vm->_system->getMillis();
+
 	if (_vm->getGameID() == GID_RTZ) {
-		int16 musicNum = argv[0];
 		if (musicNum > 0) {
 			_musicRes = _vm->_res->getXmidi(musicNum);
 			if (_musicRes)
 				_vm->_music->playXMIDI(_musicRes);
 		}
+	} else {
+		// HACK: music number 2 in LGOP2 is file MT32SET.TON, which
+		// is used to set the MT32 instruments. This is not loaded
+		// correctly and the game freezes, and since we don't support
+		// MT32 music yet, we ignore it here
+		// FIXME: Remove this hack and handle this file properly
+		if (_vm->getGameID() == GID_LGOP2 && musicNum == 2)
+			return 0;
+		if (musicNum > 0) {
+			_musicRes = _vm->_res->getMidi(musicNum);
+			if (_musicRes)
+				_vm->_music->playSMF(_musicRes);
+		}
 	}
+
 	return 0;
 }
 
@@ -270,7 +293,6 @@ int16 ScriptFunctions::sfIsMusicPlaying(int16 argc, int16 *argv) {
 
 int16 ScriptFunctions::sfSetTextPos(int16 argc, int16 *argv) {
 	// Used in Manhole:NE
-	//warning("Unimplemented opcode: sfSetTextPos");
 	// This seems to be some kind of low-level opcode.
 	// The original engine calls int 10h to set the VGA cursor position.
 	// Since this seems to be used for debugging purposes only it's left out.
@@ -283,25 +305,35 @@ int16 ScriptFunctions::sfFlashScreen(int16 argc, int16 *argv) {
 }
 
 int16 ScriptFunctions::sfPlayNote(int16 argc, int16 *argv) {
-	// TODO: Used in Manhole:NE
+	// TODO: Used in Manhole:NE, Manhole EGA
+	// This is used when using the piano in the desk screen inside the ship.
+	// It takes 2 parameters:
+	// The first parameter is the key pressed
+	// The second parameter is some sort of modifier (volume, perhaps?),
+	// depending on which of the 3 keys on the right has been pressed (12 - 14)
 	warning("Unimplemented opcode: sfPlayNote");
 	return 0;
 }
 
 int16 ScriptFunctions::sfStopNote(int16 argc, int16 *argv) {
-	// TODO: Used in Manhole:NE
+	// TODO: Used in Manhole:NE, Manhole EGA
+	// Used in the same place as sfPlayNote, with the same parameters
 	warning("Unimplemented opcode: sfStopNote");
 	return 0;
 }
 
 int16 ScriptFunctions::sfPlayTele(int16 argc, int16 *argv) {
-	// TODO: Used in Manhole:NE
+	// TODO: Used in Manhole:NE, Manhole EGA
+	// This is used when pressing the phone keys while using the phone in
+	// the desk screen inside the ship.
+	// It takes 1 parameter, the key pressed (0-9, 10 for asterisk, 11 for hash)
 	warning("Unimplemented opcode: sfPlayTele");
 	return 0;
 }
 
 int16 ScriptFunctions::sfStopTele(int16 argc, int16 *argv) {
-	// TODO: Used in Manhole:NE
+	// TODO: Used in Manhole:NE, Manhole EGA
+	// Used in the same place as sfPlayTele, with the same parameters
 	warning("Unimplemented opcode: sfStopTele");
 	return 0;
 }
@@ -317,10 +349,8 @@ int16 ScriptFunctions::sfShowMouseCursor(int16 argc, int16 *argv) {
 }
 
 int16 ScriptFunctions::sfGetMusicBeat(int16 argc, int16 *argv) {
-	// This is called loads of times in the intro of the floppy version
-	// of RtZ. Not sure what it does. Commented out to reduce spam
-	//warning("Unimplemented opcode: sfGetMusicBeat");
-	return 0;
+	// This is used as timer in some games
+	return (_vm->_system->getMillis() - _vm->_musicBeatStart) / 360;
 }
 
 int16 ScriptFunctions::sfSetScreenLock(int16 argc, int16 *argv) {
@@ -452,8 +482,8 @@ int16 ScriptFunctions::sfSetTextRect(int16 argc, int16 *argv) {
 	int16 y1 = CLIP<int16>(argv[3], 1, 198);
 	int16 x2 = CLIP<int16>(argv[2], 1, 318);
 	int16 y2 = CLIP<int16>(argv[1], 1, 198);
-	//int16 textValue = argv[0];
-	// TODO: textValue
+	//int16 textValue = argv[0];	// looks to be unused
+
 	_vm->_screen->setTextRect(Common::Rect(x1, y1, x2, y2));
 	return 0;
 }
@@ -500,7 +530,7 @@ int16 ScriptFunctions::sfSetSpriteGround(int16 argc, int16 *argv) {
 }
 
 int16 ScriptFunctions::sfLoadResText(int16 argc, int16 *argv) {
-	// Never used in LGOP2, RTZ, Manhole:NE
+	// Never used in LGOP2, RTZ, Manhole:NE, Rodney
 	warning("Unimplemented opcode: sfLoadResText");
 	return 0;
 }
@@ -550,8 +580,13 @@ int16 ScriptFunctions::sfPlayVoice(int16 argc, int16 *argv) {
 }
 
 int16 ScriptFunctions::sfPlayCd(int16 argc, int16 *argv) {
-	AudioCD.play(argv[0], -1, 0, 0);
-	return 0;
+	AudioCD.play(argv[0] - 1, 1, 0, 0);
+	_vm->_cdTimeStart = _vm->_system->getMillis();
+	if (AudioCD.isPlaying()) {
+		return 1;
+	} else {
+		return 0;
+	}
 }
 
 int16 ScriptFunctions::sfStopCd(int16 argc, int16 *argv) {
@@ -568,14 +603,17 @@ int16 ScriptFunctions::sfGetCdStatus(int16 argc, int16 *argv) {
 }
 
 int16 ScriptFunctions::sfGetCdTime(int16 argc, int16 *argv) {
-	// This one is called loads of times, so it has been commented out to reduce spam
-	//warning("Unimplemented opcode: sfGetCdTime");
-	// TODO
-	return 0;
+	if (AudioCD.isPlaying()) {
+		uint32 deltaTime = _vm->_system->getMillis() - _vm->_cdTimeStart;
+		// This basically converts the time from milliseconds to MSF format to MADE's format
+		return (deltaTime / 1000 * 30) + (deltaTime % 1000 / 75 * 30 / 75);
+	} else {
+		return 32000;
+	}
 }
 
 int16 ScriptFunctions::sfPlayCdSegment(int16 argc, int16 *argv) {
-	// Never used in LGOP2, RTZ, Manhole:NE
+	// Never used in LGOP2, RTZ, Manhole:NE, Rodney
 	warning("Unimplemented opcode: sfPlayCdSegment");
 	return 0;
 }
@@ -593,12 +631,22 @@ int16 ScriptFunctions::sfClearMono(int16 argc, int16 *argv) {
 }
 
 int16 ScriptFunctions::sfGetSoundEnergy(int16 argc, int16 *argv) {
-	// This is called while in-game voices are played
-	// Not sure what it's used for
-	// -> It's used to animate mouths when NPCs are talking
-	// FIXME: This is a workaround for the "sound energy" problem
-	// At least the characters move their lips when talking now
-	return _vm->_rnd->getRandomNumber(5);
+	// This is called while in-game voices are played to animate 
+	// mouths when NPCs are talking
+	int result = 0;
+	if (_vm->_mixer->isSoundHandleActive(_audioStreamHandle) && _vm->_soundEnergyArray) {
+		while (_vm->_soundEnergyIndex < _vm->_soundEnergyArray->size()) {
+			SoundEnergyItem *soundEnergyItem = &_vm->_soundEnergyArray->operator[](_vm->_soundEnergyIndex);
+			if (((_vm->_soundRate / 1000) * _vm->_mixer->getSoundElapsedTime(_audioStreamHandle)) < soundEnergyItem->position) {
+				result = soundEnergyItem->energy;
+				break;
+			}
+			_vm->_soundEnergyIndex++;
+		}
+		if (_vm->_soundEnergyIndex >= _vm->_soundEnergyArray->size())
+			result = 0;
+	}
+	return result;
 }
 
 int16 ScriptFunctions::sfClearText(int16 argc, int16 *argv) {
@@ -625,9 +673,10 @@ int16 ScriptFunctions::sfGetTextWidth(int16 argc, int16 *argv) {
 int16 ScriptFunctions::sfPlayMovie(int16 argc, int16 *argv) {
 	const char *movieName = _vm->_dat->getObjectString(argv[1]);
 	_vm->_system->showMouse(false);
-	_vm->_pmvPlayer->play(movieName);
+	bool completed = _vm->_pmvPlayer->play(movieName);
 	_vm->_system->showMouse(true);
-	return 0;
+	// Return true/false according to if the movie was canceled or not
+	return completed ? -1 : 0;
 }
 
 int16 ScriptFunctions::sfLoadSound(int16 argc, int16 *argv) {
@@ -830,18 +879,18 @@ int16 ScriptFunctions::sfGetMenuCount(int16 argc, int16 *argv) {
 }
 
 int16 ScriptFunctions::sfSaveGame(int16 argc, int16 *argv) {
-	
+
 	int16 saveNum = argv[2];
 	int16 descObjectIndex = argv[1];
 	int16 version = argv[0];
-	
+
 	if (saveNum > 999)
 		return 6;
 
 	const char *description = _vm->_dat->getObjectString(descObjectIndex);
 	Common::String filename = _vm->getSavegameFilename(saveNum);
 	return _vm->_dat->savegame(filename.c_str(), description, version);
-	
+
 }
 
 int16 ScriptFunctions::sfLoadGame(int16 argc, int16 *argv) {
@@ -854,14 +903,14 @@ int16 ScriptFunctions::sfLoadGame(int16 argc, int16 *argv) {
 
 	Common::String filename = _vm->getSavegameFilename(saveNum);
 	return _vm->_dat->loadgame(filename.c_str(), version);
-	
+
 }
 
 int16 ScriptFunctions::sfGetGameDescription(int16 argc, int16 *argv) {
-	
+
 	int16 descObjectIndex = argv[2];
 	int16 saveNum = argv[1];
-	/*int16 version = argv[0];*/
+	int16 version = argv[0];
 	Common::String description;
 
 	if (saveNum > 999)
@@ -869,7 +918,7 @@ int16 ScriptFunctions::sfGetGameDescription(int16 argc, int16 *argv) {
 
 	Common::String filename = _vm->getSavegameFilename(saveNum);
 
-	if (_vm->_dat->getSavegameDescription(filename.c_str(), description)) {
+	if (_vm->_dat->getSavegameDescription(filename.c_str(), description, version)) {
 		_vm->_dat->setObjectString(descObjectIndex, description.c_str());
 		return 0;
 	} else {
@@ -903,7 +952,10 @@ int16 ScriptFunctions::sfGetSynthType(int16 argc, int16 *argv) {
 	// 2 = SBFM/ADLIB
 	// 3 = ADLIBG
 	// 4 = MT32MPU
-	warning("Unimplemented opcode: sfGetSynthType");
+
+	// There doesn't seem to be any difference in the music no matter what this returns
+
+	//warning("Unimplemented opcode: sfGetSynthType");
 	return 0;
 }
 
@@ -911,6 +963,9 @@ int16 ScriptFunctions::sfIsSlowSystem(int16 argc, int16 *argv) {
 	//warning("Unimplemented opcode: sfIsSlowSystem");
 	// NOTE: In the original engine this value is set via a command-line parameter
 	// I don't think it's needed here
+	// Update: I believe this is used to determine which version of the intro/ending to show
+	// There are 2 versions of each video: one with sound, and one without
+	// An example is FINTRO00.PMV (with sound) and FINTRO01.PMV (without sound)
 	// One could maybe think about returning 1 here on actually slower systems.
 	return 0;
 }

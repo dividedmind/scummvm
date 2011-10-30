@@ -42,7 +42,11 @@ const char *Parallaction_br::_partNames[] = {
 	"PART4"
 };
 
-int Parallaction_br::init() {
+Parallaction_br::Parallaction_br(OSystem* syst, const PARALLACTIONGameDescription *gameDesc) : Parallaction_ns(syst, gameDesc),
+	_locationParser(0), _programParser(0) {
+}
+
+Common::Error Parallaction_br::init() {
 
 	_screenWidth = 640;
 	_screenHeight = 400;
@@ -50,7 +54,7 @@ int Parallaction_br::init() {
 	if (getGameType() == GType_BRA) {
 		if (getPlatform() == Common::kPlatformPC) {
 			if (getFeatures() & GF_DEMO) {
-				_disk = new DosDemo_br(this);
+				_disk = new DosDemoDisk_br(this);
 			} else {
 				_disk = new DosDisk_br(this);
 			}
@@ -61,6 +65,8 @@ int Parallaction_br::init() {
 			_disk->setLanguage(2);					// NOTE: language is now hardcoded to English. Original used command-line parameters.
 			_soundMan = new AmigaSoundMan(this);
 		}
+
+		_disk->init();
 	} else {
 		error("unknown game type");
 	}
@@ -83,15 +89,21 @@ int Parallaction_br::init() {
 	_subtitle[0] = -1;
 	_subtitle[1] = -1;
 
+	_countersNames = 0;
+
 	_saveLoad = new SaveLoad_br(this, _saveFileMan);
 
 	Parallaction::init();
 
-	return 0;
+	return Common::kNoError;
 }
 
 Parallaction_br::~Parallaction_br() {
 	freeFonts();
+	freeCharacter();
+
+	delete _locationParser;
+	delete _programParser;
 }
 
 void Parallaction_br::callFunction(uint index, void* parm) {
@@ -100,11 +112,11 @@ void Parallaction_br::callFunction(uint index, void* parm) {
 	(this->*_callables[index])(parm);
 }
 
-int Parallaction_br::go() {
+Common::Error Parallaction_br::go() {
 
 	bool splash = true;
 
-	while (!quit()) {
+	while (!shouldQuit()) {
 
 		if (getFeatures() & GF_DEMO) {
 			scheduleLocationSwitch("camalb.1");
@@ -117,7 +129,7 @@ int Parallaction_br::go() {
 
 //		initCharacter();
 
-		while (((_engineFlags & kEngineReturn) == 0) && (!quit())) {
+		while (((_engineFlags & kEngineReturn) == 0) && (!shouldQuit())) {
 			runGame();
 		}
 		_engineFlags &= ~kEngineReturn;
@@ -125,17 +137,19 @@ int Parallaction_br::go() {
 		cleanupGame();
 	}
 
-	return 0;
+	return Common::kNoError;
 }
 
 
 
 void Parallaction_br::freeFonts() {
-
 	delete _menuFont;
 	delete _dialogueFont;
 
-	return;
+	_menuFont  = 0;
+	_dialogueFont = 0;
+	_labelFont = 0;
+	_introFont = 0;
 }
 
 
@@ -165,35 +179,34 @@ void Parallaction_br::runPendingZones() {
 	}
 }
 
-void Parallaction_br::freeLocation() {
+void Parallaction_br::freeCharacter() {
+	_gfx->freeCharacterObjects();
+
+	delete _char._talk;
+	delete _char._ani->gfxobj;
+
+	_char._talk = 0;
+	_char._ani->gfxobj = 0;
+}
+
+void Parallaction_br::freeLocation(bool removeAll) {
 
 	// free open location stuff
 	clearSubtitles();
-	freeBackground();
-	_gfx->clearGfxObjects(kGfxObjNormal);
-	_gfx->freeLabels();
 	_subtitle[0] = _subtitle[1] = -1;
 
-	_location._programs.clear();
+	_gfx->freeLocationObjects();
 
 	_location._animations.remove(_char._ani);
-
-	freeZones();
-	freeAnimations();
-
+	_location.cleanup(removeAll);
 	_location._animations.push_front(_char._ani);
-
-	free(_location._comment);
-	_location._comment = 0;
-	_location._commands.clear();
-	_location._aCommands.clear();
 
 }
 
 void Parallaction_br::cleanupGame() {
-	freeLocation();
+	freeLocation(true);
 
-//		freeCharacter();
+	freeCharacter();
 
 	delete _globalFlagsNames;
 	delete _objectsNames;
@@ -208,6 +221,8 @@ void Parallaction_br::cleanupGame() {
 void Parallaction_br::changeLocation(char *location) {
 	char *partStr = strrchr(location, '.');
 	if (partStr) {
+		cleanupGame();
+
 		int n = partStr - location;
 		strncpy(_location._name, location, n);
 		_location._name[n] = '\0';
@@ -229,17 +244,25 @@ void Parallaction_br::changeLocation(char *location) {
 
 		// TODO: maybe handle this into Disk
 		if (getPlatform() == Common::kPlatformPC) {
-			_char._objs = _disk->loadObjects("icone.ico");
+			_objects = _disk->loadObjects("icone.ico");
 		} else {
-			_char._objs = _disk->loadObjects("icons.ico");
+			_objects = _disk->loadObjects("icons.ico");
 		}
 
-		parseLocation("common");
+		parseLocation("common.slf");
 	}
 
-	freeLocation();
+	freeLocation(false);
 	// load new location
 	parseLocation(location);
+
+	if (_location._startPosition.x != -1000) {
+		_char.setFoot(_location._startPosition);
+		_char._ani->setF(_location._startFrame);
+		_location._startPosition.y = -1000;
+		_location._startPosition.x = -1000;
+	}
+
 	// kFlagsRemove is cleared because the character is visible by default.
 	// Commands can hide the character, anyway.
 	_char._ani->_flags &= ~kFlagsRemove;
@@ -263,8 +286,8 @@ void Parallaction_br::parseLocation(const char *filename) {
 	delete script;
 
 	// this loads animation scripts
-	AnimationList::iterator it = _vm->_location._animations.begin();
-	for ( ; it != _vm->_location._animations.end(); it++) {
+	AnimationList::iterator it = _location._animations.begin();
+	for ( ; it != _location._animations.end(); it++) {
 		if ((*it)->_scriptName) {
 			loadProgram(*it, (*it)->_scriptName);
 		}
@@ -285,7 +308,7 @@ void Parallaction_br::loadProgram(AnimationPtr a, const char *filename) {
 
 	delete script;
 
-	_vm->_location._programs.push_back(program);
+	_location._programs.push_back(program);
 
 	debugC(1, kDebugParser, "loadProgram() done");
 
@@ -295,19 +318,78 @@ void Parallaction_br::loadProgram(AnimationPtr a, const char *filename) {
 
 
 void Parallaction_br::changeCharacter(const char *name) {
+
 	const char *charName = _char.getName();
 
 	if (scumm_stricmp(charName, name)) {
+		freeCharacter();
+
 		debugC(1, kDebugExec, "changeCharacter(%s)", name);
 
 		_char.setName(name);
-		_char._ani->gfxobj = _gfx->loadAnim(name);
-		_char._ani->gfxobj->setFlags(kGfxObjCharacter);
-		_char._ani->gfxobj->clearFlags(kGfxObjNormal);
+		_char._ani->gfxobj = _gfx->loadCharacterAnim(name);
 		_char._talk = _disk->loadTalk(name);
 	}
 
 	_char._ani->_flags |= kFlagsActive;
+}
+
+bool Parallaction_br::counterExists(const Common::String &name) {
+	return Table::notFound != _countersNames->lookup(name.c_str());
+}
+
+int	Parallaction_br::getCounterValue(const Common::String &name) {
+	int index = _countersNames->lookup(name.c_str());
+	if (index != Table::notFound) {
+		return _counters[index - 1];
+	}
+	return 0;
+}
+
+void Parallaction_br::setCounterValue(const Common::String &name, int value) {
+	int index = _countersNames->lookup(name.c_str());
+	if (index != Table::notFound) {
+		_counters[index - 1] = value;
+	}
+}
+
+void Parallaction_br::testCounterCondition(const Common::String &name, int op, int value) {
+	int index = _countersNames->lookup(name.c_str());
+	if (index == Table::notFound) {
+		clearLocationFlags(kFlagsTestTrue);
+		return;
+	}
+
+	int c = _counters[index - 1];
+
+// these definitions must match those in parser_br.cpp
+#define CMD_TEST		25
+#define CMD_TEST_GT		26
+#define CMD_TEST_LT		27
+
+	bool res = false;
+	switch (op) {
+	case CMD_TEST:
+		res = (c == value);
+		break;
+
+	case CMD_TEST_GT:
+		res = (c > value);
+		break;
+
+	case CMD_TEST_LT:
+		res = (c < value);
+		break;
+
+	default:
+		error("unknown operator in testCounterCondition");
+	}
+
+	if (res) {
+		setLocationFlags(kFlagsTestTrue);
+	} else {
+		clearLocationFlags(kFlagsTestTrue);
+	}
 }
 
 

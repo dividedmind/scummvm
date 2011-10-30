@@ -24,9 +24,10 @@
  */
 
 #include "common/scummsys.h"
-#include "common/system.h"
 #include "graphics/surface.h"
+#include "graphics/colormasks.h"
 #include "sound/mixer_intern.h"
+#include "backends/base-backend.h"
 #include "backends/fs/psp/psp-fs-factory.h"
 
 
@@ -39,7 +40,7 @@ enum GraphicModeID {
 	CENTERED_362X272
 };
 
-class OSystem_PSP : public OSystem {
+class OSystem_PSP : public BaseBackend {
 public:
 	static const OSystem::GraphicsMode s_supportedGraphicsModes[];
 	static OSystem *instance();
@@ -107,11 +108,8 @@ public:
 	virtual void copyRectToOverlay(const OverlayColor *buf, int pitch, int x, int y, int w, int h);
 	virtual int16 getOverlayHeight();
 	virtual int16 getOverlayWidth();
-	virtual OverlayColor RGBToColor(uint8 r, uint8 g, uint8 b);
-	virtual void colorToRGB(OverlayColor color, uint8 &r, uint8 &g, uint8 &b);
-	virtual OverlayColor ARGBToColor(uint8 a, uint8 r, uint8 g, uint8 b);
-	virtual void colorToARGB(OverlayColor color, uint8 &a, uint8 &r, uint8 &g, uint8 &b);
 	virtual void grabPalette(byte *colors, uint start, uint num);
+	virtual Graphics::PixelFormat getOverlayFormat() const { return Graphics::createPixelFormat<1555>(); }
 
 	virtual bool showMouse(bool visible);
 
@@ -145,5 +143,7 @@ public:
 
 	virtual void displayMessageOnOSD(const char *msg);
 
+	virtual Common::SeekableReadStream *createConfigReadStream();
+	virtual Common::WriteStream *createConfigWriteStream();
 };
 

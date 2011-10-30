@@ -23,8 +23,6 @@
  *
  */
 
-
-
 #include "base/plugins.h"
 
 #include "common/config-manager.h"
@@ -67,7 +65,7 @@ public:
 	virtual SaveStateList listSaves(const char *target) const;
 	virtual void removeSaveState(const char *target, int slot) const;
 
-	virtual PluginError createInstance(OSystem *syst, Engine **engine) const;
+	virtual Common::Error createInstance(OSystem *syst, Engine **engine) const;
 };
 
 const char *QueenMetaEngine::getName() const {
@@ -80,10 +78,15 @@ const char *QueenMetaEngine::getCopyright() const {
 
 bool QueenMetaEngine::hasFeature(MetaEngineFeature f) const {
 	return
-		(f == kSupportsRTL) ||
 		(f == kSupportsListSaves) ||
-		(f == kSupportsDirectLoad) ||
+		(f == kSupportsLoadingDuringStartup) ||
 		(f == kSupportsDeleteSave);
+}
+
+bool Queen::QueenEngine::hasFeature(EngineFeature f) const {
+	return
+		(f == kSupportsRTL) ||
+		(f == kSupportsSubtitleOptions);
 }
 
 GameList QueenMetaEngine::getSupportedGames() const {
@@ -136,8 +139,7 @@ SaveStateList QueenMetaEngine::listSaves(const char *target) const {
 	Common::SaveFileManager *saveFileMan = g_system->getSavefileManager();
 	Common::StringList filenames;
 	char saveDesc[32];
-	Common::String pattern = target;
-	pattern += ".s??";
+	Common::String pattern("queen.s??");
 
 	filenames = saveFileMan->listSavefiles(pattern.c_str());
 	sort(filenames.begin(), filenames.end());	// Sort (hopefully ensuring we are sorted numerically..)
@@ -146,14 +148,14 @@ SaveStateList QueenMetaEngine::listSaves(const char *target) const {
 	for (Common::StringList::const_iterator file = filenames.begin(); file != filenames.end(); ++file) {
 		// Obtain the last 2 digits of the filename, since they correspond to the save slot
 		int slotNum = atoi(file->c_str() + file->size() - 2);
-		
+
 		if (slotNum >= 0 && slotNum <= 99) {
 			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
 			if (in) {
 				for (int i = 0; i < 4; i++)
 					in->readUint32BE();
-				in->read(saveDesc, 32);	
-				saveList.push_back(SaveStateDescriptor(slotNum, Common::String(saveDesc), *file));
+				in->read(saveDesc, 32);
+				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc));
 				delete in;
 			}
 		}
@@ -172,10 +174,10 @@ void QueenMetaEngine::removeSaveState(const char *target, int slot) const {
 	g_system->getSavefileManager()->removeSavefile(filename.c_str());
 }
 
-PluginError QueenMetaEngine::createInstance(OSystem *syst, Engine **engine) const {
+Common::Error QueenMetaEngine::createInstance(OSystem *syst, Engine **engine) const {
 	assert(engine);
 	*engine = new Queen::QueenEngine(syst);
-	return kNoError;
+	return Common::kNoError;
 }
 
 #if PLUGIN_ENABLED_DYNAMIC(QUEEN)
@@ -310,9 +312,10 @@ bool QueenEngine::canLoadOrSave() const {
 	return !_input->cutawayRunning() && !(_resource->isDemo() || _resource->isInterview());
 }
 
-void QueenEngine::saveGameState(int slot, const char *desc) {
+Common::Error QueenEngine::saveGameState(int slot, const char *desc) {
 	debug(3, "Saving game to slot %d", slot);
 	char name[20];
+	Common::Error err = Common::kNoError;
 	makeGameStateName(slot, name);
 	Common::OutSaveFile *file = _saveFileMan->openForSaving(name);
 	if (file) {
@@ -343,16 +346,21 @@ void QueenEngine::saveGameState(int slot, const char *desc) {
 		// check for errors
 		if (file->ioFailed()) {
 			warning("Can't write file '%s'. (Disk full?)", name);
+			err = Common::kWritingFailed;
 		}
 		delete[] saveData;
 		delete file;
 	} else {
 		warning("Can't create file '%s', game not saved", name);
+		err = Common::kCreatingFileFailed;
 	}
+
+	return err;
 }
 
-void QueenEngine::loadGameState(int slot) {
+Common::Error QueenEngine::loadGameState(int slot) {
 	debug(3, "Loading game from slot %d", slot);
+	Common::Error err = Common::kNoError;
 	GameStateHeader header;
 	Common::InSaveFile *file = readGameStateHeader(slot, &header);
 	if (file && header.dataSize != 0) {
@@ -360,6 +368,7 @@ void QueenEngine::loadGameState(int slot) {
 		byte *p = saveData;
 		if (file->read(saveData, header.dataSize) != header.dataSize) {
 			warning("Error reading savegame file");
+			err = Common::kReadingFailed;
 		} else {
 			_bam->loadState(header.version, p);
 			_grid->loadState(header.version, p);
@@ -367,13 +376,18 @@ void QueenEngine::loadGameState(int slot) {
 			_sound->loadState(header.version, p);
 			if (header.dataSize != (uint32)(p - saveData)) {
 				warning("Corrupted savegame file");
+				err = Common::kReadingFailed;	// FIXME
 			} else {
 				_logic->setupRestoredGame();
 			}
 		}
 		delete[] saveData;
 		delete file;
+	} else {
+		err = Common::kReadingFailed;
 	}
+
+	return err;
 }
 
 Common::InSaveFile *QueenEngine::readGameStateHeader(int slot, GameStateHeader *gsh) {
@@ -393,7 +407,7 @@ Common::InSaveFile *QueenEngine::readGameStateHeader(int slot, GameStateHeader *
 
 void QueenEngine::makeGameStateName(int slot, char *buf) const {
 	if (slot == SLOT_LISTPREFIX) {
-		strcpy(buf, "queen.s*");
+		strcpy(buf, "queen.s??");
 	} else if (slot == SLOT_AUTOSAVE) {
 		strcpy(buf, "queen.asd");
 	} else {
@@ -430,14 +444,14 @@ GUI::Debugger *QueenEngine::getDebugger() {
 	return _debugger;
 }
 
-int QueenEngine::go() {
+Common::Error QueenEngine::go() {
 	_logic->start();
 	if (ConfMan.hasKey("save_slot") && canLoadOrSave()) {
 		loadGameState(ConfMan.getInt("save_slot"));
 	}
 	_lastSaveTime = _lastUpdateTime = _system->getMillis();
 
-	while (!quit()) {
+	while (!shouldQuit()) {
 		if (_logic->newRoom() > 0) {
 			_logic->update();
 			_logic->oldRoom(_logic->currentRoom());
@@ -455,14 +469,11 @@ int QueenEngine::go() {
 			update(true);
 		}
 	}
-	return 0;
+	return Common::kNoError;
 }
 
-int QueenEngine::init() {
-	_system->beginGFXTransaction();
-		initCommonGFX(false);
-		_system->initSize(GAME_SCREEN_WIDTH, GAME_SCREEN_HEIGHT);
-	_system->endGFXTransaction();
+Common::Error QueenEngine::init() {
+	initGraphics(GAME_SCREEN_WIDTH, GAME_SCREEN_HEIGHT, false);
 
 	_resource = new Resource();
 
@@ -490,7 +501,7 @@ int QueenEngine::init() {
 	registerDefaultSettings();
 	readOptionSettings();
 
-	return 0;
+	return Common::kNoError;
 }
 
 } // End of namespace Queen

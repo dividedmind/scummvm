@@ -23,6 +23,8 @@
  *
  */
 
+#ifdef ENABLE_IHNM
+
 // "I Have No Mouth" Intro sequence scene procedures
 
 #include "saga/saga.h"
@@ -32,13 +34,14 @@
 #include "saga/events.h"
 #include "saga/interface.h"
 #include "saga/render.h"
-#include "saga/rscfile.h"
+#include "saga/resource.h"
 #include "saga/sndres.h"
 #include "saga/music.h"
 
 #include "saga/scene.h"
 
 #include "common/events.h"
+#include "common/system.h"
 
 namespace Saga {
 
@@ -51,7 +54,7 @@ int Scene::IHNMStartProc() {
 
 	IHNMLoadCutaways();
 
-	if (_vm->getGameId() != GID_IHNM_DEMO) {
+	if (!(_vm->getFeatures() & GF_IHNM_DEMO)) {
 		int logoLength = -168;
 
 		if (_vm->getLanguage() == Common::DE_DEU || _vm->getLanguage() == Common::ES_ESP)
@@ -59,11 +62,11 @@ int Scene::IHNMStartProc() {
 
 		// Play Cyberdreams logo for 168 frames
 		if (!playTitle(0, logoLength, true)) {
-			if (_vm->quit())
+			if (_vm->shouldQuit())
 				return !SUCCESS;
 			// Play Dreamers Guild logo for 10 seconds
 			if (!playLoopingTitle(1, 10)) {
-				if (_vm->quit())
+				if (_vm->shouldQuit())
 					return !SUCCESS;
 				// Play the title music
 				_vm->_music->play(1, MUSIC_NORMAL);
@@ -74,7 +77,7 @@ int Scene::IHNMStartProc() {
 	} else {
 		_vm->_music->play(1, MUSIC_NORMAL);
 		playTitle(0, 10);
-		if (_vm->quit())
+		if (_vm->shouldQuit())
 			return !SUCCESS;
 		playTitle(2, 12);
 	}
@@ -102,7 +105,7 @@ int Scene::IHNMCreditsProc() {
 
 	_vm->_music->play(0, MUSIC_NORMAL);
 
-	if (_vm->getGameId() != GID_IHNM_DEMO) {
+	if (!(_vm->getFeatures() & GF_IHNM_DEMO)) {
 		// Display the credits for 400 frames
 		playTitle(4, -400, true);
 	} else {
@@ -127,7 +130,7 @@ void Scene::IHNMLoadCutaways() {
 		error("Scene::IHNMStartProc() resource context not found");
 	}
 
-	if (_vm->getGameId() != GID_IHNM_DEMO)
+	if (!(_vm->getFeatures() & GF_IHNM_DEMO))
 		_vm->_resource->loadResource(resourceContext, RID_IHNM_INTRO_CUTAWAYS, resourcePointer, resourceLength);
 	else
 		_vm->_resource->loadResource(resourceContext, RID_IHNMDEMO_INTRO_CUTAWAYS, resourcePointer, resourceLength);
@@ -169,7 +172,6 @@ bool Scene::checkKey() {
 
 bool Scene::playTitle(int title, int time, int mode) {
 	bool interrupted = false;
-	Surface *backBufferSurface;
 	int startTime = _vm->_system->getMillis();
 	int frameTime = 0;
 	int curTime;
@@ -179,8 +181,7 @@ bool Scene::playTitle(int title, int time, int mode) {
 	bool playParameter = true;
 	static PalEntry cur_pal[PAL_ENTRIES];
 	static PalEntry pal_cut[PAL_ENTRIES];
-
-	backBufferSurface = _vm->_render->getBackGroundSurface();
+	Surface *backBufferSurface = _vm->_render->getBackGroundSurface();
 
 	// Load the cutaway
 
@@ -193,7 +194,7 @@ bool Scene::playTitle(int title, int time, int mode) {
 
 	_vm->_gfx->getCurrentPal(pal_cut);
 
-	while (!done && !_vm->quit()) {
+	while (!done && !_vm->shouldQuit()) {
 		curTime = _vm->_system->getMillis();
 
 		switch (phase) {
@@ -291,3 +292,5 @@ bool Scene::playLoopingTitle(int title, int seconds) {
 }
 
 } // End of namespace Saga
+
+#endif

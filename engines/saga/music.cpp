@@ -27,7 +27,7 @@
 
 #include "saga/saga.h"
 
-#include "saga/rscfile.h"
+#include "saga/resource.h"
 #include "saga/music.h"
 
 #include "sound/audiostream.h"
@@ -56,7 +56,6 @@ private:
 	int16 _buf[BUFFER_SIZE];
 	const int16 *_bufferEnd;
 	const int16 *_pos;
-	const GameSoundInfo *_musicInfo;
 	MemoryReadStream *_memoryStream;
 	SagaEngine *_vm;
 
@@ -76,7 +75,7 @@ public:
 	bool endOfData() const	{ return eosIntern(); }
 	bool isStereo() const	{
 		// The digital music in the ITE Mac demo version is not stereo
-		return _vm->getGameId() == GID_ITE_MACDEMO2 ? false : true;
+		return _vm->getFeatures() & GF_MONO_MUSIC ? false : true;
 	}
 	int getRate() const	{ return 11025; }
 };
@@ -86,17 +85,12 @@ DigitalMusicInputStream::DigitalMusicInputStream(SagaEngine *vm, ResourceContext
 
 	byte compressedHeader[10];
 
-	resourceData = _vm->_resource->getResourceData(context, resourceId);
+	resourceData = context->getResourceData(resourceId);
 	_file = context->getFile(resourceData);
-	_musicInfo = _vm->getMusicInfo();
-
-	if (_musicInfo == NULL) {
-		error("DigitalMusicInputStream() wrong musicInfo");
-	}
 
 	_compressedStream = NULL;
 
-	if (scumm_stricmp(_file->name(), "music.cmp") == 0 || scumm_stricmp(_file->name(), "musicd.cmp") == 0) {
+	if (context->isCompressed) {
 		// Read compressed header to determine compression type
 		_file->seek((long)resourceData->offset, SEEK_SET);
 		_file->read(compressedHeader, 9);
@@ -134,7 +128,9 @@ DigitalMusicInputStream::~DigitalMusicInputStream() {
 }
 
 void DigitalMusicInputStream::createCompressedStream() {
+#if defined(USE_MAD) || defined(USE_VORBIS) || defined(USE_FLAC)
 	uint numLoops = _looping ? 0 : 1;
+#endif
 	_memoryStream = _file->readStream(resourceData->size - 9);
 
 	switch (soundType) {
@@ -361,10 +357,11 @@ Music::Music(SagaEngine *vm, Audio::Mixer *mixer, MidiDriver *driver) : _vm(vm),
 	_songTable = 0;
 
 	_midiMusicData = NULL;
+	_digitalMusic = false;
 }
 
 Music::~Music() {
-	_vm->_timer->removeTimerProc(&musicVolumeGaugeCallback);
+	_vm->getTimerManager()->removeTimerProc(&musicVolumeGaugeCallback);
 	_mixer->stopHandle(_musicHandle);
 	delete _player;
 	xmidiParser->setMidiDriver(NULL);
@@ -398,7 +395,7 @@ void Music::musicVolumeGauge() {
 	_player->setVolume(volume);
 
 	if (_currentVolumePercent == 100) {
-		_vm->_timer->removeTimerProc(&musicVolumeGaugeCallback);
+		_vm->getTimerManager()->removeTimerProc(&musicVolumeGaugeCallback);
 		_currentVolume = _targetVolume;
 	}
 }
@@ -413,12 +410,12 @@ void Music::setVolume(int volume, int time) {
 	if (time == 1) {
 		_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, volume);
 		_player->setVolume(volume);
-		_vm->_timer->removeTimerProc(&musicVolumeGaugeCallback);
+		_vm->getTimerManager()->removeTimerProc(&musicVolumeGaugeCallback);
 		_currentVolume = volume;
 		return;
 	}
 
-	_vm->_timer->installTimerProc(&musicVolumeGaugeCallback, time * 100L, this);
+	_vm->getTimerManager()->installTimerProc(&musicVolumeGaugeCallback, time * 100L, this);
 }
 
 bool Music::isPlaying() {
@@ -434,7 +431,7 @@ void Music::play(uint32 resourceId, MusicFlags flags) {
 	uint32 loopStart;
 
 	debug(2, "Music::play %d, %d", resourceId, flags);
-	
+
 	if (isPlaying() && _trackNumber == resourceId) {
 		return;
 	}
@@ -442,10 +439,10 @@ void Music::play(uint32 resourceId, MusicFlags flags) {
 	_trackNumber = resourceId;
 	_player->stopMusic();
 	_mixer->stopHandle(_musicHandle);
-	
+
 	int realTrackNumber;
 
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		if (flags == MUSIC_DEFAULT) {
 			if (resourceId == 13 || resourceId == 19) {
 				flags = MUSIC_NORMAL;
@@ -469,17 +466,18 @@ void Music::play(uint32 resourceId, MusicFlags flags) {
 		stream = Audio::AudioStream::openStreamFile(trackName[i], 0, 10000 * 40 / 3, (flags == MUSIC_LOOP) ? 0 : 1);
 		if (stream) {
 			_mixer->playInputStream(Audio::Mixer::kMusicSoundType, &_musicHandle, stream);
+			_digitalMusic = true;
 			return;
 		}
 	}
 
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		if (resourceId >= 9 && resourceId <= 34) {
 			if (_digitalMusicContext != NULL) {
 				//TODO: check resource size
 				loopStart = 0;
 				// fix ITE sunstatm/sunspot score
-				if ((_vm->getGameType() == GType_ITE) && (resourceId == MUSIC_SUNSPOT)) {
+				if ((_vm->getGameId() == GID_ITE) && (resourceId == MUSIC_SUNSPOT)) {
 					loopStart = 4 * 18727;
 				}
 
@@ -492,6 +490,7 @@ void Music::play(uint32 resourceId, MusicFlags flags) {
 	if (audioStream) {
 		debug(2, "Playing digitized music");
 		_mixer->playInputStream(Audio::Mixer::kMusicSoundType, &_musicHandle, audioStream);
+		_digitalMusic = true;
 		return;
 	}
 
@@ -501,12 +500,12 @@ void Music::play(uint32 resourceId, MusicFlags flags) {
 
 	// Load MIDI/XMI resource data
 
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		context = _vm->_resource->getContext(GAME_MUSICFILE_GM);
 		if (context == NULL) {
 			context = _vm->_resource->getContext(GAME_RESOURCEFILE);
 		}
-	} else if (_vm->getGameType() == GType_IHNM && _vm->isMacResources()) {
+	} else if (_vm->getGameId() == GID_IHNM && _vm->isMacResources()) {
 		// The music of the Mac version of IHNM is loaded from its
 		// associated external file later on
 	} else {
@@ -535,7 +534,7 @@ void Music::play(uint32 resourceId, MusicFlags flags) {
 		// Note that the IHNM demo has only got one music file
 		// (music.rsc). It is assumed that it contains FM music
 
-		if (hasAdlib() || _vm->getGameId() == GID_IHNM_DEMO) {
+		if (hasAdlib() || _vm->getFeatures() & GF_IHNM_DEMO) {
 			context = _vm->_resource->getContext(GAME_MUSICFILE_FM);
 		} else {
 			context = _vm->_resource->getContext(GAME_MUSICFILE_GM);
@@ -544,7 +543,7 @@ void Music::play(uint32 resourceId, MusicFlags flags) {
 
 	_player->setGM(true);
 
-	if (_vm->getGameType() == GType_IHNM && _vm->isMacResources()) {
+	if (_vm->getGameId() == GID_IHNM && _vm->isMacResources()) {
 		// Load the external music file for Mac IHNM
 		Common::File musicFile;
 		char musicFileName[40];
@@ -567,7 +566,7 @@ void Music::play(uint32 resourceId, MusicFlags flags) {
 	}
 
 	if (xmidiParser->loadMusic(resourceData, resourceSize)) {
-		if (_vm->getGameType() == GType_ITE)
+		if (_vm->getGameId() == GID_ITE)
 			_player->setGM(false);
 
 		parser = xmidiParser;

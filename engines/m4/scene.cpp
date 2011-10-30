@@ -127,7 +127,7 @@ void Scene::loadScene(int sceneNumber) {
 		}
 	}
 
-	if (_vm->getGameType() == GType_Burger && 
+	if (_vm->getGameType() == GType_Burger &&
 		sceneNumber != TITLE_SCENE_BURGER && sceneNumber != MAINMENU_SCENE_BURGER)
 		_vm->_interfaceView->setStatusText("");
 
@@ -148,7 +148,7 @@ void Scene::loadScene(int sceneNumber) {
 
 	// Load scene walk path file (*.COD/*.WW?)
 	loadSceneCodes(sceneNumber);
-	
+
 	// Load inverse color table file (*.IPL)
 	loadSceneInverseColorTable(sceneNumber);
 
@@ -210,9 +210,9 @@ void Scene::loadSceneResources(int sceneNumber) {
 		_sceneResources.parallax->clear();
 		_sceneResources.props->clear();
 
-		_sceneResources.hotspots->loadHotSpotsM4(sceneS, _sceneResources.hotspotCount);
-		_sceneResources.parallax->loadHotSpotsM4(sceneS, _sceneResources.parallaxCount);
-		_sceneResources.props->loadHotSpotsM4(sceneS, _sceneResources.propsCount);
+		_sceneResources.hotspots->loadHotSpots(sceneS, _sceneResources.hotspotCount);
+		_sceneResources.parallax->loadHotSpots(sceneS, _sceneResources.parallaxCount);
+		_sceneResources.props->loadHotSpots(sceneS, _sceneResources.propsCount);
 
 		// Note that toss() deletes the MemoryReadStream
 		_vm->res()->toss(filename);
@@ -235,7 +235,7 @@ void Scene::loadSceneHotSpotsMads(int sceneNumber) {
 	// Clear current hotspot lists
 	_sceneResources.hotspots->clear();
 
-	_sceneResources.hotspots->loadHotSpotsMads(hotspotStream, _sceneResources.hotspotCount);
+	_sceneResources.hotspots->loadHotSpots(hotspotStream, _sceneResources.hotspotCount);
 
 	delete hotspotStream;
 }
@@ -277,7 +277,7 @@ void Scene::loadSceneInverseColorTable(int sceneNumber) {
 		// TODO?
 		return;
 	}
-	
+
 }
 
 

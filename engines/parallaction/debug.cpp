@@ -45,7 +45,6 @@ Debugger::Debugger(Parallaction *vm)
 	DCmd_Register("localflags",	WRAP_METHOD(Debugger, Cmd_LocalFlags));
 	DCmd_Register("locations",	WRAP_METHOD(Debugger, Cmd_Locations));
 	DCmd_Register("gfxobjects",	WRAP_METHOD(Debugger, Cmd_GfxObjects));
-	DCmd_Register("set", 		WRAP_METHOD(Debugger, Cmd_Set));
 	DCmd_Register("programs", 	WRAP_METHOD(Debugger, Cmd_Programs));
 
 }
@@ -151,13 +150,15 @@ bool Debugger::Cmd_Zones(int argc, const char **argv) {
 
 	ZoneList::iterator b = _vm->_location._zones.begin();
 	ZoneList::iterator e = _vm->_location._zones.end();
+	Common::Rect r;
 
 	DebugPrintf("+--------------------+---+---+---+---+--------+--------+\n"
 				"| name               | l | t | r | b |  type  |  flag  |\n"
 				"+--------------------+---+---+---+---+--------+--------+\n");
 	for ( ; b != e; b++) {
 		ZonePtr z = *b;
-		DebugPrintf("|%-20s|%3i|%3i|%3i|%3i|%8x|%8x|\n", z->_name, z->getX(), z->getY(), z->getX() + z->width(), z->getY() + z->height(), z->_type, z->_flags );
+		z->getRect(r);
+		DebugPrintf("|%-20s|%3i|%3i|%3i|%3i|%8x|%8x|\n", z->_name, r.left, r.top, r.right, r.bottom, z->_type, z->_flags );
 	}
 	DebugPrintf("+--------------------+---+---+---+---+--------+--------+\n");
 
@@ -191,8 +192,8 @@ bool Debugger::Cmd_GfxObjects(int argc, const char **argv) {
 				"| name               |  x  |  y  |  z  | layer |  f  |  type  |  visi  |\n"
 				"+--------------------+-----+-----+-----+-------+-----+--------+--------+\n");
 
-	GfxObjList::iterator b = _vm->_gfx->_gfxobjList.begin();
-	GfxObjList::iterator e = _vm->_gfx->_gfxobjList.end();
+	GfxObjArray::iterator b = _vm->_gfx->_sceneObjects.begin();
+	GfxObjArray::iterator e = _vm->_gfx->_sceneObjects.end();
 
 	for ( ; b != e; b++) {
 		GfxObj *obj = *b;
@@ -200,17 +201,6 @@ bool Debugger::Cmd_GfxObjects(int argc, const char **argv) {
 	}
 
 	DebugPrintf("+--------------------+-----+-----+-----+-------+-----+--------+--------+\n");
-
-	return true;
-}
-
-bool Debugger::Cmd_Set(int argc, const char** argv) {
-
-	if (argc < 3) {
-		DebugPrintf("set <var name> <value>\n");
-	} else {
-		_vm->_gfx->setVar(Common::String(argv[1]), atoi(argv[2]));
-	}
 
 	return true;
 }

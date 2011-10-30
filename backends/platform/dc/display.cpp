@@ -197,8 +197,6 @@ void OSystem_Dreamcast::initSize(uint w, uint h)
 {
   assert(w <= SCREEN_W && h <= SCREEN_H);
 
-  gBitFormat = 4444;
-
   _overlay_visible = false;
   _overlay_fade = 0.0;
   _screen_w = w;
@@ -392,7 +390,7 @@ void OSystem_Dreamcast::updateScreen(void)
       TA_CMD_POLYGON_STRIPLENGTH_2|TA_CMD_POLYGON_PACKED_COLOUR|TA_CMD_POLYGON_TEXTURED;
     mypoly.mode1 = TA_POLYMODE1_Z_ALWAYS|TA_POLYMODE1_NO_Z_UPDATE;
     mypoly.mode2 =
-      TA_POLYMODE2_BLEND_SRC_ALPHA|TA_POLYMODE2_BLEND_DST_INVALPHA|
+      TA_POLYMODE2_BLEND_SRC/*_ALPHA*/|TA_POLYMODE2_BLEND_DST_INVALPHA|
       TA_POLYMODE2_ENABLE_ALPHA|
       TA_POLYMODE2_FOG_DISABLED|TA_POLYMODE2_TEXTURE_MODULATE_ALPHA|
       TA_POLYMODE2_U_SIZE_512|TA_POLYMODE2_V_SIZE_512;

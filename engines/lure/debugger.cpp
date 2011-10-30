@@ -291,7 +291,7 @@ bool Debugger::cmd_hotspot(int argc, const char **argv) {
 	Hotspot *h;
 
 	if (argc < 2) {
-		DebugPrintf("hotspot <hotspot_id> ['paths' | 'schedule' | 'actions' | 'activate' | 'deactivate']\n");
+		DebugPrintf("hotspot <hotspot_id> ['paths' | 'schedule' | 'actions' | 'activate' | 'deactivate' | 'setpos']\n");
 		return true;
 	}
 	hs = res.getHotspot(strToInt(argv[1]));
@@ -351,16 +351,16 @@ bool Debugger::cmd_hotspot(int argc, const char **argv) {
 		DebugPrintf("Deactivated\n");
 
 	} else {
+		if (strcmp(argv[2], "schedule") == 0) {
+			// List any current schedule for the character
+			hs->npcSchedule.list(buffer);
+			DebugPrintf("%s", buffer);
+		}
 		if (!h)
 			DebugPrintf("The specified hotspot is not currently active\n");
 		else if (strcmp(argv[2], "paths") == 0) {
 			// List any paths for a charcter
 			h->pathFinder().list(buffer);
-			DebugPrintf("%s", buffer);
-		}
-		else if (strcmp(argv[2], "schedule") == 0) {
-			// List any current schedule for the character
-			h->currentActions().list(buffer);
 			DebugPrintf("%s", buffer);
 		}
 		else if (strcmp(argv[2], "pixels") == 0) {
@@ -371,6 +371,14 @@ bool Debugger::cmd_hotspot(int argc, const char **argv) {
 			DebugPrintf("Frames: up=%d down=%d left=%d right=%d\n",
 				pData.upFrame, pData.downFrame, pData.leftFrame, pData.rightFrame);
 			DebugPrintf("Current frame = %d of %d\n", h->frameNumber(), h->numFrames());
+		}
+		else if (strcmp(argv[2], "setpos") == 0) {
+			// Set the hotspot position
+			if (argc >= 5)
+				h->setPosition(strToInt(argv[3]), strToInt(argv[4]));
+			if (argc >= 6)
+				h->setRoomNumber(strToInt(argv[5]));
+			DebugPrintf("Done.\n");
 		}
 	}
 

@@ -189,10 +189,10 @@ void KyraEngine_MR::showInventory() {
 	redrawInventory(30);
 	drawMalcolmsMoodPointer(-1, 30);
 	drawScore(30, 215, 191);
-	
+
 	if (queryGameFlag(0x97))
 		drawJestersStaff(1, 30);
-	
+
 	_screen->hideMouse();
 
 	if (_itemInHand < 0) {
@@ -238,7 +238,7 @@ void KyraEngine_MR::showInventory() {
 			times = 0;
 			waitTill = _system->getMillis() + _tickLength;
 		}
-		
+
 		height += _inventoryScrollSpeed;
 		y -= _inventoryScrollSpeed;
 	}
@@ -260,10 +260,10 @@ void KyraEngine_MR::hideInventory() {
 	_inventoryState = false;
 	updateCLState();
 	initMainButtonList(true);
-	
+
 	_screen->copyBlockToPage(3, 0, 0, 320, 56, _interface);
 	_screen->hideMouse();
-	
+
 	restorePage3();
 	flagAnimObjsForRefresh();
 	drawAnimObjects();
@@ -306,7 +306,7 @@ void KyraEngine_MR::hideInventory() {
 			times = 0;
 			waitTill = _system->getMillis() + _tickLength;
 		}
-		
+
 		y += _inventoryScrollSpeed;
 		y2 += _inventoryScrollSpeed;
 	}
@@ -479,9 +479,9 @@ void KyraEngine_MR::redrawInventory(int page) {
 
 	_screen->showMouse();
 	_screen->_curPage = pageBackUp;
-	
+
 	if (page == 0 || page == 1)
-		_screen->updateScreen();	
+		_screen->updateScreen();
 }
 
 void KyraEngine_MR::clearInventorySlot(int slot, int page) {
@@ -602,7 +602,7 @@ int KyraEngine_MR::buttonMoodChange(Button *button) {
 
 		drawMalcolmsMoodText();
 		updateDlgIndex();
-		
+
 		EMCData data;
 		EMCState state;
 		memset(&data, 0, sizeof(data));
@@ -717,7 +717,7 @@ void KyraEngine_MR::showAlbum() {
 		_album.leftPage.wsa->setX(_albumWSAX[_album.nextPage+0]);
 		_album.leftPage.wsa->setY(_albumWSAY[_album.nextPage+0]);
 		_album.leftPage.wsa->setDrawPage(2);
-	
+
 		_album.leftPage.wsa->displayFrame(_album.leftPage.curFrame, 0x4000);
 	}
 	if (_album.rightPage.wsa->opened()) {
@@ -865,18 +865,18 @@ void KyraEngine_MR::processAlbum() {
 	Button *buttonList = 0;
 	for (int i = 0; i < 5; ++i)
 		buttonList = _gui->addButtonToList(buttonList, &albumButtons[i]);
-	
+
 	_album.leftPage.timer = _album.rightPage.timer = _system->getMillis();
 	albumNewPage();
 	_album.running = true;
 
-	while (_album.running && !quit()) {
+	while (_album.running && !shouldQuit()) {
 		updateInput();
 		checkInput(buttonList);
 		removeInputTop();
 
 		musicUpdate(0);
-		
+
 		if (_album.curPage != _album.nextPage) {
 			int oldPage = _album.curPage;
 			_album.curPage = _album.nextPage;
@@ -930,7 +930,7 @@ void KyraEngine_MR::albumNewPage() {
 
 		int id = _album.curPage / 2 + 100;
 		albumChat((const char *)getTableEntry(_album.file, id), 205, id);
-		
+
 		if (id == 107) {
 			_screen->copyRegion(76, 100, 76, 100, 244, 100, 2, 0, Screen::CR_NO_P_CHECK);
 			albumChat((const char *)getTableEntry(_album.file, 108), 205, 108);
@@ -1303,7 +1303,7 @@ int GUI_MR::optionsButton(Button *button) {
 	initMenuLayout(_saveMenu);
 	initMenuLayout(_savenameMenu);
 	initMenuLayout(_deathMenu);
-	
+
 	_currentMenu = &_mainMenu;
 
 	_vm->musicUpdate(0);
@@ -1312,7 +1312,7 @@ int GUI_MR::optionsButton(Button *button) {
 		backUpPage1(_vm->_screenBuffer);
 
 		_loadedSave = false;
-		
+
 		--_loadMenu.numberOfItems;
 		loadMenu(0);
 		++_loadMenu.numberOfItems;
@@ -1366,8 +1366,8 @@ int GUI_MR::optionsButton(Button *button) {
 
 	if (!_loadedSave && _reloadTemporarySave) {
 		_vm->_unkSceneScreenFlag1 = true;
-		_vm->loadGame(_vm->getSavegameFilename(999));
-		_vm->_saveFileMan->removeSavefile(_vm->getSavegameFilename(999));
+		_vm->loadGameStateCheck(999);
+		//_vm->_saveFileMan->removeSavefile(_vm->getSavegameFilename(999));
 		_vm->_unkSceneScreenFlag1 = false;
 	}
 
@@ -1408,7 +1408,7 @@ int GUI_MR::loadMenu(Button *caller) {
 		restorePage1(_vm->_screenBuffer);
 		restorePalette();
 		_vm->_menuDirectlyToLoad = false;
-		_vm->loadGame(_vm->getSavegameFilename(_vm->_gameToLoad));
+		_vm->loadGameStateCheck(_vm->_gameToLoad);
 		if (_vm->_gameToLoad == 0) {
 			_restartGame = true;
 			_vm->runStartupScript(1, 1);
@@ -1425,7 +1425,7 @@ int GUI_MR::loadSecondChance(Button *button) {
 
 	_vm->_gameToLoad = 999;
 	restorePage1(_vm->_screenBuffer);
-	_vm->loadGame(_vm->getSavegameFilename(_vm->_gameToLoad));
+	_vm->loadGameStateCheck(_vm->_gameToLoad);
 	_displayMenu = false;
 	_loadedSave = true;
 	return 0;
@@ -1458,7 +1458,14 @@ int GUI_MR::gameOptions(Button *caller) {
 
 	if (_vm->_lang != lang) {
 		_reloadTemporarySave = true;
-		_vm->saveGame(_vm->getSavegameFilename(999), "Temporary Kyrandia 3 Savegame", 0);
+
+		Graphics::Surface thumb;
+		createScreenThumbnail(thumb);
+		_vm->saveGameState(999, "Autosave", &thumb);
+		thumb.free();
+
+		_vm->_lastAutosave = _vm->_system->getMillis();
+
 		if (!_vm->loadLanguageFile("ITEMS.", _vm->_itemFile))
 			error("Couldn't load ITEMS");
 		if (!_vm->loadLanguageFile("SCORE.", _vm->_scoreFile))
@@ -1496,7 +1503,7 @@ void GUI_MR::setupOptionsButtons() {
 	case 0:
 		_gameOptions.item[1].itemId = 31;
 		break;
-	
+
 	case 1:
 		_gameOptions.item[1].itemId = 32;
 		break;

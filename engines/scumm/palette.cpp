@@ -310,6 +310,9 @@ void ScummEngine::setDirtyColors(int min, int max) {
 		_palDirtyMin = min;
 	if (_palDirtyMax < max)
 		_palDirtyMax = max;
+
+	if (_hePaletteCache)
+		memset(_hePaletteCache, -1, 65536);
 }
 
 void ScummEngine::initCycl(const byte *ptr) {
@@ -373,7 +376,7 @@ void ScummEngine::stopCycle(int i) {
 }
 
 /**
- * Cycle the colors in the given palette in the intervael [cycleStart, cycleEnd]
+ * Cycle the colors in the given palette in the interval [cycleStart, cycleEnd]
  * either one step forward or backward.
  */
 static void doCyclePalette(byte *palette, int cycleStart, int cycleEnd, int size, bool forward) {
@@ -810,13 +813,27 @@ void ScummEngine_v8::desaturatePalette(int hueScale, int satScale, int lightScal
 #endif
 
 
+int ScummEngine::convert16BitColor(uint16 color, uint8 r, uint8 g, uint8 b) {
+	// HACK: Find the closest matching color, and store in
+	// cache for faster access.
+	if (_hePaletteCache[color] == -1) {
+		_hePaletteCache[color] = remapPaletteColor(r, g, b, -1);
+	}
+
+	return _hePaletteCache[color];
+}
+
 int ScummEngine::remapPaletteColor(int r, int g, int b, int threshold) {
-	int i;
-	int ar, ag, ab;
+	byte *pal;
+	int ar, ag, ab, i;
 	uint sum, bestsum, bestitem = 0;
 
 	int startColor = (_game.version == 8) ? 24 : 1;
-	byte *pal = _currentPalette + startColor * 3;
+	
+	if (_game.heversion >= 99)
+		pal = _hePalettes + 1024 + startColor * 3;
+	else
+		pal = _currentPalette + startColor * 3;
 
 	if (r > 255)
 		r = 255;

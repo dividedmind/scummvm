@@ -42,6 +42,11 @@ DEFINES += -DENABLE_GOB=$(ENABLE_GOB)
 MODULES += engines/gob
 endif
 
+ifdef ENABLE_GROOVIE
+DEFINES += -DENABLE_GROOVIE=$(ENABLE_GROOVIE)
+MODULES += engines/groovie
+endif
+
 ifdef ENABLE_IGOR
 DEFINES += -DENABLE_IGOR=$(ENABLE_IGOR)
 MODULES += engines/igor
@@ -80,6 +85,15 @@ endif
 ifdef ENABLE_SAGA
 DEFINES += -DENABLE_SAGA=$(ENABLE_SAGA)
 MODULES += engines/saga
+
+ifdef ENABLE_IHNM
+DEFINES += -DENABLE_IHNM
+endif
+
+ifdef ENABLE_SAGA2
+DEFINES += -DENABLE_SAGA2
+endif
+
 endif
 
 ifdef ENABLE_SKY
@@ -110,4 +124,9 @@ endif
 ifdef ENABLE_INNOCENT
 DEFINES += -DENABLE_INNOCENT=$(ENABLE_INNOCENT)
 MODULES += engines/innocent
+endif
+
+ifdef ENABLE_TUCKER
+DEFINES += -DENABLE_TUCKER=$(ENABLE_TUCKER)
+MODULES += engines/tucker
 endif

@@ -798,6 +798,7 @@ void Inter_v1::o1_initCursor() {
 	_vm->_draw->adjustCoords(0, &width, &height);
 
 	count = load16();
+
 	if (count < 2)
 		count = 2;
 
@@ -1163,10 +1164,8 @@ bool Inter_v1::o1_printTotText(OpFuncParams &params) {
 }
 
 bool Inter_v1::o1_loadCursor(OpFuncParams &params) {
-	Game::TotResItem *itemPtr;
 	int16 width, height;
 	byte *dataBuf;
-	int32 offset;
 	int16 id;
 	int8 index;
 
@@ -1176,20 +1175,7 @@ bool Inter_v1::o1_loadCursor(OpFuncParams &params) {
 	if ((index * _vm->_draw->_cursorWidth) >= _vm->_draw->_cursorSprites->getWidth())
 		return false;
 
-	itemPtr = &_vm->_game->_totResourceTable->items[id];
-	offset = itemPtr->offset;
-
-	if (offset < 0) {
-		offset = (-offset - 1) * 4;
-		dataBuf = _vm->_game->_imFileData +
-			(int32) READ_LE_UINT32(_vm->_game->_imFileData + offset);
-	} else
-		dataBuf = _vm->_game->_totResourceTable->dataPtr + szGame_TotResTable +
-			szGame_TotResItem * _vm->_game->_totResourceTable->itemsCount +
-			offset;
-
-	width = itemPtr->width;
-	height = itemPtr->height;
+	dataBuf = _vm->_game->loadTotResource(id, 0, &width, &height);
 
 	_vm->_video->fillRect(_vm->_draw->_cursorSprites,
 			index * _vm->_draw->_cursorWidth, 0,
@@ -1234,7 +1220,7 @@ bool Inter_v1::o1_repeatUntil(OpFuncParams &params) {
 		funcBlock(1);
 		_vm->_global->_inter_execPtr = blockPtr + size + 1;
 		flag = evalBoolResult();
-	} while (!flag && !_break && !_terminate && !_vm->quit());
+	} while (!flag && !_break && !_terminate && !_vm->shouldQuit());
 
 	_nestLevel[0]--;
 
@@ -1269,7 +1255,7 @@ bool Inter_v1::o1_whileDo(OpFuncParams &params) {
 		} else
 			_vm->_global->_inter_execPtr += size;
 
-		if (_break || _terminate || _vm->quit()) {
+		if (_break || _terminate || _vm->shouldQuit()) {
 			_vm->_global->_inter_execPtr = blockPtr;
 			_vm->_global->_inter_execPtr += size;
 			break;
@@ -1517,7 +1503,7 @@ bool Inter_v1::o1_palLoad(OpFuncParams &params) {
 
 	case 61:
 		if (_vm->_global->_fakeVideoMode < 0x13) {
-			*_vm->_global->_inter_execPtr += 4;
+			_vm->_global->_inter_execPtr += 4;
 			return false;
 		}
 		break;
@@ -1835,9 +1821,15 @@ bool Inter_v1::o1_createSprite(OpFuncParams &params) {
 	int16 width, height;
 	int16 flag;
 
-	index = load16();
-	width = load16();
-	height = load16();
+	if (_vm->_global->_inter_execPtr[1] == 0) {
+		index = load16();
+		width = load16();
+		height = load16();
+	} else {
+		index = _vm->_parse->parseValExpr();
+		width = _vm->_parse->parseValExpr();
+		height = _vm->_parse->parseValExpr();
+	}
 
 	flag = load16();
 	_vm->_draw->initSpriteSurf(index, width, height, flag ? 2 : 0);
@@ -1872,13 +1864,21 @@ bool Inter_v1::o1_loadSpriteContent(OpFuncParams &params) {
 	_vm->_draw->_transparency = load16();
 	_vm->_draw->_destSpriteX = 0;
 	_vm->_draw->_destSpriteY = 0;
+
 	_vm->_draw->spriteOperation(DRAW_LOADSPRITE);
 	return false;
 }
 
 bool Inter_v1::o1_copySprite(OpFuncParams &params) {
-	_vm->_draw->_sourceSurface = load16();
-	_vm->_draw->_destSurface = load16();
+	if (_vm->_global->_inter_execPtr[1] == 0)
+		_vm->_draw->_sourceSurface = load16();
+	else
+		_vm->_draw->_sourceSurface = _vm->_parse->parseValExpr();
+
+	if (_vm->_global->_inter_execPtr[1] == 0)
+		_vm->_draw->_destSurface = load16();
+	else
+		_vm->_draw->_destSurface = _vm->_parse->parseValExpr();
 
 	_vm->_draw->_spriteLeft = _vm->_parse->parseValExpr();
 	_vm->_draw->_spriteTop = _vm->_parse->parseValExpr();
@@ -1889,6 +1889,7 @@ bool Inter_v1::o1_copySprite(OpFuncParams &params) {
 	_vm->_draw->_destSpriteY = _vm->_parse->parseValExpr();
 
 	_vm->_draw->_transparency = load16();
+
 	_vm->_draw->spriteOperation(DRAW_BLITSURF);
 	return false;
 }
@@ -2175,8 +2176,7 @@ bool Inter_v1::o1_loadFont(OpFuncParams &params) {
 	evalExpr(0);
 	index = load16();
 
-	if (_vm->_draw->_fonts[index])
-		_vm->_util->freeFont(_vm->_draw->_fonts[index]);
+	delete _vm->_draw->_fonts[index];
 
 	_vm->_draw->animateCursor(4);
 	if (_vm->_game->_extHandle >= 0)
@@ -2194,9 +2194,7 @@ bool Inter_v1::o1_freeFont(OpFuncParams &params) {
 	int16 index;
 
 	index = load16();
-	if (_vm->_draw->_fonts[index])
-		_vm->_util->freeFont(_vm->_draw->_fonts[index]);
-
+	delete _vm->_draw->_fonts[index];
 	_vm->_draw->_fonts[index] = 0;
 	return false;
 }

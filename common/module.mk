@@ -1,10 +1,10 @@
 MODULE := common
 
 MODULE_OBJS := \
-	advancedDetector.o \
 	archive.o \
 	config-file.o \
 	config-manager.o \
+	debug.o \
 	file.o \
 	fs.o \
 	hashmap.o \
@@ -17,6 +17,7 @@ MODULE_OBJS := \
 	system.o \
 	unarj.o \
 	unzip.o \
+	xmlparser.o \
 	zlib.o
 
 # Include common rules

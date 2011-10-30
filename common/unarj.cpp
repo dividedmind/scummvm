@@ -28,10 +28,123 @@
 // from http://arj.sourceforge.net/ , version 3.10.22 .
 
 #include "common/scummsys.h"
+#include "common/archive.h"
+#include "common/debug.h"
 #include "common/util.h"
 #include "common/unarj.h"
 
 namespace Common {
+
+
+#define ARJ_UCHAR_MAX 255
+#define ARJ_CHAR_BIT 8
+
+#define ARJ_COMMENT_MAX 2048
+#define ARJ_FILENAME_MAX 512
+
+#define ARJ_CODE_BIT 16
+#define ARJ_THRESHOLD 3
+#define ARJ_DICSIZ 26624
+#define ARJ_FDICSIZ ARJ_DICSIZ
+#define ARJ_MAXDICBIT   16
+#define ARJ_MAXMATCH   256
+#define ARJ_NC (ARJ_UCHAR_MAX + ARJ_MAXMATCH + 2 - ARJ_THRESHOLD)
+#define ARJ_NP (ARJ_MAXDICBIT + 1)
+#define ARJ_NT (ARJ_CODE_BIT + 3)
+
+#if ARJ_NT > ARJ_NP
+#define ARJ_NPT ARJ_NT
+#else
+#define ARJ_NPT ARJ_NP
+#endif
+
+#define ARJ_CTABLESIZE 4096
+#define ARJ_PTABLESIZE 256
+
+
+struct ArjHeader {
+	int32 pos;
+	uint16 id;
+	uint16 headerSize;
+	//
+	byte firstHdrSize;
+	byte nbr;
+	byte xNbr;
+	byte hostOs;
+	byte flags;
+	byte method;
+	byte fileType;
+	byte pad;
+	uint32 timeStamp;
+	int32 compSize;
+	int32 origSize;
+	uint32 fileCRC;
+	uint16 entryPos;
+	uint16 fileMode;
+	uint16 hostData;
+	char   filename[ARJ_FILENAME_MAX];
+	char   comment[ARJ_COMMENT_MAX];
+
+	uint32 headerCrc;
+};
+
+static int32 findHeader(SeekableReadStream &stream);
+static ArjHeader *readHeader(SeekableReadStream &stream);
+
+class ArjDecoder {
+public:
+	ArjDecoder(const ArjHeader *hdr) {
+		_compsize = hdr->compSize;
+	}
+
+	~ArjDecoder() {
+		delete _compressed;
+		delete _outstream;
+	}
+
+	void decode(int32 origsize);
+	void decode_f(int32 origsize);
+
+	MemoryReadStream *_compressed;
+	MemoryWriteStream *_outstream;
+
+//protected:
+	uint16 _bitbuf;
+	uint16 _bytebuf;
+	int32 _compsize;
+	byte _subbitbuf;
+	int _bitcount;
+
+	void init_getbits();
+	void fillbuf(int n);
+	uint16 getbits(int n);
+
+
+	void make_table(int nchar, byte *bitlen, int tablebits, uint16 *table, int tablesize);
+	void read_pt_len(int nn, int nbit, int i_special);
+	void read_c_len(void);
+	uint16 decode_c(void);
+	uint16 decode_p(void);
+	void decode_start(void);
+	int16 decode_ptr(void);
+	int16 decode_len(void);
+
+private:
+	byte  _ntext[ARJ_FDICSIZ];
+
+	int16  _getlen;
+	int16  _getbuf;
+
+	uint16 _left[2 * ARJ_NC - 1];
+	uint16 _right[2 * ARJ_NC - 1];
+	byte  _c_len[ARJ_NC];
+	byte  _pt_len[ARJ_NPT];
+
+	uint16 _c_table[ARJ_CTABLESIZE];
+	uint16 _pt_table[ARJ_PTABLESIZE];
+	uint16 _blocksize;
+};
+
 
 #define HEADER_ID     0xEA60
 #define HEADER_ID_HI    0xEA
@@ -76,9 +189,8 @@ static uint32 GetCRC(byte *data, int len) {
 	return CRC ^ 0xFFFFFFFF;
 }
 
-ArjFile::ArjFile() : _uncompressedData(NULL) {
+ArjFile::ArjFile() : _uncompressed(0) {
 	InitCRC();
-	_isOpen = false;
 	_fallBack = false;
 }
 
@@ -87,40 +199,35 @@ ArjFile::~ArjFile() {
 
 	for (uint i = 0; i < _headers.size(); i++)
 		delete _headers[i];
-
-	_headers.clear();
-	_fileMap.clear();
-	_archMap.clear();
 }
 
 void ArjFile::registerArchive(const String &filename) {
 	int32 first_hdr_pos;
 	ArjHeader *header;
+	File archiveFile;
 
-	if (!_currArchive.open(filename))
+	if (!archiveFile.open(filename))
 		return;
 
-	first_hdr_pos = findHeader();
+	first_hdr_pos = findHeader(archiveFile);
 
 	if (first_hdr_pos < 0) {
 		warning("ArjFile::registerArchive(): Could not find a valid header");
 		return;
 	}
 
-	_currArchive.seek(first_hdr_pos, SEEK_SET);
-	if (readHeader() == NULL)
+	archiveFile.seek(first_hdr_pos, SEEK_SET);
+	if (readHeader(archiveFile) == NULL)
 		return;
 
-	while ((header = readHeader()) != NULL) {
+	while ((header = readHeader(archiveFile)) != NULL) {
 		_headers.push_back(header);
 
-		_currArchive.seek(header->compSize, SEEK_CUR);
+		archiveFile.seek(header->compSize, SEEK_CUR);
 
 		_fileMap[header->filename] = _headers.size() - 1;
 		_archMap[header->filename] = filename;
 	}
-
-	_currArchive.close();
 
 	debug(0, "ArjFile::registerArchive(%s): Located %d files", filename.c_str(), _headers.size());
 }
@@ -129,37 +236,37 @@ void ArjFile::registerArchive(const String &filename) {
 // Source for findHeader and readHeader: arj_arcv.c
 //
 
-int32 ArjFile::findHeader(void) {
+int32 findHeader(SeekableReadStream &stream) {
 	long end_pos, tmp_pos;
 	int id;
 	byte header[HEADERSIZE_MAX];
 	uint32 crc;
 	uint16 basic_hdr_size;
 
-	tmp_pos = _currArchive.pos();
-	_currArchive.seek(0L, SEEK_END);
-	end_pos = _currArchive.pos() - 2;
+	tmp_pos = stream.pos();
+	stream.seek(0L, SEEK_END);
+	end_pos = stream.pos() - 2;
 	if (end_pos >= tmp_pos + HSLIMIT_ARJ)
 		end_pos = tmp_pos + HSLIMIT_ARJ;
 
 	while (tmp_pos < end_pos) {
-		_currArchive.seek(tmp_pos, SEEK_SET);
-		id = _currArchive.readByte();
+		stream.seek(tmp_pos, SEEK_SET);
+		id = stream.readByte();
 		while (tmp_pos < end_pos) {
-			if (id == HEADER_ID_LO)
-				if ((id = _currArchive.readByte()) == HEADER_ID_HI)
+			if (id == HEADER_ID_LO) {
+				if ((id = stream.readByte()) == HEADER_ID_HI)
 					break;
-			else
-				id = _currArchive.readByte();
+			} else
+				id = stream.readByte();
 			tmp_pos++;
 		}
 		if (tmp_pos >= end_pos)
 			return -1;
-		if ((basic_hdr_size = _currArchive.readUint16LE()) <= HEADERSIZE_MAX) {
-			_currArchive.read(header, basic_hdr_size);
+		if ((basic_hdr_size = stream.readUint16LE()) <= HEADERSIZE_MAX) {
+			stream.read(header, basic_hdr_size);
 			crc = GetCRC(header, basic_hdr_size);
-			if (crc == _currArchive.readUint32LE()) {
-				_currArchive.seek(tmp_pos, SEEK_SET);
+			if (crc == stream.readUint32LE()) {
+				stream.seek(tmp_pos, SEEK_SET);
 				return tmp_pos;
 			}
 		}
@@ -168,20 +275,20 @@ int32 ArjFile::findHeader(void) {
 	return -1;
 }
 
-ArjHeader *ArjFile::readHeader() {
+ArjHeader *readHeader(SeekableReadStream &stream) {
 	ArjHeader header;
 	ArjHeader *head;
 	byte headData[HEADERSIZE_MAX];
 
 	// Strictly check the header ID
-	header.id = _currArchive.readUint16LE();
+	header.id = stream.readUint16LE();
 	if (header.id != HEADER_ID) {
 		warning("ArjFile::readHeader(): Bad header ID (%x)", header.id);
 
 		return NULL;
 	}
 
-	header.headerSize = _currArchive.readUint16LE();
+	header.headerSize = stream.readUint16LE();
 	if (header.headerSize == 0)
 		return NULL;			// end of archive
 	if (header.headerSize > HEADERSIZE_MAX) {
@@ -190,11 +297,11 @@ ArjHeader *ArjFile::readHeader() {
 		return NULL;
 	}
 
-	int rSize = _currArchive.read(headData, header.headerSize);
+	int rSize = stream.read(headData, header.headerSize);
 
 	MemoryReadStream readS(headData, rSize);
 
-	header.headerCrc = _currArchive.readUint32LE();
+	header.headerCrc = stream.readUint32LE();
 	if (GetCRC(headData, header.headerSize) != header.headerCrc) {
 		warning("ArjFile::readHeader(): Bad header CRC");
 		return NULL;
@@ -226,12 +333,12 @@ ArjHeader *ArjFile::readHeader() {
 
 	strncpy(header.comment, (const char *)&headData[header.firstHdrSize + strlen(header.filename) + 1], ARJ_COMMENT_MAX);
 
-    // Process extended headers, if any
-    uint16 extHeaderSize;
-	while ((extHeaderSize = _currArchive.readUint16LE()) != 0)
-		_currArchive.seek((long)(extHeaderSize + 4), SEEK_CUR);
+	// Process extended headers, if any
+	uint16 extHeaderSize;
+	while ((extHeaderSize = stream.readUint16LE()) != 0)
+		stream.seek((long)(extHeaderSize + 4), SEEK_CUR);
 
-	header.pos = _currArchive.pos();
+	header.pos = stream.pos();
 
 	head = new ArjHeader(header);
 
@@ -240,103 +347,79 @@ ArjHeader *ArjFile::readHeader() {
 
 
 bool ArjFile::open(const Common::String &filename) {
-	if (_isOpen)
+	if (_uncompressed)
 		error("Attempt to open another instance of archive");
 
-	_isOpen = false;
-
 	if (_fallBack) {
-		_currArchive.open(filename);
-		if (_currArchive.isOpen()) {
-			_isOpen = true;
-			_uncompressed = &_currArchive;
+		_uncompressed = SearchMan.createReadStreamForMember(filename);
+		if (_uncompressed)
 			return true;
-		}
 	}
 
 	if (!_fileMap.contains(filename))
 		return false;
 
-	_isOpen = true;
-
 	ArjHeader *hdr = _headers[_fileMap[filename]];
+	byte *uncompressedData = (byte *)malloc(hdr->origSize);
 
-	_compsize = hdr->compSize;
-	_origsize = hdr->origSize;
-
-	// FIXME: This hotfix prevents Drascula from leaking memory.
-	// As far as sanity checks go this is not bad, but the engine should be fixed.
-	if (_uncompressedData)
-		free(_uncompressedData);
-
-	_uncompressedData = (byte *)malloc(_origsize);
-	_outstream = new MemoryWriteStream(_uncompressedData, _origsize);
-
-	_currArchive.open(_archMap[filename]);
-	_currArchive.seek(hdr->pos, SEEK_SET);
+	File archiveFile;
+	archiveFile.open(_archMap[filename]);
+	archiveFile.seek(hdr->pos, SEEK_SET);
 
 	if (hdr->method == 0) { // store
-        _currArchive.read(_uncompressedData, _origsize);
+		int32 len = archiveFile.read(uncompressedData, hdr->origSize);
+		assert(len == hdr->origSize);
 	} else {
-		_compressedData = (byte *)malloc(_compsize);
-		_currArchive.read(_compressedData, _compsize);
+		ArjDecoder *decoder = new ArjDecoder(hdr);
 
-		_compressed = new MemoryReadStream(_compressedData, _compsize);
+		byte *compressedData = (byte *)malloc(hdr->compSize);
+		archiveFile.read(compressedData, hdr->compSize);
+
+		decoder->_compressed = new MemoryReadStream(compressedData, hdr->compSize, true);
+		decoder->_outstream = new MemoryWriteStream(uncompressedData, hdr->origSize);
 
 		if (hdr->method == 1 || hdr->method == 2 || hdr->method == 3)
-			decode();
+			decoder->decode(hdr->origSize);
 		else if (hdr->method == 4)
-			decode_f();
+			decoder->decode_f(hdr->origSize);
 
-		delete _compressed;
-		free(_compressedData);
+		delete decoder;
 	}
 
-	_currArchive.close();
-	delete _outstream;
-	_outstream = NULL;
 
-	_uncompressed = new MemoryReadStream(_uncompressedData, _origsize);
+	_uncompressed = new MemoryReadStream(uncompressedData, hdr->origSize, true);
+	assert(_uncompressed);
 
 	return true;
 }
 
 void ArjFile::close() {
-	if (!_isOpen)
-		return;
-
-	_isOpen = false;
-
-	if (_fallBack) {
-		_currArchive.close();
-		return;
-	} else {
-		delete _uncompressed;
-	}
-
+	delete _uncompressed;
 	_uncompressed = NULL;
-
-	free(_uncompressedData);
-	_uncompressedData = NULL;
 }
 
 uint32 ArjFile::read(void *dataPtr, uint32 dataSize) {
+	assert(_uncompressed);
 	return _uncompressed->read(dataPtr, dataSize);
 }
 
-bool ArjFile::eos() {
+bool ArjFile::eos() const {
+	assert(_uncompressed);
 	return _uncompressed->eos();
 }
 
-int32 ArjFile::pos() {
+int32 ArjFile::pos() const {
+	assert(_uncompressed);
 	return _uncompressed->pos();
 }
 
-int32 ArjFile::size() {
+int32 ArjFile::size() const {
+	assert(_uncompressed);
 	return _uncompressed->size();
 }
 
 bool ArjFile::seek(int32 offset, int whence) {
+	assert(_uncompressed);
 	return _uncompressed->seek(offset, whence);
 }
 
@@ -344,7 +427,7 @@ bool ArjFile::seek(int32 offset, int whence) {
 // Source for init_getbits: arj_file.c (decode_start_stub)
 //
 
-void ArjFile::init_getbits() {
+void ArjDecoder::init_getbits() {
 	_bitbuf = 0;
 	_bytebuf = 0;
 	_bitcount = 0;
@@ -352,10 +435,10 @@ void ArjFile::init_getbits() {
 }
 
 //
-// Source for fillbuf, getbits: decode.c 
+// Source for fillbuf, getbits: decode.c
 //
 
-void ArjFile::fillbuf(int n) {
+void ArjDecoder::fillbuf(int n) {
 	while (_bitcount < n) {
 		_bitbuf = (_bitbuf << _bitcount) | (_bytebuf >> (8 - _bitcount));
 		n -= _bitcount;
@@ -373,7 +456,7 @@ void ArjFile::fillbuf(int n) {
 }
 
 // Reads a series of bits into the input buffer */
-uint16 ArjFile::getbits(int n) {
+uint16 ArjDecoder::getbits(int n) {
 	uint16 rc;
 
 	rc = _bitbuf >> (ARJ_CODE_BIT - n);
@@ -389,7 +472,7 @@ uint16 ArjFile::getbits(int n) {
 //
 
 // Creates a table for decoding
-void ArjFile::make_table(int nchar, byte *bitlen, int tablebits, uint16 *table, int tablesize) {
+void ArjDecoder::make_table(int nchar, byte *bitlen, int tablebits, uint16 *table, int tablesize) {
 	uint16 count[17], weight[17], start[18];
 	uint16 *p;
 	uint i, k, len, ch, jutbits, avail, nextcode, mask;
@@ -403,7 +486,7 @@ void ArjFile::make_table(int nchar, byte *bitlen, int tablebits, uint16 *table, 
 	for (i = 1; i <= 16; i++)
 		start[i + 1] = start[i] + (count[i] << (16 - i));
 	if (start[17] != (uint16) (1 << 16))
-		error("ArjFile::make_table(): bad file data");
+		error("ArjDecoder::make_table(): bad file data");
 
 	jutbits = 16 - tablebits;
 	for (i = 1; (int)i <= tablebits; i++) {
@@ -431,7 +514,7 @@ void ArjFile::make_table(int nchar, byte *bitlen, int tablebits, uint16 *table, 
 		nextcode = k + weight[len];
 		if ((int)len <= tablebits) {
 			if (nextcode > (uint)tablesize)
-				error("ArjFile::make_table(): bad file data");
+				error("ArjDecoder::make_table(): bad file data");
 			for (i = start[len]; i < nextcode; i++)
 				table[i] = ch;
 		} else {
@@ -457,7 +540,7 @@ void ArjFile::make_table(int nchar, byte *bitlen, int tablebits, uint16 *table, 
 }
 
 // Reads length of data pending
-void ArjFile::read_pt_len(int nn, int nbit, int i_special) {
+void ArjDecoder::read_pt_len(int nn, int nbit, int i_special) {
 	int i, n;
 	int16 c;
 	uint16 mask;
@@ -495,7 +578,7 @@ void ArjFile::read_pt_len(int nn, int nbit, int i_special) {
 }
 
 // Reads a character table
-void ArjFile::read_c_len() {
+void ArjDecoder::read_c_len() {
 	int16 i, c, n;
 	uint16 mask;
 
@@ -544,7 +627,7 @@ void ArjFile::read_c_len() {
 }
 
 // Decodes a single character
-uint16 ArjFile::decode_c() {
+uint16 ArjDecoder::decode_c() {
 	uint16 j, mask;
 
 	if (_blocksize == 0) {
@@ -570,7 +653,7 @@ uint16 ArjFile::decode_c() {
 }
 
 // Decodes a control character
-uint16 ArjFile::decode_p() {
+uint16 ArjDecoder::decode_p() {
 	uint16 j, mask;
 
 	j = _pt_table[_bitbuf >> 8];
@@ -593,13 +676,13 @@ uint16 ArjFile::decode_p() {
 }
 
 // Initializes memory for decoding
-void ArjFile::decode_start() {
+void ArjDecoder::decode_start() {
 	_blocksize = 0;
 	init_getbits();
 }
 
 // Decodes the entire file
-void ArjFile::decode() {
+void ArjDecoder::decode(int32 origsize) {
 	int16 i;
 	int16 r;
 	int16 c;
@@ -607,7 +690,7 @@ void ArjFile::decode() {
 	int32 count;
 
 	decode_start();
-	count = _origsize;
+	count = origsize;
 	r = 0;
 
 	while (count > 0) {
@@ -645,14 +728,14 @@ void ArjFile::decode() {
 }
 
 // Backward pointer decoding
-int16 ArjFile::decode_ptr() {
+int16 ArjDecoder::decode_ptr() {
 	int16 c = 0;
 	int16 width;
 	int16 plus;
 	int16 pwr;
 
 	plus = 0;
-	pwr = 1 << 9; 
+	pwr = 1 << 9;
 	for (width = 9; width < 13; width++) {
 		c = getbits(1);
 		if (c == 0)
@@ -667,7 +750,7 @@ int16 ArjFile::decode_ptr() {
 }
 
 // Reference length decoding
-int16 ArjFile::decode_len() {
+int16 ArjDecoder::decode_len() {
 	int16 c = 0;
 	int16 width;
 	int16 plus;
@@ -689,7 +772,7 @@ int16 ArjFile::decode_len() {
 }
 
 // Decodes the entire file, using method 4
-void ArjFile::decode_f() {
+void ArjDecoder::decode_f(int32 origsize) {
 	int16 i;
 	int16 j;
 	int16 c;
@@ -701,7 +784,7 @@ void ArjFile::decode_f() {
 	_getlen = _getbuf = 0;
 	r = 0;
 
-	while (ncount < (uint32)_origsize) {
+	while (ncount < (uint32)origsize) {
 		c = decode_len();
 		if (c == 0) {
 			ncount++;

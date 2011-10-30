@@ -206,7 +206,7 @@ public:
 	 * Read a signed byte from the stream and return it.
 	 * Performs no error checking. The return value is undefined
 	 * if a read error occurred (for which client code can check by
-	 * calling err() and eos() ). 
+	 * calling err() and eos() ).
 	 */
 	int8 readSByte() {
 		int8 b = 0;
@@ -366,11 +366,6 @@ public:
 	 * @return true on success, false in case of a failure
 	 */
 	virtual bool skip(uint32 offset) { return seek(offset, SEEK_CUR); }
-
-	/**
-	 * DEPRECATED: Do not use this method! Instead use readLine_NEW() or readline().
-	 */
-	virtual char *readLine_OLD(char *buf, size_t bufSize);
 
 	/**
 	 * Reads at most one less than the number of characters specified

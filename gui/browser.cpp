@@ -23,7 +23,7 @@
  */
 
 #include "gui/browser.h"
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
 #include "gui/ListWidget.h"
 
 #include "common/config-manager.h"
@@ -63,8 +63,11 @@ int BrowserDialog::runModal() {
 
 	// If in fullscreen mode, switch to windowed mode
 	bool wasFullscreen = g_system->getFeatureState(OSystem::kFeatureFullscreenMode);
-	if (wasFullscreen)
+	if (wasFullscreen) {
+		g_system->beginGFXTransaction();
 		g_system->setFeatureState(OSystem::kFeatureFullscreenMode, false);
+		g_system->endGFXTransaction();
+	}
 
 	// Temporarily show the real mouse
 	CGDisplayShowCursor(kCGDirectMainDisplay);
@@ -107,7 +110,7 @@ int BrowserDialog::runModal() {
 			err = FSRefMakePath(&ref, (UInt8*)buf, sizeof(buf)-1);
 			assert(err == noErr);
 
-			_choice = Common::FilesystemNode(buf);
+			_choice = Common::FSNode(buf);
 			choiceMade = true;
 		}
 
@@ -118,8 +121,11 @@ int BrowserDialog::runModal() {
 	NavDialogDispose(dialogRef);
 
 	// If we were in fullscreen mode, switch back
-	if (wasFullscreen)
+	if (wasFullscreen) {
+		g_system->beginGFXTransaction();
 		g_system->setFeatureState(OSystem::kFeatureFullscreenMode, true);
+		g_system->endGFXTransaction();
+	}
 
 	return choiceMade;
 }
@@ -133,42 +139,42 @@ int BrowserDialog::runModal() {
  */
 
 BrowserDialog::BrowserDialog(const char *title, bool dirBrowser)
-	: Dialog("browser") {
+	: Dialog("Browser") {
 
 	_isDirBrowser = dirBrowser;
 	_fileList = NULL;
 	_currentPath = NULL;
 
 	// Headline - TODO: should be customizable during creation time
-	new StaticTextWidget(this, "browser_headline", title);
+	new StaticTextWidget(this, "Browser.Headline", title);
 
 	// Current path - TODO: handle long paths ?
-	_currentPath = new StaticTextWidget(this, "browser_path", "DUMMY");
+	_currentPath = new StaticTextWidget(this, "Browser.Path", "DUMMY");
 
 	// Add file list
-	_fileList = new ListWidget(this, "browser_list");
+	_fileList = new ListWidget(this, "Browser.List");
 	_fileList->setNumberingMode(kListNumberingOff);
 	_fileList->setEditable(false);
 
-	_fileList->setHints(THEME_HINT_PLAIN_COLOR);
+	_backgroundType = GUI::ThemeEngine::kDialogBackgroundPlain;
 
 	// Buttons
-	new ButtonWidget(this, "browser_up", "Go up", kGoUpCmd, 0);
-	new ButtonWidget(this, "browser_cancel", "Cancel", kCloseCmd, 0);
-	new ButtonWidget(this, "browser_choose", "Choose", kChooseCmd, 0);
+	new ButtonWidget(this, "Browser.Up", "Go up", kGoUpCmd, 0);
+	new ButtonWidget(this, "Browser.Cancel", "Cancel", kCloseCmd, 0);
+	new ButtonWidget(this, "Browser.Choose", "Choose", kChooseCmd, 0);
 }
 
 void BrowserDialog::open() {
+	// Call super implementation
+	Dialog::open();
+
 	if (ConfMan.hasKey("browser_lastpath"))
-		_node = Common::FilesystemNode(ConfMan.get("browser_lastpath"));
+		_node = Common::FSNode(ConfMan.get("browser_lastpath"));
 	if (!_node.isDirectory())
-		_node = Common::FilesystemNode(".");
+		_node = Common::FSNode(".");
 
 	// Alway refresh file list
 	updateListing();
-
-	// Call super implementation
-	Dialog::open();
 }
 
 void BrowserDialog::handleCommand(CommandSender *sender, uint32 cmd, uint32 data) {
@@ -227,9 +233,9 @@ void BrowserDialog::updateListing() {
 	ConfMan.set("browser_lastpath", _node.getPath());
 
 	// Read in the data from the file system
-	Common::FilesystemNode::ListMode listMode =
-	         _isDirBrowser ? Common::FilesystemNode::kListDirectoriesOnly
-	                       : Common::FilesystemNode::kListAll;
+	Common::FSNode::ListMode listMode =
+	         _isDirBrowser ? Common::FSNode::kListDirectoriesOnly
+	                       : Common::FSNode::kListAll;
 	if (!_node.getChildren(_nodeContent, listMode)) {
 		_nodeContent.clear();
 	} else {

@@ -78,8 +78,13 @@ static camera cam = {
 void GX_InitVideo() {
 	vmode = VIDEO_GetPreferredMode(NULL);
 
-	vmode->viWidth = 678;
-	vmode->viXOrigin = (VI_MAX_WIDTH_PAL - 678) / 2;
+#ifdef GAMECUBE
+	if(VIDEO_HaveComponentCable())
+		vmode = &TVNtsc480Prog;
+#endif
+
+	vmode->viWidth = 688;
+	vmode->viXOrigin = (VI_MAX_WIDTH_PAL - 688) / 2;
 
 	VIDEO_Configure(vmode);
 

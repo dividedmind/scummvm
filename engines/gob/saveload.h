@@ -51,7 +51,7 @@ public:
 
 	bool toBuffer(byte *buffer, int32 size, bool palette) const;
 	bool fromBuffer(const byte *buffer, int32 size, bool palette);
-	
+
 private:
 	byte *_sprite;
 	int16 _width;
@@ -166,13 +166,14 @@ public:
 	enum SaveMode {
 		kSaveModeNone,
 		kSaveModeIgnore,
+		kSaveModeExists,
 		kSaveModeSave
 	};
 
 	SaveLoad(GobEngine *vm, const char *targetName);
 	virtual ~SaveLoad();
 
-	virtual SaveMode getSaveMode(const char *fileName) = 0;
+	virtual SaveMode getSaveMode(const char *fileName);
 
 	int32 getSize(const char *fileName);
 	bool load(const char *fileName, int16 dataVar, int32 size, int32 offset);
@@ -202,11 +203,11 @@ protected:
 
 	char *_targetName;
 
-	virtual int getSaveType(const char *fileName) = 0;
+	virtual int getSaveType(const char *fileName);
 
-	virtual int32 getSizeVersioned(int type) = 0;
-	virtual bool loadVersioned(int type, int16 dataVar, int32 size, int32 offset) = 0;
-	virtual bool saveVersioned(int type, int16 dataVar, int32 size, int32 offset) = 0;
+	virtual int32 getSizeVersioned(int type);
+	virtual bool loadVersioned(int type, int16 dataVar, int32 size, int32 offset);
+	virtual bool saveVersioned(int type, int16 dataVar, int32 size, int32 offset);
 };
 
 class SaveLoad_v2 : public SaveLoad {
@@ -407,6 +408,55 @@ protected:
 	bool saveGameScreenProps(SaveFile &saveFile, int16 dataVar, int32 size, int32 offset);
 
 	void assertInited();
+};
+
+class SaveLoad_v6 : public SaveLoad {
+public:
+	enum SaveType {
+		kSaveNone,
+		kSaveGame,
+		kSaveNoCD
+	};
+
+	SaveLoad_v6(GobEngine *vm, const char *targetName);
+	virtual ~SaveLoad_v6();
+
+	virtual SaveMode getSaveMode(const char *fileName);
+
+protected:
+	struct SaveFile {
+		const char *sourceName;
+		char *destName;
+		SaveMode mode;
+		SaveType type;
+	};
+
+	static SaveFile _saveFiles[];
+
+	int32 _varSize;
+
+	StagedSave *_save;
+
+	byte _indexBuffer[2900];
+
+	virtual int getSaveType(const char *fileName);
+
+	virtual int32 getSizeVersioned(int type);
+	virtual bool loadVersioned(int type, int16 dataVar, int32 size, int32 offset);
+	virtual bool saveVersioned(int type, int16 dataVar, int32 size, int32 offset);
+
+	int getSlot(int32 offset) const;
+	int getSlotRemainder(int32 offset) const;
+
+	int32 getSizeGame(SaveFile &saveFile);
+
+	bool loadGame(SaveFile &saveFile, int16 dataVar, int32 size, int32 offset);
+
+	bool saveGame(SaveFile &saveFile, int16 dataVar, int32 size, int32 offset);
+
+	void assertInited();
+
+	void refreshIndex();
 };
 
 } // End of namespace Gob

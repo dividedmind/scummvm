@@ -123,6 +123,7 @@ class Input;
 class DialogueManager;
 class MenuInputHelper;
 
+
 struct Location {
 
 	Common::Point	_startPosition;
@@ -131,8 +132,8 @@ struct Location {
 
 	CommandList		_aCommands;
 	CommandList		_commands;
-	char	   *_comment;
-	char	   *_endComment;
+	Common::String	_comment;
+	Common::String	_endComment;
 
 	ZoneList		_zones;
 	AnimationList	_animations;
@@ -150,9 +151,44 @@ struct Location {
 	int			_zeta1;
 	int			_zeta2;
 	CommandList		_escapeCommands;
+
+protected:
+	void freeAnimations();
+	void freeZones(bool removeAll);
+
+public:
+	Location();
+	~Location();
+
+	AnimationPtr findAnimation(const char *name);
+	ZonePtr findZone(const char *name);
+
+	void cleanup(bool removeAll);
+
+	int getScale(int z) const;
 };
 
 
+class CharacterName {
+	const char *_prefix;
+	const char *_suffix;
+	bool _dummy;
+	char _name[30];
+	char _baseName[30];
+	char _fullName[30];
+	static const char _prefixMini[];
+	static const char _suffixTras[];
+	static const char _empty[];
+	void dummify();
+public:
+	CharacterName();
+	CharacterName(const char *name);
+	void bind(const char *name);
+	const char *getName() const;
+	const char *getBaseName() const;
+	const char *getFullName() const;
+	bool dummy() const;
+};
 
 
 struct Character {
@@ -162,7 +198,6 @@ struct Character {
 	AnimationPtr	_ani;
 	GfxObj			*_head;
 	GfxObj			*_talk;
-	GfxObj			*_objs;
 	PathBuilder		*_builder;
 	PathWalker		*_walker;
 	PointList		_walkPath;
@@ -174,20 +209,8 @@ struct Character {
 	void setFoot(const Common::Point &foot);
 	void scheduleWalk(int16 x, int16 y);
 
-	void free();
-
 protected:
-	const char *_prefix;
-	const char *_suffix;
-
-	bool _dummy;
-
-	char _name[30];
-	char _baseName[30];
-	char _fullName[30];
-	static const char _prefixMini[];
-	static const char _suffixTras[];
-	static const char _empty[];
+	CharacterName	_name;
 
 	int16		_direction, _step;
 
@@ -227,7 +250,11 @@ public:
 	Parallaction(OSystem *syst, const PARALLACTIONGameDescription *gameDesc);
 	~Parallaction();
 
-	int init();
+	// Engine APIs
+	virtual Common::Error init();
+	virtual bool hasFeature(EngineFeature f) const;
+	virtual void pauseEngineIntern(bool pause);
+	virtual GUI::Debugger *getDebugger();
 
 	// info
 	int32			_screenWidth;
@@ -253,11 +280,11 @@ public:
 	// game utilities
 	Table				*_globalFlagsNames;
 	Table				*_objectsNames;
+	GfxObj				*_objects;
 	Table				*_callableNames;
 	Table				*_localFlagNames;
 	CommandExec			*_cmdExec;
 	ProgramExec			*_programExec;
-	PathBuffer			*_pathBuffer;
 	Inventory 			*_inventory;
 	BalloonManager 		*_balloonMan;
 	DialogueManager		*_dialogueMan;
@@ -275,13 +302,9 @@ public:
 	ZonePtr			_zoneTrap;
 	ZonePtr			_commentZone;
 
-	bool _quit;   /* The only reason this flag exists is for freeZones() to properly
-		       * delete all zones when necessary. THIS FLAG IS NOT THE ENGINE QUIT FLAG,
-		       * use _eventMan->shouldQuit() for that.
-		       */
-
 protected:
 	void	runGame();
+	void 	runGameFrame(int event);
 	void 	runGuiFrame();
 	void 	cleanupGui();
 	void 	runDialogueFrame();
@@ -289,22 +312,18 @@ protected:
 	void 	runCommentFrame();
 	void 	enterCommentMode(ZonePtr z);
 	void 	exitCommentMode();
-	void	processInput(int event);
 	void	updateView();
 	void 	drawAnimations();
-	void	freeCharacter();
-	void	freeLocation();
 	void	doLocationEnterTransition();
 	void	allocateLocationSlot(const char *name);
 	void	finalizeLocationParsing();
-	void	showLocationComment(const char *text, bool end);
+	void	showLocationComment(const Common::String &text, bool end);
 	void 	setupBalloonManager();
 
 public:
 	void	beep();
 	void	pauseJobs();
 	void	resumeJobs();
-	void 	hideDialogueStuff();
 	uint 	getInternLanguage();
 	void 	setInternLanguage(uint id);
 	void 	enterDialogueMode(ZonePtr z);
@@ -319,17 +338,12 @@ public:
 	bool 		checkSpecialZoneBox(ZonePtr z, uint32 type, uint x, uint y);
 	bool 		checkZoneBox(ZonePtr z, uint32 type, uint x, uint y);
 	bool 		checkLinkedAnimBox(ZonePtr z, uint32 type, uint x, uint y);
-	ZonePtr		findZone(const char *name);
 	ZonePtr		hitZone(uint32 type, uint16 x, uint16 y);
 	void		runZone(ZonePtr z);
-	void		freeZones();
 	bool		pickupItem(ZonePtr z);
 	void 		updateDoor(ZonePtr z, bool close);
 	void 		showZone(ZonePtr z, bool visible);
-	AnimationPtr findAnimation(const char *name);
-	void		freeAnimations();
 	void		setBackground(const char *background, const char *mask, const char *path);
-	void		freeBackground();
 	void 		highlightInventoryItem(ItemPosition pos);
 	int16 		getHoverInventoryItem(int16 x, int16 y);
 	int 		addInventoryItem(ItemName item);
@@ -350,6 +364,7 @@ public:
 	virtual	void callFunction(uint index, void* parm) = 0;
 	virtual void runPendingZones() = 0;
 	virtual void cleanupGame() = 0;
+	virtual DialogueManager *createDialogueManager(ZonePtr z) = 0;
 };
 
 
@@ -357,11 +372,12 @@ public:
 class Parallaction_ns : public Parallaction {
 
 public:
-	Parallaction_ns(OSystem* syst, const PARALLACTIONGameDescription *gameDesc) : Parallaction(syst, gameDesc) { }
+	Parallaction_ns(OSystem* syst, const PARALLACTIONGameDescription *gameDesc);
 	~Parallaction_ns();
 
-	int init();
-	int go();
+	// Engine APIs
+	virtual Common::Error init();
+	virtual Common::Error go();
 
 public:
 	virtual void 	parseLocation(const char *filename);
@@ -371,6 +387,7 @@ public:
 	virtual void 	runPendingZones();
 	virtual void 	cleanupGame();
 
+	virtual DialogueManager *createDialogueManager(ZonePtr z);
 
 	void 	switchBackground(const char* background, const char* mask);
 
@@ -387,6 +404,8 @@ private:
 	void	startCreditSequence();
 	void	startEndPartSequence();
 	void	loadProgram(AnimationPtr a, const char *filename);
+	void	freeLocation(bool removeAll);
+	void 	freeCharacter();
 
 
 	//  callables data
@@ -401,6 +420,7 @@ private:
 	ZonePtr _moveSarcZones[5];
 	ZonePtr _moveSarcExaZones[5];
 	AnimationPtr _rightHandAnim;
+	bool _intro;
 	static const Callable _dosCallables[25];
 	static const Callable _amigaCallables[25];
 
@@ -445,11 +465,11 @@ private:
 class Parallaction_br : public Parallaction_ns {
 
 public:
-	Parallaction_br(OSystem* syst, const PARALLACTIONGameDescription *gameDesc) : Parallaction_ns(syst, gameDesc) { }
+	Parallaction_br(OSystem* syst, const PARALLACTIONGameDescription *gameDesc);
 	~Parallaction_br();
 
-	int init();
-	int go();
+	Common::Error init();
+	Common::Error go();
 
 public:
 	virtual void parseLocation(const char* name);
@@ -459,12 +479,18 @@ public:
 	virtual void runPendingZones();
 	virtual void cleanupGame();
 
+	virtual DialogueManager *createDialogueManager(ZonePtr z);
 
 	void setupSubtitles(char *s, char *s2, int y);
 	void clearSubtitles();
 
+	void testCounterCondition(const Common::String &name, int op, int value);
+
 public:
-	Table		*_countersNames;
+	bool	counterExists(const Common::String &name);
+	int		getCounterValue(const Common::String &name);
+	void	setCounterValue(const Common::String &name, int value);
+
 	const char **_audioCommandsNamesRes;
 	static const char *_partNames[];
 	int			_part;
@@ -475,20 +501,24 @@ public:
 	int			_subtitleY;
 	int			_subtitle[2];
 	ZonePtr		_activeZone2;
-	int32		_counters[32];
 	uint32		_zoneFlags[NUM_LOCATIONS][NUM_ZONES];
+
 
 private:
 	LocationParser_br		*_locationParser;
 	ProgramParser_br		*_programParser;
 
+	int32		_counters[32];
+	Table		*_countersNames;
+
 private:
 	void	initResources();
 	void	initFonts();
 	void	freeFonts();
-	void	freeLocation();
+	void	freeLocation(bool removeAll);
 	void 	loadProgram(AnimationPtr a, const char *filename);
 	void 	startGui(bool showSplash);
+	void 	freeCharacter();
 
 	typedef void (Parallaction_br::*Callable)(void*);
 	const Callable *_callables;
@@ -503,7 +533,6 @@ private:
 	void _c_password(void*);
 };
 
-// FIXME: remove global
 extern Parallaction *_vm;
 
 

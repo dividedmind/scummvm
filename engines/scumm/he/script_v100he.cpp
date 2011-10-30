@@ -23,8 +23,6 @@
  *
  */
 
-
-
 #include "common/system.h"
 
 #include "scumm/actor.h"
@@ -381,7 +379,7 @@ const char *ScummEngine_v100he::getOpcodeDesc(byte i) {
 }
 
 void ScummEngine_v100he::o100_actorOps() {
-	Actor *a;
+	ActorHE *a;
 	int i, j, k;
 	int args[32];
 	byte string[256];
@@ -392,7 +390,7 @@ void ScummEngine_v100he::o100_actorOps() {
 		return;
 	}
 
-	a = derefActorSafe(_curActor, "o100_actorOps");
+	a = (ActorHE *)derefActorSafe(_curActor, "o100_actorOps");
 	if (!a)
 		return;
 
@@ -669,6 +667,28 @@ void ScummEngine_v100he::o100_arrayOps() {
 				error("Source and dest ranges size are mismatched");
 			}
 			copyArray(array, a1_dim2start, a1_dim2end, a1_dim1start, a1_dim1end, array2, a2_dim2start, a2_dim2end, a2_dim1start, a2_dim1end);
+		}
+		break;
+	case 132:
+		// TODO: Used by Moonbase Commander
+		fetchScriptWord();
+		fetchScriptWord();
+		pop();
+		pop();
+		pop();
+		pop();
+		pop();
+		pop();
+		pop();
+		pop();
+		pop();
+		dim1end = pop();
+		dim1start = pop();
+		dim2end = pop();
+		dim2start = pop();
+		id = readVar(array);
+		if (id == 0) {
+			defineArray(array, kDwordArray, dim2start, dim2end, dim1start, dim1end);
 		}
 		break;
 	case 133:

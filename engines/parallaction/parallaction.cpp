@@ -27,6 +27,7 @@
 #include "common/events.h"
 #include "common/file.h"
 #include "common/util.h"
+#include "common/system.h"
 
 #include "sound/mididrv.h"
 #include "sound/mixer.h"
@@ -42,9 +43,7 @@
 
 namespace Parallaction {
 
-// FIXME: remove this
 Parallaction *_vm = NULL;
-
 // public stuff
 
 char		_saveData1[30] = { '\0' };
@@ -61,23 +60,17 @@ uint32		_globalFlags = 0;
 Parallaction::Parallaction(OSystem *syst, const PARALLACTIONGameDescription *gameDesc) :
 	Engine(syst), _gameDescription(gameDesc), _char(this) {
 
-	// FIXME: Fingolfin asks: why is there a FIXME here? Please either clarify what
-	// needs fixing, or remove it!
-	// FIXME
 	_vm = this;
-
-	Common::File::addDefaultDirectory(_gameDataDir);
-
-	Common::addSpecialDebugLevel(kDebugDialogue, "dialogue", "Dialogues debug level");
-	Common::addSpecialDebugLevel(kDebugParser, "parser", "Parser debug level");
-	Common::addSpecialDebugLevel(kDebugDisk, "disk", "Disk debug level");
-	Common::addSpecialDebugLevel(kDebugWalk, "walk", "Walk debug level");
-	Common::addSpecialDebugLevel(kDebugGraphics, "gfx", "Gfx debug level");
-	Common::addSpecialDebugLevel(kDebugExec, "exec", "Execution debug level");
-	Common::addSpecialDebugLevel(kDebugInput, "input", "Input debug level");
-	Common::addSpecialDebugLevel(kDebugAudio, "audio", "Audio debug level");
-	Common::addSpecialDebugLevel(kDebugMenu, "menu", "Menu debug level");
-	Common::addSpecialDebugLevel(kDebugInventory, "inventory", "Inventory debug level");
+	Common::addDebugChannel(kDebugDialogue, "dialogue", "Dialogues debug level");
+	Common::addDebugChannel(kDebugParser, "parser", "Parser debug level");
+	Common::addDebugChannel(kDebugDisk, "disk", "Disk debug level");
+	Common::addDebugChannel(kDebugWalk, "walk", "Walk debug level");
+	Common::addDebugChannel(kDebugGraphics, "gfx", "Gfx debug level");
+	Common::addDebugChannel(kDebugExec, "exec", "Execution debug level");
+	Common::addDebugChannel(kDebugInput, "input", "Input debug level");
+	Common::addDebugChannel(kDebugAudio, "audio", "Audio debug level");
+	Common::addDebugChannel(kDebugMenu, "menu", "Menu debug level");
+	Common::addDebugChannel(kDebugInventory, "inventory", "Inventory debug level");
 
 	syst->getEventManager()->registerRandomSource(_rnd, "parallaction");
 }
@@ -89,13 +82,12 @@ Parallaction::~Parallaction() {
 	delete _callableNames;
 	delete _cmdExec;
 	delete _programExec;
+	delete _saveLoad;
 
-	_gfx->clearGfxObjects(kGfxObjCharacter | kGfxObjNormal);
-	hideDialogueStuff();
+	_gfx->freeCharacterObjects();
+	_gfx->freeLocationObjects();
 	delete _balloonMan;
-	freeLocation();
 
-	freeCharacter();
 	destroyInventory();
 
 	cleanupGui();
@@ -108,7 +100,7 @@ Parallaction::~Parallaction() {
 }
 
 
-int Parallaction::init() {
+Common::Error Parallaction::init() {
 
 	_engineFlags = 0;
 	_objectsNames = NULL;
@@ -118,12 +110,7 @@ int Parallaction::init() {
 	_location._startPosition.x = -1000;
 	_location._startPosition.y = -1000;
 	_location._startFrame = 0;
-	_location._comment = NULL;
-	_location._endComment = NULL;
-
-	_quit = false;
-
-	_pathBuffer = 0;
+	_objects = 0;
 
 	_screenSize = _screenWidth * _screenHeight;
 
@@ -144,7 +131,21 @@ int Parallaction::init() {
 
 	setupBalloonManager();
 
-	return 0;
+	return Common::kNoError;
+}
+
+void Parallaction::pauseEngineIntern(bool pause) {
+	if (_soundMan) {
+		_soundMan->pause(pause);
+	}
+}
+
+GUI::Debugger *Parallaction::getDebugger() {
+	return _debugger;
+}
+
+bool canScroll() {
+	return (_vm->_gfx->_backgroundInfo->width > _vm->_screenWidth);
 }
 
 void Parallaction::updateView() {
@@ -153,30 +154,35 @@ void Parallaction::updateView() {
 		return;
 	}
 
+	#define SCROLL_BAND_WIDTH		120
+
+	int scrollX = 0;
+	if (canScroll()) {
+		scrollX = _gfx->getScrollPos();
+
+		Common::Point foot;
+		_char.getFoot(foot);
+
+		foot.x -= scrollX;
+		//foot.y -= ...
+
+		int min = SCROLL_BAND_WIDTH;
+		int max = _screenWidth - SCROLL_BAND_WIDTH;
+
+		if (foot.x < min) {
+			scrollX -= (min - foot.x);
+		} else
+		if (foot.x > max) {
+			scrollX += (foot.x - max);
+		}
+	}
+	_gfx->setScrollPos(scrollX);
+
 	_gfx->animatePalette();
 	_gfx->updateScreen();
-	_vm->_system->delayMillis(30);
+	_system->delayMillis(30);
 }
 
-
-void Parallaction::hideDialogueStuff() {
-	_gfx->freeItems();
-	_balloonMan->freeBalloons();
-}
-
-
-void Parallaction::freeCharacter() {
-	debugC(1, kDebugExec, "freeCharacter()");
-
-	delete _objectsNames;
-	_objectsNames = 0;
-
-	_gfx->clearGfxObjects(kGfxObjCharacter);
-
-	_char.free();
-
-	return;
-}
 
 
 void Parallaction::pauseJobs() {
@@ -193,20 +199,19 @@ void Parallaction::resumeJobs() {
 	return;
 }
 
-AnimationPtr Parallaction::findAnimation(const char *name) {
+AnimationPtr Location::findAnimation(const char *name) {
 
-	for (AnimationList::iterator it = _location._animations.begin(); it != _location._animations.end(); it++)
+	for (AnimationList::iterator it = _animations.begin(); it != _animations.end(); it++)
 		if (!scumm_stricmp((*it)->_name, name)) return *it;
 
 	return nullAnimationPtr;
 }
 
-void Parallaction::freeAnimations() {
-	for (AnimationList::iterator it = _location._animations.begin(); it != _location._animations.end(); it++) {
+void Location::freeAnimations() {
+	for (AnimationList::iterator it = _animations.begin(); it != _animations.end(); it++) {
 		(*it)->_commands.clear();	// See comment for freeZones(), about circular references.
 	}
-	_location._animations.clear();
-	return;
+	_animations.clear();
 }
 
 
@@ -242,120 +247,130 @@ void Parallaction::allocateLocationSlot(const char *name) {
 }
 
 
+Location::Location() {
+	cleanup(true);
+}
 
-void Parallaction::freeLocation() {
-	debugC(2, kDebugExec, "freeLocation");
+Location::~Location() {
+	cleanup(true);
+}
 
-	_soundMan->stopSfx(0);
-	_soundMan->stopSfx(1);
-	_soundMan->stopSfx(2);
-	_soundMan->stopSfx(3);
+void Location::cleanup(bool removeAll) {
+	_comment.clear();
+	_endComment.clear();
 
-	_localFlagNames->clear();
-
-	_location._walkPoints.clear();
-
-	_gfx->clearGfxObjects(kGfxObjNormal);
-
-	_location._programs.clear();
-	freeZones();
+	freeZones(removeAll);
 	freeAnimations();
 
-	free(_location._comment);
-	_location._comment = 0;
+	_programs.clear();
+	_commands.clear();
+	_aCommands.clear();
 
-	_location._commands.clear();
-	_location._aCommands.clear();
+	_hasSound = false;
 
-	return;
+	// NS specific
+	_walkPoints.clear();
+
+	// BRA specific
+	_zeta0 = _zeta1 = _zeta2 = 0;
+	_escapeCommands.clear();
 }
+
+int Location::getScale(int z) const {
+	int scale = 100;
+	if (z <= _zeta0) {
+		scale = _zeta2;
+		if (z >= _zeta1) {
+			scale += ((z - _zeta1) * (100 - _zeta2)) / (_zeta0 - _zeta1);
+		}
+	}
+	return scale;
+}
+
 
 void Parallaction::showSlide(const char *name, int x, int y) {
 	BackgroundInfo *info = new BackgroundInfo;
 	_disk->loadSlide(*info, name);
 
-	info->x = (x == CENTER_LABEL_HORIZONTAL) ? ((_vm->_screenWidth - info->width) >> 1) : x;
-	info->y = (y == CENTER_LABEL_VERTICAL) ? ((_vm->_screenHeight - info->height) >> 1) : y;
+	info->_x = (x == CENTER_LABEL_HORIZONTAL) ? ((_screenWidth - info->width) >> 1) : x;
+	info->_y = (y == CENTER_LABEL_VERTICAL) ? ((_screenHeight - info->height) >> 1) : y;
 
 	_gfx->setBackground(kBackgroundSlide, info);
 }
 
 
-void Parallaction::freeBackground() {
-
-	_pathBuffer = 0;
-
-}
-
 void Parallaction::setBackground(const char* name, const char* mask, const char* path) {
-
 	BackgroundInfo *info = new BackgroundInfo;
 	_disk->loadScenery(*info, name, mask, path);
-
 	_gfx->setBackground(kBackgroundLocation, info);
-	_pathBuffer = &info->path;
-
-	return;
 }
 
-void Parallaction::showLocationComment(const char *text, bool end) {
-	_balloonMan->setLocationBalloon(const_cast<char*>(text), end);
+void Parallaction::showLocationComment(const Common::String &text, bool end) {
+	_balloonMan->setLocationBalloon(text.c_str(), end);
 }
 
 
-void Parallaction::processInput(int event) {
-
-	switch (event) {
-	case kEvSaveGame:
-		_input->stopHovering();
-		_saveLoad->saveGame();
-		_input->setArrowCursor();
-		break;
-
-	case kEvLoadGame:
-		_input->stopHovering();
-		_saveLoad->loadGame();
-		_input->setArrowCursor();
-		break;
-
+void Parallaction::runGameFrame(int event) {
+	if (_input->_inputMode != Input::kInputModeGame) {
+		return;
 	}
 
-	return;
+	if (event != kEvNone) {
+		_input->stopHovering();
+		if (event == kEvSaveGame) {
+			_saveLoad->saveGame();
+		} else
+		if (event == kEvLoadGame) {
+			_saveLoad->loadGame();
+		}
+		_input->setArrowCursor();
+	}
+
+	runPendingZones();
+
+	if (shouldQuit())
+		return;
+
+	if (_engineFlags & kEngineChangeLocation) {
+		changeLocation(_location._name);
+	}
+
+	_programExec->runScripts(_location._programs.begin(), _location._programs.end());
+	_char._ani->resetZ();
+//	if (_char._ani->gfxobj) {
+//		_char._ani->gfxobj->z = _char._ani->getZ();
+//	}
+	_char._walker->walk();
+	drawAnimations();
+
 }
 
 void Parallaction::runGame() {
 
 	int event = _input->updateInput();
-	if (quit())
+	if (shouldQuit())
 		return;
 
-	runGuiFrame();
-	runDialogueFrame();
-	runCommentFrame();
+	switch (_input->_inputMode) {
+	case Input::kInputModeMenu:
+		runGuiFrame();
+		break;
 
-	if (_input->_inputMode == Input::kInputModeGame) {
-		processInput(event);
-		runPendingZones();
+	case Input::kInputModeDialogue:
+		runDialogueFrame();
+		break;
 
-		if (quit())
-			return;
+	case Input::kInputModeComment:
+		runCommentFrame();
+		break;
 
-		if (_engineFlags & kEngineChangeLocation) {
-			changeLocation(_location._name);
-		}
+	case Input::kInputModeGame:
+		runGameFrame(event);
+		break;
 	}
 
-	_gfx->beginFrame();
-
-	if (_input->_inputMode == Input::kInputModeGame) {
-		_programExec->runScripts(_location._programs.begin(), _location._programs.end());
-		_char._ani->setZ(_char._ani->height() + _char._ani->getFrameY());
-		if (_char._ani->gfxobj) {
-			_char._ani->gfxobj->z = _char._ani->getZ();
-		}
-		_char._walker->walk();
-		drawAnimations();
-	}
+	if (shouldQuit())
+		return;
 
 	// change this to endFrame?
 	updateView();
@@ -374,7 +389,7 @@ void Parallaction::runGame() {
 void Parallaction::doLocationEnterTransition() {
 	debugC(2, kDebugExec, "doLocationEnterTransition");
 
-	if (!_location._comment) {
+	if (_location._comment.empty()) {
 		return;
 	}
 
@@ -393,14 +408,14 @@ void Parallaction::doLocationEnterTransition() {
 	_gfx->updateScreen();
 
 	_input->waitForButtonEvent(kMouseLeftUp);
-	_balloonMan->freeBalloons();
+	_gfx->freeDialogueObjects();
 
 	// fades maximum intensity palette towards approximation of main palette
 	for (uint16 _si = 0; _si<6; _si++) {
 		pal.fadeTo(_gfx->_palette, 4);
 		_gfx->setPalette(pal);
 		_gfx->updateScreen();
-		_vm->_system->delayMillis(20);
+		_system->delayMillis(20);
 	}
 
 	_gfx->setPalette(_gfx->_palette);
@@ -438,37 +453,26 @@ void Parallaction::drawAnimations() {
 		AnimationPtr anim = *it;
 		GfxObj *obj = anim->gfxobj;
 
-		// Validation is performed here, so that every animation is affected, instead that only the ones
-		// who *own* a script. In fact, some scripts can change values in other animations.
-		// The right way to do this would be to enforce validation when any variable is modified from
-		// a script.
-		anim->validateScriptVars();
-
 		if ((anim->_flags & kFlagsActive) && ((anim->_flags & kFlagsRemove) == 0))   {
 
-			if (anim->_flags & kFlagsNoMasked)
+			if (anim->_flags & kFlagsNoMasked) {
 				layer = LAYER_FOREGROUND;
-			else {
+			} else {
 				if (getGameType() == GType_Nippon) {
 					// Layer in NS depends on where the animation is on the screen, for each animation.
-					layer = _gfx->_backgroundInfo->getLayer(anim->getFrameY() + anim->height());
+					layer = _gfx->_backgroundInfo->getMaskLayer(anim->getBottom());
 				} else {
 					// Layer in BRA is calculated from Z value. For characters it is the same as NS,
 					// but other animations can have Z set from scripts independently from their
 					// position on the screen.
-					layer = _gfx->_backgroundInfo->getLayer(anim->getZ());
+					layer = _gfx->_backgroundInfo->getMaskLayer(anim->getZ());
 				}
 			}
 
+			scale = 100;
 			if (getGameType() == GType_BRA) {
 				if (anim->_flags & (kFlagsScaled | kFlagsCharacter)) {
-					if (anim->getZ() <= _location._zeta0) {
-						if (anim->getZ() >= _location._zeta1) {
-							scale = ((anim->getZ() - _location._zeta1) * (100 - _location._zeta2)) / (_location._zeta0 - _location._zeta1) + _location._zeta2;
-						} else {
-							scale = _location._zeta2;
-						}
-					}
+					scale = _location.getScale(anim->getZ());
 				}
 			}
 
@@ -516,15 +520,6 @@ void Parallaction::showZone(ZonePtr z, bool visible) {
 
 	if ((z->_type & 0xFFFF) == kZoneGet) {
 		_gfx->showGfxObj(z->u.get->gfxobj, visible);
-
-		GetData *data = z->u.get;
-		if (data->hasMask && _gfx->_backgroundInfo->hasMask) {
-			if (visible) {
-				_gfx->_backgroundInfo->mask.bltOr(data->gfxobj->x, data->gfxobj->y, data->_mask[0], 0, 0, data->_mask->w, data->_mask->h);
-			} else {
-				_gfx->_backgroundInfo->mask.bltCopy(data->gfxobj->x, data->gfxobj->y, data->_mask[1], 0, 0, data->_mask->w, data->_mask->h);
-			}
-		}
 	}
 }
 
@@ -542,36 +537,31 @@ void Parallaction::enterCommentMode(ZonePtr z) {
 
 	ExamineData *data = _commentZone->u.examine;
 
-	if (!data->_description) {
+	if (data->_description.empty()) {
 		return;
 	}
 
 	// TODO: move this balloons stuff into DialogueManager and BalloonManager
 	if (getGameType() == GType_Nippon) {
-		int id;
 		if (data->_filename) {
 			if (data->_cnv == 0) {
 				data->_cnv = _disk->loadStatic(data->_filename);
 			}
 
 			_gfx->setHalfbriteMode(true);
-			_balloonMan->setSingleBalloon(data->_description, 0, 90, 0, BalloonManager::kNormalColor);
+			_balloonMan->setSingleBalloon(data->_description.c_str(), 0, 90, 0, BalloonManager::kNormalColor);
 			Common::Rect r;
 			data->_cnv->getRect(0, r);
-			id = _gfx->setItem(data->_cnv, 140, (_screenHeight - r.height())/2);
-			_gfx->setItemFrame(id, 0);
-			id = _gfx->setItem(_char._head, 100, 152);
-			_gfx->setItemFrame(id, 0);
+			_gfx->setItem(data->_cnv, 140, (_screenHeight - r.height())/2);
+			_gfx->setItem(_char._head, 100, 152);
 		} else {
-			_balloonMan->setSingleBalloon(data->_description, 140, 10, 0, BalloonManager::kNormalColor);
-			id = _gfx->setItem(_char._talk, 190, 80);
-			_gfx->setItemFrame(id, 0);
+			_balloonMan->setSingleBalloon(data->_description.c_str(), 140, 10, 0, BalloonManager::kNormalColor);
+			_gfx->setItem(_char._talk, 190, 80);
 		}
 	} else
 	if (getGameType() == GType_BRA) {
-		_balloonMan->setSingleBalloon(data->_description, 0, 0, 1, BalloonManager::kNormalColor);
-		int id = _gfx->setItem(_char._talk, 10, 80);
-		_gfx->setItemFrame(id, 0);
+		_balloonMan->setSingleBalloon(data->_description.c_str(), 0, 0, 1, BalloonManager::kNormalColor);
+		_gfx->setItem(_char._talk, 10, 80);
 	}
 
 	_input->_inputMode = Input::kInputModeComment;
@@ -580,7 +570,7 @@ void Parallaction::enterCommentMode(ZonePtr z) {
 void Parallaction::exitCommentMode() {
 	_input->_inputMode = Input::kInputModeGame;
 
-	hideDialogueStuff();
+	_gfx->freeDialogueObjects();
 	_gfx->setHalfbriteMode(false);
 
 	_cmdExec->run(_commentZone->_commands, _commentZone);
@@ -706,14 +696,7 @@ bool Parallaction::checkZoneBox(ZonePtr z, uint32 type, uint x, uint y) {
 
 	debugC(5, kDebugExec, "checkZoneBox for %s (type = %x, x = %i, y = %i)", z->_name, type, x, y);
 
-	Common::Rect r;
-	z->getBox(r);
-	r.right++;		// adjust border because Common::Rect doesn't include bottom-right edge
-	r.bottom++;
-
-	r.grow(-1);		// allows some tolerance for mouse click
-
-	if (!r.contains(x, y)) {
+	if (!z->hitRect(x, y)) {
 
 		// check for special zones (items defined in common.loc)
 		if (checkSpecialZoneBox(z, type, x, y))
@@ -721,13 +704,7 @@ bool Parallaction::checkZoneBox(ZonePtr z, uint32 type, uint x, uint y) {
 
 		if (z->getX() != -1)
 			return false;
-		if ((int)x < _char._ani->getFrameX())
-			return false;
-		if ((int)x > (_char._ani->getFrameX() + _char._ani->width()))
-			return false;
-		if ((int)y < _char._ani->getFrameY())
-			return false;
-		if ((int)y > (_char._ani->getFrameY() + _char._ani->height()))
+		if (!_char._ani->hitFrameRect(x, y))
 			return false;
 	}
 
@@ -752,10 +729,7 @@ bool Parallaction::checkLinkedAnimBox(ZonePtr z, uint32 type, uint x, uint y) {
 
 	debugC(5, kDebugExec, "checkLinkedAnimBox for %s (type = %x, x = %i, y = %i)", z->_name, type, x, y);
 
-	AnimationPtr anim = z->_linkedAnim;
-	Common::Rect r(anim->getFrameX(), anim->getFrameY(), anim->getFrameX() + anim->width() + 1, anim->getFrameY() + anim->height() + 1);
-
-	if (!r.contains(x, y)) {
+	if (!z->_linkedAnim->hitFrameRect(x, y)) {
 		return false;
 	}
 
@@ -785,59 +759,54 @@ ZonePtr Parallaction::hitZone(uint32 type, uint16 x, uint16 y) {
 	}
 
 
-	int16 _a, _b, _c, _d, _e, _f;
+	int16 _a, _b, _c, _d;
+	bool _ef;
 	for (AnimationList::iterator ait = _location._animations.begin(); ait != _location._animations.end(); ait++) {
 
 		AnimationPtr a = *ait;
 
 		_a = (a->_flags & kFlagsActive) ? 1 : 0;															   // _a: active Animation
-		_e = ((_si >= a->getFrameX() + a->width()) || (_si <= a->getFrameX())) ? 0 : 1;		// _e: horizontal range
-		_f = ((_di >= a->getFrameY() + a->height()) || (_di <= a->getFrameY())) ? 0 : 1;		// _f: vertical range
+		_ef = a->hitFrameRect(_si, _di);
 
 		_b = ((type != 0) || (a->_type == kZoneYou)) ? 0 : 1;										 // _b: (no type specified) AND (Animation is not the character)
 		_c = (a->_type & 0xFFFF0000) ? 0 : 1;															// _c: Animation is not an object
 		_d = ((a->_type & 0xFFFF0000) != type) ? 0 : 1;													// _d: Animation is an object of the same type
 
-		if ((_a != 0 && _e != 0 && _f != 0) && ((_b != 0 && _c != 0) || (a->_type == type) || (_d != 0))) {
-
+		if ((_a != 0 && _ef) && ((_b != 0 && _c != 0) || (a->_type == type) || (_d != 0))) {
 			return a;
-
 		}
-
 	}
 
 	return nullZonePtr;
 }
 
 
-ZonePtr Parallaction::findZone(const char *name) {
-
-	for (ZoneList::iterator it = _location._zones.begin(); it != _location._zones.end(); it++) {
+ZonePtr Location::findZone(const char *name) {
+	for (ZoneList::iterator it = _zones.begin(); it != _zones.end(); it++) {
 		if (!scumm_stricmp((*it)->_name, name)) return *it;
 	}
-
 	return findAnimation(name);
 }
 
 
-void Parallaction::freeZones() {
-	debugC(2, kDebugExec, "freeZones: _vm->_quit = %i", _vm->_quit);
+void Location::freeZones(bool removeAll) {
+	debugC(2, kDebugExec, "freeZones: removeAll = %i", removeAll);
 
-	ZoneList::iterator it = _location._zones.begin();
+	ZoneList::iterator it = _zones.begin();
 
-	while ( it != _location._zones.end() ) {
+	while ( it != _zones.end() ) {
 
 		// NOTE : this condition has been relaxed compared to the original, to allow the engine
 		// to retain special - needed - zones that were lost across location switches.
 		ZonePtr z = *it;
-		if (((z->getY() == -1) || (z->getX() == -2)) && (_quit == 0)) {
+		if (((z->getY() == -1) || (z->getX() == -2)) && (!removeAll)) {
 			debugC(2, kDebugExec, "freeZones preserving zone '%s'", z->_name);
 			it++;
 		} else {
 			(*it)->_commands.clear();	// Since commands may reference zones, and both commands and zones are kept stored into
 										// SharedPtr's, we need to kill commands explicitly to destroy any potential circular
 										// reference.
-			it = _location._zones.erase(it);
+			it = _zones.erase(it);
 		}
 	}
 
@@ -873,20 +842,14 @@ WalkFrames _char24WalkFrames = {
 	{  2,  2,  4,  4 }
 };
 
-const char Character::_prefixMini[] = "mini";
-const char Character::_suffixTras[] = "tras";
-const char Character::_empty[] = "\0";
 
 
 Character::Character(Parallaction *vm) : _vm(vm), _ani(new Animation) {
 	_talk = NULL;
 	_head = NULL;
-	_objs = NULL;
 
 	_direction = WALK_DOWN;
 	_step = 0;
-
-	_dummy = false;
 
 	_ani->setX(150);
 	_ani->setY(100);
@@ -912,8 +875,6 @@ Character::~Character() {
 
 	delete _walker;
 	_walker = 0;
-
-	free();
 }
 
 void Character::getFoot(Common::Point &foot) {
@@ -953,20 +914,48 @@ void Character::scheduleWalk(int16 x, int16 y) {
 	_engineFlags |= kEngineWalking;
 }
 
-void Character::free() {
 
-	delete _talk;
-	delete _head;
-	delete _objs;
-	delete _ani->gfxobj;
-
-	_talk = NULL;
-	_head = NULL;
-	_objs = NULL;
-	_ani->gfxobj = NULL;
-
-	return;
+void Character::setName(const char *name) {
+	_name.bind(name);
 }
+
+const char *Character::getName() const {
+	return _name.getName();
+}
+
+const char *Character::getBaseName() const {
+	return _name.getBaseName();
+}
+
+const char *Character::getFullName() const {
+	return _name.getFullName();
+}
+
+bool Character::dummy() const {
+	return _name.dummy();
+}
+
+void Character::updateDirection(const Common::Point& pos, const Common::Point& to) {
+
+	Common::Point dist(to.x - pos.x, to.y - pos.y);
+	WalkFrames *frames = (_ani->getFrameNum() == 20) ? &_char20WalkFrames : &_char24WalkFrames;
+
+	_step++;
+
+	if (dist.x == 0 && dist.y == 0) {
+		_ani->setF(frames->stillFrame[_direction]);
+		return;
+	}
+
+	if (dist.x < 0)
+		dist.x = -dist.x;
+	if (dist.y < 0)
+		dist.y = -dist.y;
+
+	_direction = (dist.x > dist.y) ? ((to.x > pos.x) ? WALK_LEFT : WALK_RIGHT) : ((to.y > pos.y) ? WALK_DOWN : WALK_UP);
+	_ani->setF(frames->firstWalkFrame[_direction] + (_step / frames->frameRepeat[_direction]) % frames->numWalkFrames[_direction]);
+}
+
 
 
 // Various ways of detecting character modes used to exist
@@ -980,7 +969,26 @@ void Character::free() {
 #define IS_MINI_CHARACTER(s) (((s)[0] == 'm'))
 #define IS_DUMMY_CHARACTER(s) (((s)[0] == 'D'))
 
-void Character::setName(const char *name) {
+const char CharacterName::_prefixMini[] = "mini";
+const char CharacterName::_suffixTras[] = "tras";
+const char CharacterName::_empty[] = "\0";
+
+void CharacterName::dummify() {
+	_dummy = true;
+	_baseName[0] = '\0';
+	_name[0] = '\0';
+	_fullName[0] = '\0';
+}
+
+CharacterName::CharacterName() {
+	dummify();
+}
+
+CharacterName::CharacterName(const char *name) {
+	bind(name);
+}
+
+void CharacterName::bind(const char *name) {
 	const char *begin = name;
 	const char *end = begin + strlen(name);
 
@@ -1015,21 +1023,22 @@ void Character::setName(const char *name) {
 	sprintf(_fullName, "%s%s%s", _prefix, _baseName, _suffix);
 }
 
-const char *Character::getName() const {
+const char *CharacterName::getName() const {
 	return _name;
 }
 
-const char *Character::getBaseName() const {
+const char *CharacterName::getBaseName() const {
 	return _baseName;
 }
 
-const char *Character::getFullName() const {
+const char *CharacterName::getFullName() const {
 	return _fullName;
 }
 
-bool Character::dummy() const {
+bool CharacterName::dummy() const {
 	return _dummy;
 }
+
 
 void Parallaction::beep() {
 	_soundMan->playSfx("beep", 3, false);
@@ -1039,31 +1048,6 @@ void Parallaction::scheduleLocationSwitch(const char *location) {
 	debugC(9, kDebugExec, "scheduleLocationSwitch(%s)\n", location);
 	strcpy(_location._name, location);
 	_engineFlags |= kEngineChangeLocation;
-}
-
-
-
-
-
-void Character::updateDirection(const Common::Point& pos, const Common::Point& to) {
-
-	Common::Point dist(to.x - pos.x, to.y - pos.y);
-	WalkFrames *frames = (_ani->getFrameNum() == 20) ? &_char20WalkFrames : &_char24WalkFrames;
-
-	_step++;
-
-	if (dist.x == 0 && dist.y == 0) {
-		_ani->setF(frames->stillFrame[_direction]);
-		return;
-	}
-
-	if (dist.x < 0)
-		dist.x = -dist.x;
-	if (dist.y < 0)
-		dist.y = -dist.y;
-
-	_direction = (dist.x > dist.y) ? ((to.x > pos.x) ? WALK_LEFT : WALK_RIGHT) : ((to.y > pos.y) ? WALK_DOWN : WALK_UP);
-	_ani->setF(frames->firstWalkFrame[_direction] + (_step / frames->frameRepeat[_direction]) % frames->numWalkFrames[_direction]);
 }
 
 

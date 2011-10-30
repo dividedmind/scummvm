@@ -23,6 +23,7 @@
  *
  */
 
+#include "common/debug.h"
 #include "common/endian.h"
 #include "common/util.h"
 #include "common/stream.h"
@@ -156,14 +157,14 @@ byte *loadVOCFromStream(Common::ReadStream &stream, int &size, int &rate) {
 	return loadVOCFromStream(stream, size, rate, loops, begin_loop, end_loop);
 }
 
-AudioStream *makeVOCStream(Common::ReadStream &stream) {
+AudioStream *makeVOCStream(Common::ReadStream &stream, byte flags, uint loopStart, uint loopEnd) {
 	int size, rate;
-	byte *data = loadVOCFromStream(stream, size, rate);
 
+	byte *data = loadVOCFromStream(stream, size, rate);
 	if (!data)
 		return 0;
 
-	return makeLinearInputStream(data, size, rate, Audio::Mixer::FLAG_AUTOFREE | Audio::Mixer::FLAG_UNSIGNED, 0, 0);
+	return makeLinearInputStream(data, size, rate, flags | Audio::Mixer::FLAG_AUTOFREE, loopStart, loopEnd);
 }
 
 

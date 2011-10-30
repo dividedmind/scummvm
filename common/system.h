@@ -27,9 +27,10 @@
 #define COMMON_SYSTEM_H
 
 #include "common/scummsys.h"
-#include "common/mutex.h"
 #include "common/noncopyable.h"
 #include "common/rect.h"
+
+#include "graphics/pixelformat.h"
 
 namespace Audio {
 	class Mixer;
@@ -142,10 +143,10 @@ public:
 		kFeatureAutoComputeDirtyRects,
 
 		/**
-		 * This flag determines either cursor can have its own palette or not
+		 * This flag determines whether or not the cursor can have its own palette.
 		 * It is currently used only by some Macintosh versions of Humongous
-		 * Entertainment games. If backend doesn't implement this feature then
-		 * engine switches to b/w version of cursors.
+		 * Entertainment games. If the backend doesn't implement this feature then
+		 * the engine switches to b/w versions of cursors.
 		 */
 		kFeatureCursorHasPalette,
 
@@ -391,12 +392,30 @@ public:
 	 */
 	virtual void beginGFXTransaction() {}
 
+	/**
+	 * This type is able to save the different errors which can happen while
+	 * changing GFX config values inside GFX transactions.
+	 *
+	 * endGFXTransaction returns a ORed combination of the '*Failed' values
+	 * if any problem occures, on success 0.
+	 *
+	 * @see endGFXTransaction
+	 */
+	enum TransactionError {
+		kTransactionSuccess = 0,					/**< Everything fine (use EQUAL check for this one!) */
+		kTransactionAspectRatioFailed = (1 << 0),	/**< Failed switchting aspect ratio correction mode */
+		kTransactionFullscreenFailed = (1 << 1),	/**< Failed switchting fullscreen mode */
+		kTransactionModeSwitchFailed = (1 << 2),	/**< Failed switchting the GFX graphics mode (setGraphicsMode) */
+		kTransactionSizeChangeFailed = (1 << 3)		/**< Failed switchting the screen dimensions (initSize) */
+	};
 
 	/**
 	 * End (and thereby commit) the current GFX transaction.
 	 * @see beginGFXTransaction
+	 * @see kTransactionError
+	 * @return returns a ORed combination of TransactionError values or 0 on success
 	 */
-	virtual void endGFXTransaction() {}
+	virtual TransactionError endGFXTransaction() { return kTransactionSuccess; }
 
 
 	/**
@@ -495,7 +514,7 @@ public:
 	/**
 	 * Clear the screen to black.
 	 */
-	virtual void clearScreen();
+	virtual void clearScreen() = 0;
 
 	/**
 	 * Flush the whole screen, that is render the current content of the screen
@@ -571,6 +590,12 @@ public:
 	virtual void hideOverlay() = 0;
 
 	/**
+	 * Returns the pixel format description of the overlay.
+	 * @see Graphics::PixelFormat
+	 */
+	virtual Graphics::PixelFormat getOverlayFormat() const = 0;
+
+	/**
 	 * Reset the overlay.
 	 *
 	 * After calling this method while the overlay mode is active, the user
@@ -592,6 +617,20 @@ public:
 	/**
 	 * Blit a graphics buffer to the overlay.
 	 * In a sense, this is the reverse of grabOverlay.
+	 *
+	 * @note The pitch parameter actually contains the 'pixel pitch', i.e.,
+	 * the number of pixels per scanline, and not as usual the number of bytes
+	 * per scanline.
+	 *
+	 * @todo Change 'pitch' to be byte and not pixel based
+	 *
+	 * @param buf		the buffer containing the graphics data source
+	 * @param pitch		the pixel pitch of the buffer (number of pixels in a scanline)
+	 * @param x			the x coordinate of the destination rectangle
+	 * @param y			the y coordinate of the destination rectangle
+	 * @param w			the width of the destination rectangle
+	 * @param h			the height of the destination rectangle
+	 *
 	 * @see copyRectToScreen
 	 * @see grabOverlay
 	 */
@@ -601,55 +640,13 @@ public:
 	 * Return the height of the overlay.
 	 * @see getHeight
 	 */
-	virtual int16 getOverlayHeight()  { return getHeight(); }
+	virtual int16 getOverlayHeight() = 0;
 
 	/**
 	 * Return the width of the overlay.
 	 * @see getWidth
 	 */
-	virtual int16 getOverlayWidth()   { return getWidth(); }
-
-	/**
-	* Convert the given RGB triplet into an OverlayColor. A OverlayColor can
-	 * be 8bit, 16bit or 32bit, depending on the target system. The default
-	 * implementation generates a 16 bit color value, in the 565 format
-	 * (that is, 5 bits red, 6 bits green, 5 bits blue).
-	 * @see colorToRGB
-	 * @see ARGBToColor
-	 */
-	virtual OverlayColor RGBToColor(uint8 r, uint8 g, uint8 b);
-
-	/**
-	 * Convert the given OverlayColor into a RGB triplet. An OverlayColor can
-	 * be 8bit, 16bit or 32bit, depending on the target system. The default
-	 * implementation takes a 16 bit color value and assumes it to be in 565 format
-	 * (that is, 5 bits red, 6 bits green, 5 bits blue).
-	 * @see RGBToColor
-	 * @see colorToARGB
-	 */
-	virtual void colorToRGB(OverlayColor color, uint8 &r, uint8 &g, uint8 &b);
-
-	/**
-	 * Convert the given ARGB quadruplet into an OverlayColor. A OverlayColor can
-	 * be 8bit, 16bit or 32bit, depending on the target system. The default
-	 * implementation generates a 16 bit color value, in the 565 format
-	 * (that is, 5 bits red, 6 bits green, 5 bits blue).
-	 * @note The alpha component, ranges from 0 (transparent) to 255 (opaque).
-	 * @see colorToRGB
-	 * @see RGBToColor
-	 */
-	virtual OverlayColor ARGBToColor(uint8 a, uint8 r, uint8 g, uint8 b);
-
-	/**
-	 * Convert the given OverlayColor into an ARGB quadruplet. An OverlayColor can
-	 * be 8bit, 16bit or 32bit, depending on the target system. The default
-	 * implementation takes a 16 bit color value and assumes it to be in 565 format
-	 * (that is, 5 bits red, 6 bits green, 5 bits blue).
-	 * @note The alpha component, ranges from 0 (transparent) to 255 (opaque).
-	 * @see ARGBToColor
-	 * @see colorToRGB
-	 */
-	virtual void colorToARGB(OverlayColor color, uint8 &a, uint8 &r, uint8 &g, uint8 &b);
+	virtual int16 getOverlayWidth() = 0;
 
 	//@}
 
@@ -713,17 +710,6 @@ public:
 	/** @name Events and Time */
 	//@{
 
-protected:
-	friend class DefaultEventManager;
-
-	/**
-	 * Get the next event in the event queue.
-	 * @param event	point to an Common::Event struct, which will be filled with the event data.
-	 * @return true if an event was retrieved.
-	 */
-	virtual bool pollEvent(Common::Event &event) = 0;
-
-public:
 	/** Get the number of milliseconds since the program was started. */
 	virtual uint32 getMillis() = 0;
 
@@ -747,7 +733,7 @@ public:
 	 * Return the event manager singleton. For more information, refer
 	 * to the EventManager documentation.
 	 */
-	virtual Common::EventManager *getEventManager();
+	virtual Common::EventManager *getEventManager() = 0;
 
 	//@}
 
@@ -770,7 +756,7 @@ public:
 	 */
 	//@{
 
-	typedef Common::MutexRef	MutexRef;
+	typedef struct OpaqueMutex *MutexRef;
 
 	/**
 	 * Create a new mutex.
@@ -847,17 +833,17 @@ public:
 	 * @param start_frame	the frame at which playback should start (75 frames = 1 second).
 	 * @param duration		the number of frames to play.
 	 */
-	virtual void playCD(int track, int num_loops, int start_frame, int duration);
+	virtual void playCD(int track, int num_loops, int start_frame, int duration) {}
 
 	/**
 	 * Stop audio CD playback.
 	 */
-	virtual void stopCD();
+	virtual void stopCD() {}
 
 	/**
 	 * Update cdrom audio status.
 	 */
-	virtual void updateCD();
+	virtual void updateCD() {}
 
 	//@}
 
@@ -891,7 +877,7 @@ public:
 	 *
 	 * @param msg	the message to display on screen
 	 */
-	virtual void displayMessageOnOSD(const char *msg);
+	virtual void displayMessageOnOSD(const char *msg) = 0;
 
 	/**
 	 * Return the SaveFileManager, used to store and load savestates
@@ -917,14 +903,14 @@ public:
 	 * @param s		the SearchSet to which the system specific dirs, if any, are added
 	 * @param priority	the priority with which those dirs are added
 	 */
-	virtual void addSysArchivesToSearchSet(Common::SearchSet &s, uint priority = 0) {}
+	virtual void addSysArchivesToSearchSet(Common::SearchSet &s, int priority = 0) {}
 
 	/**
 	 * Open the default config file for reading, by returning a suitable
 	 * ReadStream instance. It is the callers responsiblity to delete
 	 * the stream after use.
 	 */
-	virtual Common::SeekableReadStream *openConfigFileForReading();
+	virtual Common::SeekableReadStream *createConfigReadStream() = 0;
 
 	/**
 	 * Open the default config file for writing, by returning a suitable
@@ -933,18 +919,8 @@ public:
 	 *
 	 * May return 0 to indicate that writing to config file is not possible.
 	 */
-	virtual Common::WriteStream *openConfigFileForWriting();
+	virtual Common::WriteStream *createConfigWriteStream() = 0;
 
-	/**
-	 * Return String which is used for backend-specific addition to theme
-	 * config.
-	 *
-	 * Typical usage is to disable unneeded GUI widgets or defining
-	 * theme-specific tab.
-	 */
-	virtual Common::String getExtraThemeConfig() {
-		return "";
-	}
 	//@}
 };
 

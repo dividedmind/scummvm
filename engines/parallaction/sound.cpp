@@ -47,8 +47,9 @@ public:
 	MidiPlayer(MidiDriver *driver);
 	~MidiPlayer();
 
-	void play(const char *filename);
+	void play(Common::SeekableReadStream *stream);
 	void stop();
+	void pause(bool p);
 	void updateTimer();
 	void adjustVolume(int diff);
 	void setVolume(int volume);
@@ -74,6 +75,7 @@ private:
 	uint8 *_midiData;
 	bool _isLooping;
 	bool _isPlaying;
+	bool _paused;
 	int _masterVolume;
 	MidiChannel *_channelsTable[NUM_CHANNELS];
 	uint8 _channelsVolume[NUM_CHANNELS];
@@ -81,10 +83,12 @@ private:
 };
 
 MidiPlayer::MidiPlayer(MidiDriver *driver)
-	: _driver(driver), _parser(0), _midiData(0), _isLooping(false), _isPlaying(false), _masterVolume(0) {
+	: _driver(driver), _parser(0), _midiData(0), _isLooping(false), _isPlaying(false), _paused(false), _masterVolume(0) {
 	assert(_driver);
 	memset(_channelsTable, 0, sizeof(_channelsTable));
-	memset(_channelsVolume, 0, sizeof(_channelsVolume));
+	for (int i = 0; i < NUM_CHANNELS; i++) {
+		_channelsVolume[i] = 127;
+	}
 
 	open();
 }
@@ -93,29 +97,18 @@ MidiPlayer::~MidiPlayer() {
 	close();
 }
 
-void MidiPlayer::play(const char *filename) {
-	stop();
-
-	if (!scumm_strnicmp(_vm->_location._name, "museo", 5)) return;
-	if (!scumm_strnicmp(_vm->_location._name, "intgrottadopo", 13)) return;
-	if (!scumm_strnicmp(_vm->_location._name, "caveau", 6)) return;
-	if (!scumm_strnicmp(_vm->_location._name, "estgrotta", 9)) return;
-	if (!scumm_strnicmp(_vm->_location._name, "plaza1", 6)) return;
-	if (!scumm_strnicmp(_vm->_location._name, "endtgz", 6)) return;
-
-	char path[PATH_LEN];
-	sprintf(path, "%s.mid", filename);
-
-	Common::File stream;
-
-	if (!stream.open(path))
+void MidiPlayer::play(Common::SeekableReadStream *stream) {
+	if (!stream) {
+		stop();
 		return;
+	}
 
-	int size = stream.size();
+	int size = stream->size();
 
 	_midiData = (uint8 *)malloc(size);
 	if (_midiData) {
-		stream.read(_midiData, size);
+		stream->read(_midiData, size);
+		delete stream;
 		_mutex.lock();
 		_parser->loadMusic(_midiData, size);
 		_parser->setTrack(0);
@@ -136,7 +129,21 @@ void MidiPlayer::stop() {
 	_mutex.unlock();
 }
 
+void MidiPlayer::pause(bool p) {
+	_paused = p;
+
+	for (int i = 0; i < NUM_CHANNELS; ++i) {
+		if (_channelsTable[i]) {
+			_channelsTable[i]->volume(_paused ? 0 : _channelsVolume[i] * _masterVolume / 255);
+		}
+	}
+}
+
 void MidiPlayer::updateTimer() {
+	if (_paused) {
+		return;
+	}
+
 	_mutex.lock();
 	if (_isPlaying) {
 		_parser->onTimer();
@@ -228,7 +235,6 @@ void MidiPlayer::timerCallback(void *p) {
 	player->updateTimer();
 }
 
-
 DosSoundMan::DosSoundMan(Parallaction *vm, MidiDriver *midiDriver) : SoundMan(vm), _musicData1(0) {
 	_midiPlayer = new MidiPlayer(midiDriver);
 }
@@ -239,14 +245,42 @@ DosSoundMan::~DosSoundMan() {
 	delete _midiPlayer;
 }
 
+bool DosSoundMan::isLocationSilent(const char *locationName) {
+
+	// these are the prefixes for location names with no background midi music
+	const char *noMusicPrefix[] = { "museo", "intgrottadopo", "caveau", "estgrotta", "plaza1", "endtgz", "common", 0 };
+	Common::String s(locationName);
+
+	for (int i = 0; noMusicPrefix[i]; i++) {
+		if (s.hasPrefix(noMusicPrefix[i])) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void DosSoundMan::playMusic() {
 	debugC(1, kDebugAudio, "DosSoundMan::playMusic()");
 
-	_midiPlayer->play(_musicFile);
+	if (isLocationSilent(_vm->_location._name)) {
+		// just stop the music if this location is silent
+		_midiPlayer->stop();
+		return;
+	}
+
+	Common::SeekableReadStream *stream = _vm->_disk->loadMusic(_musicFile);
+	_midiPlayer->play(stream);
+	_midiPlayer->setVolume(255);
 }
 
 void DosSoundMan::stopMusic() {
 	_midiPlayer->stop();
+}
+
+void DosSoundMan::pause(bool p) {
+	SoundMan::pause(p);
+	_midiPlayer->pause(p);
 }
 
 void DosSoundMan::playCharacterMusic(const char *character) {
@@ -291,14 +325,7 @@ void DosSoundMan::playLocationMusic(const char *location) {
 		debugC(2, kDebugExec, "changeLocation: started music 'soft'");
 	}
 
-	if (!scumm_stricmp(location, "museo") ||
-		!scumm_stricmp(location, "caveau") ||
-		!scumm_strnicmp(location, "plaza1", 6) ||
-		!scumm_stricmp(location, "estgrotta") ||
-		!scumm_stricmp(location, "intgrottadopo") ||
-		!scumm_stricmp(location, "endtgz") ||
-		!scumm_stricmp(location, "common")) {
-
+	if (isLocationSilent(location)) {
 		stopMusic();
 		_musicData1 = 1;
 
@@ -309,9 +336,13 @@ void DosSoundMan::playLocationMusic(const char *location) {
 AmigaSoundMan::AmigaSoundMan(Parallaction *vm) : SoundMan(vm) {
 	_musicStream = 0;
 	_channels[0].data = 0;
+	_channels[0].dispose = false;
 	_channels[1].data = 0;
+	_channels[1].dispose = false;
 	_channels[2].data = 0;
+	_channels[2].dispose = false;
 	_channels[3].data = 0;
+	_channels[3].dispose = false;
 }
 
 AmigaSoundMan::~AmigaSoundMan() {
@@ -337,7 +368,7 @@ void AmigaSoundMan::loadChannelData(const char *filename, Channel *ch) {
 		ch->header.samplesPerHiCycle = 0;
 		ch->header.samplesPerSec = 11934;
 		ch->header.volume = 160;
-		ch->data = new int8[AMIGABEEP_SIZE * NUM_REPEATS];
+		ch->data = (int8*)malloc(AMIGABEEP_SIZE * NUM_REPEATS);
 		int8* odata = ch->data;
 		for (uint i = 0; i < NUM_REPEATS; i++) {
 			memcpy(odata, res_amigaBeep, AMIGABEEP_SIZE);
@@ -360,6 +391,8 @@ void AmigaSoundMan::playSfx(const char *filename, uint channel, bool looping, in
 		warning("unknown sfx channel");
 		return;
 	}
+
+	stopSfx(channel);
 
 	debugC(1, kDebugAudio, "AmigaSoundMan::playSfx(%s, %i)", filename, channel);
 

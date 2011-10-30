@@ -24,7 +24,7 @@
 
 #include "common/system.h"
 #include "gui/chooser.h"
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
 #include "gui/ListWidget.h"
 
 namespace GUI {
@@ -33,21 +33,20 @@ enum {
 	kChooseCmd = 'Chos'
 };
 
-ChooserDialog::ChooserDialog(const String &title, String prefix, const String &buttonLabel)
-	: Dialog(prefix + "chooser") {
+ChooserDialog::ChooserDialog(const String &title, String dialogId)
+	: Dialog(dialogId) {
 
 	// Headline
-	new StaticTextWidget(this, prefix + "chooser_headline", title);
+	new StaticTextWidget(this, dialogId + ".Headline", title);
 
 	// Add choice list
-	// HACK: Subtracting -12 from the height makes the list look good when
-	// it's used to list savegames in the 320x200 version of the GUI.
-	_list = new ListWidget(this, prefix + "chooser_list");
+	_list = new ListWidget(this, dialogId + ".List");
 	_list->setNumberingMode(kListNumberingOff);
+	_list->setEditable(false);
 
 	// Buttons
-	new ButtonWidget(this, prefix + "chooser_cancel", "Cancel", kCloseCmd, 0);
-	_chooseButton = new ButtonWidget(this, prefix + "chooser_ok", buttonLabel, kChooseCmd, 0);
+	new ButtonWidget(this, dialogId + ".Cancel", "Cancel", kCloseCmd, 0);
+	_chooseButton = new ButtonWidget(this, dialogId + ".Choose", "Choose", kChooseCmd, 0);
 	_chooseButton->setEnabled(false);
 }
 
@@ -59,6 +58,7 @@ void ChooserDialog::handleCommand(CommandSender *sender, uint32 cmd, uint32 data
 	int item = _list->getSelected();
 	switch (cmd) {
 	case kChooseCmd:
+	case kListItemActivatedCmd:
 	case kListItemDoubleClickedCmd:
 		_list->endEditMode();
 		setResult(item);

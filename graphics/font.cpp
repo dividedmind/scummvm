@@ -48,10 +48,32 @@ int NewFont::getCharWidth(byte chr) const {
 	return desc.width[chr - desc.firstchar];
 }
 
-void NewFont::drawChar(Surface *dst, byte chr, int tx, int ty, uint32 color) const {
+
+template <typename PixelType>
+void drawCharIntern(byte *ptr, uint pitch, const bitmap_t *src, int h, int minX, int maxX, const PixelType color) {
+	const bitmap_t maxXMask = ~((1 << (16-maxX)) - 1);
+	while (h-- > 0) {
+		bitmap_t buffer = READ_UINT16(src);
+		src++;
+
+		buffer &= maxXMask;
+		buffer <<= minX;
+		PixelType *tmp = (PixelType *)ptr;
+		while (buffer != 0) {
+			if ((buffer & 0x8000) != 0)
+				*tmp = color;
+			tmp++;
+			buffer <<= 1;
+		}
+
+		ptr += pitch;
+	}
+}
+
+void NewFont::drawChar(Surface *dst, byte chr, const int tx, const int ty, const uint32 color) const {
 	assert(dst != 0);
 
-	assert(desc.bits != 0 && desc.maxwidth <= 17);
+	assert(desc.bits != 0 && desc.maxwidth <= 16);
 	assert(dst->bytesPerPixel == 1 || dst->bytesPerPixel == 2);
 
 	// If this character is not included in the font, use the default char.
@@ -80,25 +102,14 @@ void NewFont::drawChar(Surface *dst, byte chr, int tx, int ty, uint32 color) con
 
 	const bitmap_t *tmp = desc.bits + (desc.offset ? desc.offset[chr] : (chr * desc.fbbh));
 
-	for (int y = 0; y < bbh; y++, ptr += dst->pitch) {
-		const bitmap_t buffer = READ_UINT16(tmp);
-		tmp++;
-		bitmap_t mask = 0x8000;
-		if (ty + desc.ascent - bby - bbh + y < 0 ||
-		    ty + desc.ascent - bby - bbh + y >= dst->h)
-			continue;
+	int y = MIN(bbh, ty + desc.ascent - bby);
+	tmp += bbh - y;
+	y -= MAX(0, ty + desc.ascent - bby - dst->h);
 
-		for (int x = 0; x < bbw; x++, mask >>= 1) {
-			if (tx + bbx + x < 0 || tx + bbx + x >= dst->w)
-				continue;
-			if ((buffer & mask) != 0) {
-				if (dst->bytesPerPixel == 1)
-					ptr[x] = color;
-				else if (dst->bytesPerPixel == 2)
-					((uint16 *)ptr)[x] = color;
-			}
-		}
-	}
+	if (dst->bytesPerPixel == 1)
+		drawCharIntern<byte>(ptr, dst->pitch, tmp, y, MAX(0, -(tx + bbx)), MIN(bbw, dst->w - tx - bbx), color);
+	else if (dst->bytesPerPixel == 2)
+		drawCharIntern<uint16>(ptr, dst->pitch, tmp, y, MAX(0, -(tx + bbx)), MIN(bbw, dst->w - tx - bbx), color);
 }
 
 
@@ -761,7 +772,7 @@ int Font::getStringWidth(const Common::String &str) const {
 	return space;
 }
 
-void Font::drawString(Surface *dst, const Common::String &s, int x, int y, int w, uint32 color, TextAlignment align, int deltax, bool useEllipsis) const {
+void Font::drawString(Surface *dst, const Common::String &s, int x, int y, int w, uint32 color, TextAlign align, int deltax, bool useEllipsis) const {
 	assert(dst != 0);
 	const int leftX = x, rightX = x + w;
 	uint i;
@@ -816,7 +827,7 @@ void Font::drawString(Surface *dst, const Common::String &s, int x, int y, int w
 	}
 
 	if (align == kTextAlignCenter)
-		x = x + (w - width - 1)/2;
+		x = x + (w - width)/2;
 	else if (align == kTextAlignRight)
 		x = x + w - width;
 	x += deltax;

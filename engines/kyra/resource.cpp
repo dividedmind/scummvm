@@ -35,106 +35,104 @@
 
 namespace Kyra {
 
-Resource::Resource(KyraEngine_v1 *vm) : _archiveCache(), _files(), _archiveFiles(new Common::SearchSet()), _protectedFiles(new Common::SearchSet()), _loaders(), _vm(vm) {
+Resource::Resource(KyraEngine_v1 *vm) : _archiveCache(), _files(), _archiveFiles(), _protectedFiles(), _loaders(), _vm(vm) {
 	initializeLoaders();
 
-	Common::SharedPtr<Common::Archive> path(new Common::FSDirectory(ConfMan.get("path"), 2));
-	Common::SharedPtr<Common::Archive> extrapath(new Common::FSDirectory(ConfMan.get("extrapath")));
-
-	_files.add("path", path, 4);
-	_files.add("extrapath", extrapath, 4);
-	_vm->_system->addSysArchivesToSearchSet(_files, 3);
+	_files.add("global_search", &Common::SearchManager::instance(), 3, false);
 	// compressed installer archives are added at level '2',
 	// but that's done in Resource::reset not here
-	_files.add("protected", _protectedFiles, 1);
-	_files.add("archives", _archiveFiles, 0);
+	_files.add("protected", &_protectedFiles, 1, false);
+	_files.add("archives", &_archiveFiles, 0, false);
 }
 
 Resource::~Resource() {
 	_loaders.clear();
+
+	for (ArchiveMap::iterator i = _archiveCache.begin(); i != _archiveCache.end(); ++i)
+		delete i->_value;
+	_archiveCache.clear();
 }
 
 bool Resource::reset() {
 	unloadAllPakFiles();
 
-	Common::FilesystemNode dir(ConfMan.get("path"));
+	Common::FSNode dir(ConfMan.get("path"));
 
 	if (!dir.exists() || !dir.isDirectory())
 		error("invalid game path '%s'", dir.getPath().c_str());
-
-	if (!loadPakFile(StaticResource::staticDataFilename()) || !StaticResource::checkKyraDat(this)) {
-		Common::String errorMessage = "You're missing the '" + StaticResource::staticDataFilename() + "' file or it got corrupted, (re)get it from the ScummVM website";
-		_vm->GUIErrorMessage(errorMessage);
-		error(errorMessage.c_str());
-	}
 
 	if (_vm->game() == GI_KYRA1) {
 		// We only need kyra.dat for the demo.
 		if (_vm->gameFlags().isDemo)
 			return true;
+
+		if (_vm->gameFlags().isTalkie) {
+			// List of files in the talkie version, which can never be unload.
+			static const char * const list[] = {
+				"ADL.PAK", "CHAPTER1.VRM", "COL.PAK", "FINALE.PAK", "INTRO1.PAK", "INTRO2.PAK",
+				"INTRO3.PAK", "INTRO4.PAK", "MISC.PAK",	"SND.PAK", "STARTUP.PAK", "XMI.PAK",
+				"CAVE.APK", "DRAGON1.APK", "DRAGON2.APK", "LAGOON.APK", 0
+			};
+
+			loadProtectedFiles(list);
+		} else {
+			Common::ArchiveMemberList files;
+
+			_files.listMatchingMembers(files, "*.PAK");
+			_files.listMatchingMembers(files, "*.APK");
+
+			for (Common::ArchiveMemberList::const_iterator i = files.begin(); i != files.end(); ++i) {
+				Common::String name = (*i)->getName();
+				name.toUppercase();
+
+				// No PAK file
+				if (name == "TWMUSIC.PAK")
+					continue;
+
+				// We need to only load the script archive for the language the user specified
+				if (name == ((_vm->gameFlags().lang == Common::EN_ANY) ? "JMC.PAK" : "EMC.PAK"))
+					continue;
+
+				Common::Archive *archive = loadArchive(name, *i);
+				if (archive)
+					_files.add(name, archive, 0, false);
+				else
+					error("Couldn't load PAK file '%s'", name.c_str());
+			}
+		}
 	} else if (_vm->game() == GI_KYRA2) {
 		if (_vm->gameFlags().useInstallerPackage)
-			_files.add("installer", loadInstallerArchive("WESTWOOD", "%03d", 6), 2);
+			_files.add("installer", loadInstallerArchive("WESTWOOD", "%03d", 6), 2, false);
 
-		// mouse pointer, fonts, etc. required for initializing
+		// mouse pointer, fonts, etc. required for initialization
 		if (_vm->gameFlags().isDemo && !_vm->gameFlags().isTalkie) {
 			loadPakFile("GENERAL.PAK");
 		} else {
 			loadPakFile("INTROGEN.PAK");
 			loadPakFile("OTHER.PAK");
 		}
-
-		return true;
 	} else if (_vm->game() == GI_KYRA3) {
 		if (_vm->gameFlags().useInstallerPackage) {
 			if (!loadPakFile("WESTWOOD.001"))
-				error("couldn't load file: 'WESTWOOD.001'");
+				error("Couldn't load file: 'WESTWOOD.001'");
 		}
 
 		if (!loadFileList("FILEDATA.FDT"))
-			error("couldn't load file: 'FILEDATA.FDT'");
-
-		return true;
+			error("Couldn't load file: 'FILEDATA.FDT'");
 	} else if (_vm->game() == GI_LOL) {
 		if (_vm->gameFlags().useInstallerPackage)
-			_files.add("installer", loadInstallerArchive("WESTWOOD", "%d", 0), 2);
+			_files.add("installer", loadInstallerArchive("WESTWOOD", "%d", 0), 2, false);
 
-		return true;
-	}
+		if (!_vm->gameFlags().isTalkie) {
+			static const char * const list[] = {
+				"GENERAL.PAK", "STARTUP.PAK", 0
+			};
 
-	Common::FSList fslist;
-	if (!dir.getChildren(fslist, Common::FilesystemNode::kListFilesOnly))
-		error("can't list files inside game path '%s'", dir.getPath().c_str());
-
-	if (_vm->game() == GI_KYRA1 && _vm->gameFlags().isTalkie) {
-		static const char *list[] = {
-			"ADL.PAK", "CHAPTER1.VRM", "COL.PAK", "FINALE.PAK", "INTRO1.PAK", "INTRO2.PAK",
-			"INTRO3.PAK", "INTRO4.PAK", "MISC.PAK",	"SND.PAK", "STARTUP.PAK", "XMI.PAK",
-			"CAVE.APK", "DRAGON1.APK", "DRAGON2.APK", "LAGOON.APK"
-		};
-
-		for (uint i = 0; i < ARRAYSIZE(list); ++i) {
-			Common::ArchivePtr archive = loadArchive(list[i]);
-			if (archive)
-				_protectedFiles->add(list[i], archive, 0);
+			loadProtectedFiles(list);
 		}
 	} else {
-		for (Common::FSList::const_iterator file = fslist.begin(); file != fslist.end(); ++file) {
-			Common::String filename = file->getName();
-			filename.toUppercase();
-
-			// No real PAK file!
-			if (filename == "TWMUSIC.PAK")
-				continue;
-
-			if (filename == ((_vm->gameFlags().lang == Common::EN_ANY) ? "JMC.PAK" : "EMC.PAK"))
-				continue;
-
-			if (filename.hasSuffix(".PAK") || filename.hasSuffix(".APK")) {
-				if (!loadPakFile(file->getName()))
-					error("couldn't open pakfile '%s'", file->getName().c_str());
-			}
-		}
+		error("Unknown game id: %d", _vm->game());
+		return false;
 	}
 
 	return true;
@@ -143,20 +141,30 @@ bool Resource::reset() {
 bool Resource::loadPakFile(Common::String filename) {
 	filename.toUppercase();
 
-	if (_archiveFiles->hasArchive(filename) || _protectedFiles->hasArchive(filename))
+	Common::ArchiveMemberPtr file = _files.getMember(filename);
+	if (!file)
+		return false;
+
+	return loadPakFile(filename, file);
+}
+
+bool Resource::loadPakFile(Common::String name, Common::SharedPtr<Common::ArchiveMember> file) {
+	name.toUppercase();
+
+	if (_archiveFiles.hasArchive(name) || _protectedFiles.hasArchive(name))
 		return true;
 
-	Common::ArchivePtr archive = loadArchive(filename);
+	Common::Archive *archive = loadArchive(name, file);
 	if (!archive)
 		return false;
 
-	_archiveFiles->add(filename, archive, 0);
+	_archiveFiles.add(name, archive, 0, false);
 
 	return true;
 }
 
 bool Resource::loadFileList(const Common::String &filedata) {
-	Common::SeekableReadStream *f = getFileStream(filedata);
+	Common::SeekableReadStream *f = createReadStream(filedata);
 
 	if (!f)
 		return false;
@@ -176,7 +184,7 @@ bool Resource::loadFileList(const Common::String &filedata) {
 
 		if (filename.hasSuffix(".PAK")) {
 			if (!exists(filename.c_str()) && _vm->gameFlags().isDemo) {
-				// the demo version supplied with Kyra3 does not 
+				// the demo version supplied with Kyra3 does not
 				// contain all pak files listed in filedata.fdt
 				// so we don't do anything here if they are non
 				// existant.
@@ -206,25 +214,60 @@ bool Resource::loadFileList(const char * const *filelist, uint32 numFiles) {
 	return true;
 }
 
-void Resource::unloadPakFile(Common::String filename) {
+bool Resource::loadProtectedFiles(const char * const * list) {
+	for (uint i = 0; list[i]; ++i) {
+		Common::ArchiveMemberPtr file = _files.getMember(list[i]);
+		if (!file)
+			error("Couldn't find PAK file '%s'", list[i]);
+
+		Common::Archive *archive = loadArchive(list[i], file);
+		if (archive)
+			_protectedFiles.add(list[i], archive, 0, false);
+		else
+			error("Couldn't load PAK file '%s'", list[i]);
+	}
+
+	return true;
+}
+
+void Resource::unloadPakFile(Common::String filename, bool remFromCache) {
 	filename.toUppercase();
-	_archiveFiles->remove(filename);
+
 	// We do not remove files from '_protectedFiles' here, since
 	// those are protected against unloading.
+	if (_archiveFiles.hasArchive(filename)) {
+		_archiveFiles.remove(filename);
+		if (remFromCache) {
+			ArchiveMap::iterator iter = _archiveCache.find(filename);
+			if (iter != _archiveCache.end()) {
+				delete iter->_value;
+				_archiveCache.erase(filename);
+			}
+		}
+	}
 }
 
 bool Resource::isInPakList(Common::String filename) {
 	filename.toUppercase();
-	return (_archiveFiles->hasArchive(filename) || _protectedFiles->hasArchive(filename));
+	return (_archiveFiles.hasArchive(filename) || _protectedFiles.hasArchive(filename));
+}
+
+bool Resource::isInCacheList(Common::String name) {
+	name.toUppercase();
+	return (_archiveCache.find(name) != _archiveCache.end());
 }
 
 void Resource::unloadAllPakFiles() {
-	_archiveFiles->clear();
-	_protectedFiles->clear();
+	_archiveFiles.clear();
+	_protectedFiles.clear();
+}
+
+void Resource::listFiles(const Common::String &pattern, Common::ArchiveMemberList &list) {
+	_files.listMatchingMembers(list, pattern);
 }
 
 uint8 *Resource::fileData(const char *file, uint32 *size) {
-	Common::SeekableReadStream *stream = getFileStream(file);
+	Common::SeekableReadStream *stream = createReadStream(file);
 	if (!stream)
 		return 0;
 
@@ -247,7 +290,7 @@ bool Resource::exists(const char *file, bool errorOutOnFail) {
 }
 
 uint32 Resource::getFileSize(const char *file) {
-	Common::SeekableReadStream *stream = getFileStream(file);
+	Common::SeekableReadStream *stream = createReadStream(file);
 	if (!stream)
 		return 0;
 
@@ -257,7 +300,7 @@ uint32 Resource::getFileSize(const char *file) {
 }
 
 bool Resource::loadFileToBuf(const char *file, void *buf, uint32 maxSize) {
-	Common::SeekableReadStream *stream = getFileStream(file);
+	Common::SeekableReadStream *stream = createReadStream(file);
 	if (!stream)
 		return false;
 
@@ -267,25 +310,26 @@ bool Resource::loadFileToBuf(const char *file, void *buf, uint32 maxSize) {
 	return true;
 }
 
-Common::SeekableReadStream *Resource::getFileStream(const Common::String &file) {
-	return _files.openFile(file);
+Common::SeekableReadStream *Resource::createReadStream(const Common::String &file) {
+	return _files.createReadStreamForMember(file);
 }
 
-Common::ArchivePtr Resource::loadArchive(const Common::String &file) {
-	ArchiveMap::iterator cachedArchive = _archiveCache.find(file);
+Common::Archive *Resource::loadArchive(const Common::String &name, Common::SharedPtr<Common::ArchiveMember> member) {
+	ArchiveMap::iterator cachedArchive = _archiveCache.find(name);
 	if (cachedArchive != _archiveCache.end())
 		return cachedArchive->_value;
 
-	Common::SeekableReadStream *stream = getFileStream(file);
-	if (!stream)
-		return Common::ArchivePtr();
+	Common::SeekableReadStream *stream = member->createReadStream();
 
-	Common::ArchivePtr archive;
+	if (!stream)
+		return 0;
+
+	Common::Archive *archive = 0;
 	for (LoaderList::const_iterator i = _loaders.begin(); i != _loaders.end(); ++i) {
-		if ((*i)->checkFilename(file)) {
-			if ((*i)->isLoadable(file, *stream)) {
+		if ((*i)->checkFilename(name)) {
+			if ((*i)->isLoadable(name, *stream)) {
 				stream->seek(0, SEEK_SET);
-				archive = Common::ArchivePtr((*i)->load(this, file, *stream));
+				archive = (*i)->load(member, *stream);
 				break;
 			} else {
 				stream->seek(0, SEEK_SET);
@@ -296,20 +340,20 @@ Common::ArchivePtr Resource::loadArchive(const Common::String &file) {
 	delete stream;
 
 	if (!archive)
-		return Common::ArchivePtr();
+		return 0;
 
-	_archiveCache[file] = archive;
+	_archiveCache[name] = archive;
 	return archive;
 }
 
-Common::ArchivePtr Resource::loadInstallerArchive(const Common::String &file, const Common::String &ext, const uint8 offset) {
+Common::Archive *Resource::loadInstallerArchive(const Common::String &file, const Common::String &ext, const uint8 offset) {
 	ArchiveMap::iterator cachedArchive = _archiveCache.find(file);
 	if (cachedArchive != _archiveCache.end())
 		return cachedArchive->_value;
 
-	Common::ArchivePtr archive(InstallerLoader::load(this, file, ext, offset));
+	Common::Archive *archive = InstallerLoader::load(this, file, ext, offset);
 	if (!archive)
-		return Common::ArchivePtr();
+		return 0;
 
 	_archiveCache[file] = archive;
 	return archive;

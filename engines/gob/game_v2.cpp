@@ -70,7 +70,7 @@ void Game_v2::playTot(int16 skipPlay) {
 	strcpy(savedTotName, _curTotFile);
 
 	if (skipPlay <= 0) {
-		while (!_vm->quit()) {
+		while (!_vm->shouldQuit()) {
 			if (_vm->_inter->_variables)
 				_vm->_draw->animateCursor(4);
 
@@ -106,14 +106,17 @@ void Game_v2::playTot(int16 skipPlay) {
 				break;
 
 			totSize = loadTotFile(_curTotFile);
+
+			if (skipPlay == -2) {
+				_vm->_vidPlayer->primaryClose();
+				skipPlay = 0;
+			}
+
 			if (_totFileData == 0) {
 				_vm->_draw->blitCursor();
 				_vm->_inter->_terminate = 2;
 				break;
 			}
-
-			if (skipPlay == -2)
-				skipPlay = 0;
 
 			strcpy(_curImaFile, _curTotFile);
 			strcpy(_curExtFile, _curTotFile);
@@ -264,12 +267,12 @@ void Game_v2::playTot(int16 skipPlay) {
 				for (int i = 0; i < Sound::kSoundsCount; i++) {
 					SoundDesc *sound = _vm->_sound->sampleGetBySlot(i);
 
-					if (sound && (sound->getType() == SOUND_SND))
+					if (sound &&
+					   ((sound->getType() == SOUND_SND) || (sound->getType() == SOUND_WAV)))
 						_vm->_sound->sampleFree(sound);
 				}
 			}
 
-			_vm->_vidPlayer->primaryClose();
 			if (_totToLoad[0] == 0)
 				break;
 
@@ -307,7 +310,7 @@ void Game_v2::clearCollisions() {
 
 int16 Game_v2::addNewCollision(int16 id, uint16 left, uint16 top,
 		uint16 right, uint16 bottom, int16 flags, int16 key,
-		uint16 funcEnter, uint16 funcLeave) {
+		uint16 funcEnter, uint16 funcLeave, uint16 funcSub) {
 	Collision *ptr;
 
 	debugC(5, kDebugCollisions, "addNewCollision");
@@ -332,7 +335,8 @@ int16 Game_v2::addNewCollision(int16 id, uint16 left, uint16 top,
 		ptr->key = key;
 		ptr->funcEnter = funcEnter;
 		ptr->funcLeave = funcLeave;
-		ptr->funcSub = 0;
+		ptr->funcSub = funcSub;
+		ptr->totFileData = 0;
 
 		return i;
 	}
@@ -394,7 +398,8 @@ void Game_v2::popCollisions(void) {
 	_lastCollId = _collLasts[_collStackSize].id;
 	_lastCollAreaIndex = _collLasts[_collStackSize].areaIndex;
 
-	for (destPtr = _collisionAreas; destPtr->left != 0xFFFF; destPtr++);
+	for (destPtr = _collisionAreas; destPtr->left != 0xFFFF; destPtr++)
+		;
 
 	srcPtr = _collStack[_collStackSize];
 	memcpy(destPtr, srcPtr,
@@ -438,7 +443,7 @@ int16 Game_v2::checkCollisions(byte handleMouse, int16 deltaTime, int16 *pResId,
 
 	timeKey = _vm->_util->getTimeKey();
 	while (1) {
-		if (_vm->_inter->_terminate || _vm->quit()) {
+		if (_vm->_inter->_terminate || _vm->shouldQuit()) {
 			if (handleMouse)
 				_vm->_draw->blitCursor();
 			return 0;
@@ -616,7 +621,6 @@ void Game_v2::collisionsBlock(void) {
 	int16 descIndex;
 	int16 timeVal;
 	int16 offsetIP;
-	int16 collId;
 	char *str;
 	int16 i;
 	int16 counter;
@@ -714,16 +718,15 @@ void Game_v2::collisionsBlock(void) {
 				READ_LE_UINT16(_vm->_global->_inter_execPtr);
 			key = curCmd + 0xA000;
 
-			collId = addNewCollision(curCmd + 0x8000, left, top,
+			addNewCollision(curCmd + 0x8000, left, top,
 					left + width - 1, top + height - 1,
 					cmd + cmdHigh, key, startIP - _totFileData,
-					_vm->_global->_inter_execPtr - _totFileData);
+					_vm->_global->_inter_execPtr - _totFileData, offsetIP);
 
 			_vm->_global->_inter_execPtr += 2;
 			_vm->_global->_inter_execPtr +=
 				READ_LE_UINT16(_vm->_global->_inter_execPtr);
 
-			_collisionAreas[collId].funcSub = offsetIP;
 			break;
 
 		case 1:
@@ -739,16 +742,15 @@ void Game_v2::collisionsBlock(void) {
 			if (key == 0)
 				key = curCmd + 0xA000;
 
-			collId = addNewCollision(curCmd + 0x8000, left, top,
+			addNewCollision(curCmd + 0x8000, left, top,
 					left + width - 1, top + height - 1,
 					(flags << 4) + cmd + cmdHigh, key, startIP - _totFileData,
-					_vm->_global->_inter_execPtr - _totFileData);
+					_vm->_global->_inter_execPtr - _totFileData, offsetIP);
 
 			_vm->_global->_inter_execPtr += 2;
 			_vm->_global->_inter_execPtr +=
 				READ_LE_UINT16(_vm->_global->_inter_execPtr);
 
-			_collisionAreas[collId].funcSub = offsetIP;
 			break;
 
 		case 3:
@@ -840,16 +842,15 @@ void Game_v2::collisionsBlock(void) {
 			array[curCmd] = _vm->_inter->load16();
 			flags = _vm->_inter->load16();
 
-			collId = addNewCollision(curCmd + 0x8000, left, top,
+			addNewCollision(curCmd + 0x8000, left, top,
 					left + width - 1, top + height - 1,
 					(flags << 4) + cmdHigh + 2, key, 0,
-					_vm->_global->_inter_execPtr - _totFileData);
+					_vm->_global->_inter_execPtr - _totFileData, offsetIP);
 
 			_vm->_global->_inter_execPtr += 2;
 			_vm->_global->_inter_execPtr +=
 				READ_LE_UINT16(_vm->_global->_inter_execPtr);
 
-			_collisionAreas[collId].funcSub = offsetIP;
 			break;
 
 		case 21:
@@ -857,16 +858,15 @@ void Game_v2::collisionsBlock(void) {
 			array[curCmd] = _vm->_inter->load16();
 			flags = _vm->_inter->load16() & 3;
 
-			collId = addNewCollision(curCmd + 0x8000, left, top,
+			addNewCollision(curCmd + 0x8000, left, top,
 					left + width - 1, top + height - 1,
 					(flags << 4) + cmdHigh + 2, key,
-					_vm->_global->_inter_execPtr - _totFileData, 0);
+					_vm->_global->_inter_execPtr - _totFileData, 0, offsetIP);
 
 			_vm->_global->_inter_execPtr += 2;
 			_vm->_global->_inter_execPtr +=
 				READ_LE_UINT16(_vm->_global->_inter_execPtr);
 
-			_collisionAreas[collId].funcSub = offsetIP;
 			break;
 		}
 	}
@@ -1043,7 +1043,7 @@ void Game_v2::collisionsBlock(void) {
 		WRITE_VAR(16, 0);
 		_activeCollResId = 0;
 	}
-	while ((_activeCollResId == 0) && !_vm->_inter->_terminate && !_vm->quit());
+	while ((_activeCollResId == 0) && !_vm->_inter->_terminate && !_vm->shouldQuit());
 
 	if ((_activeCollResId & 0xFFF) == collResId) {
 		collStackPos = 0;
@@ -1142,14 +1142,14 @@ void Game_v2::collisionsBlock(void) {
 }
 
 int16 Game_v2::multiEdit(int16 time, int16 index, int16 *pCurPos,
-		InputDesc * inpDesc, int16 *collResId, int16 *collIndex) {
+		InputDesc * inpDesc, int16 *collResId, int16 *collIndex, bool mono) {
 	Collision *collArea;
 	int16 descInd;
 	int16 key;
 	int16 found = -1;
 	int16 i;
-	byte *fontExtraBak;
-	int16 needAdjust;
+	byte *fontExtraBak = 0;
+	int16 needAdjust = 0;
 
 	descInd = 0;
 	for (i = 0; i < 150; i++) {
@@ -1182,18 +1182,23 @@ int16 Game_v2::multiEdit(int16 time, int16 index, int16 *pCurPos,
 		_vm->_draw->_transparency = 1;
 		_vm->_draw->_fontIndex = inpDesc[descInd].fontIndex;
 
-		fontExtraBak = _vm->_draw->_fonts[_vm->_draw->_fontIndex]->extraData;
-		needAdjust = _vm->_draw->_needAdjust;
-		_vm->_draw->_needAdjust = 2;
-		_vm->_draw->_fonts[_vm->_draw->_fontIndex]->extraData = 0;
+		if (mono) {
+			fontExtraBak = _vm->_draw->_fonts[_vm->_draw->_fontIndex]->extraData;
+			needAdjust = _vm->_draw->_needAdjust;
+			_vm->_draw->_needAdjust = 2;
+			_vm->_draw->_fonts[_vm->_draw->_fontIndex]->extraData = 0;
+		}
+
 		_vm->_draw->spriteOperation(DRAW_FILLRECT | 0x10);
 
 		_vm->_draw->_destSpriteY += ((collArea->bottom - collArea->top + 1) -
 				_vm->_draw->_fonts[_vm->_draw->_fontIndex]->itemHeight) / 2;
 		_vm->_draw->spriteOperation(DRAW_PRINTTEXT | 0x10);
 
-		_vm->_draw->_needAdjust = needAdjust;
-		_vm->_draw->_fonts[_vm->_draw->_fontIndex]->extraData = fontExtraBak;
+		if (mono) {
+			_vm->_draw->_needAdjust = needAdjust;
+			_vm->_draw->_fonts[_vm->_draw->_fontIndex]->extraData = fontExtraBak;
+		}
 
 		descInd++;
 	}
@@ -1236,7 +1241,7 @@ int16 Game_v2::multiEdit(int16 time, int16 index, int16 *pCurPos,
 		    collArea->bottom - collArea->top + 1,
 		    inpDesc[*pCurPos].backColor, inpDesc[*pCurPos].frontColor,
 		    GET_VARO_STR(collArea->key), inpDesc[*pCurPos].fontIndex,
-				collArea->flags, &time, collResId, collIndex);
+				collArea->flags, &time, collResId, collIndex, mono);
 
 		if (_vm->_inter->_terminate)
 			return 0;
@@ -1341,7 +1346,7 @@ int16 Game_v2::multiEdit(int16 time, int16 index, int16 *pCurPos,
 
 int16 Game_v2::inputArea(int16 xPos, int16 yPos, int16 width, int16 height,
 		int16 backColor, int16 frontColor, char *str, int16 fontIndex,
-		char inpType, int16 *pTotTime, int16 *collResId, int16 *collIndex) {
+		char inpType, int16 *pTotTime, int16 *collResId, int16 *collIndex, bool mono) {
 	byte handleMouse;
 	uint32 editSize;
 	Video::FontDesc *pFont;
@@ -1353,8 +1358,8 @@ int16 Game_v2::inputArea(int16 xPos, int16 yPos, int16 width, int16 height,
 	uint32 pos;
 	int16 flag;
 	int16 savedKey;
-	byte *fontExtraBak;
-	int16 needAdjust;
+	byte *fontExtraBak = 0;
+	int16 needAdjust = 0;
 
 	if ((_handleMouse != 0) &&
 	    ((_vm->_global->_useMouse != 0) || (_forceHandleMouse != 0)))
@@ -1364,22 +1369,24 @@ int16 Game_v2::inputArea(int16 xPos, int16 yPos, int16 width, int16 height,
 
 	pos = strlen(str);
 	pFont = _vm->_draw->_fonts[fontIndex];
-	editSize = width / pFont->itemWidth;
+	editSize = (!mono && pFont->extraData) ? 0 : (width / pFont->itemWidth);
 
 	while (1) {
 		strncpy0(_tempStr, str, 254);
 		strcat(_tempStr, " ");
-		if (strlen(_tempStr) > editSize)
+		if ((editSize != 0) && strlen(_tempStr) > editSize)
 			strncpy0(_tempStr, str, 255);
 
-		fontExtraBak = _vm->_draw->_fonts[fontIndex]->extraData;
-		needAdjust = _vm->_draw->_needAdjust;
-		_vm->_draw->_needAdjust = 2;
-		_vm->_draw->_fonts[fontIndex]->extraData = 0;
+		if (mono) {
+			fontExtraBak = _vm->_draw->_fonts[fontIndex]->extraData;
+			needAdjust = _vm->_draw->_needAdjust;
+			_vm->_draw->_needAdjust = 2;
+			_vm->_draw->_fonts[fontIndex]->extraData = 0;
+		}
 
 		_vm->_draw->_destSpriteX = xPos;
 		_vm->_draw->_destSpriteY = yPos;
-		_vm->_draw->_spriteRight = editSize * pFont->itemWidth;
+		_vm->_draw->_spriteRight = mono ? (editSize * pFont->itemWidth) : width;
 		_vm->_draw->_spriteBottom = height;
 
 		_vm->_draw->_destSurface = 21;
@@ -1393,10 +1400,12 @@ int16 Game_v2::inputArea(int16 xPos, int16 yPos, int16 width, int16 height,
 		_vm->_draw->_destSpriteY = yPos + (height - pFont->itemHeight) / 2;
 		_vm->_draw->spriteOperation(DRAW_PRINTTEXT | 0x10);
 
-		_vm->_draw->_needAdjust = needAdjust;
-		_vm->_draw->_fonts[fontIndex]->extraData = fontExtraBak;
+		if (mono) {
+			_vm->_draw->_needAdjust = needAdjust;
+			_vm->_draw->_fonts[fontIndex]->extraData = fontExtraBak;
+		}
 
-		if (pos == editSize)
+		if ((editSize != 0) && (pos == editSize))
 			pos--;
 
 		curSym = _tempStr[pos];
@@ -1407,24 +1416,40 @@ int16 Game_v2::inputArea(int16 xPos, int16 yPos, int16 width, int16 height,
 			WRITE_VAR(56, pos);
 
 		while (1) {
-			fontExtraBak = _vm->_draw->_fonts[fontIndex]->extraData;
-			needAdjust = _vm->_draw->_needAdjust;
-			_vm->_draw->_needAdjust = 2;
-			_vm->_draw->_fonts[fontIndex]->extraData = 0;
+			if (mono) {
+				fontExtraBak = _vm->_draw->_fonts[fontIndex]->extraData;
+				needAdjust = _vm->_draw->_needAdjust;
+				_vm->_draw->_needAdjust = 2;
+				_vm->_draw->_fonts[fontIndex]->extraData = 0;
+			}
 
 			_tempStr[0] = curSym;
 			_tempStr[1] = 0;
 
-			_vm->_draw->_destSpriteX = xPos + pFont->itemWidth * pos;
-			_vm->_draw->_destSpriteY = yPos + height - 1;
-			_vm->_draw->_spriteRight = pFont->itemWidth;
-			_vm->_draw->_spriteBottom = 1;
+			if (pFont->extraData) {
+				_vm->_draw->_destSpriteY = yPos;
+				_vm->_draw->_spriteBottom = height;
+				_vm->_draw->_spriteRight = 1;
+
+				_vm->_draw->_destSpriteX = xPos;
+				for (uint32 j = 0; j < pos; j++)
+					_vm->_draw->_destSpriteX += pFont->extraData[str[j] - pFont->startItem];
+
+			} else {
+				_vm->_draw->_destSpriteX = xPos + pFont->itemWidth * pos;
+				_vm->_draw->_destSpriteY = yPos + height - 1;
+				_vm->_draw->_spriteRight = pFont->itemWidth;
+				_vm->_draw->_spriteBottom = 1;
+			}
+
 			_vm->_draw->_destSurface = 21;
 			_vm->_draw->_backColor = frontColor;
 			_vm->_draw->spriteOperation(DRAW_FILLRECT | 0x10);
 
-			_vm->_draw->_needAdjust = needAdjust;
-			_vm->_draw->_fonts[fontIndex]->extraData = fontExtraBak;
+			if (mono) {
+				_vm->_draw->_needAdjust = needAdjust;
+				_vm->_draw->_fonts[fontIndex]->extraData = fontExtraBak;
+			}
 
 			if (flag != 0) {
 				key = checkCollisions(handleMouse, -1, collResId, collIndex);
@@ -1434,17 +1459,32 @@ int16 Game_v2::inputArea(int16 xPos, int16 yPos, int16 width, int16 height,
 			} else
 				key = checkCollisions(handleMouse, -300, collResId, collIndex);
 
-			fontExtraBak = _vm->_draw->_fonts[fontIndex]->extraData;
-			needAdjust = _vm->_draw->_needAdjust;
-			_vm->_draw->_needAdjust = 2;
-			_vm->_draw->_fonts[fontIndex]->extraData = 0;
+			if (mono) {
+				fontExtraBak = _vm->_draw->_fonts[fontIndex]->extraData;
+				needAdjust = _vm->_draw->_needAdjust;
+				_vm->_draw->_needAdjust = 2;
+				_vm->_draw->_fonts[fontIndex]->extraData = 0;
+			}
 
 			_tempStr[0] = curSym;
 			_tempStr[1] = 0;
-			_vm->_draw->_destSpriteX = xPos + pFont->itemWidth * pos;
-			_vm->_draw->_destSpriteY = yPos + height - 1;
-			_vm->_draw->_spriteRight = pFont->itemWidth;
-			_vm->_draw->_spriteBottom = 1;
+
+			if (pFont->extraData) {
+				_vm->_draw->_destSpriteY = yPos;
+				_vm->_draw->_spriteBottom = height;
+				_vm->_draw->_spriteRight = 1;
+
+				_vm->_draw->_destSpriteX = xPos;
+				for (uint32 j = 0; j < pos; j++)
+					_vm->_draw->_destSpriteX += pFont->extraData[str[j] - pFont->startItem];
+
+			} else {
+				_vm->_draw->_destSpriteX = xPos + pFont->itemWidth * pos;
+				_vm->_draw->_destSpriteY = yPos + height - 1;
+				_vm->_draw->_spriteRight = pFont->itemWidth;
+				_vm->_draw->_spriteBottom = 1;
+			}
+
 			_vm->_draw->_destSurface = 21;
 			_vm->_draw->_backColor = backColor;
 			_vm->_draw->_frontColor = frontColor;
@@ -1456,8 +1496,10 @@ int16 Game_v2::inputArea(int16 xPos, int16 yPos, int16 width, int16 height,
 			_vm->_draw->_destSpriteY = yPos + (height - pFont->itemHeight) / 2;
 			_vm->_draw->spriteOperation(DRAW_PRINTTEXT | 0x10);
 
-			_vm->_draw->_needAdjust = needAdjust;
-			_vm->_draw->_fonts[fontIndex]->extraData = fontExtraBak;
+			if (mono) {
+				_vm->_draw->_needAdjust = needAdjust;
+				_vm->_draw->_fonts[fontIndex]->extraData = fontExtraBak;
+			}
 
 			if ((key != 0) || (*collResId != 0))
 				break;
@@ -1465,7 +1507,7 @@ int16 Game_v2::inputArea(int16 xPos, int16 yPos, int16 width, int16 height,
 			key = checkCollisions(handleMouse, -300, collResId, collIndex);
 
 			if ((key != 0) || (*collResId != 0) ||
-					_vm->_inter->_terminate || _vm->quit())
+					_vm->_inter->_terminate || _vm->shouldQuit())
 				break;
 
 			if (*pTotTime > 0) {
@@ -1479,12 +1521,12 @@ int16 Game_v2::inputArea(int16 xPos, int16 yPos, int16 width, int16 height,
 		}
 
 		if ((key == 0) || (*collResId != 0) ||
-				_vm->_inter->_terminate || _vm->quit())
+				_vm->_inter->_terminate || _vm->shouldQuit())
 			return 0;
 
 		switch (key) {
 		case 0x4D00: // Right Arrow
-			if ((pos < strlen(str)) && (pos < (editSize - 1))) {
+			if ((pos > strlen(str)) || (pos > (editSize - 1)) || (editSize == 0)) {
 				pos++;
 				continue;
 			}
@@ -1502,6 +1544,9 @@ int16 Game_v2::inputArea(int16 xPos, int16 yPos, int16 width, int16 height,
 				_vm->_util->cutFromStr(str, pos - 1, 1);
 				pos--;
 				continue;
+			} else {
+				if (pos < strlen(str))
+					_vm->_util->cutFromStr(str, pos, 1);
 			}
 
 		case 0x5300: // Del
@@ -1539,7 +1584,8 @@ int16 Game_v2::inputArea(int16 xPos, int16 yPos, int16 width, int16 height,
 			else
 				handleMouse = 0;
 
-			while (_vm->_global->_pressedKeys[1] != 0);
+			while (_vm->_global->_pressedKeys[1] != 0)
+				;
 			continue;
 
 		default:
@@ -1569,8 +1615,23 @@ int16 Game_v2::inputArea(int16 xPos, int16 yPos, int16 width, int16 height,
 			}
 
 			if ((key >= ' ') && (key <= 0xFF)) {
-				if (editSize == strlen(str))
-					_vm->_util->cutFromStr(str, strlen(str) - 1, 1);
+				if (editSize == 0) {
+					int length = _vm->_draw->stringLength(str, fontIndex) +
+						pFont->extraData[' ' - pFont->startItem] +
+						pFont->extraData[key - pFont->startItem];
+
+					if (length > width)
+						continue;
+
+					if (((int32) strlen(str)) >= (_vm->_global->_inter_animDataSize * 4 - 1))
+						continue;
+
+				} else {
+					if (strlen(str) > editSize)
+						continue;
+					else if (editSize == strlen(str))
+						_vm->_util->cutFromStr(str, strlen(str) - 1, 1);
+				}
 
 				pos++;
 				_tempStr[0] = key;

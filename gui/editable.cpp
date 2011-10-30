@@ -24,7 +24,7 @@
 
 #include "common/events.h"
 #include "gui/editable.h"
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
 
 namespace GUI {
 
@@ -47,7 +47,7 @@ void EditableWidget::init() {
 
 	_editScrollOffset = 0;
 
-	_font = Theme::kFontStyleBold;
+	_font = ThemeEngine::kFontStyleBold;
 }
 
 EditableWidget::~EditableWidget() {

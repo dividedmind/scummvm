@@ -123,8 +123,8 @@ struct CommandData {
 	// BRA specific
 	Common::Point	_startPos;
 	Common::Point	_startPos2;
-	uint			_lvalue;
-	int				_rvalue;
+	Common::String	_counterName;
+	int				_counterValue;
 	int				_zeta0;
 	int				_zeta1;
 	int				_zeta2;
@@ -158,26 +158,30 @@ typedef Common::SharedPtr<Command> CommandPtr;
 typedef Common::List<CommandPtr> CommandList;
 
 
-#define NUM_QUESTIONS		20
-#define NUM_ANSWERS			5
+#define NUM_QUESTIONS		40
+#define NUM_ANSWERS			20
 
 struct Answer {
-	char*		_text;
+	Common::String	_text;
 	uint16		_mood;
-	union {
-		Question*	_question;
-		char*		_name;
-	} _following;
+	Question*	_followingQuestion;
+	Common::String _followingName;
+
 	CommandList	_commands;
 	uint32		_noFlags;
 	uint32		_yesFlags;
 
+	// BRA specific
+	bool _hasCounterCondition;
+	Common::String	_counterName;
+	int	_counterValue;
+	int	_counterOp;
+
 	Answer();
-	~Answer();
 };
 
 struct Question {
-	char*		_text;
+	Common::String	_text;
 	uint16		_mood;
 	Answer*		_answers[NUM_ANSWERS];
 
@@ -195,13 +199,10 @@ struct Dialogue {
 struct GetData {
 	uint32			_icon;
 	GfxObj			*gfxobj;
-	MaskBuffer		_mask[2];
-	bool			hasMask;
 
 	GetData() {
 		_icon = 0;
 		gfxobj = NULL;
-		hasMask = false;
 	}
 };
 struct SpeakData {
@@ -215,11 +216,10 @@ struct SpeakData {
 };
 struct ExamineData {
 	GfxObj	*_cnv;
-	char*		_description;
+	Common::String	_description;
 	char*		_filename;
 
 	ExamineData() {
-		_description = NULL;
 		_filename = NULL;
 		_cnv = NULL;
 	}
@@ -291,11 +291,13 @@ struct TypeData {
 #define ZONENAME_LENGTH 32
 
 struct Zone {
+private:
+	int16			_right;
+	int16			_bottom;
+
 protected:
 	int16			_left;
 	int16			_top;
-	int16			_right;
-	int16			_bottom;
 
 public:
 	char			_name[ZONENAME_LENGTH];
@@ -317,21 +319,19 @@ public:
 	virtual ~Zone();
 
 	void translate(int16 x, int16 y);
-	virtual uint16 width() const;
-	virtual uint16 height() const;
 
-	void setBox(int16 left, int16 top, int16 right, int16 bottom) {
+	bool hitRect(int x, int y) const;
+
+	void setRect(int16 left, int16 top, int16 right, int16 bottom) {
 		setX(left);
 		setY(top);
 		_right = right;
 		_bottom = bottom;
 	}
 
-	void getBox(Common::Rect& r) {
-		r.left = getX();
-		r.right = getX() + width();
-		r.top = getY();
-		r.bottom = getY() + height();
+	void getRect(Common::Rect& r) {
+		r.left = _left;	r.right = _right;
+		r.top = _top; r.bottom = _bottom;
 	}
 
 
@@ -507,15 +507,13 @@ public:
 
 	Animation();
 	virtual ~Animation();
-	virtual uint16 width() const;
-	virtual uint16 height() const;
 	uint16 getFrameNum() const;
-	byte* getFrameData(uint32 index) const;
+	byte* getFrameData() const;
 
-	void validateScriptVars();
-
-	int16 getFrameX() const;
-	int16 getFrameY() const;
+	void resetZ();
+	bool hitFrameRect(int x, int y) const;
+	void getFrameRect(Common::Rect &r) const;
+	int16 getBottom() const;
 
 	// getters/setters used by scripts
 	int16 getX() 			{ return _left; }
@@ -528,7 +526,7 @@ public:
 	void  setZ(int16 value) { _z = value; }
 
 	int16 getF() 			{ return _frame; }
-	void  setF(int16 value) { _frame = value; }
+	void  setF(int16 value);
 };
 
 class Table {

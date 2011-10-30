@@ -32,6 +32,7 @@ namespace Gob {
 
 enum SoundType {
 	SOUND_SND,
+	SOUND_WAV,
 	SOUND_ADL
 };
 
@@ -47,6 +48,7 @@ public:
 	int16 _frequency;
 	int16 _flag;
 	int16 _id;
+	byte _mixerFlags;
 
 	byte *getData() { return _dataPtr; }
 
@@ -57,7 +59,7 @@ public:
 	bool isId(int16 id) const { return _dataPtr && (_id == id); }
 
 	void set(SoundType type, SoundSource src, byte *data, uint32 dSize);
-	void load(SoundType type, SoundSource src, byte *data, uint32 dSize);
+	bool load(SoundType type, SoundSource src, byte *data, uint32 dSize);
 	void free();
 	void convToSigned();
 
@@ -76,8 +78,9 @@ private:
 	SoundType _type;
 	SoundSource _source;
 
-	void loadSND(byte *data, uint32 dSize);
-	void loadADL(byte *data, uint32 dSize);
+	bool loadSND(byte *data, uint32 dSize);
+	bool loadWAV(byte *data, uint32 dSize);
+	bool loadADL(byte *data, uint32 dSize);
 };
 
 } // End of namespace Gob

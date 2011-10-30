@@ -23,7 +23,7 @@
  *
  */
 
-#include "common/system.h"
+#include "backends/base-backend.h"
 #include "base/main.h"
 
 #if defined(USE_NULL_DRIVER)
@@ -34,6 +34,7 @@
 #endif
 
 #include "common/rect.h"
+#include "graphics/colormasks.h"
 
 #include "backends/saves/default/default-saves.h"
 #include "backends/timer/default/default-timer.h"
@@ -50,7 +51,7 @@
 	#include "backends/fs/windows/windows-fs-factory.h"
 #endif
 
-class OSystem_NULL : public OSystem {
+class OSystem_NULL : public BaseBackend {
 protected:
 	Common::SaveFileManager *_savefile;
 	Audio::MixerImpl *_mixer;
@@ -91,9 +92,7 @@ public:
 	virtual void copyRectToOverlay(const OverlayColor *buf, int pitch, int x, int y, int w, int h);
 	virtual int16 getOverlayHeight();
 	virtual int16 getOverlayWidth();
-
-	virtual OverlayColor RGBToColor(uint8 r, uint8 g, uint8 b);
-	virtual void colorToRGB(OverlayColor color, uint8 &r, uint8 &g, uint8 &b);
+	virtual Graphics::PixelFormat getOverlayFormat() const { return Graphics::createPixelFormat<565>(); }
 
 	virtual bool showMouse(bool visible);
 
@@ -257,12 +256,6 @@ int16 OSystem_NULL::getOverlayWidth() {
 	return getWidth();
 }
 
-OverlayColor OSystem_NULL::RGBToColor(uint8 r, uint8 g, uint8 b) {
-	return 0;
-}
-
-void OSystem_NULL::colorToRGB(OverlayColor color, uint8 &r, uint8 &g, uint8 &b) {
-}
 
 bool OSystem_NULL::showMouse(bool visible) {
 	return true;

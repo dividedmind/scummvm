@@ -26,22 +26,21 @@
 #include "graphics/fontman.h"
 #include "gui/widget.h"
 #include "gui/dialog.h"
-#include "gui/eval.h"
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
+
+#include "gui/ThemeEval.h"
 
 namespace GUI {
 
 Widget::Widget(GuiObject *boss, int x, int y, int w, int h)
 	: GuiObject(x, y, w, h), _type(0), _boss(boss),
-	  _id(0), _flags(0), _hints(THEME_HINT_FIRST_DRAW),
-	  _hasFocus(false), _state(Theme::kStateEnabled) {
+	  _id(0), _flags(0), _hasFocus(false), _state(ThemeEngine::kStateEnabled) {
 	init();
 }
 
 Widget::Widget(GuiObject *boss, const Common::String &name)
 	: GuiObject(name), _type(0), _boss(boss),
-	  _id(0), _flags(0), _hints(THEME_HINT_FIRST_DRAW),
-	  _hasFocus(false), _state(Theme::kStateDisabled) {
+	  _id(0), _flags(0), _hasFocus(false), _state(ThemeEngine::kStateDisabled) {
 	init();
 }
 
@@ -49,8 +48,6 @@ void Widget::init() {
 	// Insert into the widget list of the boss
 	_next = _boss->_firstWidget;
 	_boss->_firstWidget = this;
-	// HACK: we enable background saving for all widgets by default for now
-	_hints = THEME_HINT_FIRST_DRAW | THEME_HINT_SAVE_BACKGROUND;
 }
 
 Widget::~Widget() {
@@ -77,17 +74,15 @@ void Widget::clearFlags(int flags) {
 
 void Widget::updateState(int oldFlags, int newFlags) {
 	if (newFlags & WIDGET_ENABLED) {
-		_state = Theme::kStateEnabled;
+		_state = ThemeEngine::kStateEnabled;
 		if (newFlags & WIDGET_HILITED)
-			_state = Theme::kStateHighlight;
+			_state = ThemeEngine::kStateHighlight;
 	} else {
-		_state = Theme::kStateDisabled;
+		_state = ThemeEngine::kStateDisabled;
 	}
 }
 
 void Widget::draw() {
-	NewGui *gui = &g_gui;
-
 	if (!isVisible() || !_boss->isVisible())
 		return;
 
@@ -99,7 +94,7 @@ void Widget::draw() {
 
 	// Draw border
 	if (_flags & WIDGET_BORDER) {
-		gui->theme()->drawWidgetBackground(Common::Rect(_x, _y, _x+_w, _y+_h), _hints, Theme::kWidgetBackgroundBorder);
+		g_gui.theme()->drawWidgetBackground(Common::Rect(_x, _y, _x+_w, _y+_h), 0, ThemeEngine::kWidgetBackgroundBorder);
 		_x += 4;
 		_y += 4;
 		_w -= 8;
@@ -126,8 +121,6 @@ void Widget::draw() {
 		w->draw();
 		w = w->_next;
 	}
-
-	clearHints(THEME_HINT_FIRST_DRAW);
 }
 
 Widget *Widget::findWidgetInChain(Widget *w, int x, int y) {
@@ -152,15 +145,29 @@ Widget *Widget::findWidgetInChain(Widget *w, const char *name) {
 	return 0;
 }
 
+void Widget::setEnabled(bool e) {
+	if (e)
+		setFlags(WIDGET_ENABLED);
+	else
+		clearFlags(WIDGET_ENABLED);
+}
+
 bool Widget::isEnabled() const {
-	if (g_gui.evaluator()->getVar(_name + ".enabled") == 0) {
+	if (g_gui.xmlEval()->getVar("Dialog." + _name + ".Enabled", 1) == 0) {
 		return false;
 	}
 	return ((_flags & WIDGET_ENABLED) != 0);
 }
 
+void Widget::setVisible(bool e) {
+	if (e)
+		clearFlags(WIDGET_INVISIBLE);
+	else
+		setFlags(WIDGET_INVISIBLE);
+}
+
 bool Widget::isVisible() const {
-	if (g_gui.evaluator()->getVar(_name + ".visible") == 0)
+	if (g_gui.xmlEval()->getVar("Dialog." + _name + ".Visible", 1) == 0)
 		return false;
 
 	return !(_flags & WIDGET_INVISIBLE);
@@ -168,7 +175,7 @@ bool Widget::isVisible() const {
 
 #pragma mark -
 
-StaticTextWidget::StaticTextWidget(GuiObject *boss, int x, int y, int w, int h, const Common::String &text, TextAlignment align)
+StaticTextWidget::StaticTextWidget(GuiObject *boss, int x, int y, int w, int h, const Common::String &text, Graphics::TextAlign align)
 	: Widget(boss, x, y, w, h), _align(align) {
 	setFlags(WIDGET_ENABLED);
 	_type = kStaticTextWidget;
@@ -181,10 +188,7 @@ StaticTextWidget::StaticTextWidget(GuiObject *boss, const Common::String &name, 
 	_type = kStaticTextWidget;
 	_label = text;
 
-	_align = (Graphics::TextAlignment)g_gui.evaluator()->getVar(name + ".align");
-
-	if (_align == (int)EVAL_UNDEF_VAR)
-		_align = kTextAlignLeft;
+	_align = (Graphics::TextAlign)g_gui.xmlEval()->getVar(name + ".Align", Graphics::kTextAlignLeft);
 }
 
 void StaticTextWidget::setValue(int value) {
@@ -194,15 +198,19 @@ void StaticTextWidget::setValue(int value) {
 }
 
 void StaticTextWidget::setLabel(const Common::String &label) {
-	_label = label;
-	// TODO: We should automatically redraw when the label is changed.
-	// The following doesn't quite work when we are using tabs, plus it
-	// is rather clumsy to force a full redraw for a single static text.
-	// However, as long as we do blending, it might be the only way.
-	//_boss->draw();
+    if (_label != label) {
+        _label = label;
+
+        // when changing the label, add the CLEARBG flag
+        // so the widget is completely redrawn, otherwise
+        // the new text is drawn on top of the old one.
+        setFlags(WIDGET_CLEARBG);
+        draw();
+        clearFlags(WIDGET_CLEARBG);
+    }
 }
 
-void StaticTextWidget::setAlign(TextAlignment align) {
+void StaticTextWidget::setAlign(Graphics::TextAlign align) {
 	_align = align;
 	// TODO: We should automatically redraw when the alignment is changed.
 	// See setLabel() for more insights.
@@ -210,13 +218,13 @@ void StaticTextWidget::setAlign(TextAlignment align) {
 
 
 void StaticTextWidget::drawWidget() {
-	g_gui.theme()->drawText(Common::Rect(_x, _y, _x+_w, _y+_h), _label, _state, g_gui.theme()->convertAligment(_align));
+	g_gui.theme()->drawText(Common::Rect(_x, _y, _x+_w, _y+_h), _label, _state, _align);
 }
 
 #pragma mark -
 
 ButtonWidget::ButtonWidget(GuiObject *boss, int x, int y, int w, int h, const Common::String &label, uint32 cmd, uint8 hotkey)
-	: StaticTextWidget(boss, x, y, w, h, label, kTextAlignCenter), CommandSender(boss),
+	: StaticTextWidget(boss, x, y, w, h, label, Graphics::kTextAlignCenter), CommandSender(boss), 
 	  _cmd(cmd), _hotkey(hotkey) {
 	setFlags(WIDGET_ENABLED/* | WIDGET_BORDER*/ | WIDGET_CLEARBG);
 	_type = kButtonWidget;
@@ -226,7 +234,6 @@ ButtonWidget::ButtonWidget(GuiObject *boss, const Common::String &name, const Co
 	: StaticTextWidget(boss, name, label), CommandSender(boss),
 	  _cmd(cmd), _hotkey(hotkey) {
 	setFlags(WIDGET_ENABLED/* | WIDGET_BORDER*/ | WIDGET_CLEARBG);
-	_hints = THEME_HINT_USE_SHADOW;
 	_type = kButtonWidget;
 }
 
@@ -236,7 +243,7 @@ void ButtonWidget::handleMouseUp(int x, int y, int button, int clickCount) {
 }
 
 void ButtonWidget::drawWidget() {
-	g_gui.theme()->drawButton(Common::Rect(_x, _y, _x+_w, _y+_h), _label, _state, _hints);
+	g_gui.theme()->drawButton(Common::Rect(_x, _y, _x+_w, _y+_h), _label, _state, getFlags());
 }
 
 #pragma mark -
@@ -318,16 +325,38 @@ void SliderWidget::handleMouseUp(int x, int y, int button, int clickCount) {
 	_isDragging = false;
 }
 
-void SliderWidget::drawWidget() {
-	g_gui.theme()->drawSlider(Common::Rect(_x, _y, _x+_w, _y+_h), valueToPos(_value), _state);
+void SliderWidget::handleMouseWheel(int x, int y, int direction) {
+	if (isEnabled() && !_isDragging) {
+		// Increment or decrement one position
+		int newValue = posToValue(valueToPos(_value) - 1 * direction);
+
+		if (newValue < _valueMin)
+			newValue = _valueMin;
+		else if (newValue > _valueMax)
+			newValue = _valueMax;
+
+		if (newValue != _value) {
+			_value = newValue;
+			draw();
+			sendCommand(_cmd, _value);	// FIXME - hack to allow for "live update" in sound dialog
+		}
+	}
 }
 
-int SliderWidget::valueToPos(int value) {
+void SliderWidget::drawWidget() {
+	g_gui.theme()->drawSlider(Common::Rect(_x, _y, _x + _w, _y + _h), valueToBarWidth(_value), _state);
+}
+
+int SliderWidget::valueToBarWidth(int value) {
 	return (_w * (value - _valueMin) / (_valueMax - _valueMin));
 }
 
+int SliderWidget::valueToPos(int value) {
+	return ((_w - 1) * (value - _valueMin + 1) / (_valueMax - _valueMin));
+}
+
 int SliderWidget::posToValue(int pos) {
-	return (pos) * (_valueMax - _valueMin) / _w + _valueMin;
+	return (pos) * (_valueMax - _valueMin) / (_w - 1) + _valueMin;
 }
 
 #pragma mark -
@@ -336,20 +365,12 @@ GraphicsWidget::GraphicsWidget(GuiObject *boss, int x, int y, int w, int h)
 	: Widget(boss, x, y, w, h), _gfx(), _alpha(256), _transparency(false) {
 	setFlags(WIDGET_ENABLED | WIDGET_CLEARBG);
 	_type = kGraphicsWidget;
-	// HACK: Don't save the background. We want to be sure that redrawing
-	//       the widget updates the screen, even when there isn't any image
-	//       to draw.
-	_hints &= ~THEME_HINT_SAVE_BACKGROUND;
 }
 
 GraphicsWidget::GraphicsWidget(GuiObject *boss, const Common::String &name)
 	: Widget(boss, name), _gfx(), _alpha(256), _transparency(false) {
 	setFlags(WIDGET_ENABLED | WIDGET_CLEARBG);
 	_type = kGraphicsWidget;
-	// HACK: Don't save the background. We want to be sure that redrawing
-	//       the widget updates the screen, even when there isn't any image
-	//       to draw.
-	_hints &= ~THEME_HINT_SAVE_BACKGROUND;
 }
 
 GraphicsWidget::~GraphicsWidget() {
@@ -376,8 +397,8 @@ void GraphicsWidget::setGfx(int w, int h, int r, int g, int b) {
 	_gfx.create(w, h, sizeof(OverlayColor));
 
 	OverlayColor *dst = (OverlayColor*)_gfx.pixels;
-	// TODO: get rid of g_system usage
-	OverlayColor fillCol = g_system->RGBToColor(r, g, b);
+	Graphics::PixelFormat overlayFormat = g_system->getOverlayFormat();
+	OverlayColor fillCol = overlayFormat.RGBToColor(r, g, b);
 	while (h--) {
 		for (int i = 0; i < w; ++i) {
 			*dst++ = fillCol;
@@ -403,7 +424,7 @@ ContainerWidget::ContainerWidget(GuiObject *boss, const Common::String &name) : 
 }
 
 void ContainerWidget::drawWidget() {
-	g_gui.theme()->drawWidgetBackground(Common::Rect(_x, _y, _x + _w, _y + _h), _hints, Theme::kWidgetBackgroundBorder);
+	g_gui.theme()->drawWidgetBackground(Common::Rect(_x, _y, _x + _w, _y + _h), 0, ThemeEngine::kWidgetBackgroundBorder);
 }
 
 } // End of namespace GUI

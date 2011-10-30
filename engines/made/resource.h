@@ -33,6 +33,8 @@
 #include "graphics/surface.h"
 #include "sound/audiostream.h"
 
+#include "made/sound.h"
+
 namespace Made {
 
 const int kMaxResourceCacheCount = 100;
@@ -73,6 +75,8 @@ protected:
 	byte *_picturePalette;
 	int _paletteColorCount;
 	bool _hasPalette;
+	void loadRaw(byte *source, int size);
+	void loadChunked(byte *source, int size);
 };
 
 class AnimationResource : public Resource {
@@ -81,7 +85,7 @@ public:
 	~AnimationResource();
 	void load(byte *source, int size);
 	int getCount() const { return _frames.size(); }
-	Graphics::Surface *getFrame(int index) const { 
+	Graphics::Surface *getFrame(int index) const {
 		if ((uint)index < _frames.size()) {
 			return _frames[index];
 		} else {
@@ -101,12 +105,21 @@ protected:
 class SoundResource : public Resource {
 public:
 	SoundResource();
-	~SoundResource();
-	void load(byte *source, int size);
+	virtual ~SoundResource();
+	virtual void load(byte *source, int size);
 	Audio::AudioStream *getAudioStream(int soundRate, bool loop = false);
+	SoundEnergyArray *getSoundEnergyArray() const { return _soundEnergyArray; }
 protected:
 	byte *_soundData;
 	int _soundSize;
+	SoundEnergyArray *_soundEnergyArray;
+};
+
+class SoundResourceV1 : public SoundResource {
+public:
+	SoundResourceV1() {}
+	~SoundResourceV1() {}
+	void load(byte *source, int size);
 };
 
 class MenuResource : public Resource {
@@ -158,13 +171,13 @@ struct ResourceSlot {
 	}
 };
 
-class ProjectReader {
+class ResourceReader {
 public:
-
-	ProjectReader();
-	~ProjectReader();
+	ResourceReader();
+	~ResourceReader();
 
 	void open(const char *filename);
+	void openResourceBlocks();
 
 	PictureResource *getPicture(int index);
 	AnimationResource *getAnimation(int index);
@@ -179,9 +192,12 @@ public:
 protected:
 
 	Common::File *_fd;
+	Common::File *_fdPics, *_fdSounds, *_fdMusic;		// V1
+	bool _isV1;
 
 	typedef Common::Array<ResourceSlot> ResourceSlots;
 	typedef Common::HashMap<uint32, ResourceSlots*> ResMap;
+	void openResourceBlock(const char *filename, Common::File *blockFile, uint32 resType);
 
 	ResMap _resSlots;
 	int _cacheCount;
@@ -197,6 +213,22 @@ protected:
 		if (!res) {
 			byte *buffer;
 			uint32 size;
+
+			// Read from the correct file for V1 games
+			if (_isV1) {
+				switch (resType) {
+				case kResSNDS:
+					_fd = _fdSounds;
+					break;
+				case kResMIDI:
+					_fd = _fdMusic;
+					break;
+				default:
+					_fd = _fdPics;
+					break;
+				}
+			}
+
 			if (loadResource(slot, buffer, size)) {
 				res = new T();
 				res->slot = slot;

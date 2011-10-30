@@ -180,7 +180,7 @@ int32 Screen::fadeUp(float time) {
 
 	_fadeTotalTime = (int32)(time * 1000);
 	_fadeStatus = RDFADE_UP;
-	_fadeStartTime = _vm->_system->getMillis();
+	_fadeStartTime = getTick();
 
 	return RD_OK;
 }
@@ -196,7 +196,7 @@ int32 Screen::fadeDown(float time) {
 
 	_fadeTotalTime = (int32)(time * 1000);
 	_fadeStatus = RDFADE_DOWN;
-	_fadeStartTime = _vm->_system->getMillis();
+	_fadeStartTime = getTick();
 
 	return RD_OK;
 }
@@ -212,7 +212,7 @@ uint8 Screen::getFadeStatus() {
 }
 
 void Screen::waitForFade() {
-	while (getFadeStatus() != RDFADE_NONE && getFadeStatus() != RDFADE_BLACK && !_vm->quit()) {
+	while (getFadeStatus() != RDFADE_NONE && getFadeStatus() != RDFADE_BLACK && !_vm->shouldQuit()) {
 		updateDisplay();
 		_vm->_system->delayMillis(20);
 	}
@@ -232,7 +232,7 @@ void Screen::fadeServer() {
 
 	// I don't know if this is necessary, but let's limit how often the
 	// palette is updated, just to be safe.
-	currentTime = _vm->_system->getMillis();
+	currentTime = getTick();
 	if (currentTime - previousTime <= 25)
 		return;
 

@@ -25,9 +25,9 @@
 #include "gui/browser.h"
 #include "gui/themebrowser.h"
 #include "gui/chooser.h"
-#include "gui/eval.h"
 #include "gui/message.h"
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
+#include "gui/ThemeEval.h"
 #include "gui/options.h"
 #include "gui/PopUpWidget.h"
 #include "gui/TabWidget.h"
@@ -73,18 +73,24 @@ static const int outputRateValues[] = { 0, 22050, 8000, 11025, 44100, 48000, -1 
 
 
 OptionsDialog::OptionsDialog(const String &domain, int x, int y, int w, int h)
-	: Dialog(x, y, w, h), _domain(domain) {
+	: Dialog(x, y, w, h), _domain(domain), _graphicsTabId(-1), _tabWidget(0) {
 	init();
 }
 
 OptionsDialog::OptionsDialog(const String &domain, const String &name)
-	: Dialog(name), _domain(domain) {
+	: Dialog(name), _domain(domain), _graphicsTabId(-1), _tabWidget(0) {
 	init();
 }
 
 const char *OptionsDialog::_subModeDesc[] = {
 	"Speech Only",
 	"Speech and Subtitles",
+	"Subtitles Only"
+};
+
+const char *OptionsDialog::_lowresSubModeDesc[] = {
+	"Speech Only",
+	"Speech & Subs",
 	"Subtitles Only"
 };
 
@@ -155,13 +161,17 @@ void OptionsDialog::open() {
 			_renderModePopUp->setSelected(sel);
 		}
 
-#ifndef SMALL_SCREEN_DEVICE
+#ifdef SMALL_SCREEN_DEVICE
+		_fullscreenCheckbox->setState(true);
+		_fullscreenCheckbox->setEnabled(false);
+		_aspectCheckbox->setEnabled(false);
+#else // !SMALL_SCREEN_DEVICE
 		// Fullscreen setting
 		_fullscreenCheckbox->setState(ConfMan.getBool("fullscreen", _domain));
 
 		// Aspect ratio setting
 		_aspectCheckbox->setState(ConfMan.getBool("aspect_ratio", _domain));
-#endif
+#endif // SMALL_SCREEN_DEVICE
 	}
 
 	// Audio options
@@ -417,7 +427,7 @@ void OptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint32 data
 		else
 			_subMode = 0;
 
-		_subToggleButton->setLabel(_subModeDesc[_subMode]);
+		_subToggleButton->setLabel(g_system->getOverlayWidth() > 320 ? _subModeDesc[_subMode] : _lowresSubModeDesc[_subMode]);
 		_subToggleButton->draw();
 		_subSpeedDesc->draw();
 		_subSpeedSlider->draw();
@@ -426,6 +436,11 @@ void OptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint32 data
 	case kSubtitleSpeedChanged:
 		_subSpeedLabel->setValue(_subSpeedSlider->getValue());
 		_subSpeedLabel->draw();
+		break;
+	case kClearSoundFontCmd:
+		_soundFont->setLabel("None");
+		_soundFontClearButton->setEnabled(false);
+		draw();
 		break;
 	case kOKCmd:
 		setResult(1);
@@ -500,10 +515,8 @@ void OptionsDialog::setSubtitleSettingsState(bool enabled) {
 void OptionsDialog::addGraphicControls(GuiObject *boss, const String &prefix) {
 	const OSystem::GraphicsMode *gm = g_system->getSupportedGraphicsModes();
 
-	int labelWidth = g_gui.evaluator()->getVar("tabPopupsLabelW");
-
 	// The GFX mode popup
-	_gfxPopUp = new PopUpWidget(boss, prefix + "grModePopup", "Graphics mode:", labelWidth);
+	_gfxPopUp = new PopUpWidget(boss, prefix + "grModePopup", "Graphics mode:");
 
 	_gfxPopUp->appendEntry("<default>");
 	_gfxPopUp->appendEntry("");
@@ -513,7 +526,7 @@ void OptionsDialog::addGraphicControls(GuiObject *boss, const String &prefix) {
 	}
 
 	// RenderMode popup
-	_renderModePopUp = new PopUpWidget(boss, prefix + "grRenderPopup", "Render mode:", labelWidth);
+	_renderModePopUp = new PopUpWidget(boss, prefix + "grRenderPopup", "Render mode:");
 	_renderModePopUp->appendEntry("<default>", Common::kRenderDefault);
 	_renderModePopUp->appendEntry("");
 	const Common::RenderModeDescription *rm = Common::g_renderModes;
@@ -527,20 +540,12 @@ void OptionsDialog::addGraphicControls(GuiObject *boss, const String &prefix) {
 	// Aspect ratio checkbox
 	_aspectCheckbox = new CheckboxWidget(boss, prefix + "grAspectCheckbox", "Aspect ratio correction", 0, 0);
 
-#ifdef SMALL_SCREEN_DEVICE
-	_fullscreenCheckbox->setState(true);
-	_fullscreenCheckbox->setEnabled(false);
-	_aspectCheckbox->setEnabled(false);
-#endif
-
 	_enableGraphicSettings = true;
 }
 
 void OptionsDialog::addAudioControls(GuiObject *boss, const String &prefix) {
-	int labelWidth = g_gui.evaluator()->getVar("tabPopupsLabelW");
-
 	// The MIDI mode popup & a label
-	_midiPopUp = new PopUpWidget(boss, prefix + "auMidiPopup", "Music driver:", labelWidth);
+	_midiPopUp = new PopUpWidget(boss, prefix + "auMidiPopup", "Music driver:");
 
 	// Populate it
 	const MidiDriverDescription *md = MidiDriver::getAvailableMidiDrivers();
@@ -550,7 +555,7 @@ void OptionsDialog::addAudioControls(GuiObject *boss, const String &prefix) {
 	}
 
 	// Sample rate settings
-	_outputRatePopUp = new PopUpWidget(boss, prefix + "auSampleRatePopup", "Output rate:", labelWidth);
+	_outputRatePopUp = new PopUpWidget(boss, prefix + "auSampleRatePopup", "Output rate:");
 
 	for (int i = 0; outputRateLabels[i]; i++) {
 		_outputRatePopUp->appendEntry(outputRateLabels[i], outputRateValues[i]);
@@ -643,43 +648,34 @@ int OptionsDialog::getSubtitleMode(bool subtitles, bool speech_mute) {
 void OptionsDialog::reflowLayout() {
 	Dialog::reflowLayout();
 
-	int labelWidth = g_gui.evaluator()->getVar("tabPopupsLabelW");
-
-	if (_midiPopUp)
-		_midiPopUp->changeLabelWidth(labelWidth);
-	if (_outputRatePopUp)
-		_outputRatePopUp->changeLabelWidth(labelWidth);
-	if (_gfxPopUp)
-		_gfxPopUp->changeLabelWidth(labelWidth);
-	if (_renderModePopUp)
-		_renderModePopUp->changeLabelWidth(labelWidth);
+	if (_graphicsTabId != -1 && _tabWidget)
+		_tabWidget->setTabTitle(_graphicsTabId, g_system->getOverlayWidth() > 320 ? "Graphics" : "GFX");
 }
 
 #pragma mark -
 
 
 GlobalOptionsDialog::GlobalOptionsDialog()
-	: OptionsDialog(Common::ConfigManager::kApplicationDomain, "globaloptions") {
+	: OptionsDialog(Common::ConfigManager::kApplicationDomain, "GlobalOptions") {
 
 	// The tab widget
-	TabWidget *tab = new TabWidget(this, "globaloptions_tabwidget");
-	tab->setHints(THEME_HINT_FIRST_DRAW | THEME_HINT_SAVE_BACKGROUND);
+	TabWidget *tab = new TabWidget(this, "GlobalOptions.TabWidget");
 
 	//
 	// 1) The graphics tab
 	//
-	tab->addTab("Graphics");
-	addGraphicControls(tab, "globaloptions_");
+	_graphicsTabId = tab->addTab(g_system->getOverlayWidth() > 320 ? "Graphics" : "GFX");
+	addGraphicControls(tab, "GlobalOptions_Graphics.");
 
 	//
 	// 2) The audio tab
 	//
 	tab->addTab("Audio");
-	addAudioControls(tab, "globaloptions_");
-	addSubtitleControls(tab, "globaloptions_");
+	addAudioControls(tab, "GlobalOptions_Audio.");
+	addSubtitleControls(tab, "GlobalOptions_Audio.");
 
 	tab->addTab("Volume");
-	addVolumeControls(tab, "globaloptions_");
+	addVolumeControls(tab, "GlobalOptions_Volume.");
 
 	// TODO: cd drive setting
 
@@ -687,7 +683,7 @@ GlobalOptionsDialog::GlobalOptionsDialog()
 	// 3) The MIDI tab
 	//
 	tab->addTab("MIDI");
-	addMIDIControls(tab, "globaloptions_");
+	addMIDIControls(tab, "GlobalOptions_MIDI.");
 
 	//
 	// 4) The miscellaneous tab
@@ -699,47 +695,52 @@ GlobalOptionsDialog::GlobalOptionsDialog()
 	// truncated in the small version of the GUI.
 
 	// Save game path
-	new ButtonWidget(tab, "globaloptions_savebutton", "Save Path: ", kChooseSaveDirCmd, 0);
-	_savePath = new StaticTextWidget(tab, "globaloptions_savepath", "/foo/bar");
+	new ButtonWidget(tab, "GlobalOptions_Paths.SaveButton", "Save Path: ", kChooseSaveDirCmd, 0);
+	_savePath = new StaticTextWidget(tab, "GlobalOptions_Paths.SavePath", "/foo/bar");
 
-	new ButtonWidget(tab, "globaloptions_themebutton", "Theme Path:", kChooseThemeDirCmd, 0);
-	_themePath = new StaticTextWidget(tab, "globaloptions_themepath", "None");
+	new ButtonWidget(tab, "GlobalOptions_Paths.ThemeButton", "Theme Path:", kChooseThemeDirCmd, 0);
+	_themePath = new StaticTextWidget(tab, "GlobalOptions_Paths.ThemePath", "None");
 
-	new ButtonWidget(tab, "globaloptions_extrabutton", "Extra Path:", kChooseExtraDirCmd, 0);
-	_extraPath = new StaticTextWidget(tab, "globaloptions_extrapath", "None");
+	new ButtonWidget(tab, "GlobalOptions_Paths.ExtraButton", "Extra Path:", kChooseExtraDirCmd, 0);
+	_extraPath = new StaticTextWidget(tab, "GlobalOptions_Paths.ExtraPath", "None");
 
 #ifdef DYNAMIC_MODULES
-	new ButtonWidget(tab, "globaloptions_pluginsbutton", "Plugins Path:", kChoosePluginsDirCmd, 0);
-	_pluginsPath = new StaticTextWidget(tab, "globaloptions_pluginspath", "None");
+	new ButtonWidget(tab, "GlobalOptions_Paths.PluginsButton", "Plugins Path:", kChoosePluginsDirCmd, 0);
+	_pluginsPath = new StaticTextWidget(tab, "GlobalOptions_Paths.PluginsPath", "None");
 #endif
-#endif
-
-#ifdef SMALL_SCREEN_DEVICE
-	new ButtonWidget(tab, "globaloptions_keysbutton", "Keys", kChooseKeyMappingCmd, 0);
 #endif
 
 	tab->addTab("Misc");
 
-	new ButtonWidget(tab, "globaloptions_themebutton2", "Theme:", kChooseThemeCmd, 0);
-	_curTheme = new StaticTextWidget(tab, "globaloptions_curtheme", g_gui.theme()->getThemeName());
+	new ButtonWidget(tab, "GlobalOptions_Misc.ThemeButton", "Theme:", kChooseThemeCmd, 0);
+	_curTheme = new StaticTextWidget(tab, "GlobalOptions_Misc.CurTheme", g_gui.theme()->getThemeName());
 
-	int labelWidth = g_gui.evaluator()->getVar("tabPopupsLabelW");
 
-	_autosavePeriodPopUp = new PopUpWidget(tab, "globaloptions_autosaveperiod", "Autosave:", labelWidth);
+	_rendererPopUp = new PopUpWidget(tab, "GlobalOptions_Misc.Renderer", "GUI Renderer:");
+
+	for (uint i = 1; i < GUI::ThemeEngine::_rendererModesSize; ++i)
+		_rendererPopUp->appendEntry(GUI::ThemeEngine::_rendererModes[i].name, GUI::ThemeEngine::_rendererModes[i].mode);
+
+	_autosavePeriodPopUp = new PopUpWidget(tab, "GlobalOptions_Misc.AutosavePeriod", "Autosave:");
 
 	for (int i = 0; savePeriodLabels[i]; i++) {
 		_autosavePeriodPopUp->appendEntry(savePeriodLabels[i], savePeriodValues[i]);
 	}
+
+#ifdef SMALL_SCREEN_DEVICE
+	new ButtonWidget(tab, "GlobalOptions_Misc.KeysButton", "Keys", kChooseKeyMappingCmd, 0);
+#endif
 
 	// TODO: joystick setting
 
 
 	// Activate the first tab
 	tab->setActiveTab(0);
+	_tabWidget = tab;
 
 	// Add OK & Cancel buttons
-	new ButtonWidget(this, "globaloptions_cancel", "Cancel", kCloseCmd, 0);
-	new ButtonWidget(this, "globaloptions_ok", "OK", kOKCmd, 0);
+	new ButtonWidget(this, "GlobalOptions.Cancel", "Cancel", kCloseCmd, 0);
+	new ButtonWidget(this, "GlobalOptions.Ok", "OK", kOKCmd, 0);
 
 #ifdef SMALL_SCREEN_DEVICE
 	_keysDialog = new KeysDialog();
@@ -796,6 +797,11 @@ void GlobalOptionsDialog::open() {
 		if (value == savePeriodValues[i])
 			_autosavePeriodPopUp->setSelected(i);
 	}
+
+	ThemeEngine::GraphicsMode mode = ThemeEngine::findMode(ConfMan.get("gui_renderer"));
+	if (mode == ThemeEngine::kGfxDisabled)
+		mode = ThemeEngine::_defaultRendererMode;
+	_rendererPopUp->setSelectedTag(mode);
 }
 
 void GlobalOptionsDialog::close() {
@@ -825,6 +831,15 @@ void GlobalOptionsDialog::close() {
 #endif
 
 		ConfMan.setInt("autosave_period", _autosavePeriodPopUp->getSelectedTag(), _domain);
+
+		GUI::ThemeEngine::GraphicsMode selected = (GUI::ThemeEngine::GraphicsMode)_rendererPopUp->getSelectedTag();
+		const char *cfg = GUI::ThemeEngine::findModeConfigName(selected);
+		if (!ConfMan.get("gui_renderer").equalsIgnoreCase(cfg)) {
+			// FIXME: Actually, any changes (including the theme change) should
+			// only become active *after* the options dialog has closed.
+			g_gui.loadNewTheme(g_gui.theme()->getThemeId(), selected);
+			ConfMan.set("gui_renderer", cfg, _domain);
+		}
 	}
 	OptionsDialog::close();
 }
@@ -835,7 +850,7 @@ void GlobalOptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint3
 		BrowserDialog browser("Select directory for savegames", true);
 		if (browser.runModal() > 0) {
 			// User made his choice...
-			Common::FilesystemNode dir(browser.getResult());
+			Common::FSNode dir(browser.getResult());
 			if (dir.isWritable()) {
 				_savePath->setLabel(dir.getPath());
 			} else {
@@ -851,7 +866,7 @@ void GlobalOptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint3
 		BrowserDialog browser("Select directory for GUI themes", true);
 		if (browser.runModal() > 0) {
 			// User made his choice...
-			Common::FilesystemNode dir(browser.getResult());
+			Common::FSNode dir(browser.getResult());
 			_themePath->setLabel(dir.getPath());
 			draw();
 		}
@@ -861,7 +876,7 @@ void GlobalOptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint3
 		BrowserDialog browser("Select directory for extra files", true);
 		if (browser.runModal() > 0) {
 			// User made his choice...
-			Common::FilesystemNode dir(browser.getResult());
+			Common::FSNode dir(browser.getResult());
 			_extraPath->setLabel(dir.getPath());
 			draw();
 		}
@@ -872,7 +887,7 @@ void GlobalOptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint3
 		BrowserDialog browser("Select directory for plugins", true);
 		if (browser.runModal() > 0) {
 			// User made his choice...
-			Common::FilesystemNode dir(browser.getResult());
+			Common::FSNode dir(browser.getResult());
 			_pluginsPath->setLabel(dir.getPath());
 			draw();
 		}
@@ -883,7 +898,7 @@ void GlobalOptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint3
 		BrowserDialog browser("Select SoundFont", false);
 		if (browser.runModal() > 0) {
 			// User made his choice...
-			Common::FilesystemNode file(browser.getResult());
+			Common::FSNode file(browser.getResult());
 			_soundFont->setLabel(file.getPath());
 
 			if (!file.getPath().empty() && (file.getPath() != "None"))
@@ -895,22 +910,17 @@ void GlobalOptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint3
 		}
 		break;
 	}
-	case kClearSoundFontCmd: {
-		_soundFont->setLabel("None");
-		_soundFontClearButton->setEnabled(false);
-		draw();
-		break;
-	}
 	case kChooseThemeCmd: {
 		ThemeBrowser browser;
 		if (browser.runModal() > 0) {
 			// User made his choice...
-			const Common::String &theme = browser.selected();
-			if (0 != theme.compareToIgnoreCase(g_gui.theme()->getStylefileName()))
-				if (g_gui.loadNewTheme(theme)) {
-					_curTheme->setLabel(g_gui.theme()->getThemeName());
-					ConfMan.set("gui_theme", theme);
-				}
+			Common::String theme = browser.getSelected();
+			// FIXME: Actually, any changes (including the theme change) should
+			// only become active *after* the options dialog has closed.
+			if (g_gui.loadNewTheme(theme)) {
+				_curTheme->setLabel(g_gui.theme()->getThemeName());
+				ConfMan.set("gui_theme", theme);
+			}
 			draw();
 		}
 		break;

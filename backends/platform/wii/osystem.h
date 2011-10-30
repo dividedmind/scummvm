@@ -23,13 +23,14 @@
 #define _WII_OSYSTEM_H_
 
 #include "base/main.h"
-#include "common/system.h"
 #include "common/fs.h"
 #include "common/rect.h"
 #include "common/events.h"
 
+#include "backends/base-backend.h"
 #include "backends/saves/default/default-saves.h"
 #include "backends/timer/default/default-timer.h"
+#include "graphics/colormasks.h"
 #include "graphics/surface.h"
 #include "sound/mixer_intern.h"
 
@@ -44,11 +45,15 @@ extern "C" {
 extern bool reset_btn_pressed;
 extern bool power_btn_pressed;
 
+#ifdef DEBUG_WII_MEMSTATS
+extern void wii_memstats(void);
+#endif
+
 #ifdef __cplusplus
 }
 #endif
 
-class OSystem_Wii : public OSystem {
+class OSystem_Wii : public BaseBackend {
 private:
 	s64 _startup_time;
 	syswd_t _alarm;
@@ -136,12 +141,7 @@ public:
 									int x, int y, int w, int h);
 	virtual int16 getOverlayWidth();
 	virtual int16 getOverlayHeight();
-
-	virtual OverlayColor RGBToColor(uint8 r, uint8 g, uint8 b);
-	virtual void colorToRGB(OverlayColor color, uint8 &r, uint8 &g, uint8 &b);
-	virtual OverlayColor ARGBToColor(uint8 a, uint8 r, uint8 g, uint8 b);
-	virtual void colorToARGB(OverlayColor color, uint8 &a, uint8 &r,
-								uint8 &g, uint8 &b);
+	virtual Graphics::PixelFormat getOverlayFormat() const { return Graphics::createPixelFormat<565>(); }
 
 	virtual bool showMouse(bool visible);
 
@@ -168,8 +168,10 @@ public:
 	virtual Common::SaveFileManager *getSavefileManager();
 	virtual Audio::Mixer *getMixer();
 	virtual Common::TimerManager *getTimerManager();
-	FilesystemFactory *getFilesystemFactory();
-	void getTimeAndDate(struct tm &t) const;
+	virtual FilesystemFactory *getFilesystemFactory();
+	virtual void getTimeAndDate(struct tm &t) const;
+
+	virtual void engineInit();
 };
 
 #endif

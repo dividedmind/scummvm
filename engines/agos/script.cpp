@@ -411,6 +411,8 @@ void AGOSEngine::o_msg() {
 void AGOSEngine::o_end() {
 	// 68: exit interpreter
 	quitGame();
+	// Make sure the quit event is processed immediately.
+	delay(0);
 }
 
 void AGOSEngine::o_done() {
@@ -420,7 +422,14 @@ void AGOSEngine::o_done() {
 
 void AGOSEngine::o_process() {
 	// 71: start subroutine
-	Subroutine *sub = getSubroutineByID(getVarOrWord());
+	uint16 id = getVarOrWord();
+
+	if (!_copyProtection && getGameType() == GType_WW && id == 71) {
+		// Copy protection was disabled in Good Old Games release
+		return;
+	}
+
+	Subroutine *sub = getSubroutineByID(id);
 	if (sub != NULL) {
 #ifdef __DS__
 		// HACK: Skip scene of Simon reading letter from Calypso
@@ -836,9 +845,9 @@ void AGOSEngine::o_freezeZones() {
 	// 138: freeze zones
 	freezeBottom();
 
-	if (!_copyProtection && !(getFeatures() & GF_TALKIE)) {
-		if ((getGameType() == GType_SIMON1 && _subroutine == 2924) ||
-			(getGameType() == GType_SIMON2 && _subroutine == 1322)) {
+	if (!_copyProtection && !(getFeatures() & GF_TALKIE) && _currentTable) {
+		if ((getGameType() == GType_SIMON1 && _currentTable->id == 2924) ||
+			(getGameType() == GType_SIMON2 && _currentTable->id == 1322)) {
 			_variableArray[134] = 3;
 			_variableArray[135] = 3;
 			setBitFlag(135, 1);
@@ -965,11 +974,11 @@ void AGOSEngine::writeVariable(uint16 variable, uint16 contents) {
 int AGOSEngine::runScript() {
 	bool flag;
 
-	if (quit())
+	if (shouldQuit())
 		return 1;
 
 	do {
-		if (_continousMainScript)
+		if (_dumpOpcodes)
 			dumpOpcode(_codePtr);
 
 		if (getGameType() == GType_ELVIRA1) {
@@ -1010,9 +1019,9 @@ int AGOSEngine::runScript() {
 			error("Invalid opcode '%d' encountered", _opcode);
 
 		executeOpcode(_opcode);
-	} while  (getScriptCondition() != flag && !getScriptReturn() && !quit());
+	} while  (getScriptCondition() != flag && !getScriptReturn() && !shouldQuit());
 
-	return (quit()) ? 1 : getScriptReturn();
+	return (shouldQuit()) ? 1 : getScriptReturn();
 }
 
 Child *nextSub(Child *sub, int16 key) {
@@ -1066,7 +1075,7 @@ void AGOSEngine::waitForSync(uint a) {
 	_exitCutscene = false;
 	_rightButtonDown = false;
 
-	while (_vgaWaitFor != 0 && !quit()) {
+	while (_vgaWaitFor != 0 && !shouldQuit()) {
 		if (_rightButtonDown) {
 			if (_vgaWaitFor == 200 && (getGameType() == GType_FF || !getBitFlag(14))) {
 				skipSpeech();

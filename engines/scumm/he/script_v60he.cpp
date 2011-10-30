@@ -23,7 +23,7 @@
  *
  */
 
-
+#include "common/archive.h"
 #include "common/savefile.h"
 
 #include "scumm/actor.h"
@@ -430,6 +430,8 @@ int ScummEngine_v60he::convertFilePath(byte *dst) {
 			if (dst[r - 1] == '/')
 				break;
 		}
+	} else if (dst[0] == 'u' && dst[1] == 's') { // Save Game Path (Moonbase Commander)
+		r = 5;
 	}
 
 	debug(1, "convertFilePath: converted filePath is %s", dst + r);
@@ -623,7 +625,7 @@ void ScummEngine_v60he::swapObjects(int object1, int object2) {
 }
 
 void ScummEngine_v60he::o60_actorOps() {
-	Actor *a;
+	ActorHE *a;
 	int i, j, k;
 	int args[8];
 
@@ -633,7 +635,7 @@ void ScummEngine_v60he::o60_actorOps() {
 		return;
 	}
 
-	a = derefActorSafe(_curActor, "o60_actorOps");
+	a = (ActorHE *)derefActorSafe(_curActor, "o60_actorOps");
 	if (!a)
 		return;
 
@@ -738,9 +740,6 @@ void ScummEngine_v60he::o60_actorOps() {
 	case 99:		// SO_TEXT_OFFSET
 		a->_talkPosY = pop();
 		a->_talkPosX = pop();
-		break;
-	case 156:		// HE 7.2
-		a->_charset = pop();
 		break;
 	case 198:		// SO_ACTOR_VARIABLE
 		i = pop();
@@ -1011,12 +1010,7 @@ void ScummEngine_v60he::o60_openFile() {
 			// TODO / FIXME: Consider using listSavefiles to avoid unneccessary openForLoading calls
 			_hInFileTable[slot] = _saveFileMan->openForLoading(filename);
 			if (_hInFileTable[slot] == 0) {
-				Common::File *f = new Common::File();
-				f->open(filename);
-				if (!f->isOpen())
-					delete f;
-				else
-					_hInFileTable[slot] = f;
+				_hInFileTable[slot] = SearchMan.createReadStreamForMember(filename);
 			}
 			break;
 		case 2:
@@ -1056,7 +1050,9 @@ void ScummEngine_v60he::o60_deleteFile() {
 
 	debug(1, "o60_deleteFile (\"%s\")", filename);
 
-	_saveFileMan->removeSavefile(filename);
+	if (!_saveFileMan->listSavefiles(filename).empty()) {
+		_saveFileMan->removeSavefile(filename);
+	}
 }
 
 void ScummEngine_v60he::o60_rename() {

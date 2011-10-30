@@ -208,6 +208,8 @@ SCUMM Games by Humongous Entertainment:
      Backyard Football                           [football]
      Big Thinkers First Grade                    [thinker1]
      Big Thinkers Kindergarten                   [thinkerk]
+     Blue's 123 Time Activities                  [Blues123Time]
+     Blue's ABC Time Activities                  [BluesABCTime]
      Fatty Bear's Birthday Surprise              [fbear]
      Fatty Bear's Fun Pack                       [fbpack]
      Freddi Fish 1: The Case of the Missing
@@ -253,8 +255,6 @@ site and view the compatibility chart.
 
      Backyard Baseball                           [baseball]
      Backyard Soccer                             [soccer]
-     Blue's 123 Time Activities                  [Blues123Time]
-     Blue's ABC Time Activities                  [BluesABCTime]
      Blue's Birthday Adventure                   [BluesBirthday]
      SPY Fox 3: Operation Ozone                  [spyozon]
 
@@ -301,6 +301,7 @@ ScummVM will skip copy protection in the following games:
   * Simon the Sorcerer 2 (Floppy version)
       -- bypassed with kind permission from Adventure Soft,
          since it was bypassed in all CD releases of the game.
+  * Waxworks
 
 
 3.2) Commodore64 games notes:
@@ -525,11 +526,6 @@ called data1.cab, which ScummVM is unable to unpack. You will need to use the
 original installer or i5comp to unpack the contents of this file. The i5comp
 decompression tool, can be found via a search on the internet.
 
-The game uses Smacker cutscenes extensively, which we can't support directly,
-due to reasons described above. The cutscenes have to be re-encoded to DXA,
-which is the format used by the cutscenes in the Amiga and Macintosh versions.
-See the tools README for a brief guide on converting the cutscenes.
-
 To use the speech files with ScummVM, they need to be renamed as follows:
 Rename voices.wav on CD1 to voices1.wav
 Rename voices.wav on CD2 to voices2.wav
@@ -673,6 +669,14 @@ the section on reporting bugs.
 
      Broken Sword 2:
           - PlayStation 1 version isn't supported
+
+     Elvira - Mistress of the Dark
+          - No music in the AtariST version
+
+     Elvira II - The Jaws of Cerberus
+          - No music in the AtariST version
+          - No sound effects in the PC version
+          - Palette issues in the AtariST version
 
      Inherit the Earth: Quest for the Orb
           - Amiga versions aren't supported
@@ -1076,7 +1080,6 @@ other games.
     Broken Sword 2:
         Ctrl-d                 - Starts the debugger
         Ctrl-f                 - Toggle fast mode
-        c                      - Display the credits
         p                      - Pauses
 
     Flight of the Amazon Queen:
@@ -1192,11 +1195,11 @@ menu.
 Using savegames from original versions, isn't supported by all game engines. 
 Only the following games, can use savegames from their original versions.
 
-     Elvira 1
+    Elvira 1
           - Add 8 bytes (savegame name) to the start of the savegame file
           - Rename the savegame to 'elvira1.xxx'
 
-     Elvira 2
+    Elvira 2
           - Add 8 bytes (savegame name) to the start of the savegame file
           - Rename the savegame to 'elvira2-pc.xxx' (DOS version) or
             'elvira2.xxx' (Other versions)
@@ -1206,10 +1209,10 @@ Only the following games, can use savegames from their original versions.
           - Rename the savegame to 'waxworks-pc.xxx' (DOS version) or
             'waxworks.xxx' (Other versions)
 
-     Simon the Sorcerer 1
+    Simon the Sorcerer 1
           - Rename the savegame to 'simon1.xxx'
  
-    Simon the Sorcerer 1
+    Simon the Sorcerer 2
           - Rename the savegame to 'simon2.xxx'
  
     The Feeble Files

@@ -63,7 +63,7 @@ SndHandle *Sound::getHandle() {
 	return NULL;
 }
 
-void Sound::playSoundBuffer(Audio::SoundHandle *handle, SoundBuffer &buffer, int volume, 
+void Sound::playSoundBuffer(Audio::SoundHandle *handle, SoundBuffer &buffer, int volume,
 				sndHandleType handleType, bool loop) {
 	byte flags;
 
@@ -83,16 +83,18 @@ void Sound::playSoundBuffer(Audio::SoundHandle *handle, SoundBuffer &buffer, int
 	if (!buffer.isSigned)
 		flags |= Audio::Mixer::FLAG_UNSIGNED;
 
-	if (!(_vm->getFeatures() & GF_COMPRESSED_SOUNDS)) {
+	if (!buffer.isCompressed) {
 		if (handleType == kVoiceHandle)
-			_mixer->playRaw(Audio::Mixer::kSpeechSoundType, handle, buffer.buffer, 
+			_mixer->playRaw(Audio::Mixer::kSpeechSoundType, handle, buffer.buffer,
 					buffer.size, buffer.frequency, flags, -1, volume);
 		else
-			_mixer->playRaw(Audio::Mixer::kSFXSoundType, handle, buffer.buffer, 
+			_mixer->playRaw(Audio::Mixer::kSFXSoundType, handle, buffer.buffer,
 					buffer.size, buffer.frequency, flags, -1, volume);
 	} else {
 		Audio::AudioStream *stream = NULL;
+#if defined(USE_MAD) || defined(USE_VORBIS) || defined(USE_FLAC)
 		MemoryReadStream *tmp = NULL;
+#endif
 
 		switch (buffer.soundType) {
 #ifdef USE_MAD
@@ -125,20 +127,20 @@ void Sound::playSoundBuffer(Audio::SoundHandle *handle, SoundBuffer &buffer, int
 			default:
 				// No compression, play it as raw sound
 				if (handleType == kVoiceHandle)
-					_mixer->playRaw(Audio::Mixer::kSpeechSoundType, handle, buffer.buffer, 
+					_mixer->playRaw(Audio::Mixer::kSpeechSoundType, handle, buffer.buffer,
 							buffer.size, buffer.frequency, flags, -1, volume);
 				else
-					_mixer->playRaw(Audio::Mixer::kSFXSoundType, handle, buffer.buffer, 
+					_mixer->playRaw(Audio::Mixer::kSFXSoundType, handle, buffer.buffer,
 							buffer.size, buffer.frequency, flags, -1, volume);
 				break;
 		}
 
 		if (stream != NULL) {
 			if (handleType == kVoiceHandle)
-				_mixer->playInputStream(Audio::Mixer::kSpeechSoundType, handle, stream, -1, 
+				_mixer->playInputStream(Audio::Mixer::kSpeechSoundType, handle, stream, -1,
 							volume, 0, true, false);
 			else
-				_mixer->playInputStream(Audio::Mixer::kSFXSoundType, handle, stream, -1, 
+				_mixer->playInputStream(Audio::Mixer::kSFXSoundType, handle, stream, -1,
 							volume, 0, true, false);
 		}
 	}
@@ -204,7 +206,7 @@ void Sound::stopAll() {
 }
 
 void Sound::setVolume() {
-	_vm->_soundVolume = ConfMan.getInt("sound_volume");
+	_vm->_soundVolume = ConfMan.getInt("sfx_volume");
 	_vm->_speechVolume = ConfMan.getInt("speech_volume");
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, _vm->_soundVolume);
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, _vm->_speechVolume);

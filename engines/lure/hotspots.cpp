@@ -728,7 +728,7 @@ void Hotspot::updateMovement2(CharacterMode value) {
 }
 
 void Hotspot::resetPosition() {
-	setPosition(x() & 0xf8 | 5, y());
+	setPosition((x() & 0xf8) | 5, y());
 	setDirection(direction());
 }
 
@@ -2277,7 +2277,7 @@ void Hotspot::startTalk(HotspotData *charHotspot, uint16 id) {
 void Hotspot::saveToStream(Common::WriteStream *stream) {
 	if (_data)
 		_data->npcSchedule.saveToStream(stream);
-	else 
+	else
 		// Hotspot doesn't have an underlying data object, so write out an empty actions list
 		stream->writeByte(0xff);
 
@@ -2322,7 +2322,7 @@ void Hotspot::saveToStream(Common::WriteStream *stream) {
 void Hotspot::loadFromStream(Common::ReadStream *stream) {
 	if (_data)
 		_data->npcSchedule.loadFromStream(stream);
-	else 
+	else
 		// Dummy read of terminator for empty actions list
 		assert(stream->readByte() == 0xff);
 
@@ -2654,11 +2654,13 @@ void HotspotTickHandlers::standardCharacterAnimHandler(Hotspot &h) {
 		break;
 
 	case START_WALKING:
-		// Start the player walking to the given destination
+		// Start the character walking to the given destination
 
 		debugC(ERROR_DETAILED, kLureDebugAnimations,
 			"Hotspot standard character exec start walking => (%d,%d)",
 			h.destX(), h.destY());
+
+		h.setCoveredFlag(VB_INITIAL);
 		h.setOccupied(false);
 		pathFinder.reset(paths);
 		h.currentActions().top().setAction(PROCESSING_PATH);
@@ -2760,11 +2762,11 @@ void HotspotTickHandlers::standardCharacterAnimHandler(Hotspot &h) {
 				// Walking done
 				h.currentActions().top().setAction(DISPATCH_ACTION);
 
-			if (h.destHotspotId() != 0) {
+//			if (h.destHotspotId() != 0) {
 				// Walking to an exit, check for any required room change
 				if (Support::checkRoomChange(h))
 					break;
-			}
+//			}
 		}
 
 		h.setOccupied(true);
@@ -2988,6 +2990,7 @@ void HotspotTickHandlers::playerAnimHandler(Hotspot &h) {
 
 	case START_WALKING:
 		// Start the player walking to the given destination
+		h.setCoveredFlag(VB_INITIAL);
 		h.setOccupied(false);
 
 		// Reset the path finder / walking sequence
@@ -3156,7 +3159,7 @@ void HotspotTickHandlers::followerAnimHandler(Hotspot &h) {
 	}
 
 	if (scheduleId == 0) {
-		// No special schedule to perform, so simply set a random action
+		// No special schedule to perform, so simply set a random destination
 		h.setRandomDest();
 	} else {
 		// Prepare the follower to standard the specified schedule
@@ -4508,16 +4511,23 @@ void PathFinder::loadFromStream(Common::ReadStream *stream) {
 // finds a list of character animations whose base area are impinging
 // that of the specified character (ie. are bumping into them)
 
-int Support::findIntersectingCharacters(Hotspot &h, uint16 *charList) {
+int Support::findIntersectingCharacters(Hotspot &h, uint16 *charList, int16 xp, int16 yp, int roomNumber) {
 	int numImpinging = 0;
 	Resources &res = Resources::getReference();
 	Rect r;
 	uint16 hotspotY;
 
-	r.left = h.x();
-	r.right = h.x() + h.widthCopy();
-	r.top = h.y() + h.heightCopy() - h.yCorrection() - h.charRectY();
-	r.bottom = h.y() + h.heightCopy() + h.charRectY();
+	// If a specific x/y/room isn't provided, use the specified hotspot's current location
+	if (roomNumber == -1) {
+		xp = h.x();
+		yp = h.y();
+		roomNumber = h.roomNumber();
+	}
+
+	r.left = xp;
+	r.right = xp + h.widthCopy();
+	r.top = yp + h.heightCopy() - h.yCorrection() - h.charRectY();
+	r.bottom = yp + h.heightCopy() + h.charRectY();
 
 	HotspotList::iterator i;
 	for (i = res.activeHotspots().begin(); i != res.activeHotspots().end(); ++i) {
@@ -4525,7 +4535,7 @@ int Support::findIntersectingCharacters(Hotspot &h, uint16 *charList) {
 
 		// Check for basic reasons to skip checking the animation
 		if ((h.hotspotId() == hotspot.hotspotId()) || (hotspot.layer() == 0) ||
-			(h.roomNumber() != hotspot.roomNumber()) ||
+			(roomNumber != hotspot.roomNumber()) ||
 			(hotspot.hotspotId() >= FIRST_NONCHARACTER_ID) ||
 			hotspot.skipFlag()) continue;
 		// TODO: See why si+ANIM_HOTSPOT_OFFSET compared aganst di+ANIM_VOICE_CTR
@@ -4548,9 +4558,9 @@ int Support::findIntersectingCharacters(Hotspot &h, uint16 *charList) {
 
 // Returns true if any other characters are intersecting the specified one
 
-bool Support::checkForIntersectingCharacter(Hotspot &h) {
+bool Support::checkForIntersectingCharacter(Hotspot &h, int16 xp, int16 yp, int roomNumber) {
 	uint16 tempList[MAX_NUM_IMPINGING];
-	return findIntersectingCharacters(h, tempList) != 0;
+	return findIntersectingCharacters(h, tempList, xp, yp, roomNumber) != 0;
 }
 
 // Check whether a character needs to change the room they're in
@@ -4584,15 +4594,11 @@ void Support::characterChangeRoom(Hotspot &h, uint16 roomNumber,
 	if (h.hotspotId() == PLAYER_ID) {
 		// Room change code for the player
 		if (room.cursorState() != CS_NONE) return;
-
-		h.setDirection(dir);
 		PlayerNewPosition &p = fields.playerNewPos();
-		p.roomNumber = roomNumber;
-		p.position.x = newX;
-		p.position.y = newY - 48;
 
-		// TODO: Double-check.. is it impinging in leaving room (right now) or entering room
-		if (checkForIntersectingCharacter(h)) {
+		if (checkForIntersectingCharacter(h, newX, newY - 48, roomNumber)) {
+			// Another character is blocking the exit in the other room, so set the player to
+			// temporarily move to a random destination in the current room
 			h.tempDest().position.x = h.destX();
 			h.tempDest().position.y = h.destY();
 			h.tempDest().counter = 1;
@@ -4602,12 +4608,20 @@ void Support::characterChangeRoom(Hotspot &h, uint16 roomNumber,
 			h.setDestHotspot(0);
 			h.setRandomDest();
 			p.roomNumber = 0;
+		} else {
+			// Flag the new location to move the player to (which will be handled by the outer game loop)
+			h.setDirection(dir);
+			p.roomNumber = roomNumber;
+			p.position.x = newX;
+			p.position.y = newY - 48;
 		}
 
 	} else {
 		// Any other character changing room
+		newX = (newX & 0xfff8) | 5;
+		newY = (newY - h.heightCopy()) & 0xfff8;
 
-		if (checkForIntersectingCharacter(h)) {
+		if (checkForIntersectingCharacter(h, newX, newY, roomNumber)) {
 			// Character is blocked, so add a handler for handling it
 			uint16 dataId = res.getCharOffset(0);
 			CharacterScheduleEntry *entry = res.charSchedules().getEntry(dataId);
@@ -4615,7 +4629,7 @@ void Support::characterChangeRoom(Hotspot &h, uint16 roomNumber,
 		} else {
 			// Handle character room change
 			h.setRoomNumber(roomNumber);
-			h.setPosition((newX & 0xfff8) | 5, (newY - h.heightCopy()) & 0xfff8);
+			h.setPosition(newX, newY);
 			h.setSkipFlag(true);
 			h.setDirection(dir);
 

@@ -66,7 +66,6 @@ Screen::Screen(OSystem *pSystem, Disk *pDisk, SkyCompact *skyCompact) {
 	int i;
 	uint8 tmpPal[1024];
 
-	_system->initSize(FULL_SCREEN_WIDTH, FULL_SCREEN_HEIGHT);
 	_gameGrid = (uint8 *)malloc(GRID_X * GRID_Y * 2);
 	forceRefresh();
 
@@ -402,7 +401,8 @@ void Screen::waitForTimer(void) {
 		Common::Event event;
 
 		_system->delayMillis(10);
-		while (eventMan->pollEvent(event));
+		while (eventMan->pollEvent(event))
+			;
 	}
 }
 
@@ -412,7 +412,8 @@ void Screen::waitForSequence(void) {
 		Common::Event event;
 
 		_system->delayMillis(20);
-		while (eventMan->pollEvent(event));
+		while (eventMan->pollEvent(event))
+			;
 	}
 }
 

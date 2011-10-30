@@ -19,11 +19,11 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  *
  */
- 
+
 #include "dsoptions.h"
 #include "dsmain.h"
 #include "gui/dialog.h"
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
 #include "gui/ListWidget.h"
 #include "gui/TabWidget.h"
 #include "osystem_ds.h"
@@ -33,18 +33,25 @@
 
 #define ALLOW_CPU_SCALER
 
-#ifdef DS_SCUMM_BUILD
-namespace Scumm {
-	extern Common::StringList generateSavegameList(Scumm::ScummEngine *scumm, bool saveMode);
-	extern Scumm::ScummEngine *g_scumm;
-}
-#endif
-
 namespace DS {
+
+static bool confGetBool(Common::String key, bool defaultVal) {
+	if (ConfMan.hasKey(key, "ds"))
+		return ConfMan.getBool(key, "ds");
+	return defaultVal;
+}
+
+static int confGetInt(Common::String key, int defaultVal) {
+	if (ConfMan.hasKey(key, "ds"))
+		return ConfMan.getInt(key, "ds");
+	return defaultVal;
+}
+
+
 
 DSOptionsDialog::DSOptionsDialog() : GUI::Dialog(0, 0, 320 - 10, 230 - 40) {
 
-	addButton(this, 10, 170, "Close", GUI::kCloseCmd, 'C');
+	new GUI::ButtonWidget(this, 10, 170, 72, 16, "Close", GUI::kCloseCmd, 'C');
 	_tab = new GUI::TabWidget(this, 5, 5, 300, 230 - 20 - 40 - 10);
 
 	_tab->addTab("Controls");
@@ -54,29 +61,29 @@ DSOptionsDialog::DSOptionsDialog() : GUI::Dialog(0, 0, 320 - 10, 230 - 40) {
 	_showCursorCheckbox = new GUI::CheckboxWidget(_tab, 150, 5, 130, 20, "Show mouse cursor", 0, 'T');
 	_snapToBorderCheckbox = new GUI::CheckboxWidget(_tab, 150, 20, 130, 20, "Snap to edges", 0, 'T');
 
-	new GUI::StaticTextWidget(_tab, 20, 35, 100, 15, "Touch X Offset", GUI::kTextAlignLeft);
+	new GUI::StaticTextWidget(_tab, 20, 35, 100, 15, "Touch X Offset", Graphics::kTextAlignLeft);
 	_touchX = new GUI::SliderWidget(_tab, 130, 35, 130, 12, 1);
 	_touchX->setMinValue(-8);
 	_touchX->setMaxValue(+8);
 	_touchX->setValue(0);
 	_touchX->setFlags(GUI::WIDGET_CLEARBG);
 
-	new GUI::StaticTextWidget(_tab, 20, 50, 100, 15, "Touch Y Offset", GUI::kTextAlignLeft);
+	new GUI::StaticTextWidget(_tab, 20, 50, 100, 15, "Touch Y Offset", Graphics::kTextAlignLeft);
 	_touchY = new GUI::SliderWidget(_tab, 130, 50, 130, 12, 2);
 	_touchY->setMinValue(-8);
 	_touchY->setMaxValue(+8);
 	_touchY->setValue(0);
 	_touchY->setFlags(GUI::WIDGET_CLEARBG);
 
-	new GUI::StaticTextWidget(_tab, 130 + 65 - 10, 65, 20, 15, "0", GUI::kTextAlignCenter);
-	new GUI::StaticTextWidget(_tab, 130 + 130 - 10, 65, 20, 15, "8", GUI::kTextAlignCenter);
-	new GUI::StaticTextWidget(_tab, 130 - 20, 65, 20, 15, "-8", GUI::kTextAlignCenter);
+	new GUI::StaticTextWidget(_tab, 130 + 65 - 10, 65, 20, 15, "0", Graphics::kTextAlignCenter);
+	new GUI::StaticTextWidget(_tab, 130 + 130 - 10, 65, 20, 15, "8", Graphics::kTextAlignCenter);
+	new GUI::StaticTextWidget(_tab, 130 - 20, 65, 20, 15, "-8", Graphics::kTextAlignCenter);
 
 
 	_touchPadStyle = new GUI::CheckboxWidget(_tab, 5, 80, 270, 20, "Use laptop trackpad-style cursor control", 0x20000001, 'T');
 	_screenTaps = new GUI::CheckboxWidget(_tab, 5, 95, 285, 20, "Tap for left click, double tap right click", 0x20000002, 'T');
 
-	_sensitivityLabel = new GUI::StaticTextWidget(_tab, 20, 110, 110, 15, "Sensitivity", GUI::kTextAlignLeft);
+	_sensitivityLabel = new GUI::StaticTextWidget(_tab, 20, 110, 110, 15, "Sensitivity", Graphics::kTextAlignLeft);
 	_sensitivity = new GUI::SliderWidget(_tab, 130, 110, 130, 12, 1);
 	_sensitivity->setMinValue(4);
 	_sensitivity->setMaxValue(16);
@@ -85,13 +92,13 @@ DSOptionsDialog::DSOptionsDialog() : GUI::Dialog(0, 0, 320 - 10, 230 - 40) {
 
 	_tab->addTab("Graphics");
 
-	new GUI::StaticTextWidget(_tab, 5, 70, 180, 15, "Initial top screen scale:", GUI::kTextAlignLeft);
+	new GUI::StaticTextWidget(_tab, 5, 70, 180, 15, "Initial top screen scale:", Graphics::kTextAlignLeft);
 
 	_100PercentCheckbox = new GUI::CheckboxWidget(_tab, 5, 85, 230, 20, "100%", 0x30000001, 'T');
 	_150PercentCheckbox = new GUI::CheckboxWidget(_tab, 5, 100, 230, 20, "150%", 0x30000002, 'T');
 	_200PercentCheckbox = new GUI::CheckboxWidget(_tab, 5, 115, 230, 20, "200%", 0x30000003, 'T');
 
-	new GUI::StaticTextWidget(_tab, 5, 5, 180, 15, "Main screen scaling:", GUI::kTextAlignLeft);
+	new GUI::StaticTextWidget(_tab, 5, 5, 180, 15, "Main screen scaling:", Graphics::kTextAlignLeft);
 
 	_hardScaler = new GUI::CheckboxWidget(_tab, 5, 20, 270, 20, "Hardware scale (fast, but low quality)", 0x10000001, 'T');
 	_cpuScaler = new GUI::CheckboxWidget(_tab, 5, 35, 270, 20, "Software scale (good quality, but slower)", 0x10000002, 'S');
@@ -105,66 +112,39 @@ DSOptionsDialog::DSOptionsDialog() : GUI::Dialog(0, 0, 320 - 10, 230 - 40) {
 	_tab->setActiveTab(0);
 
 	_radioButtonMode = false;
-	
+
 #ifdef DS_SCUMM_BUILD
 	if (!DS::isGBAMPAvailable()) {
 //		addButton(this, 100, 140, "Delete Save", 'dels', 'D');
 	}
 #endif
 
-//	new GUI::StaticTextWidget(this, 90, 10, 130, 15, "ScummVM DS Options", GUI::kTextAlignCenter);
+//	new GUI::StaticTextWidget(this, 90, 10, 130, 15, "ScummVM DS Options", Graphics::kTextAlignCenter);
 
 
 //#ifdef ALLOW_CPU_SCALER
 //	_cpuScaler = new GUI::CheckboxWidget(this, 160, 115, 90, 20, "CPU scaler", 0, 'T');
 //#endif
 
-	
 
-
-
-
-#ifdef DS_SCUMM_BUILD
-	_delDialog = new Scumm::SaveLoadChooser("Delete game:", "Delete", false, Scumm::g_scumm);
-#endif
-
-	if (ConfMan.hasKey("snaptoborder", "ds")) {
-		_snapToBorderCheckbox->setState(ConfMan.getBool("snaptoborder", "ds"));
-	} else {
 #ifdef DS_BUILD_D
-		_snapToBorderCheckbox->setState(true);
+	_snapToBorderCheckbox->setState(confGetBool("snaptoborder", true));
 #else
-		_snapToBorderCheckbox->setState(false);
+	_snapToBorderCheckbox->setState(confGetBool("snaptoborder", false));
 #endif
-	}
 
-	if (ConfMan.hasKey("showcursor", "ds")) {
-		_showCursorCheckbox->setState(ConfMan.getBool("showcursor", "ds"));
-	} else {
-		_showCursorCheckbox->setState(true);
-	}
+	_showCursorCheckbox->setState(confGetBool("showcursor", true));
+	_leftHandedCheckbox->setState(confGetBool("lefthanded", false));
+	_unscaledCheckbox->setState(confGetBool("unscaled", false));
 
-	if (ConfMan.hasKey("lefthanded", "ds")) {
-		_leftHandedCheckbox->setState(ConfMan.getBool("lefthanded", "ds"));
-	} else {
-		_leftHandedCheckbox->setState(false);
-	}
 
-	if (ConfMan.hasKey("unscaled", "ds")) {
-		_unscaledCheckbox->setState(ConfMan.getBool("unscaled", "ds"));
-	} else {
-		_unscaledCheckbox->setState(false);
-	}
-
-	
 	if (ConfMan.hasKey("topscreenzoom", "ds")) {
 
-		_100PercentCheckbox->setState(false);		
-		_150PercentCheckbox->setState(false);		
-		_200PercentCheckbox->setState(false);		
-		
-		switch (ConfMan.getInt("topscreenzoom", "ds"))
-		{
+		_100PercentCheckbox->setState(false);
+		_150PercentCheckbox->setState(false);
+		_200PercentCheckbox->setState(false);
+
+		switch (ConfMan.getInt("topscreenzoom", "ds")) {
 			case 100: {
 				_100PercentCheckbox->setState(true);
 				break;
@@ -188,57 +168,21 @@ DSOptionsDialog::DSOptionsDialog() : GUI::Dialog(0, 0, 320 - 10, 230 - 40) {
 		_150PercentCheckbox->setState(true);
 	}
 
-	if (ConfMan.hasKey("22khzaudio", "ds")) {
-		_highQualityAudioCheckbox->setState(ConfMan.getBool("22khzaudio", "ds"));
-	} else {
-		_highQualityAudioCheckbox->setState(false);
-	}
-
-	if (ConfMan.hasKey("disablepoweroff", "ds")) {
-		_disablePowerOff->setState(ConfMan.getBool("disablepoweroff", "ds"));
-	} else {
-		_disablePowerOff->setState(false);
-	}
+	_highQualityAudioCheckbox->setState(confGetBool("22khzaudio", false));
+	_disablePowerOff->setState(confGetBool("disablepoweroff", false));
 
     #ifdef ALLOW_CPU_SCALER
-	if (ConfMan.hasKey("cpu_scaler", "ds")) {
-		_cpuScaler->setState(ConfMan.getBool("cpu_scaler", "ds"));
-	} else {
-		_cpuScaler->setState(false);
-	}
+	_cpuScaler->setState(confGetBool("cpu_scaler", false));
     #endif
 
 	_indyFightCheckbox->setState(DS::getIndyFightState());
 
-	if (ConfMan.hasKey("xoffset", "ds")) {
-		_touchX->setValue(ConfMan.getInt("xoffset", "ds"));
-	} else {
-		_touchX->setValue(0);
-	}
+	_touchX->setValue(confGetInt("xoffset", 0));
+	_touchY->setValue(confGetInt("yoffset", 0));
+	_sensitivity->setValue(confGetInt("sensitivity", 8));
 
-	if (ConfMan.hasKey("yoffset", "ds")) {
-		_touchY->setValue(ConfMan.getInt("yoffset", "ds"));
-	} else {
-		_touchY->setValue(0);
-	}
-
-	if (ConfMan.hasKey("sensitivity", "ds")) {
-		_sensitivity->setValue(ConfMan.getInt("sensitivity", "ds"));
-	} else {
-		_sensitivity->setValue(8);
-	}
-
-	if (ConfMan.hasKey("touchpad", "ds")) {
-		_touchPadStyle->setState(ConfMan.getBool("touchpad", "ds"));
-	} else {
-		_touchPadStyle->setState(0);
-	}
-
-	if (ConfMan.hasKey("screentaps", "ds")) {
-		_screenTaps->setState(ConfMan.getBool("screentaps", "ds"));
-	} else {
-		_screenTaps->setState(0);
-	}
+	_touchPadStyle->setState(confGetBool("touchpad", false));
+	_screenTaps->setState(confGetBool("screentaps", false));
 
 	_screenTaps->setEnabled(!_touchPadStyle->getState());
 	_sensitivity->setEnabled(_touchPadStyle->getState());
@@ -248,7 +192,7 @@ DSOptionsDialog::DSOptionsDialog() : GUI::Dialog(0, 0, 320 - 10, 230 - 40) {
 	if (!_cpuScaler->getState() && !_unscaledCheckbox->getState()) {
 		_hardScaler->setState(true);
 	}
-		
+
 	_radioButtonMode = true;
 }
 
@@ -295,28 +239,23 @@ void DSOptionsDialog::handleCommand(GUI::CommandSender *sender, uint32 cmd, uint
 
 	static bool guard = false;
 
-	if ((!guard) && (_radioButtonMode))
-	{
+	if ((!guard) && (_radioButtonMode)) {
 		guard = true;
 
-		if ((cmd & 0xFF000000) == 0x10000000)
-		{
+		if ((cmd & 0xFF000000) == 0x10000000) {
 			_cpuScaler->setState(false);
 			_hardScaler->setState(false);
 			_unscaledCheckbox->setState(false);
-		
-			if ((sender == _cpuScaler) && (cmd == 0x10000002))
-			{
+
+			if ((sender == _cpuScaler) && (cmd == 0x10000002)) {
 				_cpuScaler->setState(true);
 			}
-		
-			if ((sender == _hardScaler) && (cmd == 0x10000001))
-			{
+
+			if ((sender == _hardScaler) && (cmd == 0x10000001)) {
 				_hardScaler->setState(true);
 			}
-	
-			if ((sender == _unscaledCheckbox) && (cmd == 0x10000003))
-			{
+
+			if ((sender == _unscaledCheckbox) && (cmd == 0x10000003)) {
 				_unscaledCheckbox->setState(true);
 			}
 		}
@@ -393,50 +332,22 @@ void DSOptionsDialog::handleCommand(GUI::CommandSender *sender, uint32 cmd, uint
 		updateConfigManager();
 		close();
 	}
-	
-#ifdef DS_SCUMM_BUILD
-/*	if (cmd == 'dels') {
-		_delDialog->setList(Scumm::generateSavegameList(Scumm::g_scumm, false));
-		_delDialog->handleCommand(NULL, GUI::kListSelectionChangedCmd, 0);
-		
-		Common::Event event;
-		event.type = Common::EVENT_KEYDOWN;
-		event.kbd.ascii = 0;
-		event.kbd.keycode = Common::KEYCODE_DOWN;
-		OSystem_DS::instance()->addEvent(event);
-
-		event.type = Common::EVENT_KEYUP;
-		OSystem_DS::instance()->addEvent(event);
-				
-		int idx = _delDialog->runModal();
-		
-		if (idx >= 0) {
-			char name[256];
-			Scumm::g_scumm->makeSavegameName(name, idx, false);
-			if (!DS::isGBAMPAvailable()) {
-				((DSSaveFileManager *) (OSystem_DS::instance()->getSavefileManager()))->deleteFile(name);
-			}
-		}
-		
-	}*/
-#endif
-	
-
 }
 
 void togglePause() {
 	// Toggle pause mode by simulating pressing 'p'.  Not a good way of doing things!
+	// FIXME: What is this code meant to do ?!?
 
 	if (getCurrentGame()->control == CONT_SCUMM_ORIGINAL) {
 		Common::Event event;
 		OSystem_DS* system = OSystem_DS::instance();
 
 		event.type = Common::EVENT_KEYDOWN;
-		event.kbd.keycode = Common::KEYCODE_p;		
+		event.kbd.keycode = Common::KEYCODE_p;
 		event.kbd.ascii = 'p';
 		event.kbd.flags = 0;
 		system->addEvent(event);
-	
+
 		event.type = Common::EVENT_KEYUP;
 		system->addEvent(event);
 	}
@@ -447,12 +358,12 @@ void showOptionsDialog() {
 	togglePause();
 
 	DS::displayMode16Bit();
-	
+
 
 	DSOptionsDialog* d = new DSOptionsDialog();
 	d->runModal();
 	delete d;
-	
+
 	DS::displayMode8Bit();
 
 	togglePause();
@@ -463,33 +374,16 @@ void setOptions() {
 
 	ConfMan.addGameDomain("ds");
 
-	if (ConfMan.hasKey("lefthanded", "ds")) {
-		DS::setLeftHanded(ConfMan.getBool("lefthanded", "ds"));
-	} else {
-		DS::setLeftHanded(false);
-	}
+	DS::setLeftHanded(confGetBool("lefthanded", false));
+	DS::setMouseCursorVisible(confGetBool("showcursor", true));
 
-	if (ConfMan.hasKey("showcursor", "ds")) {
-		DS::setMouseCursorVisible(ConfMan.getBool("showcursor", "ds"));
-	} else {
-		DS::setMouseCursorVisible(true);
-	}
-
-	if (ConfMan.hasKey("snaptoborder", "ds")) {
-		DS::setSnapToBorder(ConfMan.getBool("snaptoborder", "ds"));
-	} else {
 #ifdef DS_BUILD_D
-		DS::setSnapToBorder(true);
+	DS::setSnapToBorder(confGetBool("snaptoborder", true));
 #else
-		DS::setSnapToBorder(false);
+	DS::setSnapToBorder(confGetBool("snaptoborder", false));
 #endif
-	}
 
-	if (ConfMan.hasKey("unscaled", "ds")) {
-		DS::setUnscaledMode(ConfMan.getBool("unscaled", "ds"));
-	} else {
-		DS::setUnscaledMode(false);
-	}
+	DS::setUnscaledMode(confGetBool("unscaled", false));
 
 	if (firstLoad) {
 		if (ConfMan.hasKey("topscreenzoom", "ds")) {
@@ -503,41 +397,19 @@ void setOptions() {
 		}
 	}
 
-	if (ConfMan.hasKey("xoffset", "ds")) {
-		DS::setTouchXOffset(ConfMan.getInt("xoffset", "ds"));
-	} else {
-		DS::setTouchXOffset(0);
-	}
-
-	if (ConfMan.hasKey("yoffset", "ds")) {
-		DS::setTouchYOffset(ConfMan.getInt("yoffset", "ds"));
-	} else {
-		DS::setTouchXOffset(0);
-	}
-
-	if (ConfMan.hasKey("sensitivity", "ds")) {
-		DS::setSensitivity(ConfMan.getInt("sensitivity", "ds"));
-	} else {
-		DS::setSensitivity(8);
-	}
+	DS::setTouchXOffset(confGetInt("xoffset", 0));
+	DS::setTouchYOffset(confGetInt("yoffset", 0));
+	DS::setSensitivity(confGetInt("sensitivity", 8));
 
 #ifdef ALLOW_CPU_SCALER
-	if (ConfMan.hasKey("cpu_scaler", "ds")) {
-		DS::setCpuScalerEnable(ConfMan.getBool("cpu_scaler", "ds"));
-	} else {
-		DS::setCpuScalerEnable(false);
-	}
-#endif	
+	DS::setCpuScalerEnable(confGetBool("cpu_scaler", false));
+#endif
 
-	if (ConfMan.hasKey("screentaps", "ds")) {
-		DS::setTapScreenClicksEnable(ConfMan.getBool("screentaps", "ds"));
-	} else {
-		DS::setTapScreenClicksEnable(false);
-	}
+	DS::setTapScreenClicksEnable(confGetBool("screentaps", false));
 
 	if (ConfMan.hasKey("touchpad", "ds")) {
 		bool enable = ConfMan.getBool("touchpad", "ds");
-		
+
 		DS::setTrackPadStyleEnable(enable);
 
 		if ((enable) and (firstLoad)) {
@@ -549,7 +421,7 @@ void setOptions() {
 		if (enable) {
 			DS::setTapScreenClicksEnable(true);
 		}
-			
+
 	} else {
 		DS::setTrackPadStyleEnable(false);
 	}
@@ -559,4 +431,3 @@ void setOptions() {
 }
 
 }
-

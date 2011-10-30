@@ -25,6 +25,7 @@
 
 #include "common/endian.h"
 #include "common/file.h"
+#include "graphics/dither.h"
 
 #include "gob/gob.h"
 #include "gob/inter.h"
@@ -32,6 +33,9 @@
 #include "gob/game.h"
 #include "gob/parse.h"
 #include "gob/draw.h"
+#include "gob/sound/sound.h"
+#include "gob/videoplayer.h"
+#include "gob/indeo3.h"
 
 namespace Gob {
 
@@ -39,79 +43,11 @@ namespace Gob {
 
 const int Inter_v6::_goblinFuncLookUp[][2] = {
 	{0, 0},
-	{1, 0},
-	{80, 1},
-	{81, 2},
-	{82, 3},
-	{83, 4},
-	{84, 5},
-	{85, 6},
-	{86, 7},
-	{87, 0},
-	{88, 0},
-	{89, 0},
-	{90, 0},
-	{91, 0},
-	{92, 8},
-	{93, 0},
-	{94, 0},
-	{95, 9},
-	{96, 10},
-	{97, 11},
-	{98, 12},
-	{99, 0},
-	{100, 13},
-	{200, 14},
-	{30, 24},
-	{32, 25},
-	{33, 26},
-	{34, 27},
-	{35, 28},
-	{36, 29},
-	{37, 30},
-	{40, 31},
-	{41, 32},
-	{42, 33},
-	{43, 34},
-	{44, 35},
-	{50, 36},
-	{52, 37},
-	{53, 38},
-	{100, 39},
-	{152, 40},
-	{200, 41},
-	{201, 42},
-	{202, 43},
-	{203, 44},
-	{204, 45},
-	{250, 46},
-	{251, 47},
-	{252, 48},
-	{500, 49},
-	{502, 50},
-	{503, 51},
-	{600, 52},
-	{601, 53},
-	{602, 54},
-	{603, 55},
-	{604, 56},
-	{605, 57},
-	{1000, 58},
-	{1001, 59},
-	{1002, 60},
-	{1003, 61},
-	{1004, 62},
-	{1005, 63},
-	{1006, 64},
-	{1008, 65},
-	{1009, 66},
-	{1010, 67},
-	{1011, 68},
-	{1015, 69},
-	{2005, 70}
 };
 
 Inter_v6::Inter_v6(GobEngine *vm) : Inter_v5(vm) {
+	_gotFirstPalette = false;
+
 	setupOpcodes();
 }
 
@@ -198,10 +134,10 @@ void Inter_v6::setupOpcodes() {
 		{NULL, ""},
 		{NULL, ""},
 		/* 40 */
-		OPCODE(o2_totSub),
+		OPCODE(o6_totSub),
 		OPCODE(o2_switchTotSub),
-		OPCODE(o2_copyVars),
-		OPCODE(o2_pasteVars),
+		OPCODE(o2_pushVars),
+		OPCODE(o2_popVars),
 		/* 44 */
 		{NULL, ""},
 		{NULL, ""},
@@ -278,13 +214,13 @@ void Inter_v6::setupOpcodes() {
 		{NULL, ""},
 		{NULL, ""},
 		/* 80 */
-		OPCODE(o4_initScreen),
+		OPCODE(o5_initScreen),
 		OPCODE(o2_scroll),
 		OPCODE(o2_setScrollOffset),
-		OPCODE(o4_playVmdOrMusic),
+		OPCODE(o6_playVmdOrMusic),
 		/* 84 */
 		OPCODE(o2_getImdInfo),
-		OPCODE(o2_openItk),
+		OPCODE(o6_openItk),
 		OPCODE(o2_closeItk),
 		OPCODE(o2_setImdFrontSurf),
 		/* 88 */
@@ -464,7 +400,7 @@ void Inter_v6::setupOpcodes() {
 		{NULL, ""},
 		OPCODE(o2_printText),
 		OPCODE(o1_loadTot),
-		OPCODE(o1_palLoad),
+		OPCODE(o6_palLoad),
 		/* 14 */
 		OPCODE(o1_keyFunc),
 		OPCODE(o1_capturePush),
@@ -472,7 +408,7 @@ void Inter_v6::setupOpcodes() {
 		OPCODE(o2_animPalInit),
 		/* 18 */
 		OPCODE(o2_addCollision),
-		OPCODE(o2_freeCollision),
+		OPCODE(o6_freeCollision),
 		OPCODE(o3_getTotTextItemPart),
 		{NULL, ""},
 		/* 1C */
@@ -488,7 +424,7 @@ void Inter_v6::setupOpcodes() {
 		/* 24 */
 		OPCODE(o1_putPixel),
 		OPCODE(o2_goblinFunc),
-		OPCODE(o2_createSprite),
+		OPCODE(o1_createSprite),
 		OPCODE(o1_freeSprite),
 		/* 28 */
 		{NULL, ""},
@@ -504,7 +440,7 @@ void Inter_v6::setupOpcodes() {
 		OPCODE(o1_returnTo),
 		OPCODE(o1_loadSpriteContent),
 		OPCODE(o1_copySprite),
-		OPCODE(o1_fillRect),
+		OPCODE(o6_fillRect),
 		/* 34 */
 		OPCODE(o1_drawLine),
 		OPCODE(o1_strToLong),
@@ -652,6 +588,8 @@ void Inter_v6::executeDrawOpcode(byte i) {
 }
 
 bool Inter_v6::executeFuncOpcode(byte i, byte j, OpFuncParams &params) {
+	_vm->_video->_palLUT->buildNext();
+
 	debugC(1, kDebugFuncOp, "opcodeFunc %d.%d [0x%X.0x%X] (%s) - %s, %d, %d",
 			i, j, i, j, getOpcodeFuncDesc(i, j), _vm->_game->_curTotFile,
 			(uint) (_vm->_global->_inter_execPtr - _vm->_game->_totFileData),
@@ -716,67 +654,188 @@ const char *Inter_v6::getOpcodeGoblinDesc(int i) {
 	return "";
 }
 
-bool Inter_v6::o6_loadCursor(OpFuncParams &params) {
-	Game::TotResItem *itemPtr;
-	int16 width, height;
-	byte *dataBuf;
-	int32 offset;
-	int16 id;
-	int8 index;
+void Inter_v6::o6_totSub() {
+	char totFile[14];
+	byte length;
+	int flags;
+	int i;
 
-	id = load16();
+	length = *_vm->_global->_inter_execPtr++;
+	if ((length & 0x7F) > 13)
+		error("Length in o2_totSub is greater than 13 (%d)", length);
 
-	if (id == -1) {
-		byte str[10];
-
-		for (int i = 0; i < 9; i++)
-			str[i] = *_vm->_global->_inter_execPtr++;
-
-		str[9] = '\0';
-
-		uint16 var1 = load16();
-		int8 var2 = *_vm->_global->_inter_execPtr++;
-
-		warning("Urban Stub: loadCursor %d: \"%s\", %d, %d", id, str, var1, var2);
-
-	} else if (id == -2) {
-
-		uint16 var1 = load16();
-		uint16 var2 = load16();
-		int8 var3 = *_vm->_global->_inter_execPtr++;
-
-		warning("Urban Stub: loadCursor %d: %d, %d, %d", id, var1, var2, var3);
-
+	if (length & 0x80) {
+		evalExpr(0);
+		strcpy(totFile, _vm->_global->_inter_resStr);
 	} else {
-		index = (int8) *_vm->_global->_inter_execPtr++;
-
-		if ((index * _vm->_draw->_cursorWidth) >= _vm->_draw->_cursorSprites->getWidth())
-			return false;
-
-		itemPtr = &_vm->_game->_totResourceTable->items[id];
-		offset = itemPtr->offset;
-
-		if (offset < 0) {
-			offset = (-offset - 1) * 4;
-			dataBuf = _vm->_game->_imFileData +
-				(int32) READ_LE_UINT32(_vm->_game->_imFileData + offset);
-		} else
-			dataBuf = _vm->_game->_totResourceTable->dataPtr + szGame_TotResTable +
-				szGame_TotResItem * _vm->_game->_totResourceTable->itemsCount +
-				offset;
-
-		width = itemPtr->width;
-		height = itemPtr->height;
-
-		_vm->_video->fillRect(_vm->_draw->_cursorSprites,
-				index * _vm->_draw->_cursorWidth, 0,
-				index * _vm->_draw->_cursorWidth + _vm->_draw->_cursorWidth - 1,
-				_vm->_draw->_cursorHeight - 1, 0);
-
-		_vm->_video->drawPackedSprite(dataBuf, width, height,
-				index * _vm->_draw->_cursorWidth, 0, 0, _vm->_draw->_cursorSprites);
-		_vm->_draw->_cursorAnimLow[index] = 0;
+		for (i = 0; i < length; i++)
+			totFile[i] = (char) *_vm->_global->_inter_execPtr++;
+		totFile[i] = 0;
 	}
+
+	flags = *_vm->_global->_inter_execPtr++;
+
+	if (flags & 0x40)
+		warning("Urban Stub: o6_totSub(), flags & 0x40");
+
+	_vm->_game->totSub(flags, totFile);
+}
+
+void Inter_v6::o6_playVmdOrMusic() {
+	char fileName[128];
+	int16 x, y;
+	int16 startFrame;
+	int16 lastFrame;
+	int16 breakKey;
+	int16 flags;
+	int16 palStart;
+	int16 palEnd;
+	uint16 palCmd;
+	bool close;
+
+	evalExpr(0);
+	strncpy0(fileName, _vm->_global->_inter_resStr, 127);
+
+	x = _vm->_parse->parseValExpr();
+	y = _vm->_parse->parseValExpr();
+	startFrame = _vm->_parse->parseValExpr();
+	lastFrame = _vm->_parse->parseValExpr();
+	breakKey = _vm->_parse->parseValExpr();
+	flags = _vm->_parse->parseValExpr();
+	palStart = _vm->_parse->parseValExpr();
+	palEnd = _vm->_parse->parseValExpr();
+	palCmd = 1 << (flags & 0x3F);
+
+	debugC(1, kDebugVideo, "Playing video \"%s\" @ %d+%d, frames %d - %d, "
+			"paletteCmd %d (%d - %d), flags %X", fileName, x, y, startFrame, lastFrame,
+			palCmd, palStart, palEnd, flags);
+
+	close = false;
+	if (lastFrame == -1) {
+		close = true;
+	} else if (lastFrame == -5) {
+		_vm->_sound->bgStop();
+		return;
+	} else if (lastFrame == -9) {
+		if (!strchr(fileName, '.'))
+			strcat(fileName, ".WA8");
+
+		probe16bitMusic(fileName);
+
+		_vm->_sound->bgStop();
+		_vm->_sound->bgPlay(fileName, SOUND_WAV);
+		return;
+	} else if (lastFrame == -10) {
+		_vm->_vidPlayer->primaryClose();
+		warning("Urban Stub: Video/Music command -10 (close video?)");
+		return;
+	} else if (lastFrame < 0) {
+		warning("Unknown Video/Music command: %d, %s", lastFrame, fileName);
+		return;
+	}
+
+	if (startFrame == -2) {
+		startFrame = 0;
+		lastFrame = -1;
+		close = false;
+	}
+
+	if ((fileName[0] != 0) && !_vm->_vidPlayer->primaryOpen(fileName, x, y, flags)) {
+		WRITE_VAR(11, (uint32) -1);
+		return;
+	}
+
+	if (startFrame >= 0) {
+		_vm->_game->_preventScroll = true;
+		_vm->_vidPlayer->primaryPlay(startFrame, lastFrame, breakKey,
+				palCmd, palStart, palEnd, 0, -1, false, -1, true);
+		_vm->_game->_preventScroll = false;
+	}
+
+	if (close)
+		_vm->_vidPlayer->primaryClose();
+}
+
+void Inter_v6::o6_openItk() {
+	char fileName[32];
+
+	evalExpr(0);
+	strncpy0(fileName, _vm->_global->_inter_resStr, 27);
+	if (!strchr(fileName, '.'))
+		strcat(fileName, ".ITK");
+
+	_vm->_dataIO->openDataFile(fileName, true);
+
+	// WORKAROUND: The CD number detection in Urban Runner is quite daft
+	// (it checks CD1.ITK - CD4.ITK and the first that's found determines
+	// the CD number), while its NO_CD modus wants everything in CD1.ITK.
+	// So we just open the other ITKs, too.
+	if (_vm->_game->_noCd && !scumm_stricmp(fileName, "CD1.ITK")) {
+		_vm->_dataIO->openDataFile("CD2.ITK", true);
+		_vm->_dataIO->openDataFile("CD3.ITK", true);
+		_vm->_dataIO->openDataFile("CD4.ITK", true);
+	}
+}
+
+bool Inter_v6::o6_loadCursor(OpFuncParams &params) {
+	int16 id = load16();
+
+	if ((id == -1) || (id == -2)) {
+		char file[10];
+
+		if (id == -1) {
+			for (int i = 0; i < 9; i++)
+				file[i] = *_vm->_global->_inter_execPtr++;
+		} else
+			strncpy(file, GET_VAR_STR(load16()), 10);
+
+		file[9] = '\0';
+
+		uint16 start = load16();
+		int8 index = (int8) *_vm->_global->_inter_execPtr++;
+
+		int vmdSlot = _vm->_vidPlayer->slotOpen(file);
+
+		if (vmdSlot == -1) {
+			warning("Can't open video \"%s\" as cursor", file);
+			return false;
+		}
+
+		int16 framesCount = _vm->_vidPlayer->getFramesCount(vmdSlot);
+
+		for (int i = 0; i < framesCount; i++) {
+			_vm->_vidPlayer->slotPlay(vmdSlot);
+			_vm->_vidPlayer->slotCopyFrame(vmdSlot, _vm->_draw->_cursorSprites->getVidMem(),
+					0, 0, _vm->_draw->_cursorWidth, _vm->_draw->_cursorWidth,
+					(start + i) * _vm->_draw->_cursorWidth, 0,
+					_vm->_draw->_cursorSprites->getWidth());
+		}
+
+		_vm->_vidPlayer->slotClose(vmdSlot);
+
+		_vm->_draw->_cursorAnimLow[index] = start;
+		_vm->_draw->_cursorAnimHigh[index] = framesCount + start - 1;
+		_vm->_draw->_cursorAnimDelays[index] = 10;
+
+		return false;
+	}
+
+	int8 index = (int8) *_vm->_global->_inter_execPtr++;
+
+	if ((index * _vm->_draw->_cursorWidth) >= _vm->_draw->_cursorSprites->getWidth())
+		return false;
+
+	int16 width, height;
+	byte *dataBuf = _vm->_game->loadTotResource(id, 0, &width, &height);
+
+	_vm->_video->fillRect(_vm->_draw->_cursorSprites,
+			index * _vm->_draw->_cursorWidth, 0,
+			index * _vm->_draw->_cursorWidth + _vm->_draw->_cursorWidth - 1,
+			_vm->_draw->_cursorHeight - 1, 0);
+
+	_vm->_video->drawPackedSprite(dataBuf, width, height,
+			index * _vm->_draw->_cursorWidth, 0, 0, _vm->_draw->_cursorSprites);
+	_vm->_draw->_cursorAnimLow[index] = 0;
 
 	return false;
 }
@@ -861,6 +920,112 @@ bool Inter_v6::o6_evaluateStore(OpFuncParams &params) {
 	}
 
 	return false;
+}
+
+bool Inter_v6::o6_palLoad(OpFuncParams &params) {
+	o1_palLoad(params);
+
+	if (_gotFirstPalette)
+		_vm->_video->_palLUT->setPalette((const byte *) _vm->_global->_pPaletteDesc->vgaPal,
+				Graphics::PaletteLUT::kPaletteRGB, 6, 0);
+
+	_gotFirstPalette = true;
+	return false;
+}
+
+bool Inter_v6::o6_freeCollision(OpFuncParams &params) {
+	int16 id;
+
+	id = _vm->_parse->parseValExpr();
+
+	switch (id + 5) {
+	case 0:
+		_vm->_game->pushCollisions(1);
+		break;
+	case 1:
+		_vm->_game->popCollisions();
+		break;
+	case 2:
+		_vm->_game->pushCollisions(2);
+		break;
+	case 3:
+		for (int i = 0; i < 150; i++) {
+			if (((_vm->_game->_collisionAreas[i].id & 0xF000) == 0xD000) ||
+					((_vm->_game->_collisionAreas[i].id & 0xF000) == 0x4000))
+				_vm->_game->_collisionAreas[i].left = 0xFFFF;
+		}
+		break;
+	case 4:
+		for (int i = 0; i < 150; i++) {
+			if ((_vm->_game->_collisionAreas[i].id & 0xF000) == 0xE000)
+				_vm->_game->_collisionAreas[i].left = 0xFFFF;
+		}
+		break;
+	default:
+		_vm->_game->freeCollision(0xE000 + id);
+		break;
+	}
+
+	return false;
+}
+
+bool Inter_v6::o6_fillRect(OpFuncParams &params) {
+	int16 destSurf;
+
+	_vm->_draw->_destSurface = destSurf = load16();
+
+	_vm->_draw->_destSpriteX = _vm->_parse->parseValExpr();
+	_vm->_draw->_destSpriteY = _vm->_parse->parseValExpr();
+	_vm->_draw->_spriteRight = _vm->_parse->parseValExpr();
+	_vm->_draw->_spriteBottom = _vm->_parse->parseValExpr();
+
+	evalExpr(0);
+
+	_vm->_draw->_backColor = _vm->_global->_inter_resVal & 0xFFFF;
+	uint16 word_63E64 = _vm->_global->_inter_resVal >> 16;
+
+	if (word_63E64 != 0)
+		warning("Urban Stub: o6_fillRect(), word_63E64 = %d", word_63E64);
+
+	if (_vm->_draw->_spriteRight < 0) {
+		_vm->_draw->_destSpriteX += _vm->_draw->_spriteRight - 1;
+		_vm->_draw->_spriteRight = -_vm->_draw->_spriteRight + 2;
+	}
+	if (_vm->_draw->_spriteBottom < 0) {
+		_vm->_draw->_destSpriteY += _vm->_draw->_spriteBottom - 1;
+		_vm->_draw->_spriteBottom = -_vm->_draw->_spriteBottom + 2;
+	}
+
+	if (destSurf & 0x80) {
+		warning("Urban Stub: o6_fillRect(), destSurf & 0x80");
+		return false;
+	}
+
+	if (!_vm->_draw->_spritesArray[(destSurf > 100) ? (destSurf - 80) : destSurf])
+		return false;
+
+	_vm->_draw->spriteOperation(DRAW_FILLRECT);
+	return false;
+}
+
+void Inter_v6::probe16bitMusic(char *fileName) {
+	int len = strlen(fileName);
+
+	if (len < 4)
+		return;
+
+	if (scumm_stricmp(fileName + len - 4, ".WA8"))
+		return;
+
+	fileName[len - 1] = 'V';
+
+	int16 handle;
+	if ((handle = _vm->_dataIO->openData(fileName)) >= 0) {
+		_vm->_dataIO->closeData(handle);
+		return;
+	}
+
+	fileName[len - 1] = '8';
 }
 
 } // End of namespace Gob

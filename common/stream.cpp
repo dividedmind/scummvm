@@ -85,74 +85,14 @@ bool MemoryReadStream::seek(int32 offs, int whence) {
 	assert(_pos <= _size);
 
 	// Reset end-of-stream flag on a successful seek
-	_eos = false;	
+	_eos = false;
 	return true;	// FIXME: STREAM REWRITE
 }
 
-#define LF 0x0A
-#define CR 0x0D
-
-char *SeekableReadStream::readLine_OLD(char *buf, size_t bufSize) {
-	assert(buf && bufSize > 0);
-	char *p = buf;
-	size_t len = 0;
-	char c;
-
-	if (buf == 0 || bufSize == 0 || eos()) {
-		return 0;
-	}
-
-	// We don't include the newline character(s) in the buffer, and we
-	// always terminate it - we never read more than len-1 characters.
-
-	// EOF is treated as a line break, unless it was the first character
-	// that was read.
-
-	// 0 is treated as a line break, even though it should never occur in
-	// a text file.
-
-	// DOS and Windows use CRLF line breaks
-	// Unix and OS X use LF line breaks
-	// Macintosh before OS X uses CR line breaks
-
-
-	c = readByte();
-	if (eos() || ioFailed()) {
-		return 0;
-	}
-
-	while (!eos() && len + 1 < bufSize) {
-
-		if (ioFailed())
-			return 0;
-
-		if (c == 0 || c == LF)
-			break;
-
-		if (c == CR) {
-			c = readByte();
-			if (c != LF && !eos())
-				seek(-1, SEEK_CUR);
-			break;
-		}
-
-		*p++ = c;
-		len++;
-
-		c = readByte();
-	}
-
-	// This should fix a bug while using readLine with Common::File
-	// it seems that it sets the eos flag after an invalid read
-	// and at the same time the ioFailed flag
-	// the config file parser fails out of that reason for the new themes
-	if (eos()) {
-		clearIOFailed();
-	}
-
-	*p = 0;
-	return buf;
-}
+enum {
+	LF = 0x0A,
+	CR = 0x0D
+};
 
 char *SeekableReadStream::readLine_NEW(char *buf, size_t bufSize) {
 	assert(buf != 0 && bufSize > 1);
@@ -161,7 +101,7 @@ char *SeekableReadStream::readLine_NEW(char *buf, size_t bufSize) {
 	char c = 0;
 
 	// If end-of-file occurs before any characters are read, return NULL
-	// and the buffer contents remain unchanged. 
+	// and the buffer contents remain unchanged.
 	if (eos() || err()) {
 		return 0;
 	}
@@ -207,7 +147,7 @@ char *SeekableReadStream::readLine_NEW(char *buf, size_t bufSize) {
 			// Treat CR & CR/LF as plain LF
 			c = LF;
 		}
-		
+
 		*p++ = c;
 		len++;
 	}
@@ -226,7 +166,7 @@ String SeekableReadStream::readLine() {
 			break;
 		line += buf;
 	}
-	
+
 	if (line.lastChar() == '\n')
 		line.deleteLastChar();
 
@@ -316,7 +256,7 @@ uint32 BufferedReadStream::read(void *dataPtr, uint32 dataSize) {
 			dataPtr = (byte *)dataPtr + bufBytesLeft;
 			dataSize -= bufBytesLeft;
 		}
-			
+
 		// At this point the buffer is empty. Now if the read request
 		// exceeds the buffer size, just satisfy it directly.
 		if (dataSize > _bufSize)
@@ -359,7 +299,7 @@ bool BufferedSeekableReadStream::seek(int32 offset, int whence) {
 		_pos = _bufSize;
 		_parentStream->seek(offset, whence);
 	}
-	
+
 	return true;	// FIXME: STREAM REWRITE
 }
 

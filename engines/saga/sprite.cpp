@@ -29,10 +29,11 @@
 
 #include "saga/gfx.h"
 #include "saga/scene.h"
-#include "saga/rscfile.h"
+#include "saga/resource.h"
 #include "saga/font.h"
 
 #include "saga/sprite.h"
+#include "saga/render.h"
 
 namespace Saga {
 
@@ -57,24 +58,28 @@ Sprite::Sprite(SagaEngine *vm) : _vm(vm) {
 		memoryError("Sprite::Sprite");
 	}
 
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		loadList(_vm->getResourceDescription()->mainSpritesResourceId, _mainSprites);
 		_arrowSprites = _saveReminderSprites = _inventorySprites = _mainSprites;
-	} else {
-		if (_vm->getGameId() == GID_IHNM_DEMO) {
+#ifdef ENABLE_IHNM
+	} else if (_vm->getGameId() == GID_IHNM) {
+		if (_vm->getFeatures() & GF_IHNM_DEMO) {
 			loadList(RID_IHNMDEMO_ARROW_SPRITES, _arrowSprites);
 			loadList(RID_IHNMDEMO_SAVEREMINDER_SPRITES, _saveReminderSprites);
 		} else {
 			loadList(RID_IHNM_ARROW_SPRITES, _arrowSprites);
 			loadList(RID_IHNM_SAVEREMINDER_SPRITES, _saveReminderSprites);
 		}
+#endif
+	} else {
+		error("Sprite: unknown game type");
 	}
 }
 
 Sprite::~Sprite(void) {
 	debug(8, "Shutting down sprite subsystem...");
 	_mainSprites.freeMem();
-	if (_vm->getGameType() == GType_IHNM) {
+	if (_vm->getGameId() == GID_IHNM) {
 		_inventorySprites.freeMem();
 		_arrowSprites.freeMem();
 		_saveReminderSprites.freeMem();
@@ -117,7 +122,7 @@ void Sprite::loadList(int resourceId, SpriteList &spriteList) {
 
 	spriteList.spriteCount = newSpriteCount;
 
-	bool bigHeader = _vm->getGameType() != GType_ITE || _vm->isMacResources();
+	bool bigHeader = _vm->getGameId() == GID_IHNM || _vm->isMacResources();
 
 	for (i = oldSpriteCount; i < spriteList.spriteCount; i++) {
 		spriteInfo = &spriteList.infoList[i];
@@ -129,6 +134,7 @@ void Sprite::loadList(int resourceId, SpriteList &spriteList) {
 		if (offset >= spriteListLength) {
 			// ITE Mac demos throw this warning
 			warning("Sprite::loadList offset exceeded");
+			spriteList.spriteCount = i;
 			return;
 		}
 
@@ -164,11 +170,12 @@ void Sprite::loadList(int resourceId, SpriteList &spriteList) {
 			memoryError("Sprite::loadList");
 		}
 
+#ifdef ENABLE_IHNM
 		// IHNM sprites are upside-down, for reasons which i can only
 		// assume are perverse. To simplify things, flip them now. Not
 		// at drawing time.
 
-		if (_vm->getGameType() == GType_IHNM) {
+		if (_vm->getGameId() == GID_IHNM) {
 			byte *src = _decodeBuf + spriteInfo->width * (spriteInfo->height - 1);
 			byte *dst = spriteInfo->decodedBuffer;
 
@@ -178,6 +185,7 @@ void Sprite::loadList(int resourceId, SpriteList &spriteList) {
 				dst += spriteInfo->width;
 			}
 		} else
+#endif
 			memcpy(spriteInfo->decodedBuffer, _decodeBuf, outputLength);
 	}
 
@@ -211,15 +219,16 @@ void Sprite::getScaledSpriteBuffer(SpriteList &spriteList, int spriteNumber, int
 	}
 }
 
-void Sprite::drawClip(Surface *ds, const Rect &clipRect, const Point &spritePointer, int width, int height, const byte *spriteBuffer) {
+void Sprite::drawClip(const Point &spritePointer, int width, int height, const byte *spriteBuffer, bool clipToScene) {
 	int clipWidth;
 	int clipHeight;
+	Common::Rect clipRect = clipToScene ? _vm->_scene->getSceneClip() : _vm->getDisplayClip();
 
 	int i, j, jo, io;
 	byte *bufRowPointer;
 	const byte *srcRowPointer;
 
-	bufRowPointer = (byte *)ds->pixels + ds->pitch * spritePointer.y;
+	bufRowPointer = _vm->_gfx->getBackBufferPixels() + _vm->_gfx->getBackBufferPitch() * spritePointer.y;
 	srcRowPointer = spriteBuffer;
 
 	clipWidth = CLIP(width, 0, clipRect.right - spritePointer.x);
@@ -232,15 +241,15 @@ void Sprite::drawClip(Surface *ds, const Rect &clipRect, const Point &spritePoin
 	}
 	if (spritePointer.y < clipRect.top) {
 		io = clipRect.top - spritePointer.y;
-		bufRowPointer += ds->pitch * io;
+		bufRowPointer += _vm->_gfx->getBackBufferPitch() * io;
 		srcRowPointer += width * io;
 	}
 
 	for (i = io; i < clipHeight; i++) {
 		for (j = jo; j < clipWidth; j++) {
-			assert((byte *)ds->pixels <= (byte *)(bufRowPointer + j + spritePointer.x));
-			assert(((byte *)ds->pixels + (_vm->getDisplayWidth() *
-				 _vm->getDisplayHeight())) > (byte *)(bufRowPointer + j + spritePointer.x));
+			assert(_vm->_gfx->getBackBufferPixels() <= (byte *)(bufRowPointer + j + spritePointer.x));
+			assert((_vm->_gfx->getBackBufferPixels() + (_vm->getDisplayInfo().width *
+				 _vm->getDisplayInfo().height)) > (byte *)(bufRowPointer + j + spritePointer.x));
 			assert((const byte *)spriteBuffer <= (const byte *)(srcRowPointer + j));
 			assert(((const byte *)spriteBuffer + (width * height)) > (const byte *)(srcRowPointer + j));
 
@@ -248,17 +257,25 @@ void Sprite::drawClip(Surface *ds, const Rect &clipRect, const Point &spritePoin
 				*(bufRowPointer + j + spritePointer.x) = *(srcRowPointer + j);
 			}
 		}
-		bufRowPointer += ds->pitch;
+		bufRowPointer += _vm->_gfx->getBackBufferPitch();
 		srcRowPointer += width;
 	}
+
+	int x1 = MAX<int>(spritePointer.x, 0);
+	int y1 = MAX<int>(spritePointer.y, 0);
+	int x2 = MIN<int>(MAX<int>(spritePointer.x + clipWidth, 0), clipRect.right);
+	int y2 = MIN<int>(MAX<int>(spritePointer.y + clipHeight, 0), clipRect.bottom);
+
+	if (x2 > x1 && y2 > y1)
+		_vm->_render->addDirtyRect(Common::Rect(x1, y1, x2, y2));
 }
 
-void Sprite::draw(Surface *ds, const Rect &clipRect, SpriteList &spriteList, int32 spriteNumber, const Point &screenCoord, int scale) {
-	const byte *spriteBuffer;
-	int width;
-	int height;
-	int xAlign;
-	int yAlign;
+void Sprite::draw(SpriteList &spriteList, int32 spriteNumber, const Point &screenCoord, int scale, bool clipToScene) {
+	const byte *spriteBuffer = NULL;
+	int width  = 0;
+	int height = 0;
+	int xAlign = 0;
+	int yAlign = 0;
 	Point spritePointer;
 
 	getScaledSpriteBuffer(spriteList, spriteNumber, scale, width, height, xAlign, yAlign, spriteBuffer);
@@ -266,15 +283,17 @@ void Sprite::draw(Surface *ds, const Rect &clipRect, SpriteList &spriteList, int
 	spritePointer.x = screenCoord.x + xAlign;
 	spritePointer.y = screenCoord.y + yAlign;
 
-	drawClip(ds, clipRect, spritePointer, width, height, spriteBuffer);
+	drawClip(spritePointer, width, height, spriteBuffer, clipToScene);
 }
 
-void Sprite::draw(Surface *ds, const Rect &clipRect, SpriteList &spriteList, int32 spriteNumber, const Rect &screenRect, int scale) {
-	const byte *spriteBuffer;
-	int width;
-	int height;
-	int xAlign, spw;
-	int yAlign, sph;
+void Sprite::draw(SpriteList &spriteList, int32 spriteNumber, const Rect &screenRect, int scale, bool clipToScene) {
+	const byte *spriteBuffer = NULL;
+	int width  = 0;
+	int height = 0;
+	int xAlign = 0;
+	int spw;
+	int yAlign = 0;
+	int sph;
 	Point spritePointer;
 
 	getScaledSpriteBuffer(spriteList, spriteNumber, scale, width, height, xAlign, yAlign, spriteBuffer);
@@ -288,17 +307,17 @@ void Sprite::draw(Surface *ds, const Rect &clipRect, SpriteList &spriteList, int
 	}
 	spritePointer.x = screenRect.left + xAlign + spw;
 	spritePointer.y = screenRect.top + yAlign + sph;
-	drawClip(ds, clipRect, spritePointer, width, height, spriteBuffer);
+	drawClip(spritePointer, width, height, spriteBuffer, clipToScene);
 }
 
 bool Sprite::hitTest(SpriteList &spriteList, int spriteNumber, const Point &screenCoord, int scale, const Point &testPoint) {
-	const byte *spriteBuffer;
+	const byte *spriteBuffer = NULL;
 	int i, j;
 	const byte *srcRowPointer;
-	int width;
-	int height;
-	int xAlign;
-	int yAlign;
+	int width  = 0;
+	int height = 0;
+	int xAlign = 0;
+	int yAlign = 0;
 	Point spritePointer;
 
 	getScaledSpriteBuffer(spriteList, spriteNumber, scale, width, height, xAlign, yAlign, spriteBuffer);
@@ -318,18 +337,18 @@ bool Sprite::hitTest(SpriteList &spriteList, int spriteNumber, const Point &scre
 	return *srcRowPointer != 0;
 }
 
-void Sprite::drawOccluded(Surface *ds, const Rect &clipRect, SpriteList &spriteList, int spriteNumber, const Point &screenCoord, int scale, int depth) {
-	const byte *spriteBuffer;
+void Sprite::drawOccluded(SpriteList &spriteList, int spriteNumber, const Point &screenCoord, int scale, int depth) {
+	const byte *spriteBuffer = NULL;
 	int x, y;
 	byte *destRowPointer;
 	const byte *sourceRowPointer;
 	const byte *sourcePointer;
 	byte *destPointer;
 	byte *maskPointer;
-	int width;
-	int height;
-	int xAlign;
-	int yAlign;
+	int width  = 0;
+	int height = 0;
+	int xAlign = 0;
+	int yAlign = 0;
 
 	ClipData clipData;
 
@@ -342,7 +361,7 @@ void Sprite::drawOccluded(Surface *ds, const Rect &clipRect, SpriteList &spriteL
 	int maskZ;
 
 	if (!_vm->_scene->isBGMaskPresent()) {
-		draw(ds, clipRect, spriteList, spriteNumber, screenCoord, scale);
+		draw(spriteList, spriteNumber, screenCoord, scale);
 		return;
 	}
 
@@ -358,7 +377,7 @@ void Sprite::drawOccluded(Surface *ds, const Rect &clipRect, SpriteList &spriteL
 	clipData.sourceRect.right = width;
 	clipData.sourceRect.bottom = height;
 
-	clipData.destRect = clipRect;
+	clipData.destRect = _vm->_scene->getSceneClip();
 
 	if (!clipData.calcClip()) {
 		return;
@@ -367,7 +386,7 @@ void Sprite::drawOccluded(Surface *ds, const Rect &clipRect, SpriteList &spriteL
 	// Finally, draw the occluded sprite
 
 	sourceRowPointer = spriteBuffer + clipData.drawSource.x + (clipData.drawSource.y * width);
-	destRowPointer = (byte *)ds->pixels + clipData.drawDest.x + (clipData.drawDest.y * ds->pitch);
+	destRowPointer = _vm->_gfx->getBackBufferPixels() + clipData.drawDest.x + (clipData.drawDest.y * _vm->_gfx->getBackBufferPitch());
 	maskRowPointer = maskBuffer + clipData.drawDest.x + (clipData.drawDest.y * maskWidth);
 
 	for (y = 0; y < clipData.drawHeight; y++) {
@@ -385,10 +404,13 @@ void Sprite::drawOccluded(Surface *ds, const Rect &clipRect, SpriteList &spriteL
 			destPointer++;
 			maskPointer++;
 		}
-		destRowPointer += ds->pitch;
+		destRowPointer += _vm->_gfx->getBackBufferPitch();
 		maskRowPointer += maskWidth;
 		sourceRowPointer += width;
 	}
+
+	_vm->_render->addDirtyRect(Common::Rect(clipData.drawSource.x, clipData.drawSource.y,
+								clipData.drawSource.x + width, clipData.drawSource.y + height));
 }
 
 void Sprite::decodeRLEBuffer(const byte *inputBuffer, size_t inLength, size_t outLength) {

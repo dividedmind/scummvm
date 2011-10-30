@@ -28,8 +28,9 @@
 #include "saga/saga.h"
 #include "saga/gfx.h"
 #include "saga/interface.h"
-#include "saga/rscfile.h"
+#include "saga/resource.h"
 #include "saga/scene.h"
+#include "saga/render.h"
 
 #include "common/system.h"
 #include "graphics/cursorman.h"
@@ -40,17 +41,11 @@ namespace Saga {
 #define RID_IHNM_HOURGLASS_CURSOR 11 // not in demo
 
 Gfx::Gfx(SagaEngine *vm, OSystem *system, int width, int height) : _vm(vm), _system(system) {
-	_system->beginGFXTransaction();
-		_vm->initCommonGFX(width > 320);
-		_system->initSize(width, height);
-	_system->endGFXTransaction();
+	initGraphics(width, height, width > 320);
 
 	debug(5, "Init screen %dx%d", width, height);
 	// Convert surface data to R surface data
 	_backBuffer.create(width, height, 1);
-
-	// Set module data
-	_init = 1;
 
 	// Start with the cursor shown. It will be hidden before the intro, if
 	// there is an intro. (With boot params, there may not be.)
@@ -62,6 +57,7 @@ Gfx::~Gfx() {
 	_backBuffer.free();
 }
 
+#ifdef SAGA_DEBUG
 void Surface::drawPalette() {
 	int x;
 	int y;
@@ -81,6 +77,7 @@ void Surface::drawPalette() {
 		}
 	}
 }
+#endif
 
 // * Copies a rectangle from a raw 8 bit pixel buffer to the specified surface.
 // - The surface must match the logical dimensions of the buffer exactly.
@@ -167,7 +164,7 @@ void Surface::transitionDissolve(const byte *sourceBuffer, const Common::Rect &s
 }
 
 void Gfx::initPalette() {
-	if (_vm->getGameType() != GType_IHNM)
+	if (_vm->getGameId() == GID_ITE)
 		return;
 
 	ResourceContext *resourceContext = _vm->_resource->getContext(GAME_RESOURCEFILE);
@@ -199,7 +196,7 @@ void Gfx::setPalette(const PalEntry *pal, bool full) {
 	byte *ppal;
 	int from, numcolors;
 
-	if (_vm->getGameType() != GType_IHNM || full) {
+	if (_vm->getGameId() == GID_ITE || full) {
 		from = 0;
 		numcolors = PAL_ENTRIES;
 	} else {
@@ -215,7 +212,7 @@ void Gfx::setPalette(const PalEntry *pal, bool full) {
 	}
 
 	// Color 0 should always be black in IHNM
-	if (_vm->getGameType() == GType_IHNM)
+	if (_vm->getGameId() == GID_IHNM)
 		memset(&_currentPal[0 * 4], 0, 4);
 
 	// Make 256th color black. See bug #1256368
@@ -273,7 +270,7 @@ void Gfx::palToBlack(PalEntry *srcPal, double percent) {
 
 	double fpercent;
 
-	if (_vm->getGameType() != GType_IHNM) {
+	if (_vm->getGameId() == GID_ITE) {
 		from = 0;
 		numcolors = PAL_ENTRIES;
 	} else {
@@ -324,7 +321,7 @@ void Gfx::palToBlack(PalEntry *srcPal, double percent) {
 	}
 
 	// Color 0 should always be black in IHNM
-	if (_vm->getGameType() == GType_IHNM)
+	if (_vm->getGameId() == GID_IHNM)
 		memset(&_currentPal[0 * 4], 0, 4);
 
 	// Make 256th color black. See bug #1256368
@@ -342,7 +339,7 @@ void Gfx::blackToPal(PalEntry *srcPal, double percent) {
 	PalEntry *palE;
 	int from, numcolors;
 
-	if (_vm->getGameType() != GType_IHNM) {
+	if (_vm->getGameId() == GID_ITE) {
 		from = 0;
 		numcolors = PAL_ENTRIES;
 	} else {
@@ -391,7 +388,7 @@ void Gfx::blackToPal(PalEntry *srcPal, double percent) {
 	}
 
 	// Color 0 should always be black in IHNM
-	if (_vm->getGameType() == GType_IHNM)
+	if (_vm->getGameId() == GID_IHNM)
 		memset(&_currentPal[0 * 4], 0, 4);
 
 	// Make 256th color black. See bug #1256368
@@ -400,6 +397,8 @@ void Gfx::blackToPal(PalEntry *srcPal, double percent) {
 
 	_system->setPalette(_currentPal, 0, PAL_ENTRIES);
 }
+
+#ifdef ENABLE_IHNM
 
 // Used in IHNM only
 void Gfx::palFade(PalEntry *srcPal, int16 from, int16 to, int16 start, int16 numColors, double percent) {
@@ -467,6 +466,8 @@ void Gfx::palFade(PalEntry *srcPal, int16 from, int16 to, int16 start, int16 num
 	_system->setPalette(_currentPal, 0, PAL_ENTRIES);
 }
 
+#endif
+
 void Gfx::showCursor(bool state) {
 	// Don't show the mouse cursor in the non-interactive part of the IHNM demo
 	if (_vm->_scene->isNonInteractiveIHNMDemoPart())
@@ -476,7 +477,7 @@ void Gfx::showCursor(bool state) {
 }
 
 void Gfx::setCursor(CursorType cursorType) {
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		// Set up the mouse cursor
 		const byte A = kITEColorLightGrey;
 		const byte B = kITEColorWhite;
@@ -497,7 +498,7 @@ void Gfx::setCursor(CursorType cursorType) {
 
 		switch (cursorType) {
 		case kCursorBusy:
-			if (_vm->getGameId() != GID_IHNM_DEMO)
+			if (!(_vm->getFeatures() & GF_IHNM_DEMO))
 				resourceId = RID_IHNM_HOURGLASS_CURSOR;
 			else
 				resourceId = (uint32)-1;
@@ -564,5 +565,35 @@ bool hitTestPoly(const Point *points, unsigned int npoints, const Point& test_po
 
 	return inside_flag;
 }
+
+// This method adds a dirty rectangle automatically
+void Gfx::drawFrame(const Common::Point &p1, const Common::Point &p2, int color) {
+	_backBuffer.drawFrame(p1, p2, color);
+	_vm->_render->addDirtyRect(Common::Rect(p1.x, p1.y, p2.x + 1, p2.y + 1));
+}
+
+// This method adds a dirty rectangle automatically
+void Gfx::drawRect(const Common::Rect &destRect, int color) {
+	_backBuffer.drawRect(destRect, color);
+	_vm->_render->addDirtyRect(destRect);
+}
+
+// This method adds a dirty rectangle automatically
+void Gfx::fillRect(const Common::Rect &destRect, uint32 color) {
+	_backBuffer.fillRect(destRect, color);
+	_vm->_render->addDirtyRect(destRect);
+}
+
+// This method adds a dirty rectangle automatically
+void Gfx::drawRegion(const Common::Rect &destRect, const byte *sourceBuffer) {
+	_backBuffer.blit(destRect, sourceBuffer);
+	_vm->_render->addDirtyRect(destRect);
+}
+
+// This method does not add a dirty rectangle automatically
+void Gfx::drawBgRegion(const Common::Rect &destRect, const byte *sourceBuffer) {
+	_backBuffer.blit(destRect, sourceBuffer);
+}
+
 
 } // End of namespace Saga

@@ -68,11 +68,14 @@ public:
 	LureEngine(OSystem *system, const LureGameDescription *gameDesc);
 	~LureEngine();
 	static LureEngine &getReference();
+	bool _saveLoadAllowed;
 
-	virtual int init();
-	virtual int go();
-	virtual void pauseEngineIntern(bool pause);
+	// Engine APIs
+	virtual Common::Error init();
+	virtual Common::Error go();
+	virtual bool hasFeature(EngineFeature f) const;
 	virtual void syncSoundSettings();
+	virtual void pauseEngineIntern(bool pause);
 
 	Disk &disk() { return *_disk; }
 
@@ -86,7 +89,22 @@ public:
 	uint32 getFeatures() const;
 	Common::Language getLanguage() const;
 	Common::Platform getPlatform() const;
+	virtual GUI::Debugger *getDebugger();
 	bool isEGA() const { return (getFeatures() & GF_EGA) != 0; }
+
+	virtual Common::Error loadGameState(int slot) { 
+		return loadGame(slot) ? Common::kReadingFailed : Common::kNoError;
+	}
+	virtual Common::Error saveGameState(int slot, const char *desc) {
+		String s(desc);
+		return saveGame(slot, s) ? Common::kReadingFailed : Common::kNoError;
+	}
+	virtual bool canLoadGameStateCurrently() { 
+		return _saveLoadAllowed && !Fights.isFighting();
+	}
+	virtual bool canSaveGameStateCurrently() { 
+		return _saveLoadAllowed && !Fights.isFighting();
+	}
 };
 	Common::String getSaveName(Common::InSaveFile *in);
 } // End of namespace Lure

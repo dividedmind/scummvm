@@ -1,3 +1,4 @@
+
 /* ScummVM - Graphic Adventure Engine
  *
  * ScummVM is the legal property of its developers, whose names
@@ -39,41 +40,12 @@ namespace Parallaction {
 #define MAXIMUM_UNPACKED_BITMAP_SIZE	641*401
 
 
-void Gfx::registerVar(const Common::String &name, int32 initialValue) {
-	if (_vars.contains(name)) {
-		warning("Variable '%s' already registered, ignoring initial value.\n", name.c_str());
-	} else {
-		_vars.setVal(name, initialValue);
-	}
-}
-
-void Gfx::setVar(const Common::String &name, int32 value) {
-	if (!_vars.contains(name)) {
-		warning("Variable '%s' doesn't exist, skipping assignment.\n", name.c_str());
-	} else {
-		_vars.setVal(name, value);
-	}
-}
-
-int32 Gfx::getVar(const Common::String &name) {
-	int32 v = 0;
-
-	if (!_vars.contains(name)) {
-		warning("Variable '%s' doesn't exist, returning default value.\n", name.c_str());
-	} else {
-		v = _vars.getVal(name);
-	}
-
-	return v;
-}
-
-
-
 #define	LABEL_TRANSPARENT_COLOR 0xFF
 
 void halfbritePixel(int x, int y, int color, void *data) {
-	byte *buffer = (byte*)data;
-	buffer[x + y * _vm->_screenWidth] &= ~0x20;
+	Graphics::Surface *surf = (Graphics::Surface *)data;
+	byte *pixel = (byte*)surf->getBasePtr(x, y);
+	*pixel &= ~0x20;
 }
 
 void drawCircleLine(int xCenter, int yCenter, int x, int y, int color, void (*plotProc)(int, int, int, void *), void *data){
@@ -300,7 +272,6 @@ void Gfx::setHalfbriteMode(bool enable) {
 	if (enable == _halfbrite) return;
 
 	_halfbrite = !_halfbrite;
-	_hbCircleRadius = 0;
 }
 
 #define HALFBRITE_CIRCLE_RADIUS		48
@@ -311,7 +282,9 @@ void Gfx::setProjectorPos(int x, int y) {
 }
 
 void Gfx::setProjectorProgram(int16 *data) {
-	_nextProjectorPos = data;
+	if (_nextProjectorPos == 0) {
+		_nextProjectorPos = data;
+	}
 }
 
 void Gfx::drawInventory() {
@@ -328,121 +301,96 @@ void Gfx::drawInventory() {
 	_vm->_inventoryRenderer->getRect(r);
 	byte *data = _vm->_inventoryRenderer->getData();
 
-	_vm->_system->copyRectToScreen(data, r.width(), r.left, r.top, r.width(), r.height());
+	copyRectToScreen(data, r.width(), r.left, r.top, r.width(), r.height());
 }
 
-void Gfx::drawItems() {
-	if (_numItems == 0) {
+void Gfx::drawList(Graphics::Surface &surface, GfxObjArray &list) {
+	if (list.size() == 0) {
 		return;
 	}
 
-	Graphics::Surface *surf = _vm->_system->lockScreen();
-	for (uint i = 0; i < _numItems; i++) {
-		drawGfxObject(_items[i].data, *surf, false);
+	for (uint i = 0; i < list.size(); i++) {
+		drawGfxObject(list[i], surface);
 	}
-	_vm->_system->unlockScreen();
 }
 
-void Gfx::drawBalloons() {
-	if (_balloons.size() == 0) {
-		return;
-	}
+void Gfx::copyRectToScreen(const byte *buf, int pitch, int x, int y, int w, int h) {
+	if (_doubleBuffering) {
+		if (_overlayMode)
+			x += _scrollPos;
 
-	Graphics::Surface *surf = _vm->_system->lockScreen();
-	for (uint i = 0; i < _balloons.size(); i++) {
-		drawGfxObject(_balloons[i], *surf, false);
+		byte *dst = (byte*)_backBuffer.getBasePtr(x, y);
+		for (int i = 0; i < h; i++) {
+			memcpy(dst, buf, w);
+			buf += pitch;
+			dst += _backBuffer.pitch;
+		}
+	} else {
+		_vm->_system->copyRectToScreen(buf, pitch, x, y, w, h);
 	}
-	_vm->_system->unlockScreen();
 }
 
 void Gfx::clearScreen() {
-	_vm->_system->clearScreen();
-}
-
-void Gfx::beginFrame() {
-	_skipBackground = (_backgroundInfo->bg.pixels == 0);	// don't render frame if background is missing
-
-	if (!_skipBackground) {
-		int32 oldBackgroundMode = _varBackgroundMode;
-		_varBackgroundMode = getVar("background_mode");
-		if (oldBackgroundMode != _varBackgroundMode) {
-			switch (_varBackgroundMode) {
-			case 1:
-				_bitmapMask.free();
-				break;
-			case 2:
-				_bitmapMask.create(_backgroundInfo->width, _backgroundInfo->height, 1);
-				byte *data = (byte*)_bitmapMask.pixels;
-				for (uint y = 0; y < _bitmapMask.h; y++) {
-					for (uint x = 0; x < _bitmapMask.w; x++) {
-						*data++ = _backgroundInfo->mask.getValue(x, y);
-					}
-				}
-#if 0
-				Common::DumpFile dump;
-				dump.open("maskdump.bin");
-				dump.write(_bitmapMask.pixels, _bitmapMask.w * _bitmapMask.h);
-				dump.close();
-#endif
-				break;
-			}
+	if (_doubleBuffering) {
+		if (_backBuffer.pixels) {
+			Common::Rect r(_backBuffer.w, _backBuffer.h);
+			_backBuffer.fillRect(r, 0);
 		}
-	}
-
-	_varDrawPathZones = getVar("draw_path_zones");
-	if (_varDrawPathZones == 1 && _vm->getGameType() != GType_BRA) {
-		setVar("draw_path_zones", 0);
-		_varDrawPathZones = 0;
-		warning("Path zones are supported only in Big Red Adventure");
-	}
-
-	if (_skipBackground || (_vm->_screenWidth >= _backgroundInfo->width)) {
-		_varScrollX = 0;
 	} else {
-		_varScrollX = getVar("scroll_x");
+		_vm->_system->clearScreen();
 	}
-
-	_varAnimRenderMode = getRenderMode("anim_render_mode");
-	_varMiscRenderMode = getRenderMode("misc_render_mode");
 }
 
-int32 Gfx::getRenderMode(const char *type) {
-
-	int32 mode = getVar(type);
-	if (mode < 0 || mode > 2) {
-		warning("new value for '%s' is wrong: resetting default", type);
-		setVar(type, 1);
-		mode = 1;
+Graphics::Surface *Gfx::lockScreen() {
+	if (_doubleBuffering) {
+		return &_backBuffer;
 	}
-	return mode;
-
+	return _vm->_system->lockScreen();
 }
 
+void Gfx::unlockScreen() {
+	if (_doubleBuffering) {
+		return;
+	}
+	_vm->_system->unlockScreen();
+}
+
+void Gfx::updateScreenIntern() {
+	if (_doubleBuffering) {
+		byte *data = (byte*)_backBuffer.getBasePtr(_scrollPos, 0);
+		_vm->_system->copyRectToScreen(data, _backBuffer.pitch, 0, 0, _vm->_screenWidth, _vm->_screenHeight);
+	}
+
+	_vm->_system->updateScreen();
+}
+
+int Gfx::getScrollPos() {
+	return _scrollPos;
+}
+
+void Gfx::setScrollPos(int scrollX) {
+	_scrollPos = CLIP(scrollX, _minScroll, _maxScroll);
+}
 
 void Gfx::updateScreen() {
 
-	if (!_skipBackground) {
+	// the scene is calculated in game coordinates, so no translation
+	// is needed
+	_overlayMode = false;
+
+	bool skipBackground = (_backgroundInfo->bg.pixels == 0);	// don't render frame if background is missing
+
+	if (!skipBackground) {
 		// background may not cover the whole screen, so adjust bulk update size
-		uint w = MIN(_vm->_screenWidth, (int32)_backgroundInfo->width);
-		uint h = MIN(_vm->_screenHeight, (int32)_backgroundInfo->height);
-
-		byte *backgroundData = 0;
-		uint16 backgroundPitch = 0;
-		switch (_varBackgroundMode) {
-		case 1:
-			backgroundData = (byte*)_backgroundInfo->bg.getBasePtr(_varScrollX, 0);
-			backgroundPitch = _backgroundInfo->bg.pitch;
-			break;
-		case 2:
-			backgroundData = (byte*)_bitmapMask.getBasePtr(_varScrollX, 0);
-			backgroundPitch = _bitmapMask.pitch;
-			break;
-		}
-		_vm->_system->copyRectToScreen(backgroundData, backgroundPitch, _backgroundInfo->x, _backgroundInfo->y, w, h);
+		uint w = _backgroundInfo->width;
+		uint h = _backgroundInfo->height;
+		byte *backgroundData = (byte*)_backgroundInfo->bg.getBasePtr(0, 0);
+		uint16 backgroundPitch = _backgroundInfo->bg.pitch;
+		copyRectToScreen(backgroundData, backgroundPitch, _backgroundInfo->_x, _backgroundInfo->_y, w, h);
 	}
-
+/*
 	if (_varDrawPathZones == 1) {
-		Graphics::Surface *surf = _vm->_system->lockScreen();
+		Graphics::Surface *surf = lockScreen();
 		ZoneList::iterator b = _vm->_location._zones.begin();
 		ZoneList::iterator e = _vm->_location._zones.end();
 		for (; b != e; b++) {
@@ -451,50 +399,60 @@ void Gfx::updateScreen() {
 				surf->frameRect(Common::Rect(z->getX(), z->getY(), z->getX() + z->width(), z->getY() + z->height()), 2);
 			}
 		}
-		_vm->_system->unlockScreen();
+		unlockScreen();
 	}
+*/
+	sortScene();
+	Graphics::Surface *surf = lockScreen();
+		// draws animations frames and other game items
+		drawList(*surf, _sceneObjects);
 
-	_varRenderMode = _varAnimRenderMode;
+		// special effects
+		applyHalfbriteEffect_NS(*surf);
 
-	// TODO: transform objects coordinates to be drawn with scrolling
-	Graphics::Surface *surf = _vm->_system->lockScreen();
-	drawGfxObjects(*surf);
+		// draws inventory, labels and dialogue items
+		drawOverlay(*surf);
+	unlockScreen();
 
-	if (_halfbrite) {
-		// FIXME: the implementation of halfbrite is now largely sub-optimal in that a full screen
-		// rewrite is needed to apply the effect. Also, we are manipulating the frame buffer. Is it a good idea?
-		byte *buf = (byte*)surf->pixels;
-		for (int i = 0; i < surf->w*surf->h; i++) {
-			*buf++ |= 0x20;
-		}
-		if (_nextProjectorPos) {
-			int16 x = *_nextProjectorPos++;
-			int16 y = *_nextProjectorPos++;
-			if (x == -1 && y == -1) {
-				_nextProjectorPos = 0;
-			} else {
-				setProjectorPos(x, y);
-			}
-		}
-		if (_hbCircleRadius > 0) {
-			drawCircle(_hbCirclePos.x, _hbCirclePos.y, _hbCircleRadius, 0, &halfbritePixel, surf->pixels);
-		}
-	}
-
-	_vm->_system->unlockScreen();
-
-	_varRenderMode = _varMiscRenderMode;
-
-	drawInventory();
-	drawItems();
-	drawBalloons();
-	drawLabels();
-
-	_vm->_system->updateScreen();
-	return;
+	updateScreenIntern();
 }
 
+void Gfx::applyHalfbriteEffect_NS(Graphics::Surface &surf) {
+	if (!_halfbrite) {
+		return;
+	}
 
+	byte *buf = (byte*)surf.pixels;
+	for (int i = 0; i < surf.w*surf.h; i++) {
+		*buf++ |= 0x20;
+	}
+
+	if (_nextProjectorPos) {
+		int16 x = *_nextProjectorPos;
+		int16 y = *(_nextProjectorPos + 1);
+		if (x != -1 && y != -1) {
+			_nextProjectorPos += 2;
+			setProjectorPos(x, y);
+		}
+	}
+	if (_hbCircleRadius > 0) {
+		drawCircle(_hbCirclePos.x, _hbCirclePos.y, _hbCircleRadius, 0, &halfbritePixel, &surf);
+	}
+}
+
+void Gfx::drawOverlay(Graphics::Surface &surf) {
+	// the following items are handled in screen coordinates, so they need translation before
+	// being drawn
+	_overlayMode = true;
+
+	drawInventory();
+
+	updateFloatingLabel();
+
+	drawList(surf, _items);
+	drawList(surf, _balloons);
+	drawList(surf, _labels);
+}
 
 //
 //	graphic primitives
@@ -506,7 +464,7 @@ void Gfx::patchBackground(Graphics::Surface &surf, int16 x, int16 y, bool mask) 
 	Common::Rect r(surf.w, surf.h);
 	r.moveTo(x, y);
 
-	uint16 z = (mask) ? _backgroundInfo->getLayer(y) : LAYER_FOREGROUND;
+	uint16 z = (mask) ? _backgroundInfo->getMaskLayer(y) : LAYER_FOREGROUND;
 	blt(r, (byte*)surf.pixels, &_backgroundInfo->bg, z, 100, 0);
 }
 
@@ -613,7 +571,7 @@ void Gfx::updateFloatingLabel() {
 	Common::Rect r;
 	_labels[_floatingLabel]->getRect(0, r);
 
-	if (_vm->getGameType() == GType_Nippon) {
+	if (_gameType == GType_Nippon) {
 		FloatingLabelTraits traits_NS = {
 			Common::Point(16 - r.width()/2, 34),
 			Common::Point(8 - r.width()/2, 21),
@@ -642,8 +600,6 @@ void Gfx::updateFloatingLabel() {
 
 
 uint Gfx::createLabel(Font *font, const char *text, byte color) {
-	assert(_labels.size() < MAX_NUM_LABELS);
-
 	Graphics::Surface *cnv = new Graphics::Surface;
 
 	uint w, h;
@@ -684,7 +640,7 @@ void Gfx::showLabel(uint id, int16 x, int16 y) {
 	_labels[id]->getRect(0, r);
 
 	if (x == CENTER_LABEL_HORIZONTAL) {
-		x = CLIP<int16>((_vm->_screenWidth - r.width()) / 2, 0, _vm->_screenWidth/2);
+		x = CLIP<int16>((_backgroundInfo->width - r.width()) / 2, 0, _backgroundInfo->width/2);
 	}
 
 	if (y == CENTER_LABEL_VERTICAL) {
@@ -706,22 +662,6 @@ void Gfx::freeLabels() {
 	}
 	_labels.clear();
 	_floatingLabel = NO_FLOATING_LABEL;
-}
-
-void Gfx::drawLabels() {
-	if (_labels.size() == 0) {
-		return;
-	}
-
-	updateFloatingLabel();
-
-	Graphics::Surface* surf = _vm->_system->lockScreen();
-
-	for (uint i = 0; i < _labels.size(); i++) {
-		drawGfxObject(_labels[i], *surf, false);
-	}
-
-	_vm->_system->unlockScreen();
 }
 
 
@@ -747,41 +687,27 @@ void Gfx::grabBackground(const Common::Rect& r, Graphics::Surface &dst) {
 
 
 Gfx::Gfx(Parallaction* vm) :
-	_vm(vm), _disk(vm->_disk) {
+	_vm(vm), _disk(vm->_disk), _backgroundInfo(0), _scrollPos(0), _minScroll(0), _maxScroll(0) {
 
-	_vm->_system->beginGFXTransaction();
-	_vm->_system->initSize(_vm->_screenWidth, _vm->_screenHeight);
-	_vm->initCommonGFX(_vm->getGameType() == GType_BRA);
-	_vm->_system->endGFXTransaction();
+	_gameType = _vm->getGameType();
+	_doubleBuffering = _gameType != GType_Nippon;
+
+	initGraphics(_vm->_screenWidth, _vm->_screenHeight, _gameType == GType_BRA);
 
 	setPalette(_palette);
 
-	_numItems = 0;
 	_floatingLabel = NO_FLOATING_LABEL;
-
-	_screenX = 0;
-	_screenY = 0;
 
 	_backgroundInfo = 0;
 
 	_halfbrite = false;
+	_nextProjectorPos = 0;
 	_hbCircleRadius = 0;
 
 	_unpackedBitmap = new byte[MAXIMUM_UNPACKED_BITMAP_SIZE];
 	assert(_unpackedBitmap);
 
-	registerVar("background_mode", 1);
-	_varBackgroundMode = 1;
-
-	registerVar("scroll_x", 0);
-	_varScrollX = 0;
-
-	registerVar("anim_render_mode", 1);
-	registerVar("misc_render_mode", 1);
-
-	registerVar("draw_path_zones", 0);
-
-	if ((_vm->getGameType() == GType_BRA) && (_vm->getPlatform() == Common::kPlatformPC)) {
+	if ((_gameType == GType_BRA) && (_vm->getPlatform() == Common::kPlatformPC)) {
 	// this loads the backup palette needed by the PC version of BRA (see setBackground()).
 		BackgroundInfo	paletteInfo;
 		_disk->loadSlide(paletteInfo, "pointer");
@@ -792,6 +718,8 @@ Gfx::Gfx(Parallaction* vm) :
 }
 
 Gfx::~Gfx() {
+
+	_backBuffer.free();
 
 	delete _backgroundInfo;
 
@@ -805,23 +733,23 @@ Gfx::~Gfx() {
 
 
 int Gfx::setItem(GfxObj* frames, uint16 x, uint16 y, byte transparentColor) {
-	int id = _numItems;
+	int id = _items.size();
 
-	_items[id].data = frames;
-	_items[id].data->x = x;
-	_items[id].data->y = y;
-	_items[id].data->layer = LAYER_FOREGROUND;
-	_items[id].data->transparentKey = transparentColor;
+	frames->x = x;
+	frames->y = y;
+	frames->transparentKey = transparentColor;
+	frames->layer = LAYER_FOREGROUND;
+	frames->setFlags(kGfxObjVisible);
 
-	_numItems++;
+	_items.insert_at(id, frames);
+
+	setItemFrame(id, 0);
 
 	return id;
 }
 
 void Gfx::setItemFrame(uint item, uint16 f) {
-	assert(item < _numItems);
-	_items[item].data->frame = f;
-	_items[item].data->setFlags(kGfxObjVisible);
+	_items[item]->frame = f;
 }
 
 
@@ -838,18 +766,26 @@ GfxObj* Gfx::registerBalloon(Frames *frames, const char *text) {
 	return obj;
 }
 
-void Gfx::destroyBalloons() {
+void Gfx::freeDialogueObjects() {
+	_items.clear();
+
+	_vm->_balloonMan->reset();
+
 	for (uint i = 0; i < _balloons.size(); i++) {
 		delete _balloons[i];
 	}
 	_balloons.clear();
 }
 
-void Gfx::freeItems() {
-	_numItems = 0;
-}
-
 void Gfx::setBackground(uint type, BackgroundInfo *info) {
+	if (!info) {
+		warning("Gfx::setBackground() called with an null BackgroundInfo");
+		return;
+	}
+
+	_hbCircleRadius = 0;
+	_nextProjectorPos = 0;
+
 	delete _backgroundInfo;
 	_backgroundInfo = info;
 
@@ -871,6 +807,285 @@ void Gfx::setBackground(uint type, BackgroundInfo *info) {
 		for (uint i = 0; i < 6; i++)
 			_backgroundInfo->ranges[i]._flags = 0;	// disable palette cycling for slides
 		setPalette(_backgroundInfo->palette);
+	}
+
+	_backgroundInfo->finalizeMask();
+	_backgroundInfo->finalizePath();
+
+	if (_gameType == GType_BRA) {
+		int width = CLIP(info->width, (int)_vm->_screenWidth, info->width);
+		int height = CLIP(info->height, (int)_vm->_screenHeight, info->height);
+
+		if (width != _backBuffer.w || height != _backBuffer.h) {
+			_backBuffer.create(width, height, 1);
+		}
+	}
+
+	_minScroll = 0;
+	_maxScroll = MAX<int>(0, _backgroundInfo->width - _vm->_screenWidth);
+}
+
+
+BackgroundInfo::BackgroundInfo() : _x(0), _y(0), width(0), height(0), _mask(0), _path(0) {
+	layers[0] = layers[1] = layers[2] = layers[3] = 0;
+	memset(ranges, 0, sizeof(ranges));
+}
+
+BackgroundInfo::~BackgroundInfo() {
+	bg.free();
+	clearMaskData();
+	clearPathData();
+}
+
+bool BackgroundInfo::hasMask() {
+	return _mask != 0;
+}
+
+void BackgroundInfo::clearMaskData() {
+	// free mask data
+	MaskPatches::iterator it = _maskPatches.begin();
+	for ( ; it != _maskPatches.end(); it++) {
+		delete *it;
+	}
+	_maskPatches.clear();
+	delete _mask;
+	_mask = 0;
+	_maskBackup.free();
+}
+
+void BackgroundInfo::finalizeMask() {
+	if (_mask) {
+		if (_maskPatches.size() > 0) {
+			// since no more patches can be added after finalization,
+			// avoid creating the backup if there is none
+			_maskBackup.clone(*_mask);
+		}
+	} else {
+		clearMaskData();
+	}
+}
+
+uint BackgroundInfo::addMaskPatch(MaskBuffer *patch) {
+	uint id = _maskPatches.size();
+	_maskPatches.push_back(patch);
+	return id;
+}
+
+void BackgroundInfo::toggleMaskPatch(uint id, int x, int y, bool apply) {
+	if (!hasMask()) {
+		return;
+	}
+	if (id >= _maskPatches.size()) {
+		return;
+	}
+	MaskBuffer *patch = _maskPatches[id];
+	if (apply) {
+		_mask->bltOr(x, y, *patch, 0, 0, patch->w, patch->h);
+	} else {
+		_mask->bltCopy(x, y, _maskBackup, x, y, patch->w, patch->h);
+	}
+}
+
+uint16 BackgroundInfo::getMaskLayer(uint16 z) const {
+	for (uint16 i = 0; i < 3; i++) {
+		if (layers[i+1] > z) return i;
+	}
+	return LAYER_FOREGROUND;
+}
+
+void BackgroundInfo::setPaletteRange(int index, const PaletteFxRange& range) {
+	assert(index < 6);
+	memcpy(&ranges[index], &range, sizeof(PaletteFxRange));
+}
+
+bool BackgroundInfo::hasPath() {
+	return _path != 0;
+}
+
+void BackgroundInfo::clearPathData() {
+	// free mask data
+	PathPatches::iterator it = _pathPatches.begin();
+	for ( ; it != _pathPatches.end(); it++) {
+		delete *it;
+	}
+	_pathPatches.clear();
+	delete _path;
+	_path = 0;
+	_pathBackup.free();
+}
+
+void BackgroundInfo::finalizePath() {
+	if (_path) {
+		if (_pathPatches.size() > 0) {
+			// since no more patches can be added after finalization,
+			// avoid creating the backup if there is none
+			_pathBackup.clone(*_path);
+		}
+	} else {
+		clearPathData();
+	}
+}
+
+uint BackgroundInfo::addPathPatch(PathBuffer *patch) {
+	uint id = _pathPatches.size();
+	_pathPatches.push_back(patch);
+	return id;
+}
+
+void BackgroundInfo::togglePathPatch(uint id, int x, int y, bool apply) {
+	if (!hasPath()) {
+		return;
+	}
+	if (id >= _pathPatches.size()) {
+		return;
+	}
+	PathBuffer *patch = _pathPatches[id];
+	if (apply) {
+		_path->bltCopy(x, y, *patch, 0, 0, patch->w, patch->h);
+	} else {
+		_path->bltCopy(x, y, _pathBackup, x, y, patch->w, patch->h);
+	}
+}
+
+MaskBuffer::MaskBuffer() : w(0), internalWidth(0), h(0), size(0), data(0), bigEndian(true) {
+}
+
+MaskBuffer::~MaskBuffer() {
+	free();
+}
+
+byte* MaskBuffer::getPtr(uint16 x, uint16 y) const {
+	return data + (x >> 2) + y * internalWidth;
+}
+
+void MaskBuffer::clone(const MaskBuffer &buf) {
+	if (!buf.data)
+		return;
+
+	create(buf.w, buf.h);
+	bigEndian = buf.bigEndian;
+	memcpy(data, buf.data, size);
+}
+
+void MaskBuffer::create(uint16 width, uint16 height) {
+	free();
+
+	w = width;
+	internalWidth = w >> 2;
+	h = height;
+	size = (internalWidth * h);
+	data = (byte*)calloc(size, 1);
+}
+
+void MaskBuffer::free() {
+	::free(data);
+	data = 0;
+	w = 0;
+	h = 0;
+	internalWidth = 0;
+	size = 0;
+}
+
+byte MaskBuffer::getValue(uint16 x, uint16 y) const {
+	byte m = data[(x >> 2) + y * internalWidth];
+	uint n;
+	if (bigEndian) {
+		n = (x & 3) << 1;
+	} else {
+		n = (3 - (x & 3)) << 1;
+	}
+	return (m >> n) & 3;
+}
+
+void MaskBuffer::bltOr(uint16 dx, uint16 dy, const MaskBuffer &src, uint16 sx, uint16 sy, uint width, uint height) {
+	assert((width <= w) && (width <= src.w) && (height <= h) && (height <= src.h));
+
+	byte *s = src.getPtr(sx, sy);
+	byte *d = getPtr(dx, dy);
+
+	// this code assumes buffers are aligned on 4-pixels boundaries, as the original does
+	uint16 linewidth = width >> 2;
+	for (uint16 i = 0; i < height; i++) {
+		for (uint16 j = 0; j < linewidth; j++) {
+			*d++ |= *s++;
+		}
+		d += internalWidth - linewidth;
+		s += src.internalWidth - linewidth;
+	}
+}
+
+void MaskBuffer::bltCopy(uint16 dx, uint16 dy, const MaskBuffer &src, uint16 sx, uint16 sy, uint width, uint height) {
+	assert((width <= w) && (width <= src.w) && (height <= h) && (height <= src.h));
+
+	byte *s = src.getPtr(sx, sy);
+	byte *d = getPtr(dx, dy);
+
+	// this code assumes buffers are aligned on 4-pixels boundaries, as the original does
+	for (uint16 i = 0; i < height; i++) {
+		memcpy(d, s, (width >> 2));
+		d += internalWidth;
+		s += src.internalWidth;
+	}
+}
+
+
+
+PathBuffer::PathBuffer() : w(0), internalWidth(0), h(0), size(0), data(0), bigEndian(true) {
+}
+
+PathBuffer::~PathBuffer() {
+	free();
+}
+
+void PathBuffer::clone(const PathBuffer &buf) {
+	if (!buf.data)
+		return;
+
+	create(buf.w, buf.h);
+	bigEndian = buf.bigEndian;
+	memcpy(data, buf.data, size);
+}
+
+void PathBuffer::create(uint16 width, uint16 height) {
+	free();
+
+	w = width;
+	internalWidth = w >> 3;
+	h = height;
+	size = (internalWidth * h);
+	data = (byte*)calloc(size, 1);
+}
+
+void PathBuffer::free() {
+	::free(data);
+	data = 0;
+	w = 0;
+	h = 0;
+	internalWidth = 0;
+	size = 0;
+}
+
+byte PathBuffer::getValue(uint16 x, uint16 y) const {
+	byte m = data[(x >> 3) + y * internalWidth];
+	uint bit = bigEndian ? (x & 7) : (7 - (x & 7));
+	return ((1 << bit) & m) >> bit;
+}
+
+byte* PathBuffer::getPtr(uint16 x, uint16 y) const {
+	return data + (x >> 3) + y * internalWidth;
+}
+
+void PathBuffer::bltCopy(uint16 dx, uint16 dy, const PathBuffer &src, uint16 sx, uint16 sy, uint width, uint height) {
+	assert((width <= w) && (width <= src.w) && (height <= h) && (height <= src.h));
+
+	byte *s = src.getPtr(sx, sy);
+	byte *d = getPtr(dx, dy);
+
+	// this code assumes buffers are aligned on 4-pixels boundaries, as the original does
+	for (uint16 i = 0; i < height; i++) {
+		memcpy(d, s, (width >> 3));
+		d += internalWidth;
+		s += src.internalWidth;
 	}
 }
 

@@ -200,7 +200,7 @@ public:
 
 	Screen *screen() { return _screen; }
 	Screen_v2 *screen_v2() const { return _screen; }
-	GUI_v2 *gui_v2() const { return _gui; }
+	GUI *gui() const { return _gui; }
 	virtual TextDisplayer *text() { return _text; }
 	int language() const { return _lang; }
 protected:
@@ -292,8 +292,8 @@ protected:
 	void seq_init();
 	void seq_uninit();
 
-	int init();
-	int go();
+	Common::Error init();
+	Common::Error go();
 
 	Screen_HoF *_screen;
 	TextDisplayer_HoF *_text;
@@ -301,6 +301,10 @@ protected:
 
 	static const int8 _dosTrackMap[];
 	static const int _dosTrackMapSize;
+	static const int8 _mt32SfxMap[];
+	static const int _mt32SfxMapSize;
+	static const int8 _gmSfxMap[];
+	static const int _gmSfxMapSize;
 
 	AudioDataStruct _soundData[3];
 protected:
@@ -547,8 +551,6 @@ protected:
 	uint8 *getTableEntry(uint8 *buffer, int id);
 	char *getTableString(int id, uint8 *buffer, int decode);
 	const char *getChapterString(int id);
-	int decodeString1(const char *src, char *dst);
-	void decodeString2(const char *src, char *dst);
 
 	void changeFileExtension(char *buffer);
 
@@ -722,7 +724,7 @@ protected:
 	int o2_displayWsaSequentialFrames(EMCState *script);
 	int o2_displayWsaSequence(EMCState *script);
 	int o2_addItemToInventory(EMCState *script);
-	int o2_drawShape(EMCState *script);	
+	int o2_drawShape(EMCState *script);
 	int o2_addItemToCurScene(EMCState *script);
 	int o2_loadSoundFile(EMCState *script);
 	int o2_removeSlotFromInventory(EMCState *script);
@@ -861,7 +863,7 @@ protected:
 	const uint16 *_ingameTalkObjIndex;
 	int _ingameTalkObjIndexSize;
 	const char *const *_ingameTimJpStr;
-	int _ingameTimJpStrSize;	
+	int _ingameTimJpStrSize;
 	const HofSeqData *_sequences;
 	const ItemAnimData_v2 *_itemAnimData;
 	int _itemAnimDataSize;
@@ -907,8 +909,8 @@ protected:
 	int _dbgPass;
 
 	// save/load specific
-	void saveGame(const char *fileName, const char *saveName, const Graphics::Surface *thumbnail);
-	void loadGame(const char *fileName);
+	Common::Error saveGameState(int slot, const char *saveName, const Graphics::Surface *thumbnail);
+	Common::Error loadGameState(int slot);
 };
 
 } // end of namespace Kyra

@@ -370,11 +370,11 @@ void AGOSEngine_Elvira2::oe2_pauseGame() {
 	uint32 pauseTime = getTime();
 	haltAnimation();
 
-	while (!quit()) {
+	while (!shouldQuit()) {
 		_lastHitArea = NULL;
 		_lastHitArea3 = NULL;
 
-		while (!quit()) {
+		while (!shouldQuit()) {
 			if (processSpecialKeys() != 0 || _lastHitArea3 != 0)
 				break;
 			delay(1);
@@ -468,8 +468,8 @@ void AGOSEngine_Elvira2::oe2_bNotZero() {
 	// 156: is bit set
 	uint bit = getVarWrapper();
 
-	// WORKAROUND: For a script glitch in some versions
-	if (getGameType() == GType_SIMON1 && _subroutine == 2962 && bit == 63) {
+	// WORKAROUND: Enable copy protection again, in cracked version.
+	if (getGameType() == GType_SIMON1 && _currentTable && _currentTable->id == 2962 && bit == 63) {
 		bit = 50;
 	}
 

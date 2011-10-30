@@ -97,18 +97,17 @@ public:
 	void checkOptionSettings();
 	void readOptionSettings();
 	void writeOptionSettings();
-	virtual void syncSoundSettings();
 
 	int talkSpeed() const { return _talkSpeed; }
 	void talkSpeed(int speed) { _talkSpeed = speed; }
 	bool subtitles() const { return _subtitles; }
 	void subtitles(bool enable) { _subtitles = enable; }
-	
+
 	void update(bool checkPlayerInput = false);
 
 	bool canLoadOrSave() const;
-	void saveGameState(int slot, const char *desc);
-	void loadGameState(int slot);
+	Common::Error saveGameState(int slot, const char *desc);
+	Common::Error loadGameState(int slot);
 	void makeGameStateName(int slot, char *buf) const;
 	int getGameStateSlot(const char *filename) const;
 	void findGameStateDescriptions(char descriptions[100][32]);
@@ -129,10 +128,12 @@ public:
 
 protected:
 
-	GUI::Debugger *getDebugger();
-
-	int go();
-	int init();
+	// Engine APIs
+	virtual Common::Error init();
+	virtual Common::Error go();
+	virtual GUI::Debugger *getDebugger();
+	virtual bool hasFeature(EngineFeature f) const;
+	virtual void syncSoundSettings();
 
 
 	int _talkSpeed;

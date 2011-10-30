@@ -31,12 +31,13 @@
 
 #include "engines/engine.h"
 #include "common/config-manager.h"
+#include "common/events.h"
 #include "common/file.h"
 #include "common/timer.h"
 #include "common/savefile.h"
 #include "common/system.h"
 #include "gui/message.h"
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
 #include "sound/mixer.h"
 #include "engines/dialogs.h"
 #include "engines/metaengine.h"
@@ -61,7 +62,6 @@ Engine::Engine(OSystem *syst)
 		_mainMenuDialog(NULL) {
 
 	g_engine = this;
-	_autosavePeriod = ConfMan.getInt("autosave_period");
 
 	// FIXME: Get rid of the following again. It is only here temporarily.
 	// We really should never run with a non-working Mixer, so ought to handle
@@ -76,12 +76,12 @@ Engine::Engine(OSystem *syst)
 
 Engine::~Engine() {
 	_mixer->stopAll();
-	
+
 	delete _mainMenuDialog;
 	g_engine = NULL;
 }
 
-void Engine::initCommonGFX(bool defaultTo1XScaler) {
+void initCommonGFX(bool defaultTo1XScaler) {
 	const Common::ConfigManager::Domain *transientDomain = ConfMan.getDomain(Common::ConfigManager::kTransientDomain);
 	const Common::ConfigManager::Domain *gameDomain = ConfMan.getActiveDomain();
 
@@ -101,11 +101,11 @@ void Engine::initCommonGFX(bool defaultTo1XScaler) {
 		// FIXME: As a hack, we use "1x" here. Would be nicer to use
 		// getDefaultGraphicsMode() instead, but right now, we do not specify
 		// whether that is a 1x scaler or not...
-		_system->setGraphicsMode("1x");
+		g_system->setGraphicsMode("1x");
 	} else {
 		// Override global scaler with any game-specific define
 		if (ConfMan.hasKey("gfx_mode")) {
-			_system->setGraphicsMode(ConfMan.get("gfx_mode").c_str());
+			g_system->setGraphicsMode(ConfMan.get("gfx_mode").c_str());
 		}
 	}
 
@@ -118,11 +118,69 @@ void Engine::initCommonGFX(bool defaultTo1XScaler) {
 
 	// (De)activate aspect-ratio correction as determined by the config settings
 	if (gameDomain && gameDomain->contains("aspect_ratio"))
-		_system->setFeatureState(OSystem::kFeatureAspectRatioCorrection, ConfMan.getBool("aspect_ratio"));
+		g_system->setFeatureState(OSystem::kFeatureAspectRatioCorrection, ConfMan.getBool("aspect_ratio"));
 
 	// (De)activate fullscreen mode as determined by the config settings
 	if (gameDomain && gameDomain->contains("fullscreen"))
-		_system->setFeatureState(OSystem::kFeatureFullscreenMode, ConfMan.getBool("fullscreen"));
+		g_system->setFeatureState(OSystem::kFeatureFullscreenMode, ConfMan.getBool("fullscreen"));
+}
+
+void initGraphics(int width, int height, bool defaultTo1xScaler) {
+	g_system->beginGFXTransaction();
+
+		initCommonGFX(defaultTo1xScaler);
+		g_system->initSize(width, height);
+
+	OSystem::TransactionError gfxError = g_system->endGFXTransaction();
+
+	if (gfxError == OSystem::kTransactionSuccess)
+		return;
+
+	// Error out on size switch failure
+	if (gfxError & OSystem::kTransactionSizeChangeFailed) {
+		char buffer[16];
+		snprintf(buffer, 16, "%dx%d", width, height);
+
+		Common::String message = "Could not switch to resolution: '";
+		message += buffer;
+		message += "'.";
+
+		GUIErrorMessage(message);
+		error("%s", message.c_str());
+	}
+
+	// Just show warnings then these occur:
+	if (gfxError & OSystem::kTransactionModeSwitchFailed) {
+		Common::String message = "Could not switch to video mode: '";
+		message += ConfMan.get("gfx_mode");
+		message += "'.";
+
+		GUI::MessageDialog dialog(message);
+		dialog.runModal();
+	}
+
+	if (gfxError & OSystem::kTransactionAspectRatioFailed) {
+		GUI::MessageDialog dialog("Could not apply aspect ratio setting.");
+		dialog.runModal();
+	}
+
+	if (gfxError & OSystem::kTransactionFullscreenFailed) {
+		GUI::MessageDialog dialog("Could not apply fullscreen setting.");
+		dialog.runModal();
+	}
+}
+
+void GUIErrorMessage(const Common::String msg) {
+	g_system->setWindowCaption("Error");
+	g_system->beginGFXTransaction();
+		initCommonGFX(false);
+		g_system->initSize(320, 200);
+	if (g_system->endGFXTransaction() == OSystem::kTransactionSuccess) {
+		GUI::MessageDialog dialog(msg);
+		dialog.runModal();
+	} else {
+		error("%s", msg.c_str());
+	}
 }
 
 void Engine::checkCD() {
@@ -168,8 +226,19 @@ void Engine::checkCD() {
 		GUI::MessageDialog dialog(
 			"You appear to be playing this game directly\n"
 			"from the CD. This is known to cause problems,\n"
-			"and it's therefore recommended that you copy\n"
+			"and it is therefore recommended that you copy\n"
 			"the data files to your hard disk instead.\n"
+			"See the README file for details.", "OK");
+		dialog.runModal();
+	} else {
+		// If we reached here, the game has audio tracks,
+		// it's not ran from the CD and the tracks have not
+		// been ripped.
+		GUI::MessageDialog dialog(
+			"This game has audio tracks in its disk. These\n"
+			"tracks need to be ripped from the disk using\n"
+			"an appropriate CD audio extracting tool in\n"
+			"order to listen to the game's music.\n"
 			"See the README file for details.", "OK");
 		dialog.runModal();
 	}
@@ -178,22 +247,14 @@ void Engine::checkCD() {
 
 bool Engine::shouldPerformAutoSave(int lastSaveTime) {
 	const int diff = _system->getMillis() - lastSaveTime;
-	return _autosavePeriod != 0 && diff > _autosavePeriod * 1000;
+	const int autosavePeriod = ConfMan.getInt("autosave_period");
+	return autosavePeriod != 0 && diff > autosavePeriod * 1000;
 }
 
-void Engine::errorString(const char *buf1, char *buf2) {
-	strcpy(buf2, buf1);
-}
-
-void Engine::GUIErrorMessage(const Common::String msg) {
-	_system->setWindowCaption("Error");
-	_system->beginGFXTransaction();
-		initCommonGFX(false);
-		_system->initSize(320, 200);
-	_system->endGFXTransaction();
-
-	GUI::MessageDialog dialog(msg);
-	dialog.runModal();
+void Engine::errorString(const char *buf1, char *buf2, int size) {
+	strncpy(buf2, buf1, size);
+	if (size > 0)
+		buf2[size-1] = '\0';
 }
 
 void Engine::pauseEngine(bool pause) {
@@ -216,19 +277,16 @@ void Engine::pauseEngineIntern(bool pause) {
 	_mixer->pauseAll(pause);
 }
 
-void Engine::mainMenuDialog() {
+void Engine::openMainMenuDialog() {
 	if (!_mainMenuDialog)
 		_mainMenuDialog = new MainMenuDialog(this);
 	runDialog(*_mainMenuDialog);
 	syncSoundSettings();
 }
 
-int Engine::runDialog(Dialog &dialog) {
-	
+int Engine::runDialog(GUI::Dialog &dialog) {
 	pauseEngine(true);
-
 	int result = dialog.runModal();
-
 	pauseEngine(false);
 
 	return result;
@@ -246,19 +304,46 @@ void Engine::syncSoundSettings() {
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, soundVolumeSpeech);
 }
 
+Common::Error Engine::loadGameState(int slot) {
+	// Do nothing by default
+	return Common::kNoError;
+}
+
+bool Engine::canLoadGameStateCurrently() {
+	// Do not allow loading by default
+	return false;
+}
+
+Common::Error Engine::saveGameState(int slot, const char *desc) {
+	// Do nothing by default
+	return Common::kNoError;
+}
+
+bool Engine::canSaveGameStateCurrently() {
+	// Do not allow saving by default
+	return false;
+}
+
 void Engine::quitGame() {
 	Common::Event event;
 
 	event.type = Common::EVENT_QUIT;
-	_eventMan->pushEvent(event);
+	g_system->getEventManager()->pushEvent(event);
 }
 
-bool Engine::hasFeature(int f) {
+bool Engine::shouldQuit() {
+	Common::EventManager *eventMan = g_system->getEventManager();
+	return (eventMan->shouldQuit() || eventMan->shouldRTL());
+}
+
+/*
+EnginePlugin *Engine::getMetaEnginePlugin() const {
+
 	const EnginePlugin *plugin = 0;
 	Common::String gameid = ConfMan.get("gameid");
 	gameid.toLowercase();
 	EngineMan.findGame(gameid, &plugin);
-	
-	return ( (*plugin)->hasFeature((MetaEngine::MetaEngineFeature)f) );
+	return plugin;
 }
 
+*/

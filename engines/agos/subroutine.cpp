@@ -193,31 +193,29 @@ static const char *const opcodeArgTable_puzzlepack[256] = {
 	" ", " ", "BT ", " ", "B ", " ", "BBBB ", " ", " ", "BBBB ", "B ", "B ", "B ", "B "
 };
 
-Subroutine *AGOSEngine::getSubroutineByID(uint subroutine_id) {
+Subroutine *AGOSEngine::getSubroutineByID(uint subroutineId) {
 	Subroutine *cur;
 
-	_subroutine = subroutine_id;
-
 	for (cur = _subroutineList; cur; cur = cur->next) {
-		if (cur->id == subroutine_id)
+		if (cur->id == subroutineId)
 			return cur;
 	}
 
-	if (loadXTablesIntoMem(subroutine_id)) {
+	if (loadXTablesIntoMem(subroutineId)) {
 		for (cur = _subroutineList; cur; cur = cur->next) {
-			if (cur->id == subroutine_id)
+			if (cur->id == subroutineId)
 				return cur;
 		}
 	}
 
-	if (loadTablesIntoMem(subroutine_id)) {
+	if (loadTablesIntoMem(subroutineId)) {
 		for (cur = _subroutineList; cur; cur = cur->next) {
-			if (cur->id == subroutine_id)
+			if (cur->id == subroutineId)
 				return cur;
 		}
 	}
 
-	debug(0,"getSubroutineByID: subroutine %d not found", subroutine_id);
+	debug(0,"getSubroutineByID: subroutine %d not found", subroutineId);
 	return NULL;
 }
 
@@ -288,7 +286,7 @@ File *AGOSEngine::openTablesFile_gme(const char *filename) {
 	return _gameFile;
 }
 
-bool AGOSEngine::loadTablesIntoMem(uint16 subr_id) {
+bool AGOSEngine::loadTablesIntoMem(uint16 subrId) {
 	byte *p;
 	uint16 min_num, max_num, file_num;
 	File *in;
@@ -305,7 +303,7 @@ bool AGOSEngine::loadTablesIntoMem(uint16 subr_id) {
 	p += 6;
 
 	while (min_num) {
-		if ((subr_id >= min_num) && (subr_id <= max_num)) {
+		if ((subrId >= min_num) && (subrId <= max_num)) {
 			_subroutineList = _subroutineListOrg;
 			_tablesHeapPtr = _tablesHeapPtrOrg;
 			_tablesHeapCurPos = _tablesHeapCurPosOrg;
@@ -333,11 +331,11 @@ bool AGOSEngine::loadTablesIntoMem(uint16 subr_id) {
 		p += 6;
 	}
 
-	debug(1,"loadTablesIntoMem: didn't find %d", subr_id);
+	debug(1,"loadTablesIntoMem: didn't find %d", subrId);
 	return 0;
 }
 
-bool AGOSEngine_Waxworks::loadTablesIntoMem(uint16 subr_id) {
+bool AGOSEngine_Waxworks::loadTablesIntoMem(uint16 subrId) {
 	byte *p;
 	int i;
 	uint min_num, max_num;
@@ -365,7 +363,7 @@ bool AGOSEngine_Waxworks::loadTablesIntoMem(uint16 subr_id) {
 
 			max_num = READ_BE_UINT16(p); p += 2;
 
-			if (subr_id >= min_num && subr_id <= max_num) {
+			if (subrId >= min_num && subrId <= max_num) {
 				_subroutineList = _subroutineListOrg;
 				_tablesHeapPtr = _tablesHeapPtrOrg;
 				_tablesHeapCurPos = _tablesHeapCurPosOrg;
@@ -395,11 +393,11 @@ bool AGOSEngine_Waxworks::loadTablesIntoMem(uint16 subr_id) {
 		}
 	}
 
-	debug(1,"loadTablesIntoMem: didn't find %d", subr_id);
+	debug(1,"loadTablesIntoMem: didn't find %d", subrId);
 	return 0;
 }
 
-bool AGOSEngine::loadXTablesIntoMem(uint16 subr_id) {
+bool AGOSEngine::loadXTablesIntoMem(uint16 subrId) {
 	byte *p;
 	int i;
 	uint min_num, max_num;
@@ -426,7 +424,7 @@ bool AGOSEngine::loadXTablesIntoMem(uint16 subr_id) {
 			max_num = READ_BE_UINT16(p);
 			p += 2;
 
-			if (subr_id >= min_num && subr_id <= max_num) {
+			if (subrId >= min_num && subrId <= max_num) {
 				_subroutineList = _xsubroutineListOrg;
 				_tablesHeapPtr = _xtablesHeapPtrOrg;
 				_tablesHeapCurPos = _xtablesHeapCurPosOrg;
@@ -450,7 +448,7 @@ bool AGOSEngine::loadXTablesIntoMem(uint16 subr_id) {
 		}
 	}
 
-	debug(1,"loadXTablesIntoMem: didn't find %d", subr_id);
+	debug(1,"loadXTablesIntoMem: didn't find %d", subrId);
 	return 0;
 }
 
@@ -534,14 +532,14 @@ int AGOSEngine::startSubroutine(Subroutine *sub) {
 	_classMode1 = 0;
 	_classMode2 = 0;
 
-	if (_startMainScript)
+	if (_dumpScripts)
 		dumpSubroutine(sub);
 
 	if (++_recursionDepth > 40)
 		error("Recursion error");
 
 	// WORKAROUND: If the game is saved, right after Simon is thrown in the dungeon of Sordid's Fortress of Doom,
-	// the saved game fails to load correctly. When loading the saved game, the sequence of Simon waking is started, 
+	// the saved game fails to load correctly. When loading the saved game, the sequence of Simon waking is started,
 	// before the scene is actually reloaded, due to a script bug. We manually add the extra script code from DOS CD
 	// release, which fixed this particular script bug.
 	if (getGameType() == GType_SIMON2 && !(getFeatures() & GF_TALKIE) && sub->id == 12101) {
@@ -555,7 +553,7 @@ int AGOSEngine::startSubroutine(Subroutine *sub) {
 	_currentTable = sub;
 restart:
 
-	if (quit())
+	if (shouldQuit())
 		return result;
 
 	while ((byte *)sl != (byte *)sub) {
@@ -568,7 +566,7 @@ restart:
 			else
 				_codePtr += 8;
 
-			if (_continousMainScript)
+			if (_dumpOpcodes)
 				printf("; %d\n", sub->id);
 			result = runScript();
 			if (result != 0) {
@@ -696,7 +694,7 @@ void AGOSEngine::readSubroutineLine(Common::SeekableReadStream *in, SubroutineLi
 
 byte *AGOSEngine::readSingleOpcode(Common::SeekableReadStream *in, byte *ptr) {
 	int i, l;
-	const char *string_ptr;
+	const char *stringPtr;
 	uint16 opcode, val;
 
 	const char *const *table;
@@ -728,15 +726,15 @@ byte *AGOSEngine::readSingleOpcode(Common::SeekableReadStream *in, byte *ptr) {
 		opcode = *ptr++;
 	}
 
-	string_ptr = table[opcode];
-	if (!string_ptr)
+	stringPtr = table[opcode];
+	if (!stringPtr)
 		error("Unable to locate opcode table. Perhaps you are using the wrong game target?");
 
 	for (;;) {
-		if (string_ptr[i] == ' ')
+		if (stringPtr[i] == ' ')
 			return ptr;
 
-		l = string_ptr[i++];
+		l = stringPtr[i++];
 
 		switch (l) {
 		case 'F':

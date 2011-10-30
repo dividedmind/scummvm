@@ -35,6 +35,9 @@
 #include <e32std.h>
 #include <math.h>
 
+#define DISABLE_COMMAND_LINE
+#define VECTOR_RENDERER_FORMAT 565
+
 #if defined(USE_TREMOR) && !defined(USE_VORBIS)
 #define USE_VORBIS // make sure this one is defined together with USE_TREMOR!
 #endif

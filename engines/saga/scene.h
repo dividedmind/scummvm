@@ -32,6 +32,7 @@
 #include "saga/list.h"
 #include "saga/actor.h"
 #include "saga/interface.h"
+#include "saga/puzzle.h"
 
 namespace Saga {
 
@@ -60,6 +61,15 @@ struct Event;
 enum SceneFlags {
 	kSceneFlagISO        = 1,
 	kSceneFlagShowCursor = 2
+};
+
+// FTA2 possible endings
+enum FTA2Endings {
+	kFta2BadEndingLaw = 0,
+	kFta2BadEndingChaos = 1,
+	kFta2GoodEnding1 = 2,
+	kFta2GoodEnding2 = 3,
+	kFta2BadEndingDeath = 4
 };
 
 struct BGInfo {
@@ -339,17 +349,14 @@ class Scene {
 	void setChapterPointsChanged(bool cp) { _chapterPointsChanged = cp; }
 
 	void cutawaySkip() {
-		if (_vm->_scene->isInIntro())
-			_vm->_framesEsc = 2;
-		else
-			_vm->_framesEsc = 1;
+		_vm->_framesEsc = _vm->_scene->isInIntro() ? 2 : 1;
 	}
 
-	void drawTextList(Surface *ds);
+	void drawTextList();
 
 	int getHeight(bool speech = false) const {
-		if (_vm->getGameType() == GType_IHNM && _vm->_scene->currentChapterNumber() == 8 && !speech)
-			return _vm->getDisplayInfo().logicalHeight;
+		if (_vm->getGameId() == GID_IHNM && _vm->_scene->currentChapterNumber() == 8 && !speech)
+			return _vm->getDisplayInfo().height;
 		else
 			return _vm->getDisplayInfo().sceneHeight;
 	}
@@ -360,7 +367,11 @@ class Scene {
 	void showIHNMDemoSpecialScreen();
 
 	bool isNonInteractiveIHNMDemoPart() {
-		return _vm->getGameId() == GID_IHNM_DEMO && (_sceneNumber >= 144 && _sceneNumber <= 149);
+		return _vm->getFeatures() & GF_IHNM_DEMO && (_sceneNumber >= 144 && _sceneNumber <= 149);
+	}
+
+	bool isITEPuzzleScene() {
+		return _vm->getGameId() == GID_ITE && _vm->_puzzle->isActive();
 	}
 
  private:
@@ -408,9 +419,11 @@ class Scene {
 	TextList _textList;
 
  private:
+	int ITEStartProc();
 	int IHNMStartProc();
 	int IHNMCreditsProc();
-	int ITEStartProc();
+	int FTA2StartProc();
+	int FTA2EndProc(FTA2Endings whichEnding);
 
 	void IHNMLoadCutaways();
 	bool checkKey();

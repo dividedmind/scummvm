@@ -34,7 +34,7 @@
 
 #include "saga/saga.h"
 
-#include "saga/rscfile.h"
+#include "saga/resource.h"
 #include "saga/gfx.h"
 #include "saga/render.h"
 #include "saga/actor.h"
@@ -118,67 +118,103 @@ SagaEngine::~SagaEngine() {
 		}
 	}
 
-	delete _puzzle;
+	if (getGameId() == GID_ITE) {
+		delete _isoMap;
+		delete _puzzle;
+	}
+
 	delete _sndRes;
 	delete _events;
-	delete _font;
-	delete _sprite;
+
+	if (!isSaga2()) {
+		delete _font;
+		delete _sprite;
+	}
+
 	delete _anim;
 	delete _script;
-	delete _interface;
+	if (!isSaga2())
+		delete _interface;
 	delete _actor;
 	delete _palanim;
 	delete _scene;
-	delete _isoMap;
 	delete _render;
 	delete _music;
 	delete _sound;
 	delete _driver;
 	delete _gfx;
 	delete _console;
-
 	delete _resource;
 }
 
-int SagaEngine::init() {
+Common::Error SagaEngine::init() {
+	// Assign default values to the config manager, in case settings are missing
+	ConfMan.registerDefault("talkspeed", "255");
+	ConfMan.registerDefault("subtitles", "true");
+
 	_musicVolume = ConfMan.getInt("music_volume");
 	_subtitlesEnabled = ConfMan.getBool("subtitles");
 	_readingSpeed = getTalkspeed();
 	_copyProtection = ConfMan.getBool("copy_protection");
 	_gf_wyrmkeep = false;
-	_gf_compressed_sounds = false;
+	_musicWasPlaying = false;
 
 	if (_readingSpeed > 3)
 		_readingSpeed = 0;
 
-	_resource = new Resource(this);
+	switch(getGameId()) {
+		case GID_ITE:
+			_resource = new Resource_RSC(this);
+			break;
+#ifdef ENABLE_IHNM
+		case GID_IHNM:
+			_resource = new Resource_RES(this);
+			break;
+#endif
+#ifdef ENABLE_SAGA2
+		case GID_DINO:
+		case GID_FTA2:
+			_resource = new Resource_HRS(this);
+			break;
+#endif
+	}
 
 	// Detect game and open resource files
 	if (!initGame()) {
 		GUIErrorMessage("Error loading game resources.");
-		return FAILURE;
+		return Common::kUnknownError;
 	}
 
 	// Initialize engine modules
+	// TODO: implement differences for SAGA2
 	_sndRes = new SndRes(this);
 	_events = new Events(this);
-	_font = new Font(this);
-	_sprite = new Sprite(this);
+
+	if (!isSaga2()) {
+		_font = new Font(this);
+		_sprite = new Sprite(this);
+		_script = new SAGA1Script(this);
+	} else {
+		_script = new SAGA2Script(this);
+	}
+
 	_anim = new Anim(this);
-	_script = new Script(this);
 	_interface = new Interface(this); // requires script module
 	_scene = new Scene(this);
 	_actor = new Actor(this);
 	_palanim = new PalAnim(this);
-	_isoMap = new IsoMap(this);
-	_puzzle = new Puzzle(this);
+
+	if (getGameId() == GID_ITE) {
+		_isoMap = new IsoMap(this);
+		_puzzle = new Puzzle(this);
+	}
 
 	// System initialization
 
 	_previousTicks = _system->getMillis();
 
 	// Initialize graphics
-	_gfx = new Gfx(this, _system, getDisplayWidth(), getDisplayHeight());
+	_gfx = new Gfx(this, _system, getDisplayInfo().width, getDisplayInfo().height);
 
 	// Graphics driver should be initialized before console
 	_console = new Console(this);
@@ -197,21 +233,25 @@ int SagaEngine::init() {
 	_music->setAdlib(adlib);
 	_render = new Render(this, _system);
 	if (!_render->initialized()) {
-		return FAILURE;
+		return Common::kUnknownError;
 	}
 
 	// Initialize system specific sound
 	_sound = new Sound(this, _mixer);
-	
-	_interface->converseInit();
-	_script->setVerb(_script->getVerbType(kVerbWalkTo));
+
+	if (!isSaga2()) {
+		_interface->converseInit();
+		_script->setVerb(_script->getVerbType(kVerbWalkTo));
+	}
 
 	_music->setVolume(_musicVolume, 1);
 
-	_gfx->initPalette();
+	if (!isSaga2()) {
+		_gfx->initPalette();
+	}
 
 	if (_voiceFilesExist) {
-		if (getGameType() == GType_IHNM) {
+		if (getGameId() == GID_IHNM) {
 			if (!ConfMan.hasKey("voices")) {
 				_voicesEnabled = true;
 				ConfMan.setBool("voices", true);
@@ -225,17 +265,24 @@ int SagaEngine::init() {
 
 	syncSoundSettings();
 
+
+#if 0
+	// FIXME: Disabled this code for now. We want to get rid of OSystem::kFeatureAutoComputeDirtyRects
+	// and this is the last place to make use of it. We need to find out whether doing
+	// so causes any regressions. If it does, we can reenable it, if not, we can remove
+	// this code in 0.13.0.
+
 	// FIXME: This is the ugly way of reducing redraw overhead. It works
 	//        well for 320x200 but it's unclear how well it will work for
 	//        640x480.
-
-	if (getGameType() == GType_ITE)
+	if (getGameId() == GID_ITE)
 		_system->setFeatureState(OSystem::kFeatureAutoComputeDirtyRects, true);
+#endif
 
-	return SUCCESS;
+	return Common::kNoError;
 }
 
-int SagaEngine::go() {
+Common::Error SagaEngine::go() {
 	int msec = 0;
 
 	_previousTicks = _system->getMillis();
@@ -243,19 +290,19 @@ int SagaEngine::go() {
 	if (ConfMan.hasKey("start_scene")) {
 		_scene->changeScene(ConfMan.getInt("start_scene"), 0, kTransitionNoFade);
 	} else if (ConfMan.hasKey("boot_param")) {
-		if (getGameType() == GType_ITE)
+		if (getGameId() == GID_ITE)
 			_interface->addToInventory(_actor->objIndexToId(0));	// Magic hat
 		_scene->changeScene(ConfMan.getInt("boot_param"), 0, kTransitionNoFade);
 	} else if (ConfMan.hasKey("save_slot")) {
 		// Init the current chapter to 8 (character selection) for IHNM
-		if (getGameType() == GType_IHNM)
+		if (getGameId() == GID_IHNM)
 			_scene->changeScene(-2, 0, kTransitionFade, 8);
 
 		// First scene sets up palette
 		_scene->changeScene(getStartSceneNumber(), 0, kTransitionNoFade);
 		_events->handleEvents(0); // Process immediate events
 
-		if (getGameType() != GType_IHNM)
+		if (getGameId() == GID_ITE)
 			_interface->setMode(kPanelMain);
 		else
 			_interface->setMode(kPanelChapterSelection);
@@ -265,12 +312,13 @@ int SagaEngine::go() {
 		syncSoundSettings();
 	} else {
 		_framesEsc = 0;
+		//_sndRes->playVoice(0);    // SAGA 2 sound test
 		_scene->startScene();
 	}
 
 	uint32 currentTicks;
 
-	while (!quit()) {
+	while (!shouldQuit()) {
 		if (_console->isAttached())
 			_console->onFrame();
 
@@ -291,7 +339,7 @@ int SagaEngine::go() {
 			}
 
 			// Since Puzzle and forced text are actorless, we do them here
-			if (_puzzle->isActive() || _actor->isForcedTextShown()) {
+			if ((getGameId() == GID_ITE && _puzzle->isActive()) || _actor->isForcedTextShown()) {
 				_actor->handleSpeech(msec);
 			} else if (!_scene->isInIntro()) {
 				if (_interface->getMode() == kPanelMain ||
@@ -310,7 +358,7 @@ int SagaEngine::go() {
 		_system->delayMillis(10);
 	}
 
-	return 0;
+	return Common::kNoError;
 }
 
 void SagaEngine::loadStrings(StringsTable &stringsTable, const byte *stringsPointer, size_t stringsLength) {
@@ -369,13 +417,13 @@ const char *SagaEngine::getObjectName(uint16 objectId) {
 	const HitZone *hitZone;
 
 	// Disable the object names in IHNM when the chapter is 8
-	if (getGameType() == GType_IHNM && _scene->currentChapterNumber() == 8)
+	if (getGameId() == GID_IHNM && _scene->currentChapterNumber() == 8)
 		return "";
 
 	switch (objectTypeId(objectId)) {
 	case kGameObjectObject:
 		obj = _actor->getObj(objectId);
-		if (getGameType() == GType_ITE)
+		if (getGameId() == GID_ITE)
 			return _script->_mainStrings.getString(obj->_nameIndex);
 		return _actor->_objectsStrings.getString(obj->_nameIndex);
 	case kGameObjectActor:
@@ -447,7 +495,7 @@ void SagaEngine::getExcuseInfo(int verb, const char *&textString, int &soundReso
 ColorId SagaEngine::KnownColor2ColorId(KnownColor knownColor) {
 	ColorId colorId = kITEColorTransBlack;
 
-	if (getGameType() == GType_ITE) {
+	if (getGameId() == GID_ITE) {
 		switch (knownColor) {
 		case(kKnownColorTransparent):
 			colorId = kITEColorTransBlack;
@@ -477,10 +525,11 @@ ColorId SagaEngine::KnownColor2ColorId(KnownColor knownColor) {
 		default:
 			error("SagaEngine::KnownColor2ColorId unknown color %i", knownColor);
 		}
-	} else if (getGameType() == GType_IHNM) {
+#ifdef ENABLE_IHNM
+	} else if (getGameId() == GID_IHNM) {
 		// The default colors in the Spanish version of IHNM are shifted by one
 		// Fixes bug #1848016 - "IHNM: Wrong Subtitles Color (Spanish)"
-		int offset = (getGameId() == GID_IHNM_CD_ES) ? 1 : 0;
+		int offset = (getLanguage() == Common::ES_ESP) ? 1 : 0;
 
 		switch (knownColor) {
 		case(kKnownColorTransparent):
@@ -508,6 +557,7 @@ ColorId SagaEngine::KnownColor2ColorId(KnownColor knownColor) {
 		default:
 			error("SagaEngine::KnownColor2ColorId unknown color %i", knownColor);
 		}
+#endif
 	}
 	return colorId;
 }
@@ -520,6 +570,10 @@ int SagaEngine::getTalkspeed() {
 	return (ConfMan.getInt("talkspeed") * 3 + 255 / 2) / 255;
 }
 
+GUI::Debugger *SagaEngine::getDebugger() {
+	return _console;
+}
+
 void SagaEngine::syncSoundSettings() {
 	_subtitlesEnabled = ConfMan.getBool("subtitles");
 	_readingSpeed = getTalkspeed();
@@ -530,6 +584,29 @@ void SagaEngine::syncSoundSettings() {
 	_musicVolume = ConfMan.getInt("music_volume");
 	_music->setVolume(_musicVolume, 1);
 	_sound->setVolume();
+}
+
+void SagaEngine::pauseEngineIntern(bool pause) {
+	bool engineIsPaused = (_render->getFlags() & RF_RENDERPAUSE);
+	if (engineIsPaused == pause)
+		return;
+
+	if (pause) {
+		_render->setFlag(RF_RENDERPAUSE);
+		if (_music->isPlaying() && !_music->hasDigitalMusic()) {
+			_music->pause();
+			_musicWasPlaying = true;
+		} else {
+			_musicWasPlaying = false;
+		}
+	} else {
+		_render->clearFlag(RF_RENDERPAUSE);
+		if (_musicWasPlaying) {
+			_music->resume();
+		}
+	}
+
+	_mixer->pauseAll(pause);
 }
 
 } // End of namespace Saga

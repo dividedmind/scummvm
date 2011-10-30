@@ -24,14 +24,13 @@
  */
 
 
-
 #include "common/config-manager.h"
 #include "common/md5.h"
 #include "common/events.h"
 #include "common/system.h"
 
 #include "gui/message.h"
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
 
 #include "graphics/cursorman.h"
 
@@ -265,6 +264,7 @@ ScummEngine::ScummEngine(OSystem *syst, const DetectorResult &dr)
 	_palManipPalette = NULL;
 	_palManipIntermediatePal = NULL;
 	memset(gfxUsageBits, 0, sizeof(gfxUsageBits));
+	_hePaletteCache = NULL;
 	_hePalettes = NULL;
 	_shadowPalette = NULL;
 	_shadowPaletteSize = 0;
@@ -536,14 +536,14 @@ ScummEngine::ScummEngine(OSystem *syst, const DetectorResult &dr)
 
 	// Add debug levels
 	for (int i = 0; i < ARRAYSIZE(debugChannels); ++i)
-		Common::addSpecialDebugLevel(debugChannels[i].flag,  debugChannels[i].channel, debugChannels[i].desc);
+		Common::addDebugChannel(debugChannels[i].flag,  debugChannels[i].channel, debugChannels[i].desc);
 
 	syst->getEventManager()->registerRandomSource(_rnd, "scumm");
 }
 
 
 ScummEngine::~ScummEngine() {
-	Common::clearAllSpecialDebugLevels();
+	Common::clearAllDebugChannels();
 
 	if (_musicEngine) {
 		_musicEngine->terminate();
@@ -772,6 +772,7 @@ ScummEngine_v80he::ScummEngine_v80he(OSystem *syst, const DetectorResult &dr)
 	_curSndId = 0;
 	_sndPtrOffs = 0;
 	_sndTmrOffs = 0;
+	_sndDataSize = 0;
 
 	VAR_PLATFORM = 0xFF;
 	VAR_PLATFORM_VERSION = 0xFF;
@@ -806,6 +807,7 @@ ScummEngine_v90he::~ScummEngine_v90he() {
 		delete _logicHE;
 	}
 	if (_game.heversion >= 99) {
+		free(_hePaletteCache);
 		free(_hePalettes);
 	}
 }
@@ -822,21 +824,18 @@ ScummEngine_vCUPhe::~ScummEngine_vCUPhe() {
 	delete _cupPlayer;
 }
 
-int ScummEngine_vCUPhe::init() {
-	_system->beginGFXTransaction();
-		_system->initSize(CUP_Player::kDefaultVideoWidth, CUP_Player::kDefaultVideoHeight);
-		initCommonGFX(true);
-	_system->endGFXTransaction();
+Common::Error ScummEngine_vCUPhe::init() {
+	initGraphics(CUP_Player::kDefaultVideoWidth, CUP_Player::kDefaultVideoHeight, true);
 
-	return 0;
+	return Common::kNoError;
 }
 
-int ScummEngine_vCUPhe::go() {
+Common::Error ScummEngine_vCUPhe::go() {
 	if (_cupPlayer->open(_filenamePattern.pattern)) {
 		_cupPlayer->play();
 		_cupPlayer->close();
 	}
-	return 0;
+	return Common::kNoError;
 }
 
 void ScummEngine_vCUPhe::parseEvents() {
@@ -908,7 +907,7 @@ ScummEngine_v8::~ScummEngine_v8() {
 #pragma mark --- Initialization ---
 #pragma mark -
 
-int ScummEngine::init() {
+Common::Error ScummEngine::init() {
 
 	// Add default file directories.
 	if (((_game.platform == Common::kPlatformAmiga) || (_game.platform == Common::kPlatformAtariST)) && (_game.version <= 4)) {
@@ -1017,7 +1016,7 @@ int ScummEngine::init() {
 
 
 			// We now have to determine the correct _filenamePattern. To do this
-			// we simply hardcode the possibilites.
+			// we simply hardcode the possibilities.
 			const char *p1 = 0, *p2 = 0;
 			switch (_game.id) {
 			case GID_INDY4:
@@ -1070,23 +1069,16 @@ int ScummEngine::init() {
 	loadCJKFont();
 
 	// Initialize backend
-	_system->beginGFXTransaction();
-		bool defaultTo1XScaler = false;
-		if (_renderMode == Common::kRenderHercA || _renderMode == Common::kRenderHercG) {
-			_system->initSize(Common::kHercW, Common::kHercH);
-			defaultTo1XScaler = true;
-		} else if (_useCJKMode) {
-			_system->initSize(_screenWidth * _textSurfaceMultiplier, _screenHeight * _textSurfaceMultiplier);
-
-			// CJK FT and DIG use usual NUT fonts, not FM-TOWNS ROM, so
-			// there is no text surface for them. This takes that into account
-			defaultTo1XScaler = (_screenWidth * _textSurfaceMultiplier > 320);
-		} else {
-			_system->initSize(_screenWidth, _screenHeight);
-			defaultTo1XScaler = (_screenWidth > 320);
-		}
-		initCommonGFX(defaultTo1XScaler);
-	_system->endGFXTransaction();
+	if (_renderMode == Common::kRenderHercA || _renderMode == Common::kRenderHercG) {
+		initGraphics(Common::kHercW, Common::kHercH, true);
+	} else if (_useCJKMode) {
+		initGraphics(_screenWidth * _textSurfaceMultiplier, _screenHeight * _textSurfaceMultiplier,
+					// CJK FT and DIG use usual NUT fonts, not FM-TOWNS ROM, so
+					// there is no text surface for them. This takes that into account
+					(_screenWidth * _textSurfaceMultiplier > 320));
+	} else {
+		initGraphics(_screenWidth, _screenHeight, _screenWidth > 320);
+	}
 
 	setupScumm();
 
@@ -1107,7 +1099,7 @@ int ScummEngine::init() {
 
 	syncSoundSettings();
 
-	return 0;
+	return Common::kNoError;
 }
 
 void ScummEngine::setupScumm() {
@@ -1307,6 +1299,8 @@ void ScummEngine::resetScumm() {
 			_actors[i] = new Actor_v2(this, i);
 		else if (_game.version == 3)
 			_actors[i] = new Actor_v3(this, i);
+		else if (_game.heversion != 0)
+			_actors[i] = new ActorHE(this, i);
 		else
 			_actors[i] = new Actor(this, i);
 		_actors[i]->initActor(-1);
@@ -1512,6 +1506,10 @@ void ScummEngine_v90he::resetScumm() {
 			_logicHE = new LogicHEsoccer(this);
 			break;
 
+		case GID_MOONBASE:
+			_logicHE = new LogicHEmoonbase(this);
+			break;
+
 		default:
 			_logicHE = new LogicHE(this);
 			break;
@@ -1520,15 +1518,30 @@ void ScummEngine_v90he::resetScumm() {
 }
 
 void ScummEngine_v99he::resetScumm() {
+	byte *data;
+	Common::String ininame = _targetName + ".ini";
+	int len;
+
 	ScummEngine_v90he::resetScumm();
+
+	_hePaletteCache = (int16 *)malloc(65536);
+	memset(_hePaletteCache, -1, 65536);
 
 	_hePalettes = (uint8 *)malloc((_numPalettes + 1) * 1024);
 	memset(_hePalettes, 0, (_numPalettes + 1) * 1024);
 
 	// Array 129 is set to base name
-	int len = strlen(_filenamePattern.pattern);
-	byte *data = defineArray(129, kStringArray, 0, 0, 0, len);
+	len = strlen(_filenamePattern.pattern);
+	data = defineArray(129, kStringArray, 0, 0, 0, len);
 	memcpy(data, _filenamePattern.pattern, len);
+
+	// Array 132 is set to game path
+	data = defineArray(132, kStringArray, 0, 0, 0, 0);
+
+	// Array 137 is set to Windows directory, plus INI file
+	len = strlen(ininame.c_str());
+	data = defineArray(137, kStringArray, 0, 0, 0, len);
+	memcpy(data, ininame.c_str(), len);
 }
 
 void ScummEngine_v100he::resetScumm() {
@@ -1693,9 +1706,11 @@ void ScummEngine::syncSoundSettings() {
 	if (VAR_VOICE_MODE != 0xFF)
 		VAR(VAR_VOICE_MODE) = _voiceMode;
 
-	_defaultTalkDelay = getTalkDelay();
-	if (VAR_CHARINC != 0xFF)
-		VAR(VAR_CHARINC) = _defaultTalkDelay;
+	if (ConfMan.hasKey("talkspeed", _targetName)) {
+		_defaultTalkDelay = getTalkDelay();
+		if (VAR_CHARINC != 0xFF)
+			VAR(VAR_CHARINC) = _defaultTalkDelay;
+	}
 }
 
 void ScummEngine::setTalkDelay(int talkdelay) {
@@ -1711,7 +1726,7 @@ int ScummEngine::getTalkDelay() {
 #pragma mark --- Main loop ---
 #pragma mark -
 
-int ScummEngine::go() {
+Common::Error ScummEngine::go() {
 	_engineStartTime = _system->getMillis() / 1000;
 
 	// If requested, load a save game instead of running the boot script
@@ -1724,7 +1739,7 @@ int ScummEngine::go() {
 
 	int diff = 0;	// Duration of one loop iteration
 
-	while (!quit()) {
+	while (!shouldQuit()) {
 
 		if (_debugger->isAttached())
 			_debugger->onFrame();
@@ -1757,12 +1772,12 @@ int ScummEngine::go() {
 		diff = _system->getMillis() - diff;
 
 
-		if (quit()) {
+		if (shouldQuit()) {
 			// TODO: Maybe perform an autosave on exit?
 		}
 	}
 
-	return 0;
+	return Common::kNoError;
 }
 
 void ScummEngine::waitForTimer(int msec_delay) {
@@ -1775,7 +1790,7 @@ void ScummEngine::waitForTimer(int msec_delay) {
 
 	start_time = _system->getMillis();
 
-	while (!quit()) {
+	while (!shouldQuit()) {
 		_sound->updateCD(); // Loop CD Audio if needed
 		parseEvents();
 		_system->updateScreen();
@@ -1898,7 +1913,7 @@ load_game:
 	checkExecVerbs();
 	checkAndRunSentenceScript();
 
-	if (quit())
+	if (shouldQuit())
 		return;
 
 	// HACK: If a load was requested, immediately perform it. This avoids
@@ -2166,7 +2181,7 @@ void ScummEngine::restart() {
 // TODO: Check this function - we should probably be reinitting a lot more stuff, and I suspect
 //	 this leaks memory like a sieve
 
-// Fingolfing seez: An alternate way to implement restarting would be to create
+// Fingolfin seez: An alternate way to implement restarting would be to create
 // a save state right after startup ... to this end we could introduce a SaveFile
 // subclass which is implemented using a memory buffer (i.e. no actual file is
 // created). Then to restart we just have to load that pseudo save state.
@@ -2347,12 +2362,14 @@ GUI::Debugger *ScummEngine::getDebugger() {
 	return _debugger;
 }
 
-void ScummEngine::errorString(const char *buf1, char *buf2) {
+void ScummEngine::errorString(const char *buf1, char *buf2, int buf2Size) {
 	if (_currentScript != 0xFF) {
-		sprintf(buf2, "(%d:%d:0x%lX): %s", _roomResource,
+		snprintf(buf2, buf2Size, "(%d:%d:0x%lX): %s", _roomResource,
 			vm.slot[_currentScript].number, (long)(_scriptPointer - _scriptOrgPointer), buf1);
 	} else {
-		strcpy(buf2, buf1);
+		strncpy(buf2, buf1, buf2Size);
+		if (buf2Size > 0)
+			buf2[buf2Size-1] = '\0';
 	}
 }
 

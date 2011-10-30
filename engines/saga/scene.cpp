@@ -42,7 +42,7 @@
 
 #include "saga/scene.h"
 #include "saga/actor.h"
-#include "saga/rscfile.h"
+#include "saga/resource.h"
 
 #include "graphics/iff.h"
 #include "common/util.h"
@@ -82,6 +82,7 @@ SAGA_UNKNOWN,
 	SAGA_PALETTE
 };
 
+#ifdef ENABLE_IHNM
 static SAGAResourceTypes IHNMSceneResourceTypes[28] = {
 	SAGA_ACTOR,
 SAGA_UNKNOWN,
@@ -112,6 +113,7 @@ SAGA_UNKNOWN,
 	SAGA_FACES,
 	SAGA_PALETTE
 };
+#endif
 
 const char *SAGAResourceTypesString[] = {
 	"SAGA_UNKNOWN",
@@ -140,6 +142,13 @@ Scene::Scene(SagaEngine *vm) : _vm(vm) {
 	uint32 resourceId;
 	int i;
 
+	// Do nothing for SAGA2 games for now
+	if (_vm->isSaga2()) {
+		_inGame = false;
+		_sceneLoaded = false;
+		return;
+	}
+
 	// Load scene module resource context
 	_sceneContext = _vm->_resource->getContext(GAME_RESOURCEFILE);
 	if (_sceneContext == NULL) {
@@ -167,6 +176,8 @@ Scene::Scene(SagaEngine *vm) : _vm(vm) {
 	}
 
 	free(sceneLUTPointer);
+
+#ifdef SAGA_DEBUG
 
 #define DUMP_SCENES_LEVEL 10
 
@@ -197,7 +208,7 @@ Scene::Scene(SagaEngine *vm) : _vm(vm) {
 			free(_resourceList);
 		}
 	}
-
+#endif
 
 	debug(3, "LUT has %d entries.", _sceneCount);
 
@@ -218,22 +229,29 @@ Scene::Scene(SagaEngine *vm) : _vm(vm) {
 }
 
 Scene::~Scene() {
+	// Do nothing for SAGA2 games for now
+	if (_vm->isSaga2()) {
+		return;
+	}
+
 	delete _actionMap;
 	delete _objectMap;
 	free(_sceneLUT);
 }
 
 void Scene::getResourceTypes(SAGAResourceTypes *&types, int &typesCount) {
-	if (_vm->getGameType() == GType_IHNM) {
-		typesCount = ARRAYSIZE(IHNMSceneResourceTypes);
-		types = IHNMSceneResourceTypes;
-	} else {
+	if (_vm->getGameId() == GID_ITE) {
 		typesCount = ARRAYSIZE(ITESceneResourceTypes);
 		types = ITESceneResourceTypes;
+#ifdef ENABLE_IHNM
+	} else if (_vm->getGameId() == GID_IHNM) {
+		typesCount = ARRAYSIZE(IHNMSceneResourceTypes);
+		types = IHNMSceneResourceTypes;
+#endif
 	}
 }
 
-void Scene::drawTextList(Surface *ds) {
+void Scene::drawTextList() {
 	TextListEntry *entry;
 
 	for (TextList::iterator textIterator = _textList.begin(); textIterator != _textList.end(); ++textIterator) {
@@ -241,9 +259,9 @@ void Scene::drawTextList(Surface *ds) {
 		if (entry->display) {
 
 			if (entry->useRect) {
-				_vm->_font->textDrawRect(entry->font, ds, entry->text, entry->rect, _vm->KnownColor2ColorId(entry->knownColor), _vm->KnownColor2ColorId(entry->effectKnownColor), entry->flags);
+				_vm->_font->textDrawRect(entry->font, entry->text, entry->rect, _vm->KnownColor2ColorId(entry->knownColor), _vm->KnownColor2ColorId(entry->effectKnownColor), entry->flags);
 			} else {
-				_vm->_font->textDraw(entry->font, ds, entry->text, entry->point, _vm->KnownColor2ColorId(entry->knownColor), _vm->KnownColor2ColorId(entry->effectKnownColor), entry->flags);
+				_vm->_font->textDraw(entry->font, entry->text, entry->point, _vm->KnownColor2ColorId(entry->knownColor), _vm->KnownColor2ColorId(entry->effectKnownColor), entry->flags);
 			}
 		}
 	}
@@ -268,13 +286,23 @@ void Scene::startScene() {
 	event.op = kEventHide;
 	_vm->_events->queue(&event);
 
-	switch (_vm->getGameType()) {
-	case GType_ITE:
+	switch (_vm->getGameId()) {
+	case GID_ITE:
 		ITEStartProc();
 		break;
-	case GType_IHNM:
+#ifdef ENABLE_IHNM
+	case GID_IHNM:
 		IHNMStartProc();
 		break;
+#endif
+#ifdef ENABLE_SAGA2
+	case GID_DINO:
+		// TODO
+		break;
+	case GID_FTA2:
+		FTA2StartProc();
+		break;
+#endif
 	default:
 		error("Scene::start(): Error: Can't start game... gametype not supported");
 		break;
@@ -294,6 +322,8 @@ void Scene::startScene() {
 	loadScene(sceneQueue);
 }
 
+#ifdef ENABLE_IHNM
+
 void Scene::creditsScene() {
 	// End the last game ending scene
 	_vm->_scene->endScene();
@@ -303,11 +333,11 @@ void Scene::creditsScene() {
 	// Hide cursor during credits
 	_vm->_gfx->showCursor(false);
 
-	switch (_vm->getGameType()) {
-	case GType_ITE:
+	switch (_vm->getGameId()) {
+	case GID_ITE:
 		// Not called by ITE
 		break;
-	case GType_IHNM:
+	case GID_IHNM:
 		IHNMCreditsProc();
 		break;
 	default:
@@ -318,6 +348,8 @@ void Scene::creditsScene() {
 	_vm->quitGame();
 	return;
 }
+
+#endif
 
 void Scene::nextScene() {
 	SceneQueueList::iterator queueIterator;
@@ -455,7 +487,6 @@ void Scene::changeScene(int16 sceneNumber, int actorsEntrance, SceneTransitionTy
 	if (_vm->getFeatures() & GF_SCENE_SUBSTITUTES) {
 		for (int i = 0; i < ARRAYSIZE(sceneSubstitutes); i++) {
 			if (sceneSubstitutes[i].sceneId == sceneNumber) {
-				Surface *backBuffer = _vm->_gfx->getBackBuffer();
 				Surface bbmBuffer;
 				byte *pal, *colors;
 				Common::File file;
@@ -469,7 +500,7 @@ void Scene::changeScene(int16 sceneNumber, int actorsEntrance, SceneTransitionTy
 					colors = pal;
 					rect.setWidth(bbmBuffer.w);
 					rect.setHeight(bbmBuffer.h);
-					backBuffer->blit(rect, (const byte*)bbmBuffer.pixels);
+					_vm->_gfx->drawRegion(rect, (const byte*)bbmBuffer.pixels);
 					for (int j = 0; j < PAL_ENTRIES; j++) {
 						cPal[j].red = *pal++;
 						cPal[j].green = *pal++;
@@ -481,10 +512,10 @@ void Scene::changeScene(int16 sceneNumber, int actorsEntrance, SceneTransitionTy
 				}
 
 				_vm->_interface->setStatusText("Click or Press Return to continue. Press Q to quit.", 96);
-				_vm->_font->textDrawRect(kKnownFontMedium, backBuffer, sceneSubstitutes[i].title,
-					 Common::Rect(0, 7, _vm->getDisplayWidth(), 27), _vm->KnownColor2ColorId(kKnownColorBrightWhite), _vm->KnownColor2ColorId(kKnownColorBlack), kFontOutline);
-				_vm->_font->textDrawRect(kKnownFontMedium, backBuffer, sceneSubstitutes[i].message,
-					 Common::Rect(24, getHeight() - 33, _vm->getDisplayWidth() - 11,
+				_vm->_font->textDrawRect(kKnownFontMedium, sceneSubstitutes[i].title,
+					 Common::Rect(0, 7, _vm->getDisplayInfo().width, 27), _vm->KnownColor2ColorId(kKnownColorBrightWhite), _vm->KnownColor2ColorId(kKnownColorBlack), kFontOutline);
+				_vm->_font->textDrawRect(kKnownFontMedium, sceneSubstitutes[i].message,
+					 Common::Rect(24, getHeight() - 33, _vm->getDisplayInfo().width - 11,
 								  getHeight()), _vm->KnownColor2ColorId(kKnownColorBrightWhite), _vm->KnownColor2ColorId(kKnownColorBlack), kFontOutline);
 				return;
 			}
@@ -519,8 +550,8 @@ void Scene::getBGInfo(BGInfo &bgInfo) {
 	bgInfo.bounds.left = 0;
 	bgInfo.bounds.top = 0;
 
-	if (_bg.w < _vm->getDisplayWidth()) {
-		bgInfo.bounds.left = (_vm->getDisplayWidth() - _bg.w) / 2;
+	if (_bg.w < _vm->getDisplayInfo().width) {
+		bgInfo.bounds.left = (_vm->getDisplayInfo().width - _bg.w) / 2;
 	}
 
 	if (_bg.h < getHeight()) {
@@ -552,7 +583,7 @@ bool Scene::offscreenPath(Point &testPoint) {
 		return false;
 	}
 
-	point.x = CLIP<int>(testPoint.x, 0, _vm->getDisplayWidth() - 1);
+	point.x = CLIP<int>(testPoint.x, 0, _vm->getDisplayInfo().width - 1);
 	point.y = CLIP<int>(testPoint.y, 0, _bgMask.h - 1);
 	if (point == testPoint) {
 		return false;
@@ -600,7 +631,8 @@ void Scene::loadScene(LoadSceneParams *loadSceneParams) {
 
 	_chapterPointsChanged = false;
 
-	if ((_vm->getGameType() == GType_IHNM) && (loadSceneParams->chapter != NO_CHAPTER_CHANGE)) {
+#ifdef ENABLE_IHNM
+	if ((_vm->getGameId() == GID_IHNM) && (loadSceneParams->chapter != NO_CHAPTER_CHANGE)) {
 		if (loadSceneParams->loadFlag != kLoadBySceneNumber) {
 			error("loadScene wrong usage");
 		}
@@ -621,7 +653,7 @@ void Scene::loadScene(LoadSceneParams *loadSceneParams) {
 		_vm->_interface->activate();
 
 		if (loadSceneParams->chapter == 8 || loadSceneParams->chapter == -1) {
-			if (_vm->getGameId() != GID_IHNM_DEMO)
+			if (!(_vm->getFeatures() & GF_IHNM_DEMO))
 				_vm->_interface->setMode(kPanelChapterSelection);
 			else
 				_vm->_interface->setMode(kPanelNull);
@@ -638,6 +670,7 @@ void Scene::loadScene(LoadSceneParams *loadSceneParams) {
 			return;
 		}
 	}
+#endif
 
 	if (_sceneLoaded) {
 		error("Scene::loadScene(): Error, a scene is already loaded");
@@ -645,11 +678,13 @@ void Scene::loadScene(LoadSceneParams *loadSceneParams) {
 
 	_loadDescription = true;
 
-	if (_vm->getGameType() == GType_IHNM) {
+#ifdef ENABLE_IHNM
+	if (_vm->getGameId() == GID_IHNM) {
 		if (loadSceneParams->loadFlag == kLoadBySceneNumber) // When will we get rid of it?
 			if (loadSceneParams->sceneDescriptor <= 0)
-				loadSceneParams->sceneDescriptor = _vm->_resource->_metaResource.sceneIndex;
+				loadSceneParams->sceneDescriptor = _vm->_resource->getMetaResource()->sceneIndex;
 	}
+#endif
 
 	switch (loadSceneParams->loadFlag) {
 	case kLoadByResourceId:
@@ -718,13 +753,13 @@ void Scene::loadScene(LoadSceneParams *loadSceneParams) {
 
 		_sceneClip.left = 0;
 		_sceneClip.top = 0;
-		_sceneClip.right = _vm->getDisplayWidth();
+		_sceneClip.right = _vm->getDisplayInfo().width;
 		_sceneClip.bottom = getHeight();
 	} else {
 		BGInfo backGroundInfo;
 		getBGInfo(backGroundInfo);
 		_sceneClip = backGroundInfo.bounds;
-		if (!(_bg.w < _vm->getDisplayWidth() || _bg.h < getHeight()))
+		if (!(_bg.w < _vm->getDisplayInfo().width || _bg.h < getHeight()))
 			_outsetSceneNumber = _sceneNumber;
 	}
 
@@ -812,14 +847,14 @@ void Scene::loadScene(LoadSceneParams *loadSceneParams) {
 	}
 
 	if (loadSceneParams->sceneProc == NULL) {
-		if (!_inGame && _vm->getGameType() == GType_ITE) {
+		if (!_inGame && _vm->getGameId() == GID_ITE) {
 			_inGame = true;
 			_vm->_interface->setMode(kPanelMain);
 		}
 
 		_vm->_sound->stopAll();
 
-		if (_vm->getGameType() == GType_ITE) {
+		if (_vm->getGameId() == GID_ITE) {
 			if (_sceneDescription.musicResourceId >= 0) {
 				event.type = kEvTOneshot;
 				event.code = kMusicEvent;
@@ -957,7 +992,7 @@ void Scene::loadSceneResourceList(uint32 resourceId) {
 			_resourceList[i].resourceId = readS.readUint16();
 			_resourceList[i].resourceType = readS.readUint16();
 			// demo version may contain invalid resourceId
-			_resourceList[i].invalid = !_vm->_resource->validResourceId(_sceneContext, _resourceList[i].resourceId);
+			_resourceList[i].invalid = !_sceneContext->validResourceId(_resourceList[i].resourceId);
 		}
 
 	}
@@ -996,7 +1031,7 @@ void Scene::processSceneResources() {
 		case SAGA_ACTOR:
 			//for (a = actorsInScene; a; a = a->nextInScene)
 			//	if (a->obj.figID == glist->file_id)
-			//		if (_vm->getGameType() == GType_ITE ||
+			//		if (_vm->getGameId() == GID_ITE ||
 			//			((a->obj.flags & ACTORF_FINAL_FACE) & 0xff))
 			//			a->sprites = (xSpriteSet *)glist->offset;
 			warning("STUB: unimplemeted handler of SAGA_ACTOR resource");
@@ -1038,7 +1073,7 @@ void Scene::processSceneResources() {
 
 			// At least in ITE the mask needs to be clipped.
 
-			_bgMask.w = MIN(_bgMask.w, _vm->getDisplayWidth());
+			_bgMask.w = MIN(_bgMask.w, _vm->getDisplayInfo().width);
 			_bgMask.h = MIN(_bgMask.h, getHeight());
 
 			debug(4, "BACKGROUND MASK width=%d height=%d length=%d", _bgMask.w, _bgMask.h, (int)_bgMask.buf_len);
@@ -1118,7 +1153,7 @@ void Scene::processSceneResources() {
 			_vm->_palanim->loadPalAnim(resourceData, resourceDataLength);
 			break;
 		case SAGA_FACES:
-			if (_vm->getGameType() == GType_ITE)
+			if (_vm->getGameId() == GID_ITE)
 				_vm->_interface->loadScenePortraits(_resourceList[i].resourceId);
 			break;
 		case SAGA_PALETTE:
@@ -1145,29 +1180,26 @@ void Scene::processSceneResources() {
 }
 
 void Scene::draw() {
-	Surface *backBuffer;
-	Surface *backGroundSurface;
-	Rect rect;
-
-	backBuffer = _vm->_gfx->getBackBuffer();
-
-	backGroundSurface = _vm->_render->getBackGroundSurface();
+	// Do nothing for SAGA2 games for now
+	if (_vm->isSaga2()) {
+		return;
+	}
 
 	if (_sceneDescription.flags & kSceneFlagISO) {
 		_vm->_isoMap->adjustScroll(false);
-		_vm->_isoMap->draw(backBuffer);
+		_vm->_isoMap->draw();
 	} else {
-		backGroundSurface->getRect(rect);
-		if (_sceneClip.bottom < rect.bottom) {
-			rect.bottom = getHeight();
-		}
-		backBuffer->blit(rect, (const byte *)backGroundSurface->pixels);
+		Rect rect;
+		_vm->_render->getBackGroundSurface()->getRect(rect);
+		rect.bottom = (_sceneClip.bottom < rect.bottom) ? getHeight() : rect.bottom;
+		if (_vm->_render->isFullRefresh())
+			_vm->_gfx->drawRegion(rect, (const byte *)_vm->_render->getBackGroundSurface()->pixels);
+		else
+			_vm->_gfx->drawBgRegion(rect, (const byte *)_vm->_render->getBackGroundSurface()->pixels);
 	}
 }
 
 void Scene::endScene() {
-	Surface *backBuffer;
-	Surface *backGroundSurface;
 	Rect rect;
 	size_t i;
 
@@ -1187,16 +1219,16 @@ void Scene::endScene() {
 	_vm->_script->_skipSpeeches = false;
 
 	// Copy current screen to render buffer so inset rooms will get proper background
-	backGroundSurface = _vm->_render->getBackGroundSurface();
 	if (!(_sceneDescription.flags & kSceneFlagISO) && !_vm->_scene->isInIntro()) {
 		BGInfo bgInfo;
 
 		_vm->_scene->getBGInfo(bgInfo);
-		backGroundSurface->blit(bgInfo.bounds, bgInfo.buffer);
+		_vm->_render->getBackGroundSurface()->blit(bgInfo.bounds, bgInfo.buffer);
+		_vm->_render->addDirtyRect(bgInfo.bounds);
 	} else {
-		backBuffer = _vm->_gfx->getBackBuffer();
-		backBuffer->getRect(rect);
-		backGroundSurface->blit(rect, (const byte *)backBuffer->pixels);
+		_vm->_gfx->getBackBufferRect(rect);
+		_vm->_render->getBackGroundSurface()->blit(rect, (const byte *)_vm->_gfx->getBackBufferPixels());
+		_vm->_render->addDirtyRect(rect);
 	}
 
 	// Free scene background
@@ -1229,13 +1261,14 @@ void Scene::endScene() {
 	_actionMap->freeMem();
 	_entryList.freeMem();
 	_sceneStrings.freeMem();
-	_vm->_isoMap->freeMem();
+
+	if (_vm->getGameId() == GID_ITE)
+		_vm->_isoMap->freeMem();
 
 	_vm->_events->clearList();
 	_textList.clear();
 
 	_sceneLoaded = false;
-
 }
 
 void Scene::restoreScene() {
@@ -1280,7 +1313,6 @@ void Scene::cmdActionMapInfo() {
 void Scene::cmdObjectMapInfo() {
 	_objectMap->cmdInfo();
 }
-
 
 void Scene::loadSceneEntryList(const byte* resourcePointer, size_t resourceLength) {
 	int i;
@@ -1332,7 +1364,7 @@ void Scene::clearPlacard() {
 	event.duration = 0;
 	q_event = _vm->_events->chain(q_event, &event);
 
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		event.type = kEvTOneshot;
 		event.code = kTextEvent;
 		event.op = kEventRemove;
@@ -1349,7 +1381,8 @@ void Scene::clearPlacard() {
 	event.duration = 0;
 	q_event = _vm->_events->chain(q_event, &event);
 
-	if (_vm->getGameType() == GType_IHNM) {
+#ifdef ENABLE_IHNM
+	if (_vm->getGameId() == GID_IHNM) {
 		// set mode to main
 		event.type = kEvTImmediate;
 		event.code = kInterfaceEvent;
@@ -1359,6 +1392,7 @@ void Scene::clearPlacard() {
 		event.duration = 0;
 		q_event = _vm->_events->chain(q_event, &event);
 	}
+#endif
 
 	// Display scene background, but stay with black palette
 	event.type = kEvTImmediate;
@@ -1501,7 +1535,7 @@ void Scene::showPsychicProfile(const char *text) {
 }
 
 void Scene::clearPsychicProfile() {
-	if (_vm->_interface->getMode() == kPanelPlacard || _vm->getGameId() == GID_IHNM_DEMO) {
+	if (_vm->_interface->getMode() == kPanelPlacard || _vm->getFeatures() & GF_IHNM_DEMO) {
 		_vm->_render->setFlag(RF_DISABLE_ACTORS);
 		_vm->_scene->clearPlacard();
 		_vm->_interface->activate();

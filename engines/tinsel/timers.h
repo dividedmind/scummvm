@@ -44,7 +44,7 @@ void syncTimerInfo(Serializer &s);
 
 void FettleTimers(void);
 
-void DwSetTimer(int num, int sval, bool up, bool frame);
+void StartTimer(int num, int sval, bool up, bool frame);
 
 int Timer(int num);
 

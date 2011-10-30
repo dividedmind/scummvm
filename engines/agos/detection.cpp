@@ -25,16 +25,17 @@
 
 #include "base/plugins.h"
 
-#include "common/advancedDetector.h"
+#include "engines/advancedDetector.h"
 #include "common/config-manager.h"
 #include "common/savefile.h"
+#include "common/system.h"
 
 #include "agos/agos.h"
 
 namespace AGOS {
 
 struct AGOSGameDescription {
-	Common::ADGameDescription desc;
+	ADGameDescription desc;
 
 	int gameType;
 	int gameId;
@@ -48,7 +49,7 @@ struct AGOSGameDescription {
  * corresponding new target and platform combination.
  *
  */
-static const Common::ADObsoleteGameID obsoleteGameIDsTable[] = {
+static const ADObsoleteGameID obsoleteGameIDsTable[] = {
 	{"simon1acorn", "simon1", Common::kPlatformAcorn},
 	{"simon1amiga", "simon1", Common::kPlatformAmiga},
 	{"simon1cd32", "simon1", Common::kPlatformAmiga},
@@ -56,10 +57,10 @@ static const Common::ADObsoleteGameID obsoleteGameIDsTable[] = {
 	{"simon1dos", "simon1", Common::kPlatformPC},
 	{"simon1talkie", "simon1", Common::kPlatformPC},
 	{"simon1win", "simon1", Common::kPlatformWindows},
-	{"simon2dos", "simon2",  Common::kPlatformPC},
+	{"simon2dos", "simon2", Common::kPlatformPC},
 	{"simon2talkie", "simon2", Common::kPlatformPC},
 	{"simon2mac", "simon2", Common::kPlatformMacintosh},
-	{"simon2win", "simon2",  Common::kPlatformWindows},
+	{"simon2win", "simon2", Common::kPlatformWindows},
 	{0, 0, Common::kPlatformUnknown}
 };
 
@@ -79,7 +80,7 @@ static const PlainGameDescriptor simonGames[] = {
 
 #include "agos/detection_tables.h"
 
-static const Common::ADParams detectionParams = {
+static const ADParams detectionParams = {
 	// Pointer to ADGameDescription or its superset structure
 	(const byte *)AGOS::gameDescriptions,
 	// Size of that superset structure
@@ -98,10 +99,10 @@ static const Common::ADParams detectionParams = {
 	0
 };
 
-class AgosMetaEngine : public Common::AdvancedMetaEngine {
+class AgosMetaEngine : public AdvancedMetaEngine {
 public:
-	AgosMetaEngine() : Common::AdvancedMetaEngine(detectionParams) {}
-	
+	AgosMetaEngine() : AdvancedMetaEngine(detectionParams) {}
+
 	virtual const char *getName() const {
 		return "AGOS";
 	}
@@ -109,19 +110,24 @@ public:
 	virtual const char *getCopyright() const {
 		return "AGOS (C) Adventure Soft";
 	}
-	
+
 	virtual bool hasFeature(MetaEngineFeature f) const;
-	virtual bool createInstance(OSystem *syst, Engine **engine, const Common::ADGameDescription *desc) const;
+	virtual bool createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const;
 	virtual SaveStateList listSaves(const char *target) const;
+	virtual int getMaximumSaveSlot() const;
 };
 
 bool AgosMetaEngine::hasFeature(MetaEngineFeature f) const {
 	return
-		(f == kSupportsRTL) ||
 		(f == kSupportsListSaves);
 }
 
-bool AgosMetaEngine::createInstance(OSystem *syst, Engine **engine, const Common::ADGameDescription *desc) const {
+bool AGOS::AGOSEngine::hasFeature(EngineFeature f) const {
+	return
+		(f == kSupportsRTL);
+}
+
+bool AgosMetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const {
 	const AGOS::AGOSGameDescription *gd = (const AGOS::AGOSGameDescription *)desc;
 	bool res = true;
 
@@ -177,7 +183,7 @@ SaveStateList AgosMetaEngine::listSaves(const char *target) const {
 			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
 			if (in) {
 				saveDesc = file->c_str();
-				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc, *file));
+				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc));
 				delete in;
 			}
 		}
@@ -185,6 +191,8 @@ SaveStateList AgosMetaEngine::listSaves(const char *target) const {
 
 	return saveList;
 }
+
+int AgosMetaEngine::getMaximumSaveSlot() const { return 999; }
 
 #if PLUGIN_ENABLED_DYNAMIC(AGOS)
 	REGISTER_PLUGIN_DYNAMIC(AGOS, PLUGIN_TYPE_ENGINE, AgosMetaEngine);

@@ -164,19 +164,22 @@ private:
 
 	void validateAnimationId(uint16 animId) {
 		if (animId >= MAX_ANIMATIONS) {
+			// Cutaway
 			if (animId >= MAX_ANIMATIONS + ARRAYSIZE(_cutawayAnimations))
 				error("validateAnimationId: animId out of range");
 			if (_cutawayAnimations[animId - MAX_ANIMATIONS] == NULL) {
 				error("validateAnimationId: animId=%i unassigned", animId);
 			}
-		}
-		if (_animations[animId] == NULL) {
-			error("validateAnimationId: animId=%i unassigned.", animId);
+		} else {
+			// Animation
+			if (_animations[animId] == NULL) {
+				error("validateAnimationId: animId=%i unassigned.", animId);
+			}
 		}
 	}
 
 	bool isLongData() const {
-		if ((_vm->getGameType() == GType_ITE) && (_vm->getPlatform() != Common::kPlatformMacintosh)) {
+		if ((_vm->getGameId() == GID_ITE) && (_vm->getPlatform() != Common::kPlatformMacintosh)) {
 			return false;
 		}
 		return true;
@@ -184,7 +187,7 @@ private:
 
 	AnimationData* getAnimation(uint16 animId) {
 		validateAnimationId(animId);
-		if (animId > MAX_ANIMATIONS)
+		if (animId >= MAX_ANIMATIONS)
 			return _cutawayAnimations[animId - MAX_ANIMATIONS];
 		return _animations[animId];
 	}

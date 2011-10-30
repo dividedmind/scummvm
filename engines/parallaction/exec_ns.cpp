@@ -123,10 +123,13 @@ DECLARE_INSTRUCTION_OPCODE(set) {
 
 DECLARE_INSTRUCTION_OPCODE(put) {
 	InstructionPtr inst = *_ctxt.inst;
+	Common::Rect r;
+	inst->_a->getFrameRect(r);
+
 	Graphics::Surface v18;
-	v18.w = inst->_a->width();
-	v18.h = inst->_a->height();
-	v18.pixels = inst->_a->getFrameData(inst->_a->getF());
+	v18.w = r.width();
+	v18.h = r.height();
+	v18.pixels = inst->_a->getFrameData();
 
 	int16 x = inst->_opA.getValue();
 	int16 y = inst->_opB.getValue();
@@ -278,7 +281,6 @@ DECLARE_COMMAND_OPCODE(drop){
 
 
 DECLARE_COMMAND_OPCODE(quit) {
-	_vm->_quit = true;
 	_vm->quitGame();
 }
 
@@ -333,7 +335,7 @@ void ProgramExec::runScripts(ProgramList::iterator first, ProgramList::iterator 
 		AnimationPtr a = (*it)->_anim;
 
 		if (a->_flags & kFlagsCharacter)
-			a->setZ(a->getFrameY() + a->height());
+			a->resetZ();
 
 		if ((a->_flags & kFlagsActing) == 0)
 			continue;
@@ -341,7 +343,7 @@ void ProgramExec::runScripts(ProgramList::iterator first, ProgramList::iterator 
 		runScript(*it, a);
 
 		if (a->_flags & kFlagsCharacter)
-			a->setZ(a->getFrameY() + a->height());
+			a->resetZ();
 	}
 
 	_modCounter++;
@@ -357,7 +359,7 @@ void CommandExec::runList(CommandList::iterator first, CommandList::iterator las
 	_ctxt.suspend = false;
 
 	for ( ; first != last; first++) {
-		if (_vm->quit())
+		if (_vm->shouldQuit())
 			break;
 
 		CommandPtr cmd = *first;
@@ -439,7 +441,7 @@ void CommandExec::runSuspended() {
 	}
 }
 
-CommandExec_ns::CommandExec_ns(Parallaction_ns* vm) : _vm(vm) {
+CommandExec_ns::CommandExec_ns(Parallaction_ns* vm) : CommandExec(vm), _vm(vm) {
 
 }
 

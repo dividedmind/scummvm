@@ -32,18 +32,12 @@
 #include <SDL.h>
 #endif
 
-#include "common/scummsys.h"
-#include "common/system.h"
+#include "backends/base-backend.h"
 #include "graphics/scaler.h"
 
 
 namespace Audio {
 	class MixerImpl;
-}
-
-namespace Common {
-	class SaveFileManager;
-	class TimerManager;
 }
 
 #if !defined(_WIN32_WCE) && !defined(__SYMBIAN32__)
@@ -77,7 +71,7 @@ enum {
 };
 
 
-class OSystem_SDL : public OSystem {
+class OSystem_SDL : public BaseBackend {
 public:
 	OSystem_SDL();
 	virtual ~OSystem_SDL();
@@ -85,7 +79,7 @@ public:
 	virtual void initBackend();
 
 	void beginGFXTransaction(void);
-	void endGFXTransaction(void);
+	TransactionError endGFXTransaction(void);
 
 	// Set the size of the video bitmap.
 	// Typically, 320x200
@@ -142,6 +136,9 @@ public:
 	// Returns true if an event was retrieved.
 	virtual bool pollEvent(Common::Event &event); // overloaded by CE backend
 
+	// Sets up the keymapper with the backends hardware key set
+	virtual void setupKeymapper();
+
 	// Set function that generates samples
 	virtual void setupMixer();
 	static void mixCallback(void *s, byte *samples, int len);
@@ -176,6 +173,7 @@ public:
 	void deleteMutex(MutexRef mutex);
 
 	// Overlay
+	virtual Graphics::PixelFormat getOverlayFormat() const { return _overlayFormat; }
 	virtual void showOverlay();
 	virtual void hideOverlay();
 	virtual void clearOverlay();
@@ -183,13 +181,8 @@ public:
 	virtual void copyRectToOverlay(const OverlayColor *buf, int pitch, int x, int y, int w, int h);
 	virtual int16 getHeight();
 	virtual int16 getWidth();
-	virtual int16 getOverlayHeight()  { return _overlayHeight; }
-	virtual int16 getOverlayWidth()   { return _overlayWidth; }
-
-	// Methods that convert RGB to/from colors suitable for the overlay.
-	virtual OverlayColor RGBToColor(uint8 r, uint8 g, uint8 b);
-	virtual void colorToRGB(OverlayColor color, uint8 &r, uint8 &g, uint8 &b);
-
+	virtual int16 getOverlayHeight()  { return _videoMode.overlayHeight; }
+	virtual int16 getOverlayWidth()   { return _videoMode.overlayWidth; }
 
 	virtual const GraphicsMode *getSupportedGraphicsModes() const;
 	virtual int getDefaultGraphicsMode() const;
@@ -209,10 +202,10 @@ public:
 
 	virtual Common::SaveFileManager *getSavefileManager();
 	virtual FilesystemFactory *getFilesystemFactory();
-	virtual void addSysArchivesToSearchSet(Common::SearchSet &s, uint priority = 0);
+	virtual void addSysArchivesToSearchSet(Common::SearchSet &s, int priority = 0);
 
-	virtual Common::SeekableReadStream *openConfigFileForReading();
-	virtual Common::WriteStream *openConfigFileForWriting();
+	virtual Common::SeekableReadStream *createConfigReadStream();
+	virtual Common::WriteStream *createConfigWriteStream();
 
 protected:
 	bool _inited;
@@ -235,17 +228,14 @@ protected:
 	// unseen game screen
 	SDL_Surface *_screen;
 
-	// TODO: We could get rid of the following two vars and just use _screen instead
-	int _screenWidth, _screenHeight;
-
 	// temporary screen (for scalers)
 	SDL_Surface *_tmpscreen;
 	SDL_Surface *_tmpscreen2;
 
 	// overlay
 	SDL_Surface *_overlayscreen;
-	int _overlayWidth, _overlayHeight;
 	bool _overlayVisible;
+	Graphics::PixelFormat _overlayFormat;
 
 	// Audio
 	int _samplesPerSec;
@@ -261,36 +251,39 @@ protected:
 
 	enum {
 		kTransactionNone = 0,
-		kTransactionCommit = 1,
-		kTransactionActive = 2
+		kTransactionActive = 1,
+		kTransactionRollback = 2
 	};
 
 	struct TransactionDetails {
-		int mode;
-		bool modeChanged;
-		int w;
-		int h;
 		bool sizeChanged;
-		bool fs;
-		bool fsChanged;
-		bool ar;
-		bool arChanged;
 		bool needHotswap;
 		bool needUpdatescreen;
-		bool needUnload;
-		bool needToggle;
 		bool normal1xScaler;
 	};
 	TransactionDetails _transactionDetails;
+
+	struct VideoState {
+		bool setup;
+
+		bool fullscreen;
+		bool aspectRatio;
+
+		int mode;
+		int scaleFactor;
+
+		int screenWidth, screenHeight;
+		int overlayWidth, overlayHeight;
+	};
+	VideoState _videoMode, _oldVideoMode;
+
+	virtual void setGraphicsModeIntern(); // overloaded by CE backend
 
 	/** Force full redraw on next updateScreen */
 	bool _forceFull;
 	ScalerProc *_scalerProc;
 	int _scalerType;
-	int _scaleFactor;
-	int _mode;
 	int _transactionMode;
-	bool _fullscreen;
 
 	bool _screenIsLocked;
 	Graphics::Surface _framebuffer;
@@ -299,9 +292,6 @@ protected:
 	uint32 _modeFlags;
 	bool _modeChanged;
 	int _screenChangeCount;
-
-	/** True if aspect ratio correction is enabled. */
-	bool _adjustAspectRatio;
 
 	enum {
 		NUM_DIRTY_RECT = 100,
@@ -390,7 +380,7 @@ protected:
 	SDL_Thread *_soundThread;
 	bool _soundThreadIsRunning;
 	bool _soundThreadShouldQuit;
-	
+
 	byte _activeSoundBuf;
 	uint _soundBufSize;
 	byte *_soundBuffers[2];
@@ -425,9 +415,9 @@ protected:
 
 	virtual void internUpdateScreen(); // overloaded by CE backend
 
-	virtual void loadGFXMode(); // overloaded by CE backend
+	virtual bool loadGFXMode(); // overloaded by CE backend
 	virtual void unloadGFXMode(); // overloaded by CE backend
-	virtual void hotswapGFXMode(); // overloaded by CE backend
+	virtual bool hotswapGFXMode(); // overloaded by CE backend
 
 	void setFullscreenMode(bool enable);
 	void setAspectRatioCorrection(bool enable);
@@ -435,8 +425,8 @@ protected:
 	virtual bool saveScreenshot(const char *filename); // overloaded by CE backend
 
 	int effectiveScreenHeight() const {
-		return (_adjustAspectRatio ? real2Aspect(_screenHeight) : _screenHeight)
-			* _scaleFactor;
+		return (_videoMode.aspectRatio ? real2Aspect(_videoMode.screenHeight) : _videoMode.screenHeight)
+			* _videoMode.scaleFactor;
 	}
 
 	void setupIcon();

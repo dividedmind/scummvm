@@ -34,6 +34,7 @@
 #include "kyra/text_hof.h"
 #include "kyra/timer.h"
 #include "kyra/debugger.h"
+#include "kyra/util.h"
 
 #include "common/system.h"
 #include "common/config-manager.h"
@@ -96,7 +97,7 @@ KyraEngine_HoF::KyraEngine_HoF(OSystem *system, const GameFlags &flags) : KyraEn
 	_itemAnimData = 0;
 	_demoAnimData = 0;
 	_nextAnimItem = 0;
-	
+
 	for (int i = 0; i < 15; i++)
 		memset(&_activeItemAnim[i], 0, sizeof(ActiveItemAnim));
 
@@ -211,7 +212,7 @@ void KyraEngine_HoF::pauseEngineIntern(bool pause) {
 		}
 
 		_nextIdleAnim += pausedTime;
-		
+
 		for (int x = 0; x < _itemAnimDataSize; x++)
 			_activeItemAnim[x].nextFrame += pausedTime;
 
@@ -219,7 +220,7 @@ void KyraEngine_HoF::pauseEngineIntern(bool pause) {
 	}
 }
 
-int KyraEngine_HoF::init() {
+Common::Error KyraEngine_HoF::init() {
 	_screen = new Screen_HoF(this, _system);
 	assert(_screen);
 	_screen->setResolution();
@@ -261,7 +262,7 @@ int KyraEngine_HoF::init() {
 
 	// No mouse display in demo
 	if (_flags.isDemo && !_flags.isTalkie)
-		return 0;
+		return Common::kNoError;
 
 	_res->exists("PWGMOUSE.SHP", true);
 	uint8 *shapes = _res->fileData("PWGMOUSE.SHP", 0);
@@ -269,21 +270,21 @@ int KyraEngine_HoF::init() {
 
 	for (int i = 0; i < 2; i++)
 		addShapeToPool(shapes, i, i);
-	
+
 	delete[] shapes;
 
 	_screen->setMouseCursor(0, 0, getShapePtr(0));
-	return 0;
+	return Common::kNoError;
 }
 
-int KyraEngine_HoF::go() {
+Common::Error KyraEngine_HoF::go() {
 	if (_gameToLoad == -1) {
 		if (_flags.platform == Common::kPlatformFMTowns || _flags.platform == Common::kPlatformPC98)
 			seq_showStarcraftLogo();
 
 		if (_flags.isDemo && !_flags.isTalkie) {
 			if (_flags.gameID == GI_LOL)
-				seq_playSequences(kSequenceLolDemoScene1, kSequenceLolDemoScene6);	
+				seq_playSequences(kSequenceLolDemoScene1, kSequenceLolDemoScene6);
 			else
 				seq_playSequences(kSequenceDemoVirgin, kSequenceDemoFisher);
 			_menuChoice = 4;
@@ -298,7 +299,8 @@ int KyraEngine_HoF::go() {
 
 	if (_menuChoice != 4) {
 		// load just the pak files needed for ingame
-		_res->loadPakFile(StaticResource::staticDataFilename());
+		_staticres->loadStaticResourceFile();
+
 		if (_flags.platform == Common::kPlatformPC && _flags.isTalkie) {
 			if (!_res->loadFileList("FILEDATA.FDT"))
 				error("couldn't load 'FILEDATA.FDT'");
@@ -317,15 +319,15 @@ int KyraEngine_HoF::go() {
 
 	if (_menuChoice & 1) {
 		startup();
-		if (!quit())
+		if (!shouldQuit())
 			runLoop();
 		cleanup();
-		
+
 		if (_showOutro)
 			seq_playSequences(kSequenceFunters, kSequenceFrash);
 	}
 
-	return 0;
+	return Common::kNoError;
 }
 
 void KyraEngine_HoF::startup() {
@@ -436,9 +438,9 @@ void KyraEngine_HoF::startup() {
 	if (_gameToLoad == -1) {
 		snd_playWanderScoreViaMap(52, 1);
 		enterNewScene(_mainCharacter.sceneId, _mainCharacter.facing, 0, 0, 1);
-		saveGame(getSavegameFilename(0), "New Game", 0);
+		saveGameState(0, "New Game", 0);
 	} else {
-		loadGame(getSavegameFilename(_gameToLoad));
+		loadGameStateCheck(_gameToLoad);
 	}
 
 	_screen->showMouse();
@@ -455,7 +457,7 @@ void KyraEngine_HoF::runLoop() {
 	_screen->updateScreen();
 
 	_runFlag = true;
-	while (!quit() && _runFlag) {
+	while (!shouldQuit() && _runFlag) {
 		if (_deathHandler >= 0) {
 			removeHandItem();
 			delay(5);
@@ -463,7 +465,7 @@ void KyraEngine_HoF::runLoop() {
 			_gui->optionsButton(0);
 			_deathHandler = -1;
 
-			if (!_runFlag || !quit())
+			if (!_runFlag || shouldQuit())
 				break;
 		}
 
@@ -887,8 +889,8 @@ char *KyraEngine_HoF::getTableString(int id, uint8 *buffer, int decode) {
 	char *string = (char*)getTableEntry(buffer, id);
 
 	if (decode && _flags.lang != Common::JA_JPN) {
-		decodeString1(string, _internStringBuf);
-		decodeString2(_internStringBuf, _internStringBuf);
+		Util::decodeString1(string, _internStringBuf);
+		Util::decodeString2(_internStringBuf, _internStringBuf);
 		string = _internStringBuf;
 	}
 
@@ -900,64 +902,6 @@ const char *KyraEngine_HoF::getChapterString(int id) {
 		loadChapterBuffer(_newChapterFile);
 
 	return getTableString(id, _chapterBuffer, 1);
-}
-
-int KyraEngine_HoF::decodeString1(const char *src, char *dst) {
-	static const uint8 decodeTable1[] = {
-		0x20, 0x65, 0x74, 0x61, 0x69, 0x6E, 0x6F, 0x73, 0x72, 0x6C, 0x68,
-		0x63, 0x64, 0x75, 0x70, 0x6D
-	};
-
-	static const uint8 decodeTable2[] = {
-		0x74, 0x61, 0x73, 0x69, 0x6F, 0x20, 0x77, 0x62, 0x20, 0x72, 0x6E,
-		0x73, 0x64, 0x61, 0x6C, 0x6D, 0x68, 0x20, 0x69, 0x65, 0x6F, 0x72,
-		0x61, 0x73, 0x6E, 0x72, 0x74, 0x6C, 0x63, 0x20, 0x73, 0x79, 0x6E,
-		0x73, 0x74, 0x63, 0x6C, 0x6F, 0x65, 0x72, 0x20, 0x64, 0x74, 0x67,
-		0x65, 0x73, 0x69, 0x6F, 0x6E, 0x72, 0x20, 0x75, 0x66, 0x6D, 0x73,
-		0x77, 0x20, 0x74, 0x65, 0x70, 0x2E, 0x69, 0x63, 0x61, 0x65, 0x20,
-		0x6F, 0x69, 0x61, 0x64, 0x75, 0x72, 0x20, 0x6C, 0x61, 0x65, 0x69,
-		0x79, 0x6F, 0x64, 0x65, 0x69, 0x61, 0x20, 0x6F, 0x74, 0x72, 0x75,
-		0x65, 0x74, 0x6F, 0x61, 0x6B, 0x68, 0x6C, 0x72, 0x20, 0x65, 0x69,
-		0x75, 0x2C, 0x2E, 0x6F, 0x61, 0x6E, 0x73, 0x72, 0x63, 0x74, 0x6C,
-		0x61, 0x69, 0x6C, 0x65, 0x6F, 0x69, 0x72, 0x61, 0x74, 0x70, 0x65,
-		0x61, 0x6F, 0x69, 0x70, 0x20, 0x62, 0x6D
-	};
-
-	int size = 0;
-	uint cChar = 0;
-	while ((cChar = *src++) != 0) {
-		if (cChar & 0x80) {
-			cChar &= 0x7F;
-			int index = (cChar & 0x78) >> 3;
-			*dst++ = decodeTable1[index];
-			++size;
-			assert(cChar < sizeof(decodeTable2));
-			cChar = decodeTable2[cChar];
-		}
-
-		*dst++ = cChar;
-		++size;
-	}
-
-	*dst++ = 0;
-	return size;
-}
-
-void KyraEngine_HoF::decodeString2(const char *src, char *dst) {
-	if (!src || !dst)
-		return;
-
-	char out = 0;
-	while ((out = *src) != 0) {
-		if (*src == 0x1B) {
-			++src;
-			out = *src + 0x7F;
-		}
-		*dst++ = out;
-		++src;
-	}
-
-	*dst = 0;
 }
 
 #pragma mark -
@@ -1258,7 +1202,7 @@ int KyraEngine_HoF::inputSceneChange(int x, int y, int unk1, int unk2) {
 	int vocH = _flags.isTalkie ? 131 : -1;
 
 	if (_pathfinderFlag) {
-		if (findItem(curScene, 13) >= 0 && _unk3 <= -3) {			
+		if (findItem(curScene, 13) >= 0 && _unk3 <= -3) {
 			strId = 252;
 		} else if (_itemInHand == 72) {
 			strId = 257;
@@ -1525,8 +1469,11 @@ void KyraEngine_HoF::openTalkFile(int newFile) {
 
 	if (!_res->loadPakFile(talkFilename)) {
 		if (speechEnabled()) {
-			warning("Couldn't load file '%s' falling back to text only mode", talkFilename);
+			warning("Couldn't load voice file '%s', falling back to text only mode", talkFilename);
 			_configVoice = 0;
+
+			// Sync the config manager with the new settings
+			writeSettings();
 		}
 	}
 }
@@ -1582,16 +1529,23 @@ void KyraEngine_HoF::snd_playSoundEffect(int track, int volume) {
 	}
 
 	int16 vocIndex = (int16)READ_LE_UINT16(&_ingameSoundIndex[track * 2]);
-	if (vocIndex != -1)
-		_sound->voicePlay(_ingameSoundList[vocIndex], true);
-	else if (_flags.platform == Common::kPlatformPC)
-		KyraEngine_v1::snd_playSoundEffect(track);
+	if (vocIndex != -1) {
+		_sound->voicePlay(_ingameSoundList[vocIndex], 255, true);
+	} else if (_flags.platform == Common::kPlatformPC) {
+		if (_sound->getSfxType() == Sound::kMidiMT32)
+			track = track < _mt32SfxMapSize ? _mt32SfxMap[track] - 1 : -1;
+		else if (_sound->getSfxType() == Sound::kMidiGM)
+			track = track < _gmSfxMapSize ? _gmSfxMap[track] - 1: -1;
+
+		if (track != -1)
+			KyraEngine_v1::snd_playSoundEffect(track);
 
 		// TODO ?? Maybe there is a way to let users select whether they want
 		// voc, midi or adl sfx (even though it makes no sense to choose anything but voc).
-		// The PC-98 version has support for non-pcm sound effects, but only for tracks 
+		// The PC-98 version has support for non-pcm sound effects, but only for tracks
 		// which also have voc files. The syntax would be:
 		// KyraEngine_v1::snd_playSoundEffect(vocIndex);
+	}
 }
 
 #pragma mark -
@@ -1630,7 +1584,7 @@ void KyraEngine_HoF::loadInvWsa(const char *filename, int run, int delayTime, in
 	_invWsa.timer = _system->getMillis();
 
 	if (run) {
-		while (_invWsa.running && !skipFlag() && !quit()) {
+		while (_invWsa.running && !skipFlag() && !shouldQuit()) {
 			update();
 			_system->delayMillis(10);
 		}
@@ -1715,7 +1669,7 @@ void KyraEngine_HoF::displayInvWsaLastFrame() {
 
 void KyraEngine_HoF::setCauldronState(uint8 state, bool paletteFade) {
 	memcpy(_screen->getPalette(2), _screen->getPalette(0), 768);
-	Common::SeekableReadStream *file = _res->getFileStream("_POTIONS.PAL");
+	Common::SeekableReadStream *file = _res->createReadStream("_POTIONS.PAL");
 	if (!file)
 		error("Couldn't load cauldron palette");
 	file->seek(state*18, SEEK_SET);
@@ -1797,7 +1751,7 @@ void KyraEngine_HoF::cauldronItemAnim(int item) {
 		}
 
 		snd_playSoundEffect(0x17);
-		
+
 		for (int i = 16; i > 0; i -= 2, curY += 2) {
 			_screen->setNewShapeHeight(shape, i);
 			restoreGfxRect32x32(x, y);
@@ -1887,7 +1841,7 @@ bool KyraEngine_HoF::updateCauldron() {
 void KyraEngine_HoF::cauldronRndPaletteFade() {
 	showMessage(0, 0xCF);
 	int index = _rnd.getRandomNumberRng(0x0F, 0x16);
-	Common::SeekableReadStream *file = _res->getFileStream("_POTIONS.PAL");
+	Common::SeekableReadStream *file = _res->createReadStream("_POTIONS.PAL");
 	if (!file)
 		error("Couldn't load cauldron palette");
 	file->seek(index*18, SEEK_SET);
@@ -2004,7 +1958,7 @@ void KyraEngine_HoF::playTim(const char *filename) {
 		return;
 
 	_tim->resetFinishedFlag();
-	while (!quit() && !_tim->finished()) {
+	while (!shouldQuit() && !_tim->finished()) {
 		_tim->exec(tim, 0);
 		if (_chatText)
 			updateWithText();
@@ -2041,7 +1995,7 @@ void KyraEngine_HoF::writeSettings() {
 	case 3:
 		_flags.lang = Common::JA_JPN;
 		break;
-	
+
 	case 0:
 	default:
 		_flags.lang = Common::EN_ANY;

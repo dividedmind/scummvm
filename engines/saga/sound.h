@@ -47,6 +47,7 @@ struct SoundBuffer {
 	int sampleBits;
 	bool stereo;
 	bool isSigned;
+	bool isCompressed;
 
 	byte *buffer;
 	size_t size;
@@ -90,7 +91,7 @@ public:
 
  private:
 
-	void playSoundBuffer(Audio::SoundHandle *handle, SoundBuffer &buffer, int volume, 
+	void playSoundBuffer(Audio::SoundHandle *handle, SoundBuffer &buffer, int volume,
 				sndHandleType handleType, bool loop);
 
 	SndHandle *getHandle();

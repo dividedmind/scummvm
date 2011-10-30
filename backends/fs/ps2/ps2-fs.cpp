@@ -40,10 +40,10 @@ extern OSystem_PS2 *g_systemPs2;
 
 /**
  * Implementation of the ScummVM file system API based on the Ps2SDK.
- * 
- * Parts of this class are documented in the base interface class, AbstractFilesystemNode.
+ *
+ * Parts of this class are documented in the base interface class, AbstractFSNode.
  */
-class Ps2FilesystemNode : public AbstractFilesystemNode {
+class Ps2FilesystemNode : public AbstractFSNode {
 
 friend class Ps2FilesystemFactory;
 
@@ -62,15 +62,15 @@ public:
 	 * Creates a PS2FilesystemNode with the root node as path.
 	 */
 	Ps2FilesystemNode();
-	
+
 	/**
 	 * Creates a PS2FilesystemNode for a given path.
-	 * 
+	 *
 	 * @param path Common::String with the path the new node should point to.
 	 */
 	Ps2FilesystemNode(const Common::String &path);
 	Ps2FilesystemNode(const Common::String &path, bool verify);
-	
+
 	/**
 	 * Copy constructor.
 	 */
@@ -95,13 +95,13 @@ public:
 		return false;
 	}
 
-	virtual AbstractFilesystemNode *clone() const { return new Ps2FilesystemNode(this); }
-	virtual AbstractFilesystemNode *getChild(const Common::String &n) const;
+	virtual AbstractFSNode *clone() const { return new Ps2FilesystemNode(this); }
+	virtual AbstractFSNode *getChild(const Common::String &n) const;
 	virtual bool getChildren(AbstractFSList &list, ListMode mode, bool hidden) const;
-	virtual AbstractFilesystemNode *getParent() const;
+	virtual AbstractFSNode *getParent() const;
 
-	virtual Common::SeekableReadStream *openForReading();
-	virtual Common::WriteStream *openForWriting();
+	virtual Common::SeekableReadStream *createReadStream();
+	virtual Common::WriteStream *createWriteStream();
 };
 
 Ps2FilesystemNode::Ps2FilesystemNode() {
@@ -165,7 +165,7 @@ Ps2FilesystemNode::Ps2FilesystemNode(const Ps2FilesystemNode *node) {
 }
 
 bool Ps2FilesystemNode::exists(void) const {
-	
+
 	dbg_printf("Ps2FilesystemNode::exists: path \"%s\": ", _path.c_str());
 
 	if (_path[4] != ':') { // don't bother for relative path... they always fail on PS2!
@@ -210,17 +210,17 @@ bool Ps2FilesystemNode::getDirectoryFlag(const char *path) {
 	return false;
 }
 
-AbstractFilesystemNode *Ps2FilesystemNode::getChild(const Common::String &n) const {
+AbstractFSNode *Ps2FilesystemNode::getChild(const Common::String &n) const {
 	if (!_isDirectory)
 		return NULL;
 
 	char listDir[256];
 	sprintf(listDir, "%s/", _path.c_str());
 	int fd = fio.dopen(listDir);
-	
+
 	if (fd >= 0) {
 		iox_dirent_t dirent;
-		
+
 		while (fio.dread(fd, &dirent) > 0) {
 			if (strcmp(n.c_str(), dirent.name) == 0) {
 				Ps2FilesystemNode *dirEntry = new Ps2FilesystemNode();
@@ -240,13 +240,13 @@ AbstractFilesystemNode *Ps2FilesystemNode::getChild(const Common::String &n) con
 		}
 		fio.dclose(fd);
 	}
-	
+
 	return NULL;
 }
 
 bool Ps2FilesystemNode::getChildren(AbstractFSList &list, ListMode mode, bool hidden) const {
 	//TODO: honor the hidden flag
-	
+
 	if (!_isDirectory)
 		return false;
 
@@ -273,14 +273,14 @@ bool Ps2FilesystemNode::getChildren(AbstractFSList &list, ListMode mode, bool hi
 	} else {
 		char listDir[256];
 		int fd;
-		
+
 		if (_path.lastChar() == '/' /* || _path.lastChar() == ':'*/)
 			fd = fio.dopen(_path.c_str());
 		else {
 			sprintf(listDir, "%s/", _path.c_str());
 			fd = fio.dopen(listDir);
 		}
-		
+
 		if (fd >= 0) {
 			iox_dirent_t dirent;
 			Ps2FilesystemNode dirEntry;
@@ -288,9 +288,9 @@ bool Ps2FilesystemNode::getChildren(AbstractFSList &list, ListMode mode, bool hi
 			while ((dreadRes = fio.dread(fd, &dirent)) > 0) {
 				if (dirent.name[0] == '.')
 					continue; // ignore '.' and '..'
-				if (((mode == Common::FilesystemNode::kListDirectoriesOnly) && (dirent.stat.mode & FIO_S_IFDIR)) ||
-					((mode == Common::FilesystemNode::kListFilesOnly) && !(dirent.stat.mode & FIO_S_IFDIR)) ||
-					(mode == Common::FilesystemNode::kListAll)) {
+				if (((mode == Common::FSNode::kListDirectoriesOnly) && (dirent.stat.mode & FIO_S_IFDIR)) ||
+					((mode == Common::FSNode::kListFilesOnly) && !(dirent.stat.mode & FIO_S_IFDIR)) ||
+					(mode == Common::FSNode::kListAll)) {
 
 					dirEntry._isDirectory = (bool)(dirent.stat.mode & FIO_S_IFDIR);
 					dirEntry._isRoot = false;
@@ -312,7 +312,7 @@ bool Ps2FilesystemNode::getChildren(AbstractFSList &list, ListMode mode, bool hi
 	}
 }
 
-AbstractFilesystemNode *Ps2FilesystemNode::getParent() const {
+AbstractFSNode *Ps2FilesystemNode::getParent() const {
 	if (_isRoot)
 		return new Ps2FilesystemNode(this);
 
@@ -338,13 +338,13 @@ char *Ps2FilesystemNode::getDeviceDescription(const char *path) const {
 	else if (strncmp(path, "mass", 4) == 0)
 		return "USB Mass Storage";
 	else
-		return "Harddisk";	
+		return "Harddisk";
 }
 
-Common::SeekableReadStream *Ps2FilesystemNode::openForReading() {
+Common::SeekableReadStream *Ps2FilesystemNode::createReadStream() {
 	return StdioStream::makeFromPath(getPath().c_str(), false);
 }
 
-Common::WriteStream *Ps2FilesystemNode::openForWriting() {
+Common::WriteStream *Ps2FilesystemNode::createWriteStream() {
 	return StdioStream::makeFromPath(getPath().c_str(), true);
 }

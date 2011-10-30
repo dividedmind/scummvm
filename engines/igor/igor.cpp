@@ -53,11 +53,11 @@ IgorEngine::IgorEngine(OSystem *system, const DetectedGameVersion *dgv)
 	_inventoryImagesBuffer = (uint8 *)malloc(48000);
 	_verbsPanelBuffer = (uint8 *)malloc(3840);
 
-	Common::addSpecialDebugLevel(kDebugEngine,   "Engine",   "Engine debug level");
-	Common::addSpecialDebugLevel(kDebugResource, "Resource", "Resource debug level");
-	Common::addSpecialDebugLevel(kDebugScreen,   "Screen",   "Screen debug level");
-	Common::addSpecialDebugLevel(kDebugWalk,     "Walk",     "Walk debug level");
-	Common::addSpecialDebugLevel(kDebugGame,     "Game",     "Game debug level");
+	Common::addDebugChannel(kDebugEngine,   "Engine",   "Engine debug level");
+	Common::addDebugChannel(kDebugResource, "Resource", "Resource debug level");
+	Common::addDebugChannel(kDebugScreen,   "Screen",   "Screen debug level");
+	Common::addDebugChannel(kDebugWalk,     "Walk",     "Walk debug level");
+	Common::addDebugChannel(kDebugGame,     "Game",     "Game debug level");
 
 	if (_game.flags & kFlagFloppy) {
 		_midiPlayer = new MidiPlayer(this);
@@ -83,19 +83,16 @@ IgorEngine::~IgorEngine() {
 	free(_inventoryImagesBuffer);
 	free(_verbsPanelBuffer);
 
-	Common::clearAllSpecialDebugLevels();
+	Common::clearAllDebugChannels();
 
 	delete _midiPlayer;
 }
 
-int IgorEngine::init() {
-	_system->beginGFXTransaction();
-		initCommonGFX(false);
-		_system->initSize(320, 200);
-	_system->endGFXTransaction();
+Common::Error IgorEngine::init() {
+	initGraphics(320, 200, false);
 
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));
-	return 0;
+	return Common::kNoError;
 }
 
 void IgorEngine::restart() {
@@ -169,7 +166,7 @@ void IgorEngine::restart() {
 	_gameTicks = 0;
 }
 
-int IgorEngine::go() {
+Common::Error IgorEngine::go() {
 	restart();
 	setupDefaultPalette();
 	_currentPart = ConfMan.getInt("boot_param");
@@ -192,7 +189,7 @@ int IgorEngine::go() {
 	PART_MAIN();
 	_ovlFile.close();
 	_sndFile.close();
-	return 0;
+	return Common::kNoError;
 }
 
 void IgorEngine::readTableFile() {
@@ -427,7 +424,7 @@ void IgorEngine::playSound(int num, int type) {
 		return;
 	}
 	_sndFile.seek(soundOffset);
-	Audio::AudioStream *stream = Audio::makeVOCStream(_sndFile);
+	Audio::AudioStream *stream = Audio::makeVOCStream(_sndFile, Audio::Mixer::FLAG_UNSIGNED);
 	if (stream) {
 		_mixer->playInputStream(soundType, soundHandle, stream);
 	}
@@ -1304,28 +1301,27 @@ void IgorEngine::redrawVerb(uint8 verb, bool highlight) {
 void IgorEngine::drawInventory(int start, int mode) {
 	loadData(IMG_InventoryPanel, _inventoryPanelBuffer);
 	loadData(IMG_Objects, _inventoryImagesBuffer);
+	int y, i;
 	int end = start + 6;
-	if (start <= end) {
-		int x = 1;
-		for (int y = start; y != end; ++y) {
-			if (_inventoryInfo[y - 1] == 0) {
-				for (int i = 1; i <= 30; ++i) {
-					memset(_inventoryPanelBuffer + x * 40 - 20 + (i - 1) * 320, 0, 40);
-				}
-			} else {
-				for (int i = 1; i <= 30; ++i) {
-					int img = _inventoryInfo[y - 1];
-					assert(img >= 1);
-					memcpy(_inventoryPanelBuffer + x * 40 - 20 + i * 320 - 321, _inventoryImagesBuffer + (i - 1) * 40 + (_inventoryImages[img - 1] - 1) * 1200, 40);
-				}
+	int x = 1;
+	for (y = start; y != end; ++y) {
+		if (_inventoryInfo[y - 1] == 0) {
+			for (i = 1; i <= 30; ++i) {
+				memset(_inventoryPanelBuffer + x * 40 - 20 + (i - 1) * 320, 0, 40);
 			}
-			++x;
+		} else {
+			for (i = 1; i <= 30; ++i) {
+				int img = _inventoryInfo[y - 1];
+				assert(img >= 1);
+				memcpy(_inventoryPanelBuffer + x * 40 - 20 + i * 320 - 321, _inventoryImagesBuffer + (i - 1) * 40 + (_inventoryImages[img - 1] - 1) * 1200, 40);
+			}
 		}
+		++x;
 	}
 	if (_inventoryInfo[72] == 1) {
 		// 'hide' scroll up
-		for (int y = 5; y <= 11; ++y) {
-			for (int x = 4; x <= 12; ++x) {
+		for (y = 5; y <= 11; ++y) {
+			for (x = 4; x <= 12; ++x) {
 				uint8 *p = _inventoryPanelBuffer + y * 320 + x - 321;
 				if (*p == 0xF2) {
 					*p = 0xF3;
@@ -1337,8 +1333,8 @@ void IgorEngine::drawInventory(int start, int mode) {
 	}
 	if (_inventoryInfo[73] <= _inventoryInfo[72] + 6 || _inventoryInfo[72] >= _inventoryInfo[73] - 6) {
 		// 'hide' scroll down
-		for (int y = 19; y <= 25; ++y) {
-			for (int x = 4; x <= 12; ++x) {
+		for (y = 19; y <= 25; ++y) {
+			for (x = 4; x <= 12; ++x) {
 				uint8 *p = _inventoryPanelBuffer + y * 320 + x - 321;
 				if (*p == 0xF2) {
 					*p = 0xF3;
@@ -1354,8 +1350,8 @@ void IgorEngine::drawInventory(int start, int mode) {
 		_scrollInventory = false;
 		break;
 	case 1:
-		for (int y = 0;	y <= 11; ++y) {
-			for (int x = 0; x <= 14; ++x) {
+		for (y = 0; y <= 11; ++y) {
+			for (x = 0; x <= 14; ++x) {
 				uint8 *p = _screenVGA + x + y * 320 + 59520;
 				if ((*p & 0x80) != 0) {
 					*p += 8;
@@ -1372,8 +1368,8 @@ void IgorEngine::drawInventory(int start, int mode) {
 		_scrollInventory = true;
 		break;
 	case 2:
-		for (int y = 0;	y <= 11; ++y) {
-			for (int x = 0; x <= 14; ++x) {
+		for (y = 0; y <= 11; ++y) {
+			for (x = 0; x <= 14; ++x) {
 				uint8 *p = _screenVGA + x + y * 320 + 55040;
 				if ((*p & 0x80) != 0) {
 					*p += 8;

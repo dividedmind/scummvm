@@ -32,6 +32,7 @@
 
 namespace Common {
 	class FSList;
+	class FSNode;
 }
 
 
@@ -193,7 +194,7 @@ public:
 
 /**
  * Abstract base class for Plugin factories. Subclasses of this
- * are responsible for creating plugin objects, e.g. by loading 
+ * are responsible for creating plugin objects, e.g. by loading
  * loadable modules from storage media; by creating "fake" plugins
  * from static code; or whatever other means.
  */
@@ -225,7 +226,7 @@ public:
 	 * Return a list of Plugin objects loaded via createPlugin from disk.
 	 * For this, a list of directories is searched for plugin objects:
 	 * The current dir and its "plugins" subdirectory (if present), a list
-	 * of custom search dirs (see addCustomDirectories) and finally the 
+	 * of custom search dirs (see addCustomDirectories) and finally the
 	 * directory specified via the "pluginspath" config variable (if any).
 	 *
 	 * @return a list of Plugin instances
@@ -238,26 +239,26 @@ protected:
 	 * Subclasses of FilePluginProvider have to at least overload this method.
 	 * If the file is not found, or does not contain loadable code, 0 is returned instead.
 	 *
-	 * @param filename	the name of the loadable code module
+	 * @param node	the FSNode of the loadable code module
 	 * @return	a pointer to a Plugin instance, or 0 if an error occurred.
 	 */
-	virtual Plugin *createPlugin(const Common::String &filename) const = 0;
+	virtual Plugin *createPlugin(const Common::FSNode &node) const = 0;
 
 	/**
-	 * Check if the supplied filename corresponds to a loadable plugin file in
-	 * the current platform.
+	 * Check if the supplied file corresponds to a loadable plugin file in
+	 * the current platform. Usually, this will just check the file name.
 	 *
-	 * @param filename	the name of the file to check
+	 * @param node	the FSNode of the file to check
 	 * @return	true if the filename corresponds to a plugin, false otherwise
 	 */
-	virtual bool isPluginFilename(const Common::String &filename) const;
+	virtual bool isPluginFilename(const Common::FSNode &node) const;
 
 	/**
 	 * Optionally add to the list of directories to be searched for
 	 * plugins by getPlugins().
 	 *
 	 * @param dirs	the reference to the list of directories to be used when
-	 * 		searching for plugins.
+	 *		searching for plugins.
 	 */
 	virtual void addCustomDirectories(Common::FSList &dirs) const;
 };

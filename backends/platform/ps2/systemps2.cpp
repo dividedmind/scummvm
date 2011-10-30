@@ -76,8 +76,6 @@ volatile uint32 msecCount = 0;
 
 OSystem_PS2 *g_systemPs2;
 
-int gBitFormat = 555;
-
 #define FOREVER 2147483647
 
 namespace Graphics {
@@ -197,7 +195,7 @@ void OSystem_PS2::startIrxModules(int numModules, IrxReference *modules) {
 				}
 			} else
 				sioprintf("Module \"%s\" wasn't found: %d\n", modules[i].path, modules[i].errorCode);
-			
+
 			if ((modules[i].errorCode < 0) || (res < 0) || (rv < 0)) {
 				if (!(modules[i].fileRef->flags & OPTIONAL)) {
 					if (modules[i].errorCode < 0)
@@ -208,7 +206,7 @@ void OSystem_PS2::startIrxModules(int numModules, IrxReference *modules) {
 					quit();
 				}
 			}
-			
+
 			if (modules[i].buffer)
 				free(modules[i].buffer);
 		} else {
@@ -283,7 +281,7 @@ OSystem_PS2::OSystem_PS2(const char *elfPath) {
 
 		hddPreparePoweroff();
 		//poweroffInit();
-		dbg_printf("romeo : hddPreparePoweroff done\n");     
+		dbg_printf("romeo : hddPreparePoweroff done\n");
 
 		hddSetUserPoweroffCallback(gluePowerOffCallback, this);
 		//poweroffSetCallback(gluePowerOffCallback, this);
@@ -464,7 +462,7 @@ bool OSystem_PS2::hddPresent(void) {
 }
 
 bool OSystem_PS2::usbMassPresent(void) {
-	
+
 	if (_usbMassLoaded) {
 		int testFd = fio.dopen("mass:/");
 		if (testFd >= 0)
@@ -641,16 +639,6 @@ bool OSystem_PS2::pollEvent(Common::Event &event) {
 	return res;
 }
 
-OverlayColor OSystem_PS2::RGBToColor(uint8 r, uint8 g, uint8 b) {
-	return (r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10);
-}
-
-void OSystem_PS2::colorToRGB(OverlayColor color, uint8 &r, uint8 &g, uint8 &b) {
-	r = (color & 0x1F) << 3;
-	g = ((color >> 5) & 0x1F) << 3;
-	b = ((color >> 10) & 0x1F) << 3;
-}
-
 int16 OSystem_PS2::getHeight(void) {
 	return _screen->getHeight();
 }
@@ -680,7 +668,7 @@ void OSystem_PS2::msgPrintf(int millis, char *format, ...) {
 		while ((*lnEnd) && (*lnEnd != '\n'))
 			lnEnd++;
 		*lnEnd = '\0';
-		
+
 		Common::String str(lnSta);
 		int width = Graphics::g_sysfont.getStringWidth(str);
 		if (width > maxWidth)
@@ -770,6 +758,7 @@ void OSystem_PS2::quit(void) {
 }
 
 void OSystem_PS2::makeConfigPath(char *dest) {
+	// FIXME: Maybe merge this method into createConfigReadStream/createConfigWriteStream ?
 	FILE *handle;
 	strcpy(dest, "cdfs:/ScummVM.ini");
 	handle = ps2_fopen(dest, "r");
@@ -781,6 +770,20 @@ void OSystem_PS2::makeConfigPath(char *dest) {
 		ps2_fclose(handle);
 	else
 		strcpy(dest, "mc0:ScummVM/scummvm.ini");
+}
+
+Common::SeekableReadStream *OSystem_PS2::createConfigReadStream() {
+	char configFile[MAXPATHLEN];
+	makeConfigPath(configFile);
+	Common::FSNode file(configFile);
+	return file.createReadStream();
+}
+
+Common::WriteStream *OSystem_PS2::createConfigWriteStream() {
+	char configFile[MAXPATHLEN];
+	makeConfigPath(configFile);
+	Common::FSNode file(configFile);
+	return file.createWriteStream();
 }
 
 bool OSystem_PS2::runningFromHost(void) {

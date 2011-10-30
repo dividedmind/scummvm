@@ -85,17 +85,23 @@ public:
 	virtual GameDescriptor findGame(const char *gameid) const;
 	virtual GameList detectGames(const Common::FSList &fslist) const;
 	virtual SaveStateList listSaves(const char *target) const;
+	virtual int getMaximumSaveSlot() const;
 	virtual void removeSaveState(const char *target, int slot) const;
 
-	virtual PluginError createInstance(OSystem *syst, Engine **engine) const;
+	virtual Common::Error createInstance(OSystem *syst, Engine **engine) const;
 };
 
 bool Sword2MetaEngine::hasFeature(MetaEngineFeature f) const {
 	return
-		(f == kSupportsRTL) ||
 		(f == kSupportsListSaves) ||
-		(f == kSupportsDirectLoad) ||
+		(f == kSupportsLoadingDuringStartup) ||
 		(f == kSupportsDeleteSave);
+}
+
+bool Sword2::Sword2Engine::hasFeature(EngineFeature f) const {
+	return
+		(f == kSupportsRTL) ||
+		(f == kSupportsSubtitleOptions);
 }
 
 GameList Sword2MetaEngine::getSupportedGames() const {
@@ -152,7 +158,7 @@ GameList Sword2MetaEngine::detectGames(const Common::FSList &fslist) const {
 
 				if (0 == scumm_stricmp("clusters", fileName)) {
 					Common::FSList recList;
-					if (file->getChildren(recList, Common::FilesystemNode::kListAll)) {
+					if (file->getChildren(recList, Common::FSNode::kListAll)) {
 						GameList recGames(detectGames(recList));
 						if (!recGames.empty()) {
 							detectedGames.push_back(recGames);
@@ -182,13 +188,13 @@ SaveStateList Sword2MetaEngine::listSaves(const char *target) const {
 	for (Common::StringList::const_iterator file = filenames.begin(); file != filenames.end(); ++file) {
 		// Obtain the last 3 digits of the filename, since they correspond to the save slot
 		int slotNum = atoi(file->c_str() + file->size() - 3);
-		
+
 		if (slotNum >= 0 && slotNum <= 999) {
 			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
 			if (in) {
 				in->readUint32LE();
 				in->read(saveDesc, SAVE_DESCRIPTION_LEN);
-				saveList.push_back(SaveStateDescriptor(slotNum, Common::String(saveDesc), *file));
+				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc));
 				delete in;
 			}
 		}
@@ -196,6 +202,8 @@ SaveStateList Sword2MetaEngine::listSaves(const char *target) const {
 
 	return saveList;
 }
+
+int Sword2MetaEngine::getMaximumSaveSlot() const { return 999; }
 
 void Sword2MetaEngine::removeSaveState(const char *target, int slot) const {
 	char extension[6];
@@ -207,14 +215,14 @@ void Sword2MetaEngine::removeSaveState(const char *target, int slot) const {
 	g_system->getSavefileManager()->removeSavefile(filename.c_str());
 }
 
-PluginError Sword2MetaEngine::createInstance(OSystem *syst, Engine **engine) const {
+Common::Error Sword2MetaEngine::createInstance(OSystem *syst, Engine **engine) const {
 	assert(syst);
 	assert(engine);
 
 	Common::FSList fslist;
-	Common::FilesystemNode dir(ConfMan.get("path"));
-	if (!dir.getChildren(fslist, Common::FilesystemNode::kListAll)) {
-		return kInvalidPathError;
+	Common::FSNode dir(ConfMan.get("path"));
+	if (!dir.getChildren(fslist, Common::FSNode::kListAll)) {
+		return Common::kNoGameDataFoundError;
 	}
 
 	// Invoke the detector
@@ -224,11 +232,11 @@ PluginError Sword2MetaEngine::createInstance(OSystem *syst, Engine **engine) con
 	for (uint i = 0; i < detectedGames.size(); i++) {
 		if (detectedGames[i].gameid() == gameid) {
 			*engine = new Sword2::Sword2Engine(syst);
-			return kNoError;
+			return Common::kNoError;
 		}
 	}
 
-	return kNoGameDataFoundError;
+	return Common::kNoGameDataFoundError;
 }
 
 #if PLUGIN_ENABLED_DYNAMIC(SWORD2)
@@ -303,7 +311,9 @@ void Sword2Engine::registerDefaultSettings() {
 	ConfMan.registerDefault("reverse_stereo", false);
 }
 
-void Sword2Engine::readSettings() {
+void Sword2Engine::syncSoundSettings() {
+	// Sound settings. At the time of writing, not all of these can be set
+	// by the global options dialog, but it seems silly to split them up.
 	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, ConfMan.getInt("music_volume"));
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, ConfMan.getInt("speech_volume"));
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));
@@ -312,6 +322,10 @@ void Sword2Engine::readSettings() {
 	_sound->muteSpeech(ConfMan.getBool("speech_mute"));
 	_sound->muteFx(ConfMan.getBool("sfx_mute"));
 	_sound->setReverseStereo(ConfMan.getBool("reverse_stereo"));
+}
+
+void Sword2Engine::readSettings() {
+	syncSoundSettings();
 	_mouse->setObjectLabels(ConfMan.getBool("object_labels"));
 	_screen->setRenderLevel(ConfMan.getInt("gfx_details"));
 }
@@ -345,7 +359,7 @@ void Sword2Engine::setupPersistentResources() {
 	_resman->openResource(CUR_PLAYER_ID);
 }
 
-int Sword2Engine::init() {
+Common::Error Sword2Engine::init() {
 	// Get some falling RAM and put it in your pocket, never let it slip
 	// away
 
@@ -358,10 +372,8 @@ int Sword2Engine::init() {
 	_resman = NULL;
 	_memory = NULL;
 
-	_system->beginGFXTransaction();
-		initCommonGFX(true);
-		_screen = new Screen(this, 640, 480);
-	_system->endGFXTransaction();
+	initGraphics(640, 480, true);
+	_screen = new Screen(this, 640, 480);
 
 	// Create the debugger as early as possible (but not before the
 	// screen object!) so that errors can be displayed in it. In
@@ -374,7 +386,7 @@ int Sword2Engine::init() {
 	_resman = new ResourceManager(this);
 
 	if (!_resman->init())
-		return 1;
+		return Common::kUnknownError;
 
 	_logic = new Logic(this);
 	_fontRenderer = new FontRenderer(this);
@@ -421,8 +433,8 @@ int Sword2Engine::init() {
 		// player will kill the music for us. Otherwise, the restore
 		// will either have killed the music, or done a crossfade.
 
-		if (quit())
-			return 0;
+		if (shouldQuit())
+			return Common::kNoError;
 
 		if (result)
 			startGame();
@@ -431,17 +443,17 @@ int Sword2Engine::init() {
 
 	_screen->initialiseRenderCycle();
 
-	return 0;
+	return Common::kNoError;
 }
 
-int Sword2Engine::go() {
+Common::Error Sword2Engine::go() {
 	while (1) {
 		if (_debugger->isAttached())
 			_debugger->onFrame();
 
 #ifdef SWORD2_DEBUG
 		if (_stepOneCycle) {
-			pauseEngineIntern(true);
+			pauseEngine(true);
 			_stepOneCycle = false;
 		}
 #endif
@@ -455,10 +467,14 @@ int Sword2Engine::go() {
 				switch (ke->kbd.keycode) {
 				case Common::KEYCODE_p:
 					if (_gamePaused)
-						pauseEngineIntern(false);
+						pauseEngine(false);
 					else
-						pauseEngineIntern(true);
+						pauseEngine(true);
 					break;
+#if 0
+				// Disabled because of strange rumors about the
+				// credits running spontaneously every few
+				// minutes.
 				case Common::KEYCODE_c:
 					if (!_logic->readVar(DEMO) && !_mouse->isChoosing()) {
 						ScreenInfo *screenInfo = _screen->getScreenInfo();
@@ -466,11 +482,12 @@ int Sword2Engine::go() {
 						screenInfo->new_palette = 99;
 					}
 					break;
+#endif
 #ifdef SWORD2_DEBUG
 				case Common::KEYCODE_SPACE:
 					if (_gamePaused) {
 						_stepOneCycle = true;
-						pauseEngineIntern(false);
+						pauseEngine(false);
 					}
 					break;
 				case Common::KEYCODE_s:
@@ -493,7 +510,7 @@ int Sword2Engine::go() {
 		// because we want the break to happen before updating the
 		// screen again.
 
-		if (quit())
+		if (shouldQuit())
 			break;
 
 		// creates the debug text blocks
@@ -510,7 +527,7 @@ int Sword2Engine::go() {
 #endif
 	}
 
-	return 0;
+	return Common::kNoError;
 }
 
 void Sword2Engine::restartGame() {
@@ -731,18 +748,17 @@ void Sword2Engine::sleepUntil(uint32 time) {
 	}
 }
 
-void Sword2Engine::pauseEngineIntern(bool pause) {
+void Sword2Engine::pauseEngine(bool pause) {
+	if (pause == _gamePaused)
+		return;
+
+	// We don't need to hide the cursor for outside pausing. Not as long
+	// as it replaces the cursor with the GUI cursor, at least.
+
+	_mouse->pauseEngine(pause);
+	pauseEngineIntern(pause);
+
 	if (pause) {
-		// FIXME: We should never disallow pausing, and we need to do
-		// something about pausing during cutscene moves, credits, etc.
-
-		// Don't allow Pause while screen fading or while black
-		if (_screen->getFadeStatus() != RDFADE_NONE)
-			return;
-
-		_sound->pauseAllSound();
-		_mouse->pauseEngine(true);
-
 #ifdef SWORD2_DEBUG
 		// Don't dim it if we're single-stepping through frames
 		// dim the palette during the pause
@@ -752,19 +768,29 @@ void Sword2Engine::pauseEngineIntern(bool pause) {
 #else
 		_screen->dimPalette(true);
 #endif
-
-		_gamePaused = true;
 	} else {
-		_mouse->pauseEngine(false);
-		_sound->unpauseAllSound();
-
 		_screen->dimPalette(false);
-
-		_gamePaused = false;
 
 		// If mouse is about or we're in a chooser menu
 		if (!_mouse->getMouseStatus() || _mouse->isChoosing())
 			_mouse->setMouse(NORMAL_MOUSE_ID);
+	}
+}
+
+void Sword2Engine::pauseEngineIntern(bool pause) {
+	if (pause == _gamePaused)
+		return;
+
+	if (pause) {
+		_sound->pauseAllSound();
+		_logic->pauseMovie(true);
+		_screen->pauseScreen(true);
+		_gamePaused = true;
+	} else {
+		_logic->pauseMovie(false);
+		_screen->pauseScreen(false);
+		_sound->unpauseAllSound();
+		_gamePaused = false;
 	}
 }
 

@@ -30,22 +30,31 @@
 #include "common/keyboard.h"
 #include "graphics/surface.h"
 #include "gui/object.h"
-#include "gui/theme.h"
+#include "gui/ThemeEngine.h"
 
 namespace GUI {
 
 class Dialog;
 
 enum {
-	WIDGET_ENABLED		= 1 << 0,
-	WIDGET_INVISIBLE	= 1 << 1,
-	WIDGET_HILITED		= 1 << 2,
-	WIDGET_BORDER		= 1 << 3,
-	//WIDGET_INV_BORDER	= 1 << 4,
-	WIDGET_CLEARBG		= 1 << 5,
-	WIDGET_WANT_TICKLE	= 1 << 7,
-	WIDGET_TRACK_MOUSE	= 1 << 8,
-	WIDGET_RETAIN_FOCUS	= 1 << 9		// Retain focus on mouse up. By default widgets lose focus on mouseup, but some widgets might want to retain it - widgets where you enter text, for instance
+	WIDGET_ENABLED		= 1 <<  0,
+	WIDGET_INVISIBLE	= 1 <<  1,
+	WIDGET_HILITED		= 1 <<  2,
+	WIDGET_BORDER		= 1 <<  3,
+	//WIDGET_INV_BORDER	= 1 <<  4,
+	WIDGET_CLEARBG		= 1 <<  5,
+	WIDGET_WANT_TICKLE	= 1 <<  7,
+	WIDGET_TRACK_MOUSE	= 1 <<  8,
+	// Retain focus on mouse up. By default widgets lose focus on mouseup, 
+	// but some widgets might want to retain it - widgets where you enter
+	// text, for instance
+	WIDGET_RETAIN_FOCUS	= 1 <<  9,
+	// Usually widgets would lock mouse input when the user pressed the
+	// left mouse button till the user releases it.
+	// The PopUpWidget for example does not want this behavior, since the
+	// mouse down will open up a new dialog which silently eats the mouse
+	// up event for its own purposes.
+	WIDGET_IGNORE_DRAG	= 1 << 10
 };
 
 enum {
@@ -66,25 +75,6 @@ enum {
 	kCaretBlinkTime = 300
 };
 
-enum WidgetSize {
-	kDefaultWidgetSize,
-	kNormalWidgetSize,
-	kBigWidgetSize
-};
-
-enum {
-	kButtonWidth = 72,
-	kButtonHeight = 16,
-	kSliderWidth = 85,
-	kSliderHeight = 12,
-
-	kBigButtonWidth = 108,
-	kBigButtonHeight = 24,
-	kBigSliderWidth = 128,
-	kBigSliderHeight = 18
-};
-
-
 /* Widget */
 class Widget : public GuiObject {
 	friend class Dialog;
@@ -93,9 +83,8 @@ protected:
 	GuiObject	*_boss;
 	Widget		*_next;
 	uint16		_id;
-	uint16		_hints;
 	bool		_hasFocus;
-	Theme::WidgetStateInfo _state;
+	ThemeEngine::WidgetStateInfo _state;
 
 private:
 	uint16		_flags;
@@ -142,12 +131,10 @@ public:
 	void clearFlags(int flags);
 	int getFlags() const		{ return _flags; }
 
-	void setHints(int hints)	{ _hints |= hints; }
-	void clearHints(int hints)	{ _hints &= ~hints; }
-	int getHints() const		{ return _hints; }
-
-	void setEnabled(bool e)		{ if (e) setFlags(WIDGET_ENABLED); else clearFlags(WIDGET_ENABLED); }
+	void setEnabled(bool e);
 	bool isEnabled() const;
+
+	void setVisible(bool e);
 	bool isVisible() const;
 
 protected:
@@ -169,18 +156,16 @@ protected:
 /* StaticTextWidget */
 class StaticTextWidget : public Widget {
 protected:
-	typedef Graphics::TextAlignment TextAlignment;
-
 	Common::String			_label;
-	TextAlignment			_align;
+	Graphics::TextAlign		_align;
 public:
-	StaticTextWidget(GuiObject *boss, int x, int y, int w, int h, const Common::String &text, TextAlignment align);
+	StaticTextWidget(GuiObject *boss, int x, int y, int w, int h, const Common::String &text, Graphics::TextAlign align);
 	StaticTextWidget(GuiObject *boss, const Common::String &name, const Common::String &text);
 	void setValue(int value);
 	void setLabel(const Common::String &label);
 	const Common::String &getLabel() const		{ return _label; }
-	void setAlign(TextAlignment align);
-	TextAlignment getAlign() const		{ return _align; }
+	void setAlign(Graphics::TextAlign align);
+	Graphics::TextAlign getAlign() const		{ return _align; }
 
 protected:
 	void drawWidget();
@@ -255,12 +240,14 @@ public:
 	void handleMouseUp(int x, int y, int button, int clickCount);
 	void handleMouseEntered(int button)	{ setFlags(WIDGET_HILITED); draw(); }
 	void handleMouseLeft(int button)	{ clearFlags(WIDGET_HILITED); draw(); }
+	void handleMouseWheel(int x, int y, int direction);
 
 protected:
 	void drawWidget();
 
 	int valueToPos(int value);
 	int posToValue(int pos);
+	int valueToBarWidth(int value);
 };
 
 /* GraphicsWidget */

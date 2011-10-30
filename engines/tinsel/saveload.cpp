@@ -25,8 +25,9 @@
  */
 
 #include "tinsel/actors.h"
+#include "tinsel/dialogs.h"
+#include "tinsel/drives.h"
 #include "tinsel/dw.h"
-#include "tinsel/inventory.h"
 #include "tinsel/rince.h"
 #include "tinsel/savescn.h"
 #include "tinsel/serializer.h"
@@ -63,7 +64,11 @@ namespace Tinsel {
 #define VER(x) x
 
 
+//----------------- GLOBAL GLOBAL DATA --------------------
 
+int	thingHeld = 0;
+int	restoreCD = 0;
+SRSTATE SRstate = SR_IDLE;
 
 //----------------- EXTERN FUNCTIONS --------------------
 
@@ -79,9 +84,6 @@ extern void syncGlobInfo(Serializer &s);
 // in POLYGONS.C
 extern void syncPolyInfo(Serializer &s);
 
-// in SAVESCN.CPP
-extern void RestoreScene(SAVED_DATA *sd, bool bFadeOut);
-
 //----------------- LOCAL DEFINES --------------------
 
 struct SaveGameHeader {
@@ -93,15 +95,17 @@ struct SaveGameHeader {
 };
 
 enum {
-	SAVEGAME_ID = 0x44575399,	// = 'DWSc' = "DiscWorld ScummVM"
+	DW1_SAVEGAME_ID = 0x44575399,	// = 'DWSc' = "DiscWorld 1 ScummVM"
+	DW2_SAVEGAME_ID = 0x44573253,	// = 'DW2S' = "DiscWorld 2 ScummVM"
 	SAVEGAME_HEADER_SIZE = 4 + 4 + 4 + SG_DESC_LEN + 7
 };
 
+#define SAVEGAME_ID (TinselV2 ? (uint32)DW2_SAVEGAME_ID : (uint32)DW1_SAVEGAME_ID)
 
 //----------------- LOCAL GLOBAL DATA --------------------
 
 static int	numSfiles = 0;
-static SFILES	savedFiles[MAX_SFILES];
+static SFILES	savedFiles[MAX_SAVED_FILES];
 
 static bool NeedLoad = true;
 
@@ -112,9 +116,9 @@ static const char *SaveSceneDesc = 0;
 static int *SaveSceneSsCount = 0;
 static char *SaveSceneSsData = 0;	// points to 'SAVED_DATA ssdata[MAX_NEST]'
 
-static SRSTATE SRstate = SR_IDLE;
-
 //------------- SAVE/LOAD SUPPORT METHODS ----------------
+
+void setNeedLoad() { NeedLoad = true; }
 
 static void syncTime(Serializer &s, struct tm &t) {
 	s.syncAsUint16LE(t.tm_year);
@@ -153,29 +157,38 @@ static bool syncSaveGameHeader(Serializer &s, SaveGameHeader &hdr) {
 }
 
 static void syncSavedMover(Serializer &s, SAVED_MOVER &sm) {
-	SCNHANDLE *pList[3] = { (SCNHANDLE *)&sm.WalkReels, (SCNHANDLE *)&sm.StandReels, (SCNHANDLE *)&sm.TalkReels };
+	SCNHANDLE *pList[3] = { (SCNHANDLE *)&sm.walkReels,
+		(SCNHANDLE *)&sm.standReels, (SCNHANDLE *)&sm.talkReels };
 
-	s.syncAsUint32LE(sm.MActorState);
+	s.syncAsUint32LE(sm.bActive);
 	s.syncAsSint32LE(sm.actorID);
-	s.syncAsSint32LE(sm.objx);
-	s.syncAsSint32LE(sm.objy);
-	s.syncAsUint32LE(sm.lastfilm);
-	
+	s.syncAsSint32LE(sm.objX);
+	s.syncAsSint32LE(sm.objY);
+	s.syncAsUint32LE(sm.hLastfilm);
+
 	for (int pIndex = 0; pIndex < 3; ++pIndex) {
 		SCNHANDLE *p = pList[pIndex];
 		for (int i = 0; i < TOTAL_SCALES * 4; ++i)
 			s.syncAsUint32LE(*p++);
 	}
+
+	if (TinselV2) {
+		s.syncAsByte(sm.bHidden);
+
+		s.syncAsSint32LE(sm.brightness);
+		s.syncAsSint32LE(sm.startColour);
+		s.syncAsSint32LE(sm.paletteLength);
+	}
 }
 
 static void syncSavedActor(Serializer &s, SAVED_ACTOR &sa) {
 	s.syncAsUint16LE(sa.actorID);
-	s.syncAsUint16LE(sa.z);
+	s.syncAsUint16LE(sa.zFactor);
 	s.syncAsUint32LE(sa.bAlive);
 	s.syncAsUint32LE(sa.presFilm);
 	s.syncAsUint16LE(sa.presRnum);
-	s.syncAsUint16LE(sa.presX);
-	s.syncAsUint16LE(sa.presY);
+	s.syncAsUint16LE(sa.presPlayX);
+	s.syncAsUint16LE(sa.presPlayY);
 }
 
 extern void syncAllActorsAlive(Serializer &s);
@@ -184,6 +197,24 @@ static void syncNoScrollB(Serializer &s, NOSCROLLB &ns) {
 	s.syncAsSint32LE(ns.ln);
 	s.syncAsSint32LE(ns.c1);
 	s.syncAsSint32LE(ns.c2);
+}
+
+static void syncZPosition(Serializer &s, Z_POSITIONS &zp) {
+	s.syncAsSint16LE(zp.actor);
+	s.syncAsSint16LE(zp.column);
+	s.syncAsSint32LE(zp.z);
+}
+
+static void syncPolyVolatile(Serializer &s, POLY_VOLATILE &p) {
+	s.syncAsByte(p.bDead);
+	s.syncAsSint16LE(p.xoff);
+	s.syncAsSint16LE(p.yoff);
+}
+
+static void syncSoundReel(Serializer &s, SOUNDREELS &sr) {
+	s.syncAsUint32LE(sr.hFilm);
+	s.syncAsSint32LE(sr.column);
+	s.syncAsSint32LE(sr.actorCol);
 }
 
 static void syncSavedData(Serializer &s, SAVED_DATA &sd) {
@@ -197,7 +228,7 @@ static void syncSavedData(Serializer &s, SAVED_DATA &sd) {
 	s.syncAsSint32LE(sd.NumSavedActors);
 	s.syncAsSint32LE(sd.SavedLoffset);
 	s.syncAsSint32LE(sd.SavedToffset);
-	for (int i = 0; i < MAX_INTERPRET; ++i)
+	for (int i = 0; i < NUM_INTERPRET; ++i)
 		sd.SavedICInfo[i].syncWithSerializer(s);
 	for (int i = 0; i < MAX_POLY; ++i)
 		s.syncAsUint32LE(sd.SavedDeadPolys[i]);
@@ -213,6 +244,32 @@ static void syncSavedData(Serializer &s, SAVED_DATA &sd) {
 		syncNoScrollB(s, sd.SavedNoScrollData.NoHScroll[i]);
 	s.syncAsUint32LE(sd.SavedNoScrollData.NumNoV);
 	s.syncAsUint32LE(sd.SavedNoScrollData.NumNoH);
+
+	// Tinsel 2 fields
+	if (TinselV2) {
+		// SavedNoScrollData
+		s.syncAsUint32LE(sd.SavedNoScrollData.xTrigger);
+		s.syncAsUint32LE(sd.SavedNoScrollData.xDistance);
+		s.syncAsUint32LE(sd.SavedNoScrollData.xSpeed);
+		s.syncAsUint32LE(sd.SavedNoScrollData.yTriggerTop);
+		s.syncAsUint32LE(sd.SavedNoScrollData.yTriggerBottom);
+		s.syncAsUint32LE(sd.SavedNoScrollData.yDistance);
+		s.syncAsUint32LE(sd.SavedNoScrollData.ySpeed);
+
+		for (int i = 0; i < NUM_ZPOSITIONS; ++i)
+			syncZPosition(s, sd.zPositions[i]);
+		s.syncBytes(sd.savedActorZ, MAX_SAVED_ACTOR_Z);
+		for (int i = 0; i < MAX_POLY; ++i)
+			syncPolyVolatile(s, sd.SavedPolygonStuff[i]);
+		for (int i = 0; i < 3; ++i)
+			s.syncAsUint32LE(sd.SavedTune[i]);
+		s.syncAsByte(sd.bTinselDim);
+		s.syncAsSint32LE(sd.SavedScrollFocus);
+		for (int i = 0; i < SV_TOPVALID; ++i)
+			s.syncAsSint32LE(sd.SavedSystemVars[i]);
+		for (int i = 0; i < MAX_SOUNDREELS; ++i)
+			syncSoundReel(s, sd.SavedSoundReels[i]);
+	}
 }
 
 
@@ -224,7 +281,7 @@ static char *NewName(void) {
 	static char result[FNAMELEN];
 	int	i;
 	int	ano = 1;	// Allocated number
-	
+
 	while (1) {
 		Common::String fname = _vm->getSavegameFilename(ano);
 		strcpy(result, fname.c_str());
@@ -247,6 +304,11 @@ static char *NewName(void) {
  * the number of files found).
  */
 int getList(Common::SaveFileManager *saveFileMan, const Common::String &target) {
+	// No change since last call?
+	// TODO/FIXME: Just always reload this data? Be careful about slow downs!!!
+	if (!NeedLoad)
+		return numSfiles;
+
 	int i;
 
 	const Common::String pattern = target +  ".???";
@@ -255,7 +317,7 @@ int getList(Common::SaveFileManager *saveFileMan, const Common::String &target) 
 	numSfiles = 0;
 
 	for (Common::StringList::const_iterator file = files.begin(); file != files.end(); ++file) {
-		if (numSfiles >= MAX_SFILES)
+		if (numSfiles >= MAX_SAVED_FILES)
 			break;
 
 		const Common::String &fname = *file;
@@ -281,7 +343,7 @@ int getList(Common::SaveFileManager *saveFileMan, const Common::String &target) 
 			if (difftime(mktime(&hdr.dateTime), mktime(&savedFiles[i].dateTime)) > 0) {
 				Common::copy_backward(&savedFiles[i], &savedFiles[numSfiles], &savedFiles[numSfiles + 1]);
 				break;
-			} 
+			}
 		}
 #endif
 
@@ -308,7 +370,6 @@ int getList(void) {
 	return getList(_vm->getSaveFileMan(), _vm->getTargetName());
 }
 
-
 char *ListEntry(int i, letype which) {
 	if (i == -1)
 		i = numSfiles;
@@ -322,7 +383,16 @@ char *ListEntry(int i, letype which) {
 }
 
 static void DoSync(Serializer &s) {
-	int	sg;
+	int	sg = 0;
+
+	if (TinselV2) {
+		if (s.isSaving())
+			restoreCD = GetCurrentCD();
+		s.syncAsSint16LE(restoreCD);
+	}
+
+	if (TinselV2 && s.isLoading())
+		HoldItem(INV_NOICON);
 
 	syncSavedData(s, *srsd);
 	syncGlobInfo(s);		// Glitter globals
@@ -332,11 +402,16 @@ static void DoSync(Serializer &s) {
 	if (s.isSaving())
 		sg = WhichItemHeld();
 	s.syncAsSint32LE(sg);
-	if (s.isLoading())
-		HoldItem(sg);
+	if (s.isLoading()) {
+		if (TinselV2)
+			thingHeld = sg;
+		else
+			HoldItem(sg);
+	}
 
 	syncTimerInfo(s);		// Timer data
-	syncPolyInfo(s);		// Dead polygon data
+	if (!TinselV2)
+		syncPolyInfo(s);		// Dead polygon data
 	syncSCdata(s);			// Hook Scene and delayed scene
 
 	s.syncAsSint32LE(*SaveSceneSsCount);
@@ -347,17 +422,16 @@ static void DoSync(Serializer &s) {
 			syncSavedData(s, *sdPtr);
 	}
 
-	syncAllActorsAlive(s);
+	if (!TinselV2)
+		syncAllActorsAlive(s);
 }
 
 /**
  * DoRestore
  */
-static bool DoRestore(void) {
-	Common::InSaveFile *f;
-	uint32 id;
+static bool DoRestore() {
+	Common::InSaveFile *f =  _vm->getSaveFileMan()->openForLoading(savedFiles[RestoreGameNumber].name);
 
-	f = _vm->getSaveFileMan()->openForLoading(savedFiles[RestoreGameNumber].name);
 	if (f == NULL) {
 		return false;
 	}
@@ -371,7 +445,7 @@ static bool DoRestore(void) {
 
 	DoSync(s);
 
-	id = f->readSint32LE();
+	uint32 id = f->readSint32LE();
 	if (id != (uint32)0xFEEDFACE)
 		error("Incompatible saved game");
 
@@ -404,7 +478,7 @@ static void DoSave(void) {
 		return;
 
 	Serializer s(0, f);
-	
+
 	// Write out a savegame header
 	SaveGameHeader hdr;
 	hdr.id = SAVEGAME_ID;
@@ -440,7 +514,7 @@ void ProcessSRQueue(void) {
 	switch (SRstate) {
 	case SR_DORESTORE:
 		if (DoRestore()) {
-			RestoreScene(srsd, false);
+			DoRestoreScene(srsd, false);
 		}
 		SRstate = SR_IDLE;
 		break;
@@ -467,6 +541,15 @@ void RequestSaveGame(char *name, char *desc, SAVED_DATA *sd, int *pSsCount, SAVE
 }
 
 void RequestRestoreGame(int num, SAVED_DATA *sd, int *pSsCount, SAVED_DATA *pSsData) {
+	if (TinselV2) {
+		if (num == -1)
+			return;
+		else if (num == -2) {
+			// From CD change for restore
+			num = RestoreGameNumber;
+		}
+	}
+
 	assert(num >= 0);
 
 	RestoreGameNumber = num;
@@ -474,6 +557,16 @@ void RequestRestoreGame(int num, SAVED_DATA *sd, int *pSsCount, SAVED_DATA *pSsD
 	SaveSceneSsData = (char *)pSsData;
 	srsd = sd;
 	SRstate = SR_DORESTORE;
+}
+
+/**
+ * Returns the index of the most recently saved savegame. This will always be
+ * the file at the first index, since the list is sorted by date/time
+ */
+int NewestSavedGame(void) {
+	int numFiles = getList();
+
+	return (numFiles == 0) ? -1 : 0;
 }
 
 } // end of namespace Tinsel

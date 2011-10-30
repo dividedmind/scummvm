@@ -64,7 +64,7 @@ KyraEngine_v1::kReadSaveHeaderError KyraEngine_v1::readSaveHeader(Common::Seekab
 			in->seek(0, SEEK_SET);
 			in->read(descriptionBuffer, descriptionSize[i]);
 			descriptionBuffer[descriptionSize[i]] = 0;
-			
+
 			type = in->readUint32BE();
 			header.version = in->readUint16LE();
 			if (type == MKID_BE('MBL3') && header.version == 100) {
@@ -179,7 +179,7 @@ Common::SeekableReadStream *KyraEngine_v1::openSaveForReading(const char *filena
 
 Common::WriteStream *KyraEngine_v1::openSaveForWriting(const char *filename, const char *saveName, const Graphics::Surface *thumbnail) const {
 	debugC(9, kDebugLevelMain, "KyraEngine_v1::openSaveForWriting('%s', '%s', %p)", filename, saveName, (const void *)thumbnail);
-	if (quit())
+	if (shouldQuit())
 		return 0;
 
 	Common::WriteStream *out = 0;
@@ -246,8 +246,20 @@ bool KyraEngine_v1::saveFileLoadable(int slot) {
 
 void KyraEngine_v1::checkAutosave() {
 	if (shouldPerformAutoSave(_lastAutosave)) {
-		saveGame(getSavegameFilename(999), "Autosave", 0);
+		saveGameState(999, "Autosave", 0);
 		_lastAutosave = _system->getMillis();
+	}
+}
+
+void KyraEngine_v1::loadGameStateCheck(int slot) {
+	if (loadGameState(slot) != Common::kNoError) {
+		const char *filename = getSavegameFilename(slot);
+		Common::String errorMessage = "Could not load savegame: '";
+		errorMessage += filename;
+		errorMessage += "'";
+
+		GUIErrorMessage(errorMessage);
+		error("%s", errorMessage.c_str());
 	}
 }
 

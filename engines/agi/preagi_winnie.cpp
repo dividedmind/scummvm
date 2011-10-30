@@ -29,6 +29,7 @@
 
 #include "graphics/cursorman.h"
 
+#include "common/events.h"
 #include "common/savefile.h"
 #include "common/stream.h"
 
@@ -240,7 +241,7 @@ int Winnie::parser(int pc, int index, uint8 *buffer) {
 	// extract header from buffer
 	parseRoomHeader(&hdr, buffer, sizeof(WTP_ROOM_HDR));
 
-	for (;;) {
+	while (!_vm->shouldQuit()) {
 		pc = startpc;
 
 		// check if block is to be run
@@ -433,7 +434,7 @@ int Winnie::parser(int pc, int index, uint8 *buffer) {
 				opcode = 0;
 				break;
 			}
-		} while (opcode);
+		} while (opcode && !_vm->shouldQuit());
 
 		if (iNewRoom) {
 			_room = iNewRoom;
@@ -445,6 +446,8 @@ int Winnie::parser(int pc, int index, uint8 *buffer) {
 		_vm->_gfx->doUpdate();
 		_vm->_system->updateScreen();
 	}
+	
+	return IDI_WTP_PAR_OK;
 }
 
 void Winnie::keyHelp() {
@@ -796,7 +799,7 @@ void Winnie::getMenuSel(char *szMenu, int *iSel, int fCanSel[]) {
 	// Show the mouse cursor for the menu
 	CursorMan.showMouse(true);
 
-	while (!_vm->quit()) {
+	while (!_vm->shouldQuit()) {
 		while (_vm->_system->getEventManager()->pollEvent(event)) {
 			switch(event.type) {
 			case Common::EVENT_RTL:
@@ -1013,7 +1016,8 @@ phase2:
 		if (parser(hdr.ofsDesc[iBlock] - _roomOffset, iBlock, roomdata) == IDI_WTP_PAR_BACK)
 			goto phase1;
 	}
-	while (!_vm->quit()) {
+	
+	while (!_vm->shouldQuit()) {
 		for (iBlock = 0; iBlock < IDI_WTP_MAX_BLOCK; iBlock++) {
 			switch(parser(hdr.ofsBlock[iBlock] - _roomOffset, iBlock, roomdata)) {
 			case IDI_WTP_PAR_GOTO:
@@ -1117,7 +1121,7 @@ void Winnie::printRoomStr(int iRoom, int iStr) {
 
 void Winnie::gameOver() {
 	// sing the Pooh song forever
-	for (;;) {
+	while (!_vm->shouldQuit()) {
 		_vm->printStr(IDS_WTP_SONG_0);
 		playSound(IDI_WTP_SND_POOH_0);
 		_vm->printStr(IDS_WTP_SONG_1);
@@ -1146,13 +1150,13 @@ void Winnie::saveGame() {
 	outfile->writeByte(_game.nObjRet);
 	outfile->writeByte(_game.iObjHave);
 
-	for(i = 0; i < IDI_WTP_MAX_FLAG; i++)
+	for (i = 0; i < IDI_WTP_MAX_FLAG; i++)
 		outfile->writeByte(_game.fGame[i]);
 
-	for(i = 0; i < IDI_WTP_MAX_OBJ_MISSING; i++)
+	for (i = 0; i < IDI_WTP_MAX_OBJ_MISSING; i++)
 		outfile->writeByte(_game.iUsedObj[i]);
 
-	for(i = 0; i < IDI_WTP_MAX_ROOM_OBJ; i++)
+	for (i = 0; i < IDI_WTP_MAX_ROOM_OBJ; i++)
 		outfile->writeByte(_game.iObjRoom[i]);
 
 	outfile->finalize();
@@ -1212,13 +1216,13 @@ void Winnie::loadGame() {
 		infile->readUint16LE();				// skip unused field
 	}
 
-	for(i = 0; i < IDI_WTP_MAX_FLAG; i++)
+	for (i = 0; i < IDI_WTP_MAX_FLAG; i++)
 		_game.fGame[i] = infile->readByte();
 
-	for(i = 0; i < IDI_WTP_MAX_OBJ_MISSING; i++)
+	for (i = 0; i < IDI_WTP_MAX_OBJ_MISSING; i++)
 		_game.iUsedObj[i] = infile->readByte();
 
-	for(i = 0; i < IDI_WTP_MAX_ROOM_OBJ; i++)
+	for (i = 0; i < IDI_WTP_MAX_ROOM_OBJ; i++)
 		_game.iObjRoom[i] = infile->readByte();
 
 	// Note that saved games from the original interpreter have 2 more 16-bit fields here

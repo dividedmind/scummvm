@@ -24,6 +24,7 @@
  */
 
 #include "cruise/cruise_main.h"
+#include "cruise/staticres.h"
 
 namespace Cruise {
 
@@ -35,7 +36,7 @@ menuStruct *createMenu(int X, int Y, const char *menuName) {
 	entry = (menuStruct *) malloc(sizeof(menuStruct));
 	ASSERT(entry);
 
-	entry->x = X - 160/2;
+	entry->x = X - 160 / 2;
 	entry->y = Y;
 	entry->stringPtr = menuName;
 	entry->numElements = 0;
@@ -79,7 +80,7 @@ void addSelectableMenuEntry(int ovlIdx, int headerIdx, menuStruct *pMenu, int pa
 						if (pSubStructCurrent->pNext) {
 							do {
 								pSubStructCurrent = pSubStructCurrent->pNext;
-							} while(pSubStructCurrent->pNext);
+							} while (pSubStructCurrent->pNext);
 						}
 
 						pSubStructCurrent->pNext = pSubStruct;
@@ -87,8 +88,7 @@ void addSelectableMenuEntry(int ovlIdx, int headerIdx, menuStruct *pMenu, int pa
 					}
 				}
 				var_6 = var_6->next;
-			}
-			while (var_6);
+			} while (var_6);
 
 			var_6 = di;
 		}
@@ -187,13 +187,12 @@ int processMenu(menuStruct *pMenu) {
 	mainDraw(1);
 	flipScreen();
 
-	if( mouseButton & 1) {
+	if (mouseButton & 1) {
 		menuElementSubStruct* pSelectedEntry = getSelectedEntryInMenu(pMenu);
 
-		if(pSelectedEntry) {
+		if (pSelectedEntry) {
 			return pSelectedEntry->header;
-		}
-		else {
+		} else {
 			return -1;
 		}
 	}
@@ -212,49 +211,51 @@ int playerMenu(int menuX, int menuY) {
 			playMusic = 0;
 			freeStuff2();
 		}
-/*
-    if (currentMenu) {
-      freeMenu(currentMenu);
-      currentMenu = 0;
-      selectDown = 0;
-      menuDown = 0;
-      main9 = -1;
-    }
+		/*
+		    if (currentMenu) {
+		      freeMenu(currentMenu);
+		      currentMenu = 0;
+		      selectDown = 0;
+		      menuDown = 0;
+		      main9 = -1;
+		    }
 
-    if (inventoryMenu) {
-      freeMenu(inventoryMenu);
-      inventoryMenu = 0;
-      selectDown = 0;
-      menuDown = 0;
-      main9 = -1;
-    }*/
+		    if (inventoryMenu) {
+		      freeMenu(inventoryMenu);
+		      inventoryMenu = 0;
+		      selectDown = 0;
+		      menuDown = 0;
+		      main9 = -1;
+		    }*/
 
-/*    if (mouseVar2) {
-      free3(mouseVar2);
-    } */
+		/*    if (mouseVar2) {
+		      free3(mouseVar2);
+		    } */
 
-/*    mouseVar2 = 0;
-    linkedRelation = 0; */
+		/*    mouseVar2 = 0;
+		    linkedRelation = 0; */
 		freeDisk();
 
-		menuTable[0] = createMenu(menuX, menuY, "Menu Joueur");
+		// Get the correct string set to use
+		const char **sl = getStringList();
+
+		menuTable[0] = createMenu(menuX, menuY, sl[SL_MENU]);
 		ASSERT(menuTable[0]);
 
-		//addSelectableMenuEntry(0, 3, menuTable[0], 1, -1, "Lecteur de Sauvegarde");
+		//addSelectableMenuEntry(0, 3, menuTable[0], 1, -1, "Save game disk");
 		if (userEnabled) {
-			addSelectableMenuEntry(0, 4, menuTable[0], 1, -1, "Sauvegarde");
+			addSelectableMenuEntry(0, 4, menuTable[0], 1, -1, sl[SL_SAVE]);
 		}
-		addSelectableMenuEntry(0, 5, menuTable[0], 1, -1, "Chargement");
-		addSelectableMenuEntry(0, 6, menuTable[0], 1, -1, "Recommencer le jeu");
-		addSelectableMenuEntry(0, 7, menuTable[0], 1, -1, "Quitter");
+		addSelectableMenuEntry(0, 5, menuTable[0], 1, -1, sl[SL_LOAD]);
+		addSelectableMenuEntry(0, 6, menuTable[0], 1, -1, sl[SL_RESTART]);
+		addSelectableMenuEntry(0, 7, menuTable[0], 1, -1, sl[SL_QUIT]);
 
 		retourMenu = processMenu(menuTable[0]);
 
 		freeMenu(menuTable[0]);
 		menuTable[0] = NULL;
 
-		switch(retourMenu)
-		{
+		switch (retourMenu) {
 		case 3: // select save drive
 			break;
 		case 4: // save

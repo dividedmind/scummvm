@@ -716,7 +716,7 @@ void MidiDriver_YM2612::createLookupTables() {
 				int f10 = (fnum[i] >>  9) & 1;
 				int f11 = (fnum[i] >> 10) & 1;
 				int  n4 = f11;
-				int  n3 = f11&(f10|f9|f8) | (~f11&f10&f9&f8);
+				int  n3 = (f11&(f10|f9|f8)) | (~f11&f10&f9&f8);
 				int note = n4*2 + n3;
 				// see p.207
 				keycodeTable[(block+1)*12+i] = block*4 + note;
@@ -766,7 +766,7 @@ public:
 	}
 
 	MusicDevices getDevices() const;
-	PluginError createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const;
+	Common::Error createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const;
 };
 
 MusicDevices TownsEmuMusicPlugin::getDevices() const {
@@ -775,10 +775,10 @@ MusicDevices TownsEmuMusicPlugin::getDevices() const {
 	return devices;
 }
 
-PluginError TownsEmuMusicPlugin::createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const {
+Common::Error TownsEmuMusicPlugin::createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const {
 	*mididriver = new MidiDriver_YM2612(mixer);
 
-	return kNoError;
+	return Common::kNoError;
 }
 
 MidiDriver *MidiDriver_YM2612_create(Audio::Mixer *mixer) {

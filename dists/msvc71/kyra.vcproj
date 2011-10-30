@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="windows-1252"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
-	Version="7.10"
+	Version="7,10"
 	Name="kyra"
 	ProjectGUID="{9D9A98A0-F88F-4CA2-B8FF-462470EBE3EC}"
 	Keyword="Win32Proj">
@@ -160,6 +160,12 @@
 			RelativePath="..\..\engines\kyra\gui_lok.h">
 		</File>
 		<File
+			RelativePath="..\..\engines\kyra\gui_lol.cpp">
+		</File>
+		<File
+			RelativePath="..\..\engines\kyra\gui_lol.h">
+		</File>
+		<File
 			RelativePath="..\..\engines\kyra\gui_mr.cpp">
 		</File>
 		<File
@@ -176,6 +182,9 @@
 		</File>
 		<File
 			RelativePath="..\..\engines\kyra\items_lok.cpp">
+		</File>
+		<File
+			RelativePath="..\..\engines\kyra\items_lol.cpp">
 		</File>
 		<File
 			RelativePath="..\..\engines\kyra\items_mr.cpp">
@@ -250,6 +259,9 @@
 			RelativePath="..\..\engines\kyra\scene_lok.cpp">
 		</File>
 		<File
+			RelativePath="..\..\engines\kyra\scene_lol.cpp">
+		</File>
+		<File
 			RelativePath="..\..\engines\kyra\scene_mr.cpp">
 		</File>
 		<File
@@ -307,6 +319,9 @@
 			RelativePath="..\..\engines\kyra\script_lok.cpp">
 		</File>
 		<File
+			RelativePath="..\..\engines\kyra\script_lol.cpp">
+		</File>
+		<File
 			RelativePath="..\..\engines\kyra\script_mr.cpp">
 		</File>
 		<File
@@ -334,6 +349,9 @@
 			RelativePath="..\..\engines\kyra\sequences_lok.cpp">
 		</File>
 		<File
+			RelativePath="..\..\engines\kyra\sequences_lol.cpp">
+		</File>
+		<File
 			RelativePath="..\..\engines\kyra\sequences_mr.cpp">
 		</File>
 		<File
@@ -353,6 +371,9 @@
 		</File>
 		<File
 			RelativePath="..\..\engines\kyra\sound_lok.cpp">
+		</File>
+		<File
+			RelativePath="..\..\engines\kyra\sound_midi.cpp">
 		</File>
 		<File
 			RelativePath="..\..\engines\kyra\sound_towns.cpp">
@@ -382,6 +403,12 @@
 			RelativePath="..\..\engines\kyra\text_lok.cpp">
 		</File>
 		<File
+			RelativePath="..\..\engines\kyra\text_lol.cpp">
+		</File>
+		<File
+			RelativePath="..\..\engines\kyra\text_lol.h">
+		</File>
+		<File
 			RelativePath="..\..\engines\kyra\text_mr.cpp">
 		</File>
 		<File
@@ -401,6 +428,12 @@
 		</File>
 		<File
 			RelativePath="..\..\engines\kyra\timer_mr.cpp">
+		</File>
+		<File
+			RelativePath="..\..\engines\kyra\util.cpp">
+		</File>
+		<File
+			RelativePath="..\..\engines\kyra\util.h">
 		</File>
 		<File
 			RelativePath="..\..\engines\kyra\vqa.cpp">

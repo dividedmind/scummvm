@@ -75,9 +75,36 @@ struct SaveInfoSection {
 
 #pragma mark -
 
-void ScummEngine::requestSave(int slot, const char *name, bool temporary) {
+Common::Error ScummEngine::loadGameState(int slot) {
+	requestLoad(slot);
+	return Common::kNoError;
+}
+
+bool ScummEngine::canLoadGameStateCurrently() {
+	// FIXME: For now always allow loading in V0-V3 games
+	// FIXME: Actually, we might wish to support loading in more places.
+	// As long as we are sure it won't cause any problems... Are we
+	// aware of *any* spots where loading is not supported?
+	return (VAR_MAINMENU_KEY == 0xFF || VAR(VAR_MAINMENU_KEY) != 0);
+}
+
+Common::Error ScummEngine::saveGameState(int slot, const char *desc) {
+	requestSave(slot, desc);
+	return Common::kNoError;
+}
+
+bool ScummEngine::canSaveGameStateCurrently() {
+	// FIXME: For now always allow loading in V0-V3 games
+	// TODO: Should we disallow saving in some more places,
+	// e.g. when a SAN movie is playing? Not sure whether the
+	// original EXE allowed this.
+	return (VAR_MAINMENU_KEY == 0xFF || VAR(VAR_MAINMENU_KEY) != 0);
+}
+
+
+void ScummEngine::requestSave(int slot, const char *name) {
 	_saveLoadSlot = slot;
-	_saveTemporaryState = temporary;
+	_saveTemporaryState = false;
 	_saveLoadFlag = 1;		// 1 for save
 	assert(name);
 	strncpy(_saveLoadName, name, sizeof(_saveLoadName));
@@ -617,8 +644,8 @@ void ScummEngine::saveInfos(Common::WriteStream* file) {
 	tm curTime;
 	_system->getTimeAndDate(curTime);
 
-	section.date = (curTime.tm_mday & 0xFF) << 24 | ((curTime.tm_mon + 1) & 0xFF) << 16 | (curTime.tm_year + 1900) & 0xFFFF;
-	section.time = (curTime.tm_hour & 0xFF) << 8 | (curTime.tm_min) & 0xFF;
+	section.date = ((curTime.tm_mday & 0xFF) << 24) | (((curTime.tm_mon + 1) & 0xFF) << 16) | ((curTime.tm_year + 1900) & 0xFFFF);
+	section.time = ((curTime.tm_hour & 0xFF) << 8) | ((curTime.tm_min) & 0xFF);
 
 	file->writeUint32BE(section.type);
 	file->writeUint32BE(section.version);

@@ -328,14 +328,22 @@ enum {
 	kCursorHeight = 42,
 	kTextHeight = 16,
 	kMaxProgramDataSize = 61440,
-	kMaxSaveStates = 100,
-	kGameStateDescriptionLen = 32,	// Need these two values defined here
-	kCurrentGameStateVersion = 6	// for --list-saves support
+	kMaxSaveStates = 100
 };
 
 enum StringType {
 	kStringTypeDefault,
 	kStringTypeConversation
+};
+
+void readGameStateDescription(Common::ReadStream *f, char *description, int len);
+Common::String generateGameStateFileName(const char *target, int slot, bool prefixOnly = false);
+int getGameStateFileSlot(const char *filename);
+
+enum GameState {
+	kGameStateGameLoop,
+	kGameStateOptionsDialog,
+	kGameStateQuitDialog
 };
 
 class MidiPlayer;
@@ -361,8 +369,10 @@ public:
 	ToucheEngine(OSystem *system, Common::Language language);
 	virtual ~ToucheEngine();
 
-	virtual int init();
-	virtual int go();
+	// Engine APIs
+	virtual Common::Error init();
+	virtual Common::Error go();
+	virtual bool hasFeature(EngineFeature f) const;
 	virtual void syncSoundSettings();
 
 protected:
@@ -495,11 +505,10 @@ protected:
 
 	void saveGameStateData(Common::WriteStream *stream);
 	void loadGameStateData(Common::ReadStream *stream);
-	bool saveGameState(int num, const char *description);
-	bool loadGameState(int num);
-	void readGameStateDescription(int num, char *description, int len);
-	void generateGameStateFileName(int num, char *dst, int len, bool prefixOnly = false) const;
-	int getGameStateFileSlot(const char *filename) const;
+	virtual Common::Error saveGameState(int num, const char *description);
+	virtual Common::Error loadGameState(int num);
+	virtual bool canLoadGameStateCurrently();
+	virtual bool canSaveGameStateCurrently();
 
 	void setupOpcodes();
 	void op_nop();
@@ -635,7 +644,7 @@ protected:
 	bool _inp_rightMouseButtonPressed;
 	int _disabledInputCounter;
 	bool _hideInventoryTexts;
-
+	GameState _gameState;
 	bool _displayQuitDialog;
 	int _saveLoadCurrentPage;
 	int _saveLoadCurrentSlot;

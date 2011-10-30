@@ -61,7 +61,7 @@ POSIXFilesystemNode::POSIXFilesystemNode(const Common::String &p) {
 	} else {
 		_path = p;
 	}
-	
+
 #ifdef __OS2__
 	// On OS/2, 'X:/' is a root of drive X, so we should not remove that last
 	// slash.
@@ -92,10 +92,10 @@ POSIXFilesystemNode::POSIXFilesystemNode(const Common::String &p) {
 	setFlags();
 }
 
-AbstractFilesystemNode *POSIXFilesystemNode::getChild(const Common::String &n) const {
+AbstractFSNode *POSIXFilesystemNode::getChild(const Common::String &n) const {
 	assert(!_path.empty());
 	assert(_isDirectory);
-	
+
 	// Make sure the string contains no slashes
 	assert(!n.contains('/'));
 
@@ -117,14 +117,14 @@ bool POSIXFilesystemNode::getChildren(AbstractFSList &myList, ListMode mode, boo
 		// Special case for the root dir: List all DOS drives
 		ULONG ulDrvNum;
 		ULONG ulDrvMap;
-	
+
 		DosQueryCurrentDisk(&ulDrvNum, &ulDrvMap);
-	
+
 		for (int i = 0; i < 26; i++) {
 			if (ulDrvMap & 1) {
 				char drive_root[] = "A:/";
 				drive_root[0] += i;
-	
+
                 POSIXFilesystemNode *entry = new POSIXFilesystemNode();
 				entry->_isDirectory = true;
 				entry->_isValid = true;
@@ -132,10 +132,10 @@ bool POSIXFilesystemNode::getChildren(AbstractFSList &myList, ListMode mode, boo
 				entry->_displayName = "[" + Common::String(drive_root, 2) + "]";
 				myList.push_back(entry);
 			}
-	
+
 			ulDrvMap >>= 1;
 		}
-		
+
 		return true;
 	}
 #endif
@@ -197,8 +197,8 @@ bool POSIXFilesystemNode::getChildren(AbstractFSList &myList, ListMode mode, boo
 			continue;
 
 		// Honor the chosen mode
-		if ((mode == Common::FilesystemNode::kListFilesOnly && entry._isDirectory) ||
-			(mode == Common::FilesystemNode::kListDirectoriesOnly && !entry._isDirectory))
+		if ((mode == Common::FSNode::kListFilesOnly && entry._isDirectory) ||
+			(mode == Common::FSNode::kListDirectoriesOnly && !entry._isDirectory))
 			continue;
 
 		myList.push_back(new POSIXFilesystemNode(entry));
@@ -208,7 +208,7 @@ bool POSIXFilesystemNode::getChildren(AbstractFSList &myList, ListMode mode, boo
 	return true;
 }
 
-AbstractFilesystemNode *POSIXFilesystemNode::getParent() const {
+AbstractFSNode *POSIXFilesystemNode::getParent() const {
 	if (_path == "/")
 		return 0;	// The filesystem root has no parent
 
@@ -220,7 +220,7 @@ AbstractFilesystemNode *POSIXFilesystemNode::getParent() const {
 
 	const char *start = _path.c_str();
 	const char *end = start + _path.size();
-	
+
 	// Strip of the last component. We make use of the fact that at this
 	// point, _path is guaranteed to be normalized
 	while (end > start && *(end-1) != '/')
@@ -237,11 +237,11 @@ AbstractFilesystemNode *POSIXFilesystemNode::getParent() const {
 	return makeNode(Common::String(start, end));
 }
 
-Common::SeekableReadStream *POSIXFilesystemNode::openForReading() {
+Common::SeekableReadStream *POSIXFilesystemNode::createReadStream() {
 	return StdioStream::makeFromPath(getPath().c_str(), false);
 }
 
-Common::WriteStream *POSIXFilesystemNode::openForWriting() {
+Common::WriteStream *POSIXFilesystemNode::createWriteStream() {
 	return StdioStream::makeFromPath(getPath().c_str(), true);
 }
 

@@ -353,6 +353,30 @@ static bool calcClipRects(int dst_w, int dst_h, int src_x, int src_y, int src_w,
 	return srcRect.isValidRect() && dstRect.isValidRect();
 }
 
+void Wiz::copy16BitWizImage(uint8 *dst, const uint8 *src, int dstw, int dsth, int srcx, int srcy, int srcw, int srch, const Common::Rect *rect, int flags, const uint8 *palPtr, const uint8 *xmapPtr) {
+	// TODO: Compressed 16 bits in 555 format
+
+	Common::Rect r1, r2;
+	if (calcClipRects(dstw, dsth, srcx, srcy, srcw, srch, rect, r1, r2)) {
+		dst += r2.left + r2.top * dstw;
+		if (flags & kWIFFlipY) {
+			const int dy = (srcy < 0) ? srcy : (srch - r1.height());
+			r1.translate(0, dy);
+		}
+		if (flags & kWIFFlipX) {
+			const int dx = (srcx < 0) ? srcx : (srcw - r1.width());
+			r1.translate(dx, 0);
+		}
+		if (xmapPtr) {
+			decompress16BitWizImage<kWizXMap>(dst, dstw, src, r1, flags, palPtr, xmapPtr);
+		} else if (palPtr) {
+			decompress16BitWizImage<kWizRMap>(dst, dstw, src, r1, flags, palPtr);
+		} else {
+			decompress16BitWizImage<kWizCopy>(dst, dstw, src, r1, flags);
+		}
+	}
+}
+
 void Wiz::copyWizImage(uint8 *dst, const uint8 *src, int dstw, int dsth, int srcx, int srcy, int srcw, int srch, const Common::Rect *rect, int flags, const uint8 *palPtr, const uint8 *xmapPtr) {
 	Common::Rect r1, r2;
 	if (calcClipRects(dstw, dsth, srcx, srcy, srcw, srch, rect, r1, r2)) {
@@ -526,9 +550,8 @@ void Wiz::copyRawWizImage(uint8 *dst, const uint8 *src, int dstw, int dsth, int 
 }
 
 void Wiz::copyRaw16BitWizImage(uint8 *dst, const uint8 *src, int dstw, int dsth, int srcx, int srcy, int srcw, int srch, const Common::Rect *rect, int flags, const uint8 *palPtr, int transColor) {
-	// RAW 16 bits in 555 format
+	// TODO: RAW 16 bits in 555 format
 
-	// HACK: Skip every second bit for now
 	Common::Rect r1, r2;
 	if (calcClipRects(dstw, dsth, srcx, srcy, srcw, srch, rect, r1, r2)) {
 		if (flags & (kWIFFlipY | kWIFFlipX)) {
@@ -547,14 +570,152 @@ void Wiz::copyRaw16BitWizImage(uint8 *dst, const uint8 *src, int dstw, int dsth,
 		dst += r2.left + r2.top * dstw;
 		while (h--) {
 			for (int i = 0; i < w; ++i) {
-				uint8 col = src[2 * i];
+				uint16 col = READ_LE_UINT16(src + 2 * i);
+				uint8 r = ((col >> 10) & 0x1F) << 3;
+				uint8 g = ((col >>  5) & 0x1F) << 3;
+				uint8 b = ((col >>  0) & 0x1F) << 3;
+				uint8 color = _vm->convert16BitColor(col, r, g, b);
+
 				if (transColor == -1 || transColor != col) {
-					dst[i] = palPtr[col];
+					dst[i] = palPtr[color];
 				}
 			}
 			src += srcw * 2;
 			dst += dstw;
 		}
+	}
+}
+
+template <int type>
+void Wiz::decompress16BitWizImage(uint8 *dst, int dstPitch, const uint8 *src, const Common::Rect &srcRect, int flags, const uint8 *palPtr, const uint8 *xmapPtr) {
+	const uint8 *dataPtr, *dataPtrNext;
+	uint8 code, *dstPtr, *dstPtrNext;
+	int h, w, xoff, dstInc;
+
+	if (type == kWizXMap) {
+		assert(xmapPtr != 0);
+	}
+	if (type == kWizRMap) {
+		assert(palPtr != 0);
+	}
+
+	dstPtr = dst;
+	dataPtr = src;
+
+	// Skip over the first 'srcRect->top' lines in the data
+	h = srcRect.top;
+	while (h--) {
+		dataPtr += READ_LE_UINT16(dataPtr) + 2;
+	}
+	h = srcRect.height();
+	w = srcRect.width();
+	if (h <= 0 || w <= 0)
+		return;
+
+	if (flags & kWIFFlipY) {
+		dstPtr += (h - 1) * dstPitch;
+		dstPitch = -dstPitch;
+	}
+	dstInc = 1;
+	if (flags & kWIFFlipX) {
+		dstPtr += w - 1;
+		dstInc = -1;
+	}
+
+	while (h--) {
+		xoff = srcRect.left;
+		w = srcRect.width();
+		uint16 lineSize = READ_LE_UINT16(dataPtr); dataPtr += 2;
+		dstPtrNext = dstPtr + dstPitch;
+		dataPtrNext = dataPtr + lineSize;
+		if (lineSize != 0) {
+			while (w > 0) {
+				code = *dataPtr++;
+				if (code & 1) {
+					code >>= 1;
+					if (xoff > 0) {
+						xoff -= code;
+						if (xoff >= 0)
+							continue;
+
+						code = -xoff;
+					}
+					dstPtr += dstInc * code;
+					w -= code;
+				} else if (code & 2) {
+					code = (code >> 2) + 1;
+					if (xoff > 0) {
+						xoff -= code;
+						++dataPtr;
+						if (xoff >= 0)
+							continue;
+
+						code = -xoff;
+						--dataPtr;
+					}
+					w -= code;
+					if (w < 0) {
+						code += w;
+					}
+					while (code--) {
+						uint16 col = READ_LE_UINT16(dataPtr);
+						uint8 r = ((col >> 10) & 0x1F) << 3;
+						uint8 g = ((col >>  5) & 0x1F) << 3;
+						uint8 b = ((col >>  0) & 0x1F) << 3;
+						col = _vm->convert16BitColor(col, r, g, b);
+
+						if (type == kWizXMap) {
+							*dstPtr = xmapPtr[col * 256 + *dstPtr];
+						}
+						if (type == kWizRMap) {
+							*dstPtr = palPtr[col];
+						}
+						if (type == kWizCopy) {
+							*dstPtr = col;
+						}
+						dstPtr += dstInc;
+					}
+					dataPtr+= 2;
+				} else {
+					code = (code >> 2) + 1;
+					if (xoff > 0) {
+						xoff -= code;
+						dataPtr += code;
+						if (xoff >= 0)
+							continue;
+
+						code = -xoff;
+						dataPtr += xoff;
+					}
+					w -= code;
+					if (w < 0) {
+						code += w;
+					}
+					while (code--) {
+						uint16 col = READ_LE_UINT16(dataPtr);
+						uint8 r = ((col >> 10) & 0x1F) << 3;
+						uint8 g = ((col >>  5) & 0x1F) << 3;
+						uint8 b = ((col >>  0) & 0x1F) << 3;
+						col = _vm->convert16BitColor(col, r, g, b);
+
+						if (type == kWizXMap) {
+							*dstPtr = xmapPtr[col * 256 + *dstPtr];
+						}
+						if (type == kWizRMap) {
+							*dstPtr = palPtr[col];
+						}
+						if (type == kWizCopy) {
+							*dstPtr = col;
+						}
+						dataPtr += 2;
+
+						dstPtr += dstInc;
+					}
+				}
+			}
+		}
+		dataPtr = dataPtrNext;
+		dstPtr = dstPtrNext;
 	}
 }
 
@@ -703,7 +864,7 @@ void Wiz::decompressRawWizImage(uint8 *dst, int dstPitch, const uint8 *src, int 
 	}
 }
 
-int Wiz::isWizPixelNonTransparent(const uint8 *data, int x, int y, int w, int h) {
+int Wiz::isWizPixelNonTransparent(const uint8 *data, int x, int y, int w, int h, uint bitDepth) {
 	if (x < 0 || x >= w || y < 0 || y >= h) {
 		return 0;
 	}
@@ -729,20 +890,24 @@ int Wiz::isWizPixelNonTransparent(const uint8 *data, int x, int y, int w, int h)
 				return 1;
 			}
 			x -= code;
-			++data;
+			data += (bitDepth == 16) ? 2 : 1;
 		} else {
 			code = (code >> 2) + 1;
 			if (code > x) {
 				return 1;
 			}
 			x -= code;
-			data += code;
+			data += (bitDepth == 16) ? code * 2 : code;
 		}
 	}
-	return (~data[0]) & 1;
+
+	if (bitDepth == 16)
+		return (~READ_LE_UINT16(data)) & 1;
+	else
+		return (~data[0]) & 1;
 }
 
-uint8 Wiz::getWizPixelColor(const uint8 *data, int x, int y, int w, int h, uint8 color) {
+uint8 Wiz::getWizPixelColor(const uint8 *data, int x, int y, int w, int h, uint bitDepth, uint8 color) {
 	if (x < 0 || x >= w || y < 0 || y >= h) {
 		return color;
 	}
@@ -765,27 +930,35 @@ uint8 Wiz::getWizPixelColor(const uint8 *data, int x, int y, int w, int h, uint8
 		} else if (code & 2) {
 			code = (code >> 2) + 1;
 			if (code > x) {
-				return data[0];
+				return (bitDepth == 16) ? READ_LE_UINT16(data) : data[0];
 			}
 			x -= code;
-			++data;
+			data += (bitDepth == 16) ? 2 : 1;
 		} else {
 			code = (code >> 2) + 1;
 			if (code > x) {
-				return data[x];
+				return (bitDepth == 16) ? READ_LE_UINT16(data + x) : data[x];
 			}
 			x -= code;
-			data += code;
+			data += (bitDepth == 16) ? code * 2 : code;
 		}
 	}
-	return (data[0] & 1) ? color : data[1];
+
+	if (bitDepth == 16)
+		return (READ_LE_UINT16(data) & 1) ? color : READ_LE_UINT16(data + 1);
+	else
+		return (data[0] & 1) ? color : data[1];
+
 }
 
-uint8 Wiz::getRawWizPixelColor(const uint8 *data, int x, int y, int w, int h, uint8 color) {
+uint8 Wiz::getRawWizPixelColor(const uint8 *data, int x, int y, int w, int h, uint bitDepth, uint8 color) {
 	if (x < 0 || x >= w || y < 0 || y >= h) {
 		return color;
 	}
-	return data[y * w + x];
+	if (bitDepth == 16)
+		return READ_LE_UINT16(data + y * w + x * 2);
+	else
+		return data[y * w + x];
 }
 
 void Wiz::computeWizHistogram(uint32 *histogram, const uint8 *data, const Common::Rect &rCapt) {
@@ -952,7 +1125,7 @@ static int wizPackType1(uint8 *dst, const uint8 *src, int srcPitch, const Common
 					if (dst) {
 						*dst++ = ((runCountDiff - 1) << 2) | 0;
 						memcpy(dst, diffBuffer, runCountDiff);
-						dst += runCountDiff + 1;
+						dst += runCountDiff;
 					}
 					dataSize += runCountDiff + 1;
 					runCountDiff = 0;
@@ -1238,6 +1411,13 @@ uint8 *Wiz::drawWizImage(int resNum, int state, int x1, int y1, int zorder, int 
 	case 2:
 		copyRaw16BitWizImage(dst, wizd, cw, ch, x1, y1, width, height, &rScreen, flags, palPtr, transColor);
 		break;
+	case 4:
+		// TODO: Unknown image type
+		break;
+	case 5:
+		// TODO: 16bit color compressed image
+		copy16BitWizImage(dst, wizd, cw, ch, x1, y1, width, height, &rScreen, flags, palPtr, xmapPtr);
+		break;
 	default:
 		error("drawWizImage: Unhandled wiz compression type %d", comp);
 	}
@@ -1367,14 +1547,38 @@ void Wiz::drawWizPolygon(int resNum, int state, int id, int flags, int shadow, i
 
 void Wiz::drawWizPolygonTransform(int resNum, int state, Common::Point *wp, int flags, int shadow, int dstResNum, int palette) {
 	debug(3, "drawWizPolygonTransform(resNum %d, flags 0x%X, shadow %d dstResNum %d palette %d)", resNum, flags, shadow, dstResNum, palette);
+	const Common::Rect *r = NULL;
+	uint8 *srcWizBuf = NULL;
+	bool freeBuffer = true;
 	int i;
 
-	if (flags & 0x800000) {
-		debug(0, "drawWizPolygonTransform() unhandled flag 0x800000");
+	if (_vm->_game.heversion >= 99) {
+		if (getWizImageData(resNum, state, 0) != 0 || (flags & (kWIFRemapPalette | kWIFFlipX | kWIFFlipY)) || palette != 0) {
+			flags |= kWIFBlitToMemBuffer;
+
+			if (flags & 0x800000) {
+				debug(0, "drawWizPolygonTransform() unhandled flag 0x800000");
+			}
+			srcWizBuf = drawWizImage(resNum, state, 0, 0, 0, shadow, 0, r, flags, 0, palette);
+		} else {
+			uint8 *dataPtr = _vm->getResourceAddress(rtImage, resNum);
+			assert(dataPtr);
+			srcWizBuf = _vm->findWrappedBlock(MKID_BE('WIZD'), dataPtr, state, 0);
+			assert(srcWizBuf);
+			freeBuffer = false;
+		}
+	} else {
+		if (getWizImageData(resNum, state, 0) != 0) {
+			srcWizBuf = drawWizImage(resNum, state, 0, 0, 0, shadow, 0, r, kWIFBlitToMemBuffer, 0, palette);
+		} else {
+			uint8 *dataPtr = _vm->getResourceAddress(rtImage, resNum);
+			assert(dataPtr);
+			srcWizBuf = _vm->findWrappedBlock(MKID_BE('WIZD'), dataPtr, state, 0);
+			assert(srcWizBuf);
+			freeBuffer = false;
+		}
 	}
 
-	const Common::Rect *r = NULL;
-	uint8 *srcWizBuf = drawWizImage(resNum, state, 0, 0, 0, shadow, 0, r, kWIFBlitToMemBuffer, 0, palette);
 	if (srcWizBuf) {
 		uint8 *dst;
 		int32 dstw, dsth, dstpitch, wizW, wizH;
@@ -1512,7 +1716,8 @@ void Wiz::drawWizPolygonTransform(int resNum, int state, Common::Point *wp, int 
 			_vm->restoreBackgroundHE(bound);
 		}
 
-		free(srcWizBuf);
+		if (freeBuffer)
+			free(srcWizBuf);
 	}
 }
 
@@ -1560,7 +1765,7 @@ void Wiz::displayWizComplexImage(const WizParameters *params) {
 	int sourceImage = 0;
 	if (params->processFlags & kWPFMaskImg) {
 		sourceImage = params->sourceImage;
-		debug(0, "displayWizComplexImage() unhandled flag 0x80000");
+		debug(0, "displayWizComplexImage() unhandled flag kWPFMaskImg");
 	}
 	int palette = 0;
 	if (params->processFlags & kWPFPaletteNum) {
@@ -1605,7 +1810,7 @@ void Wiz::displayWizComplexImage(const WizParameters *params) {
 	if (params->processFlags & kWPFDstResNum) {
 		dstResNum = params->dstResNum;
 	}
-	if (params->processFlags & kWPFRemapPalette) {
+	if (_vm->_game.heversion >= 99 && params->processFlags & kWPFRemapPalette) {
 		remapWizImagePal(params);
 		flags |= kWIFRemapPalette;
 	}
@@ -1628,7 +1833,8 @@ void Wiz::displayWizComplexImage(const WizParameters *params) {
 		++_imagesNum;
 	} else {
 		if (sourceImage != 0) {
-			// TODO
+			// TODO: Add support for kWPFMaskImg
+			drawWizImage(params->sourceImage, state, po_x, po_y, params->img.zorder, shadow, field_390, r, flags, dstResNum, palette);
 		} else if (params->processFlags & (kWPFScaled | kWPFRotate)) {
 			drawWizComplexPolygon(params->img.resNum, state, po_x, po_y, shadow, rotationAngle, scale, r, flags, dstResNum, palette);
 		} else {
@@ -2096,17 +2302,24 @@ int Wiz::isWizPixelNonTransparent(int resNum, int state, int x, int y, int flags
 		switch (c) {
 		case 0:
 			if (_vm->_game.heversion >= 99) {
-				ret = getRawWizPixelColor(wizd, x, y, w, h, _vm->VAR(_vm->VAR_WIZ_TCOLOR)) != _vm->VAR(_vm->VAR_WIZ_TCOLOR) ? 1 : 0;
+				ret = getRawWizPixelColor(wizd, x, y, w, h, 8, _vm->VAR(_vm->VAR_WIZ_TCOLOR)) != _vm->VAR(_vm->VAR_WIZ_TCOLOR) ? 1 : 0;
 			} else {
 				ret = 0;
 			}
 			break;
 		case 1:
-			ret = isWizPixelNonTransparent(wizd, x, y, w, h);
+			ret = isWizPixelNonTransparent(wizd, x, y, w, h, 8);
 			break;
 		case 2:
-			// Used baseball2003
+				ret = getRawWizPixelColor(wizd, x, y, w, h, 16, _vm->VAR(_vm->VAR_WIZ_TCOLOR)) != _vm->VAR(_vm->VAR_WIZ_TCOLOR) ? 1 : 0;
+			break;
+		case 4:
+			// TODO: Unknown image type
+			ret = 1;
 			debug(0, "isWizPixelNonTransparent: Unhandled wiz compression type %d", c);
+			break;
+		case 5:
+			ret = isWizPixelNonTransparent(wizd, x, y, w, h, 16);
 			break;
 		default:
 			error("isWizPixelNonTransparent: Unhandled wiz compression type %d", c);
@@ -2117,7 +2330,7 @@ int Wiz::isWizPixelNonTransparent(int resNum, int state, int x, int y, int flags
 }
 
 uint8 Wiz::getWizPixelColor(int resNum, int state, int x, int y, int flags) {
-	uint8 color;
+	uint8 color = 0;
 	uint8 *data = _vm->getResourceAddress(rtImage, resNum);
 	assert(data);
 	uint8 *wizh = _vm->findWrappedBlock(MKID_BE('WIZH'), data, state, 0);
@@ -2130,13 +2343,23 @@ uint8 Wiz::getWizPixelColor(int resNum, int state, int x, int y, int flags) {
 	switch (c) {
 	case 0:
 		if (_vm->_game.heversion >= 99) {
-			color = getRawWizPixelColor(wizd, x, y, w, h, _vm->VAR(_vm->VAR_WIZ_TCOLOR));
+			color = getRawWizPixelColor(wizd, x, y, w, h, 8, _vm->VAR(_vm->VAR_WIZ_TCOLOR));
 		} else {
 			color = _vm->VAR(_vm->VAR_WIZ_TCOLOR);
 		}
 		break;
 	case 1:
-		color = getWizPixelColor(wizd, x, y, w, h, _vm->VAR(_vm->VAR_WIZ_TCOLOR));
+		color = getWizPixelColor(wizd, x, y, w, h, 8, _vm->VAR(_vm->VAR_WIZ_TCOLOR));
+		break;
+	case 2:
+		color = getRawWizPixelColor(wizd, x, y, w, h, 16, _vm->VAR(_vm->VAR_WIZ_TCOLOR));
+		break;
+	case 4:
+		// TODO: Unknown image type
+		debug(0, "getWizPixelColor: Unhandled wiz compression type %d", c);
+		break;
+	case 5:
+		color = getWizPixelColor(wizd, x, y, w, h, 16, _vm->VAR(_vm->VAR_WIZ_TCOLOR));
 		break;
 	default:
 		error("getWizPixelColor: Unhandled wiz compression type %d", c);

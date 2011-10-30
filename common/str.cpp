@@ -26,6 +26,13 @@
 #include "common/hash-str.h"
 #include "common/util.h"
 
+#include "common/memorypool.h"
+
+#if !defined(__SYMBIAN32__)
+#include <new>
+#endif
+
+
 namespace Common {
 
 #if !(defined(PALMOS_ARM) || defined(PALMOS_DEBUG) || defined(__GP32__))
@@ -33,6 +40,9 @@ const String String::emptyString;
 #else
 const char *String::emptyString = "";
 #endif
+
+
+MemoryPool *g_refCountPool = 0;	// FIXME: This is never freed right now
 
 static uint32 computeCapacity(uint32 len) {
 	// By default, for the capacity we use the next multiple of 32
@@ -79,15 +89,17 @@ void String::initWithCStr(const char *str, uint32 len) {
 }
 
 String::String(const String &str)
- : _size(str._size), _str(str.isStorageIntern() ? _storage : str._str) {
+ : _size(str._size) {
 	if (str.isStorageIntern()) {
 		// String in internal storage: just copy it
-		memcpy(_storage, str._storage, sizeof(_storage));
+		memcpy(_storage, str._storage, _builtinCapacity);
+		_str = _storage;
 	} else {
 		// String in external storage: use refcount mechanism
 		str.incRefCount();
 		_extern._refCount = str._extern._refCount;
 		_extern._capacity = str._extern._capacity;
+		_str = str._str;
 	}
 	assert(_str != 0);
 }
@@ -178,7 +190,11 @@ void String::ensureCapacity(uint32 new_size, bool keep_old) {
 void String::incRefCount() const {
 	assert(!isStorageIntern());
 	if (_extern._refCount == 0) {
-		_extern._refCount = new int(2);
+		if (g_refCountPool == 0)
+			g_refCountPool = new MemoryPool(sizeof(int));
+
+		_extern._refCount = (int *)g_refCountPool->allocChunk();
+		*_extern._refCount = 2;
 	} else {
 		++(*_extern._refCount);
 	}
@@ -194,7 +210,10 @@ void String::decRefCount(int *oldRefCount) {
 	if (!oldRefCount || *oldRefCount <= 0) {
 		// The ref count reached zero, so we free the string storage
 		// and the ref count storage.
-		delete oldRefCount;
+		if (oldRefCount) {
+			assert(g_refCountPool);
+			g_refCountPool->freeChunk(oldRefCount);
+		}
 		free(_str);
 
 		// Even though _str points to a freed memory block now,
@@ -320,7 +339,8 @@ bool String::matchString(const String &pat) const {
 }
 
 void String::deleteLastChar() {
-	deleteChar(_size - 1);
+	if (_size > 0)
+		deleteChar(_size - 1);
 }
 
 void String::deleteChar(uint32 p) {
@@ -539,12 +559,12 @@ Common::String lastPathComponent(const Common::String &path, const char sep) {
 	// Path consisted of only slashes -> return empty string
 	if (last == str)
 		return Common::String();
-	
+
 	// Now scan the whole component
 	const char *first = last - 1;
 	while (first >= str && *first != sep)
 		--first;
-	
+
 	if (*first == sep)
 		first++;
 
@@ -564,15 +584,15 @@ Common::String normalizePath(const Common::String &path, const char sep) {
 		while (*cur == sep)
 			++cur;
 	}
-	
+
 	// Scan till the end of the String
 	while (*cur != 0) {
 		const char *start = cur;
-		
+
 		// Scan till the next path separator resp. the end of the string
 		while (*cur != sep && *cur != 0)
 			cur++;
-		
+
 		const Common::String component(start, cur);
 
 		// Skip empty components and dot components, add all others

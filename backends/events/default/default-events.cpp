@@ -28,6 +28,9 @@
 #include "common/system.h"
 #include "common/config-manager.h"
 #include "backends/events/default/default-events.h"
+#include "backends/keymapper/keymapper.h"
+#include "backends/keymapper/remap-dialog.h"
+#include "backends/vkeybd/virtual-keyboard.h"
 
 #include "engines/engine.h"
 #include "gui/message.h"
@@ -89,12 +92,13 @@ void writeRecord(Common::OutSaveFile *outFile, uint32 diff, Common::Event &event
 	}
 }
 
-DefaultEventManager::DefaultEventManager(OSystem *boss) :
+DefaultEventManager::DefaultEventManager(EventProvider *boss) :
 	_boss(boss),
 	_buttonState(0),
 	_modifierState(0),
 	_shouldQuit(false),
-	_shouldRTL(false) {
+	_shouldRTL(false),
+	_confirmExitDialogActive(false) {
 
 	assert(_boss);
 
@@ -102,8 +106,8 @@ DefaultEventManager::DefaultEventManager(OSystem *boss) :
 	_recordTimeFile = NULL;
 	_playbackFile = NULL;
 	_playbackTimeFile = NULL;
-	_timeMutex = _boss->createMutex();
-	_recorderMutex = _boss->createMutex();
+	_timeMutex = g_system->createMutex();
+	_recorderMutex = g_system->createMutex();
 
 	_eventCount = 0;
 	_lastEventCount = 0;
@@ -140,8 +144,8 @@ DefaultEventManager::DefaultEventManager(OSystem *boss) :
 	if (_recordMode == kRecorderRecord) {
 		_recordCount = 0;
 		_recordTimeCount = 0;
-		_recordFile = _boss->getSavefileManager()->openForSaving(_recordTempFileName.c_str());
-		_recordTimeFile = _boss->getSavefileManager()->openForSaving(_recordTimeFileName.c_str());
+		_recordFile = g_system->getSavefileManager()->openForSaving(_recordTempFileName.c_str());
+		_recordTimeFile = g_system->getSavefileManager()->openForSaving(_recordTimeFileName.c_str());
 		_recordSubtitles = ConfMan.getBool("subtitles");
 	}
 
@@ -151,8 +155,8 @@ DefaultEventManager::DefaultEventManager(OSystem *boss) :
 	if (_recordMode == kRecorderPlayback) {
 		_playbackCount = 0;
 		_playbackTimeCount = 0;
-		_playbackFile = _boss->getSavefileManager()->openForLoading(_recordFileName.c_str());
-		_playbackTimeFile = _boss->getSavefileManager()->openForLoading(_recordTimeFileName.c_str());
+		_playbackFile = g_system->getSavefileManager()->openForLoading(_recordFileName.c_str());
+		_playbackTimeFile = g_system->getSavefileManager()->openForLoading(_recordTimeFileName.c_str());
 
 		if (!_playbackFile) {
 			warning("Cannot open playback file %s. Playback was switched off", _recordFileName.c_str());
@@ -192,14 +196,28 @@ DefaultEventManager::DefaultEventManager(OSystem *boss) :
 
 		_hasPlaybackEvent = false;
 	}
+
+#ifdef ENABLE_VKEYBD
+	_vk = new Common::VirtualKeyboard();
+#endif
+#ifdef ENABLE_KEYMAPPER
+	_keymapper = new Common::Keymapper(this);
+	_remap = false;
+#endif
 }
 
 DefaultEventManager::~DefaultEventManager() {
-	_boss->lockMutex(_timeMutex);
-	_boss->lockMutex(_recorderMutex);
+#ifdef ENABLE_KEYMAPPER
+	delete _keymapper;
+#endif
+#ifdef ENABLE_VKEYBD
+	delete _vk;
+#endif
+	g_system->lockMutex(_timeMutex);
+	g_system->lockMutex(_recorderMutex);
 	_recordMode = kPassthrough;
-	_boss->unlockMutex(_timeMutex);
-	_boss->unlockMutex(_recorderMutex);
+	g_system->unlockMutex(_timeMutex);
+	g_system->unlockMutex(_recorderMutex);
 
 	if (!artificialEventQueue.empty())
 		artificialEventQueue.clear();
@@ -217,9 +235,9 @@ DefaultEventManager::~DefaultEventManager() {
 		_recordTimeFile->finalize();
 		delete _recordTimeFile;
 
-		_playbackFile = _boss->getSavefileManager()->openForLoading(_recordTempFileName.c_str());
+		_playbackFile = g_system->getSavefileManager()->openForLoading(_recordTempFileName.c_str());
 
-		_recordFile = _boss->getSavefileManager()->openForSaving(_recordFileName.c_str());
+		_recordFile = g_system->getSavefileManager()->openForSaving(_recordFileName.c_str());
 		_recordFile->writeUint32LE(RECORD_SIGNATURE);
 		_recordFile->writeUint32LE(RECORD_VERSION);
 
@@ -249,8 +267,18 @@ DefaultEventManager::~DefaultEventManager() {
 
 		//TODO: remove recordTempFileName'ed file
 	}
-	_boss->deleteMutex(_timeMutex);
-	_boss->deleteMutex(_recorderMutex);
+	g_system->deleteMutex(_timeMutex);
+	g_system->deleteMutex(_recorderMutex);
+}
+
+void DefaultEventManager::init() {
+#ifdef ENABLE_VKEYBD
+	if (ConfMan.hasKey("vkeybd_pack_name")) {
+		_vk->loadKeyboardPack(ConfMan.get("vkeybd_pack_name"));
+	} else {
+		_vk->loadKeyboardPack("vkeybd");
+	}
+#endif
 }
 
 bool DefaultEventManager::playback(Common::Event &event) {
@@ -273,7 +301,7 @@ bool DefaultEventManager::playback(Common::Event &event) {
 			case Common::EVENT_RBUTTONUP:
 			case Common::EVENT_WHEELUP:
 			case Common::EVENT_WHEELDOWN:
-				_boss->warpMouse(_playbackEvent.mouse.x, _playbackEvent.mouse.y);
+				g_system->warpMouse(_playbackEvent.mouse.x, _playbackEvent.mouse.y);
 				break;
 			default:
 				break;
@@ -321,7 +349,7 @@ void DefaultEventManager::processMillis(uint32 &millis) {
 		return;
 	}
 
-	_boss->lockMutex(_timeMutex);
+	g_system->lockMutex(_timeMutex);
 	if (_recordMode == kRecorderRecord) {
 		//Simple RLE compression
 		d = millis - _lastMillis;
@@ -346,22 +374,38 @@ void DefaultEventManager::processMillis(uint32 &millis) {
 	}
 
 	_lastMillis = millis;
-	_boss->unlockMutex(_timeMutex);
+	g_system->unlockMutex(_timeMutex);
 }
 
 bool DefaultEventManager::pollEvent(Common::Event &event) {
-	uint32 time = _boss->getMillis();
+	uint32 time = g_system->getMillis();
 	bool result;
 
 	if (!artificialEventQueue.empty()) {
 		event = artificialEventQueue.pop();
 		result = true;
-	} else 	
+	} else {
 		result = _boss->pollEvent(event);
+
+#ifdef ENABLE_KEYMAPPER
+		if (result) {
+			// send key press events to keymapper
+			if (event.type == Common::EVENT_KEYDOWN) {
+				if (_keymapper->mapKeyDown(event.kbd)) {
+					result = false;
+				}
+			} else if (event.type == Common::EVENT_KEYUP) {
+				if (_keymapper->mapKeyUp(event.kbd)) {
+					result = false;
+				}
+			}
+		}
+#endif
+	}
 
 	if (_recordMode != kPassthrough)  {
 
-		_boss->lockMutex(_recorderMutex);
+		g_system->lockMutex(_recorderMutex);
 		_eventCount++;
 
 		if (_recordMode == kRecorderPlayback)  {
@@ -375,7 +419,7 @@ bool DefaultEventManager::pollEvent(Common::Event &event) {
 				}
 			}
 		}
-		_boss->unlockMutex(_recorderMutex);
+		g_system->unlockMutex(_recorderMutex);
 	}
 
 	if (result) {
@@ -392,12 +436,11 @@ bool DefaultEventManager::pollEvent(Common::Event &event) {
 			_keyRepeatTime = time + kKeyRepeatInitialDelay;
 #endif
 			// Global Main Menu
-			// FIXME: F6 is not the best trigger, it conflicts with some games!!!
-			if (event.kbd.keycode == Common::KEYCODE_F6) {
+			if (event.kbd.flags == Common::KBD_CTRL && event.kbd.keycode == Common::KEYCODE_F5) {
 				if (g_engine && !g_engine->isPaused()) {
 					Common::Event menuEvent;
 					menuEvent.type = Common::EVENT_MAINMENU;
-					
+
 					// FIXME: GSoC RTL branch passes the F6 key event to the
 					// engine, and also enqueues a EVENT_MAINMENU. For now,
 					// we just drop the key event and return an EVENT_MAINMENU
@@ -406,7 +449,7 @@ bool DefaultEventManager::pollEvent(Common::Event &event) {
 					//
 					// However, this has other consequences, possibly negative ones.
 					// Like, what happens with key repeat for the trigger key?
-					
+
 					//pushEvent(menuEvent);
 					event = menuEvent;
 
@@ -416,7 +459,7 @@ bool DefaultEventManager::pollEvent(Common::Event &event) {
 					// as an event now and open up the GMM itself it would open the
 					// menu twice.
 					if (g_engine && !g_engine->isPaused())
-						g_engine->mainMenuDialog();
+						g_engine->openMainMenuDialog();
 
 					if (_shouldQuit)
 						event.type = Common::EVENT_QUIT;
@@ -424,6 +467,34 @@ bool DefaultEventManager::pollEvent(Common::Event &event) {
 						event.type = Common::EVENT_RTL;
 				}
 			}
+#ifdef ENABLE_VKEYBD	
+			else if (event.kbd.keycode == Common::KEYCODE_F7 && event.kbd.flags == 0) {
+				if (_vk->isDisplaying()) {
+					_vk->close(true);
+				} else {
+					if (g_engine)
+						g_engine->pauseEngine(true);
+					_vk->show();
+					if (g_engine)
+						g_engine->pauseEngine(false);
+					result = false;
+				}
+			}
+#endif
+#ifdef ENABLE_KEYMAPPER	
+			else if (event.kbd.keycode == Common::KEYCODE_F8 && event.kbd.flags == 0) {
+				if (!_remap) {
+					_remap = true;
+					Common::RemapDialog _remapDialog;
+					if (g_engine)
+						g_engine->pauseEngine(true);
+					_remapDialog.runModal();
+					if (g_engine)
+						g_engine->pauseEngine(false);
+					_remap = false;
+				}
+			}
+#endif
 			break;
 
 		case Common::EVENT_KEYUP:
@@ -460,7 +531,7 @@ bool DefaultEventManager::pollEvent(Common::Event &event) {
 
 		case Common::EVENT_MAINMENU:
 			if (g_engine && !g_engine->isPaused())
-				g_engine->mainMenuDialog();
+				g_engine->openMainMenuDialog();
 
 			if (_shouldQuit)
 				event.type = Common::EVENT_QUIT;
@@ -469,17 +540,31 @@ bool DefaultEventManager::pollEvent(Common::Event &event) {
 			break;
 
 		case Common::EVENT_RTL:
-			_shouldRTL = true;
+			if (ConfMan.getBool("confirm_exit")) {
+				if (g_engine)
+					g_engine->pauseEngine(true);
+				GUI::MessageDialog alert("Do you really want to return to the Launcher?", "Launcher", "Cancel");
+				result = _shouldRTL = (alert.runModal() == GUI::kMessageOK);
+				if (g_engine)
+					g_engine->pauseEngine(false);
+			} else
+				_shouldRTL = true;
 			break;
 
 		case Common::EVENT_QUIT:
 			if (ConfMan.getBool("confirm_exit")) {
+				if (_confirmExitDialogActive) {
+					result = false;
+					break;
+				}
+				_confirmExitDialogActive = true;
 				if (g_engine)
 					g_engine->pauseEngine(true);
-				GUI::MessageDialog alert("Do you really want to quit?", "Yes", "No");
+				GUI::MessageDialog alert("Do you really want to quit?", "Quit", "Cancel");
 				result = _shouldQuit = (alert.runModal() == GUI::kMessageOK);
 				if (g_engine)
 					g_engine->pauseEngine(false);
+				_confirmExitDialogActive = false;
 			} else
 				_shouldQuit = true;
 
@@ -505,14 +590,14 @@ bool DefaultEventManager::pollEvent(Common::Event &event) {
 	return result;
 }
 
-void DefaultEventManager::pushEvent(Common::Event event) {
+void DefaultEventManager::pushEvent(const Common::Event &event) {
 
 	// If already received an EVENT_QUIT, don't add another one
 	if (event.type == Common::EVENT_QUIT) {
 		if (!_shouldQuit)
 			artificialEventQueue.push(event);
-	} else 
-		artificialEventQueue.push(event);	
+	} else
+		artificialEventQueue.push(event);
 }
 
 #endif // !defined(DISABLE_DEFAULT_EVENTMANAGER)

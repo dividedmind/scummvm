@@ -63,14 +63,14 @@ Screen::~Screen() {
 	}
 
 	delete[] _dirtyRects;
+
+	CursorMan.popAllCursors();
 }
 
 bool Screen::init() {
 	debugC(9, kDebugLevelScreen, "Screen::init()");
 	_disableScreen = false;
 	_debugEnabled = false;
-
-	_system->setFeatureState(OSystem::kFeatureAutoComputeDirtyRects, false);
 
 	memset(_sjisOverlayPtrs, 0, sizeof(_sjisOverlayPtrs));
 	_useOverlays = false;
@@ -80,8 +80,8 @@ bool Screen::init() {
 	if (_vm->gameFlags().useHiResOverlay) {
 		_useOverlays = true;
 		_useSJIS = (_vm->gameFlags().lang == Common::JA_JPN);
-		_sjisInvisibleColor = (_vm->gameFlags().gameID == GI_KYRA1) ? 0x80 : 0xF6;		
-		
+		_sjisInvisibleColor = (_vm->gameFlags().gameID == GI_KYRA1) ? 0x80 : 0xF6;
+
 		for (int i = 0; i < SCREEN_OVLS_NUM; ++i) {
 			if (!_sjisOverlayPtrs[i]) {
 				_sjisOverlayPtrs[i] = new uint8[SCREEN_OVL_SJIS_SIZE];
@@ -186,23 +186,25 @@ void Screen::setResolution() {
 	byte palette[4*256];
 	_system->grabPalette(palette, 0, 256);
 
+	int width = 320, height = 200;
+	bool defaultTo1xScaler = false;
+
 	if (_vm->gameFlags().useHiResOverlay) {
-		_system->beginGFXTransaction();
-			if (_debugEnabled)
-				_system->initSize(960, 400);
-			else
-				_system->initSize(640, 400);
-			_vm->initCommonGFX(true);
-		_system->endGFXTransaction();
+		defaultTo1xScaler = true;
+		height = 400;
+
+		if (_debugEnabled)
+			width = 960;
+		else
+			width = 640;
 	} else {
-		_system->beginGFXTransaction();
-			if (_debugEnabled)
-				_system->initSize(640, 200);
-			else
-				_system->initSize(320, 200);
-			_vm->initCommonGFX(false);
-		_system->endGFXTransaction();
+		if (_debugEnabled)
+			width = 640;
+		else
+			width = 320;
 	}
+
+	initGraphics(width, height, defaultTo1xScaler);
 
 	_system->setPalette(palette, 0, 256);
 }
@@ -384,7 +386,7 @@ void Screen::fadePalette(const uint8 *palData, int delay, const UpdateFunctor *u
 	getFadeParams(palData, delay, delayInc, diff);
 
 	int delayAcc = 0;
-	while (!_vm->quit()) {
+	while (!_vm->shouldQuit()) {
 		delayAcc += delayInc;
 
 		int refreshed = fadePalStep(palData, diff);
@@ -401,7 +403,7 @@ void Screen::fadePalette(const uint8 *palData, int delay, const UpdateFunctor *u
 		delayAcc &= 0xFF;
 	}
 
-	if (_vm->quit()) {
+	if (_vm->shouldQuit()) {
 		setScreenPalette(palData);
 		if (upFunc && upFunc->isValid())
 			(*upFunc)();
@@ -438,7 +440,7 @@ int Screen::fadePalStep(const uint8 *palette, int diff) {
 
 	uint8 fadePal[768];
 	memcpy(fadePal, _screenPalette, 768);
-	
+
 	bool needRefresh = false;
 	const int colors = (_vm->gameFlags().platform == Common::kPlatformAmiga ? 32 : 256) * 3;
 	for (int i = 0; i < colors; ++i) {
@@ -461,7 +463,7 @@ int Screen::fadePalStep(const uint8 *palette, int diff) {
 			fadePal[i] = (uint8)c2;
 		}
 	}
-	
+
 	if (needRefresh)
 		setScreenPalette(fadePal);
 
@@ -750,7 +752,7 @@ void Screen::shuffleScreen(int sx, int sy, int w, int h, int srcPage, int dstPag
 
 	int32 start, now;
 	int wait;
-	for (y = 0; y < h && !_vm->quit(); ++y) {
+	for (y = 0; y < h && !_vm->shouldQuit(); ++y) {
 		start = (int32)_system->getMillis();
 		int y_cur = y;
 		for (x = 0; x < w; ++x) {
@@ -775,7 +777,7 @@ void Screen::shuffleScreen(int sx, int sy, int w, int h, int srcPage, int dstPag
 
 	copyOverlayRegion(sx, sy, sx, sy, w, h, srcPage, dstPage);
 
-	if (_vm->quit()) {
+	if (_vm->shouldQuit()) {
 		copyRegion(sx, sy, sx, sy, w, h, srcPage, dstPage);
 		_system->updateScreen();
 	}
@@ -1151,7 +1153,7 @@ void Screen::drawShape(uint8 pageNum, const uint8 *shapeData, int x, int y, int 
 	_dsTableLoopCount = 0;
 	_dsTable2 = 0;
 	_dsDrawLayer = 0;
-	
+
 	uint8 *table3 = 0;
 	uint8 *table4 = 0;
 
@@ -1240,7 +1242,7 @@ void Screen::drawShape(uint8 pageNum, const uint8 *shapeData, int x, int y, int 
 		&Screen::drawShapePlotType3_7,		// used by Kyra 1 (invisibility)
 		&Screen::drawShapePlotType8,		// used by Kyra 2
 		&Screen::drawShapePlotType9,		// used by Kyra 1 + 3
-		0, 
+		0,
 		&Screen::drawShapePlotType11_15,	// used by Kyra 1 (invisibility) + Kyra 3 (shadow)
 		&Screen::drawShapePlotType12,		// used by Kyra 2
 		&Screen::drawShapePlotType13,		// used by Kyra 1
@@ -1251,7 +1253,7 @@ void Screen::drawShape(uint8 pageNum, const uint8 *shapeData, int x, int y, int 
 	};
 
 	int scaleCounterV = 0;
-	
+
 	f = flags & 0x0f;
 	_dsProcessMargin = dsMarginFunc[f];
 	_dsScaleSkip = dsSkipFunc[f];
@@ -1302,7 +1304,7 @@ void Screen::drawShape(uint8 pageNum, const uint8 *shapeData, int x, int y, int 
 	if (flags & DSF_SCALE) {
 		shapeHeight = (shapeHeight * _dsScaleH) >> 8;
 		shpWidthScaled1 = shpWidthScaled2 = (shapeWidth * _dsScaleW) >> 8;
-		
+
 		if (!shapeHeight || !shpWidthScaled1) {
 			va_end(args);
 			return;
@@ -1319,10 +1321,10 @@ void Screen::drawShape(uint8 pageNum, const uint8 *shapeData, int x, int y, int 
 	uint16 frameSize = READ_LE_UINT16(src); src += 2;
 
 	int colorTableColors = ((_vm->gameFlags().gameID != GI_KYRA1) && (shapeFlags & 4)) ? *src++ : 16;
-	
+
 	if (!(flags & 0x8000) && (shapeFlags & 1))
 		_dsTable2 = src;
-	
+
 	if (flags & 0x400)
 		src += colorTableColors;
 
@@ -1477,7 +1479,7 @@ int Screen::drawShapeMarginNoScaleUpwind(uint8 *&dst, const uint8 *&src, int &cn
 			continue;
 		cnt = cnt + 1 - (*src++);
 	}
-	
+
 	cnt++;
 	dst -= cnt;
 	return 0;
@@ -1489,7 +1491,7 @@ int Screen::drawShapeMarginNoScaleDownwind(uint8 *&dst, const uint8 *&src, int &
 			continue;
 		cnt = cnt + 1 - (*src++);
 	}
-	
+
 	cnt++;
 	dst += cnt;
 	return 0;
@@ -1596,7 +1598,7 @@ void Screen::drawShapeProcessLineNoScaleUpwind(uint8 *&dst, const uint8 *&src, i
 			c = *src++;
 			dst += c;
 			cnt -= c;
-		}		
+		}
 	} while (cnt > 0);
 }
 
@@ -1611,7 +1613,7 @@ void Screen::drawShapeProcessLineNoScaleDownwind(uint8 *&dst, const uint8 *&src,
 			c = *src++;
 			dst -= c;
 			cnt -= c;
-		}		
+		}
 	} while (cnt > 0);
 }
 
@@ -1713,7 +1715,7 @@ void Screen::drawShapePlotType6(uint8 *dst, uint8 cmd) {
 	int t = _drawShapeVar4 + _drawShapeVar5;
 	if (t & 0xff00) {
 		cmd = dst[_drawShapeVar3];
-		t &= 0xff;		
+		t &= 0xff;
 	} else {
 		cmd = _dsTable2[cmd];
 	}
@@ -1792,7 +1794,7 @@ void Screen::drawShapePlotType14(uint8 *dst, uint8 cmd) {
 	uint32 relOffs = dst - _dsDstPage;
 	int t = (_shapePages[0][relOffs] & 0x7f) & 0x87;
 	if (_dsDrawLayer < t) {
-		cmd = _shapePages[1][relOffs];		
+		cmd = _shapePages[1][relOffs];
 	} else {
 		t = _drawShapeVar4 + _drawShapeVar5;
 		if (t & 0xff00) {
@@ -2699,7 +2701,7 @@ void Screen::loadBitmap(const char *filename, int tempPage, int dstPage, uint8 *
 		warning("couldn't load bitmap: '%s'", filename);
 		return;
 	}
-	
+
 	if (skip)
 		srcData += 4;
 

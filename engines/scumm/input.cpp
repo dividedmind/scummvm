@@ -23,14 +23,12 @@
  *
  */
 
-
-
 #include "common/config-manager.h"
 #include "common/events.h"
 #include "common/system.h"
 
 #include "gui/message.h"
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
 
 #include "scumm/debugger.h"
 #include "scumm/dialogs.h"
@@ -326,17 +324,9 @@ void ScummEngine::processInput() {
 
 #ifdef ENABLE_SCUMM_7_8
 void ScummEngine_v8::processKeyboard(Common::KeyState lastKeyHit) {
-
-	if (!(_game.features & GF_DEMO)) {
-		// F1 (the trigger for the original save/load dialog) is mapped to F5
-		if (lastKeyHit.keycode == Common::KEYCODE_F1 && lastKeyHit.flags == 0) {
-			lastKeyHit = Common::KeyState(Common::KEYCODE_F5, 319);
-		}
-
-		// Alt-F5 should bring up the original save/load dialog, so map it to F1.
-		if (lastKeyHit.keycode == Common::KEYCODE_F5 && lastKeyHit.flags == Common::KBD_ALT) {
-			lastKeyHit = Common::KeyState(Common::KEYCODE_F1, 315);
-		}
+	// Alt-F5 should bring up the original save/load dialog, so map it to F1.
+	if (!(_game.features & GF_DEMO) && lastKeyHit.keycode == Common::KEYCODE_F5 && lastKeyHit.flags == Common::KBD_ALT) {
+		lastKeyHit = Common::KeyState(Common::KEYCODE_F1, 315);
 	}
 
 	// If a key script was specified (a V8 feature), and it's trigger
@@ -352,6 +342,11 @@ void ScummEngine_v8::processKeyboard(Common::KeyState lastKeyHit) {
 
 void ScummEngine_v7::processKeyboard(Common::KeyState lastKeyHit) {
 	const bool cutsceneExitKeyEnabled = (VAR_CUTSCENEEXIT_KEY == 0xFF || VAR(VAR_CUTSCENEEXIT_KEY) != 0);
+
+	// F1 (the trigger for the original save/load dialog) is mapped to F5
+	if (!(_game.features & GF_DEMO) && lastKeyHit.keycode == Common::KEYCODE_F1 && lastKeyHit.flags == 0) {
+		lastKeyHit = Common::KeyState(Common::KEYCODE_F5, 319);
+	}
 
 	// VAR_VERSION_KEY (usually ctrl-v) is used in COMI, Dig and FT to trigger
 	// a version dialog, unless VAR_VERSION_KEY is set to 0. However, the COMI
@@ -471,7 +466,7 @@ void ScummEngine::processKeyboard(Common::KeyState lastKeyHit) {
 		if (VAR_SAVELOAD_SCRIPT != 0xFF && _currentRoom != 0)
 			runScript(VAR(VAR_SAVELOAD_SCRIPT), 0, 0, 0);
 
-		scummMenuDialog();		// Display NewGui
+		scummMenuDialog();		// Display GUI
 
 		if (VAR_SAVELOAD_SCRIPT != 0xFF && _currentRoom != 0)
 			runScript(VAR(VAR_SAVELOAD_SCRIPT2), 0, 0, 0);

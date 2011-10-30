@@ -42,17 +42,20 @@
 namespace Saga {
 
 const char *test_txt = "The quick brown fox jumped over the lazy dog. She sells sea shells down by the sea shore.";
-const char *pauseString = "PAWS GAME";
+const char *pauseStringITE = "PAWS GAME";
+const char *pauseStringIHNM = "Game Paused";
 
 Render::Render(SagaEngine *vm, OSystem *system) {
 	_vm = vm;
 	_system = system;
 	_initialized = false;
 
+#ifdef SAGA_DEBUG
 	// Initialize FPS timer callback
-	_vm->_timer->installTimerProc(&fpsTimerCallback, 1000000, this);
+	_vm->getTimerManager()->installTimerProc(&fpsTimerCallback, 1000000, this);
+#endif
 
-	_backGroundSurface.create(_vm->getDisplayWidth(), _vm->getDisplayHeight(), 1);
+	_backGroundSurface.create(_vm->getDisplayInfo().width, _vm->getDisplayInfo().height, 1);
 
 	_flags = 0;
 
@@ -60,7 +63,10 @@ Render::Render(SagaEngine *vm, OSystem *system) {
 }
 
 Render::~Render(void) {
-	_vm->_timer->removeTimerProc(&fpsTimerCallback);
+#ifdef SAGA_DEBUG
+	_vm->getTimerManager()->removeTimerProc(&fpsTimerCallback);
+#endif
+
 	_backGroundSurface.free();
 
 	_initialized = false;
@@ -71,27 +77,34 @@ bool Render::initialized() {
 }
 
 void Render::drawScene() {
-	Surface *backBufferSurface;
-	char txtBuffer[20];
 	Point mousePoint;
 	Point textPoint;
-
+	int curMode = _vm->_interface->getMode();
 	assert(_initialized);
 
-	_renderedFrameCount++;
+	// TODO: Remove this to use dirty rectangles
+	// Still quite buggy
+	_fullRefresh = true;
 
-	backBufferSurface = _vm->_gfx->getBackBuffer();
+#ifdef SAGA_DEBUG
+	_renderedFrameCount++;
+#endif
 
 	// Get mouse coordinates
 	mousePoint = _vm->mousePos();
 
-	if (!(_flags & (RF_DEMO_SUBST | RF_MAP) || _vm->_interface->getMode() == kPanelPlacard)) {
+	if (!_fullRefresh)
+		restoreChangedRects();
+	else
+		_dirtyRects.clear();
+
+	if (!(_flags & (RF_DEMO_SUBST | RF_MAP) || curMode == kPanelPlacard)) {
 		if (_vm->_interface->getFadeMode() != kFadeOut) {
 			// Display scene background
-			if (!(_flags & RF_DISABLE_ACTORS) || _vm->getGameType() == GType_ITE)
+			if (!(_flags & RF_DISABLE_ACTORS) || _vm->getGameId() == GID_ITE)
 				_vm->_scene->draw();
 
-			if (_vm->_puzzle->isActive()) {
+			if (_vm->_scene->isITEPuzzleScene()) {
 				_vm->_puzzle->movePiece(mousePoint);
 				_vm->_actor->drawSpeech();
 			} else {
@@ -100,86 +113,156 @@ void Render::drawScene() {
 					_vm->_actor->drawActors();
 			}
 
+#ifdef SAGA_DEBUG
 			if (getFlags() & RF_OBJECTMAP_TEST) {
 				if (_vm->_scene->_objectMap)
-					_vm->_scene->_objectMap->draw(backBufferSurface, mousePoint, kITEColorBrightWhite, kITEColorBlack);
+					_vm->_scene->_objectMap->draw(mousePoint, kITEColorBrightWhite, kITEColorBlack);
 				if (_vm->_scene->_actionMap)
-					_vm->_scene->_actionMap->draw(backBufferSurface, mousePoint, kITEColorRed, kITEColorBlack);
+					_vm->_scene->_actionMap->draw(mousePoint, kITEColorRed, kITEColorBlack);
 			}
+#endif
+
+#ifdef ACTOR_DEBUG
 			if (getFlags() & RF_ACTOR_PATH_TEST) {
 				_vm->_actor->drawPathTest();
 			}
+#endif
 		}
+	} else {
+		_fullRefresh = true;
 	}
 
 	if (_flags & RF_MAP)
 		_vm->_interface->mapPanelDrawCrossHair();
 
-	if ((_vm->_interface->getMode() == kPanelOption) ||
-		(_vm->_interface->getMode() == kPanelQuit) ||
-		(_vm->_interface->getMode() == kPanelLoad) ||
-		(_vm->_interface->getMode() == kPanelSave)) {
+	if ((curMode == kPanelOption) ||
+		(curMode == kPanelQuit) ||
+		(curMode == kPanelLoad) ||
+		(curMode == kPanelSave)) {
 		_vm->_interface->drawOption();
 
-		if (_vm->_interface->getMode() == kPanelQuit) {
+		if (curMode == kPanelQuit) {
 			_vm->_interface->drawQuit();
 		}
-		if (_vm->_interface->getMode() == kPanelLoad) {
+		if (curMode == kPanelLoad) {
 			_vm->_interface->drawLoad();
 		}
-		if (_vm->_interface->getMode() == kPanelSave) {
+		if (curMode == kPanelSave) {
 			_vm->_interface->drawSave();
 		}
 	}
 
-	if (_vm->_interface->getMode() == kPanelProtect) {
+	if (curMode == kPanelProtect) {
 		_vm->_interface->drawProtect();
 	}
 
 	// Draw queued text strings
-	_vm->_scene->drawTextList(backBufferSurface);
+	_vm->_scene->drawTextList();
 
 	// Handle user input
 	_vm->processInput();
 
+#ifdef SAGA_DEBUG
 	// Display rendering information
 	if (_flags & RF_SHOW_FPS) {
+		char txtBuffer[20];
 		sprintf(txtBuffer, "%d", _fps);
-		textPoint.x = backBufferSurface->w - _vm->_font->getStringWidth(kKnownFontSmall, txtBuffer, 0, kFontOutline);
+		textPoint.x = _vm->_gfx->getBackBufferWidth() - _vm->_font->getStringWidth(kKnownFontSmall, txtBuffer, 0, kFontOutline);
 		textPoint.y = 2;
 
-		_vm->_font->textDraw(kKnownFontSmall, backBufferSurface, txtBuffer, textPoint, kITEColorBrightWhite, kITEColorBlack, kFontOutline);
+		_vm->_font->textDraw(kKnownFontSmall, txtBuffer, textPoint, kITEColorBrightWhite, kITEColorBlack, kFontOutline);
 	}
+#endif
 
 	// Display "paused game" message, if applicable
 	if (_flags & RF_RENDERPAUSE) {
-		textPoint.x = (backBufferSurface->w - _vm->_font->getStringWidth(kKnownFontPause, pauseString, 0, kFontOutline)) / 2;
+		const char *pauseString = (_vm->getGameId() == GID_ITE) ? pauseStringITE : pauseStringIHNM;
+		textPoint.x = (_vm->_gfx->getBackBufferWidth() - _vm->_font->getStringWidth(kKnownFontPause, pauseString, 0, kFontOutline)) / 2;
 		textPoint.y = 90;
 
-		_vm->_font->textDraw(kKnownFontPause, backBufferSurface, pauseString, textPoint, kITEColorBrightWhite, kITEColorBlack, kFontOutline);
+		_vm->_font->textDraw(kKnownFontPause, pauseString, textPoint,
+							_vm->KnownColor2ColorId(kKnownColorBrightWhite), _vm->KnownColor2ColorId(kKnownColorBlack), kFontOutline);
 	}
 
 	// Update user interface
 	_vm->_interface->update(mousePoint, UPDATE_MOUSEMOVE);
 
+#ifdef SAGA_DEBUG
 	// Display text formatting test, if applicable
 	if (_flags & RF_TEXT_TEST) {
 		Rect rect(mousePoint.x, mousePoint.y, mousePoint.x + 100, mousePoint.y + 50);
-		_vm->_font->textDrawRect(kKnownFontMedium, backBufferSurface, test_txt, rect,
+		_vm->_font->textDrawRect(kKnownFontMedium, test_txt, rect,
 				kITEColorBrightWhite, kITEColorBlack, (FontEffectFlags)(kFontOutline | kFontCentered));
 	}
 
 	// Display palette test, if applicable
 	if (_flags & RF_PALETTE_TEST) {
-		backBufferSurface->drawPalette();
+		_vm->_gfx->drawPalette();
 	}
+#endif
 
-	_system->copyRectToScreen((byte *)backBufferSurface->pixels, backBufferSurface->w, 0, 0,
-							  backBufferSurface->w, backBufferSurface->h);
+	drawDirtyRects();
 
 	_system->updateScreen();
+
+	_fullRefresh = false;
 }
 
+void Render::addDirtyRect(Common::Rect rect) {
+	if (_fullRefresh)
+		return;
+
+	// Clip rectangle
+	int x1 = MAX<int>(rect.left, 0);
+	int y1 = MAX<int>(rect.top, 0);
+	int x2 = MIN<int>(rect.right, _backGroundSurface.w);
+	int y2 = MIN<int>(rect.bottom, _backGroundSurface.h);
+	if (x2 > x1 && y2 > y1) {
+		Common::Rect rectClipped(x1, y1, x2, y2);
+		// Check if the new rectangle is contained within another in the list
+ 		Common::List<Common::Rect>::const_iterator it;
+ 		for (it = _dirtyRects.begin(); it != _dirtyRects.end(); ++it) {
+			if (it->contains(rectClipped))
+				return;
+			if (rectClipped.contains(*it)) {
+				_dirtyRects.erase(it);
+				break;	// we need to break now, as the list is changed
+			}
+		}
+		if (_vm->_interface->getFadeMode() != kFadeOut)
+			_dirtyRects.push_back(rectClipped);
+	}
+}
+
+void Render::restoreChangedRects() {
+	if (!_fullRefresh) {
+ 	 	Common::List<Common::Rect>::const_iterator it;
+ 	 	for (it = _dirtyRects.begin(); it != _dirtyRects.end(); ++it) {
+			//_backGroundSurface.frameRect(*it, 1);		// DEBUG
+			if (_vm->_interface->getFadeMode() != kFadeOut)
+				g_system->copyRectToScreen(_vm->_gfx->getBackBufferPixels(), _backGroundSurface.w, it->left, it->top, it->width(), it->height());
+		}
+	}
+	_dirtyRects.clear();
+}
+
+void Render::drawDirtyRects() {
+	if (!_fullRefresh) {
+ 	 	Common::List<Common::Rect>::const_iterator it;
+ 	 	for (it = _dirtyRects.begin(); it != _dirtyRects.end(); ++it) {
+			//_backGroundSurface.frameRect(*it, 2);		// DEBUG
+			if (_vm->_interface->getFadeMode() != kFadeOut)
+				g_system->copyRectToScreen(_vm->_gfx->getBackBufferPixels(), _backGroundSurface.w, it->left, it->top, it->width(), it->height());
+		}
+	} else {
+		_system->copyRectToScreen(_vm->_gfx->getBackBufferPixels(), _vm->_gfx->getBackBufferWidth(), 0, 0,
+								  _vm->_gfx->getBackBufferWidth(), _vm->_gfx->getBackBufferHeight());
+	}
+
+	_dirtyRects.clear();
+}
+
+#ifdef SAGA_DEBUG
 void Render::fpsTimerCallback(void *refCon) {
 	((Render *)refCon)->fpsTimer();
 }
@@ -188,5 +271,6 @@ void Render::fpsTimer(void) {
 	_fps = _renderedFrameCount;
 	_renderedFrameCount = 0;
 }
+#endif
 
 } // End of namespace Saga

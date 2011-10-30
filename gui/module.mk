@@ -9,23 +9,23 @@ MODULE_OBJS := \
 	dialog.o \
 	editable.o \
 	EditTextWidget.o \
-	eval.o \
+	GuiManager.o \
 	launcher.o \
 	ListWidget.o \
 	massadd.o \
 	message.o \
-	newgui.o \
 	object.o \
 	options.o \
 	PopUpWidget.o \
+	saveload.o \
 	ScrollBarWidget.o \
 	TabWidget.o \
 	themebrowser.o \
-	widget.o \
-	theme.o \
-	ThemeClassic.o \
-	ThemeModern.o \
-	theme-config.o
+	ThemeEngine.o \
+	ThemeEval.o \
+	ThemeLayout.o \
+	ThemeParser.o \
+	widget.o
 
 # Include common rules
 include $(srcdir)/rules.mk

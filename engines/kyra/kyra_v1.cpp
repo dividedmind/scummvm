@@ -65,18 +65,22 @@ KyraEngine_v1::KyraEngine_v1(OSystem *system, const GameFlags &flags)
 
 	memset(_flagsTable, 0, sizeof(_flagsTable));
 
+	_isSaveAllowed = false;
+
+	_mouseX = _mouseY = 0;
+
 	// sets up all engine specific debug levels
-	Common::addSpecialDebugLevel(kDebugLevelScriptFuncs, "ScriptFuncs", "Script function debug level");
-	Common::addSpecialDebugLevel(kDebugLevelScript, "Script", "Script interpreter debug level");
-	Common::addSpecialDebugLevel(kDebugLevelSprites, "Sprites", "Sprite debug level");
-	Common::addSpecialDebugLevel(kDebugLevelScreen, "Screen", "Screen debug level");
-	Common::addSpecialDebugLevel(kDebugLevelSound, "Sound", "Sound debug level");
-	Common::addSpecialDebugLevel(kDebugLevelAnimator, "Animator", "Animator debug level");
-	Common::addSpecialDebugLevel(kDebugLevelMain, "Main", "Generic debug level");
-	Common::addSpecialDebugLevel(kDebugLevelGUI, "GUI", "GUI debug level");
-	Common::addSpecialDebugLevel(kDebugLevelSequence, "Sequence", "Sequence debug level");
-	Common::addSpecialDebugLevel(kDebugLevelMovie, "Movie", "Movie debug level");
-	Common::addSpecialDebugLevel(kDebugLevelTimer, "Timer", "Timer debug level");
+	Common::addDebugChannel(kDebugLevelScriptFuncs, "ScriptFuncs", "Script function debug level");
+	Common::addDebugChannel(kDebugLevelScript, "Script", "Script interpreter debug level");
+	Common::addDebugChannel(kDebugLevelSprites, "Sprites", "Sprite debug level");
+	Common::addDebugChannel(kDebugLevelScreen, "Screen", "Screen debug level");
+	Common::addDebugChannel(kDebugLevelSound, "Sound", "Sound debug level");
+	Common::addDebugChannel(kDebugLevelAnimator, "Animator", "Animator debug level");
+	Common::addDebugChannel(kDebugLevelMain, "Main", "Generic debug level");
+	Common::addDebugChannel(kDebugLevelGUI, "GUI", "GUI debug level");
+	Common::addDebugChannel(kDebugLevelSequence, "Sequence", "Sequence debug level");
+	Common::addDebugChannel(kDebugLevelMovie, "Movie", "Movie debug level");
+	Common::addDebugChannel(kDebugLevelTimer, "Timer", "Timer debug level");
 
 	system->getEventManager()->registerRandomSource(_rnd, "kyra");
 }
@@ -90,7 +94,7 @@ void KyraEngine_v1::pauseEngineIntern(bool pause) {
 	_timer->pause(pause);
 }
 
-int KyraEngine_v1::init() {
+Common::Error KyraEngine_v1::init() {
 	registerDefaultSettings();
 
 	// Setup mixer
@@ -184,7 +188,7 @@ int KyraEngine_v1::init() {
 	// Prevent autosave on game startup
 	_lastAutosave = _system->getMillis();
 
-	return 0;
+	return Common::kNoError;
 }
 
 KyraEngine_v1::~KyraEngine_v1() {
@@ -220,6 +224,177 @@ void KyraEngine_v1::setMousePos(int x, int y) {
 	_system->warpMouse(x, y);
 }
 
+int KyraEngine_v1::checkInput(Button *buttonList, bool mainLoop) {
+	debugC(9, kDebugLevelMain, "KyraEngine_v1::checkInput(%p, %d)", (const void*)buttonList, mainLoop);
+	_isSaveAllowed = mainLoop;
+	updateInput();
+	_isSaveAllowed = false;
+
+	int keys = 0;
+	int8 mouseWheel = 0;
+
+	while (_eventList.size()) {
+		Common::Event event = *_eventList.begin();
+		bool breakLoop = false;
+
+		switch (event.type) {
+		case Common::EVENT_KEYDOWN:
+			if (event.kbd.keycode >= '1' && event.kbd.keycode <= '9' &&
+					(event.kbd.flags == Common::KBD_CTRL || event.kbd.flags == Common::KBD_ALT) && mainLoop) {
+				int saveLoadSlot = 9 - (event.kbd.keycode - '0') + 990;
+
+				if (event.kbd.flags == Common::KBD_CTRL) {
+					loadGameStateCheck(saveLoadSlot);
+					_eventList.clear();
+					breakLoop = true;
+				} else {
+					char savegameName[14];
+					sprintf(savegameName, "Quicksave %d", event.kbd.keycode - '0');
+					saveGameState(saveLoadSlot, savegameName, 0);
+				}
+			} else if (event.kbd.flags == Common::KBD_CTRL) {
+				if (event.kbd.keycode == 'd')
+					_debugger->attach();
+				else if (event.kbd.keycode == 'q')
+					quitGame();
+			} else {
+				switch(event.kbd.keycode) {
+					case Common::KEYCODE_SPACE:
+						keys = 100;
+						break;
+					case Common::KEYCODE_RETURN:
+						keys = 101;
+						break;
+					case Common::KEYCODE_UP:
+						keys = 110;
+						break;
+					case Common::KEYCODE_RIGHT:
+						keys = 111;
+						break;
+					case Common::KEYCODE_DOWN:
+						keys = 112;
+						break;
+					case Common::KEYCODE_LEFT:
+						keys = 113;
+						break;
+					default:
+						break;
+				}
+			}
+			break;
+
+		case Common::EVENT_MOUSEMOVE: {
+			Common::Point pos = getMousePos();
+			_mouseX = pos.x;
+			_mouseY = pos.y;
+			} break;
+
+		case Common::EVENT_LBUTTONDOWN:
+		case Common::EVENT_LBUTTONUP: {
+			Common::Point pos = getMousePos();
+			_mouseX = pos.x;
+			_mouseY = pos.y;
+			keys = (event.type == Common::EVENT_LBUTTONDOWN ? 199 : (200 | 0x800));
+			breakLoop = true;
+			} break;
+
+		case Common::EVENT_RBUTTONDOWN:
+		case Common::EVENT_RBUTTONUP: {
+			Common::Point pos = getMousePos();
+			_mouseX = pos.x;
+			_mouseY = pos.y;
+			keys = (event.type == Common::EVENT_RBUTTONDOWN ? 299 : (300 | 0x800));
+			breakLoop = true;
+			} break;
+
+		case Common::EVENT_WHEELUP:
+			mouseWheel = -1;
+			break;
+
+		case Common::EVENT_WHEELDOWN:
+			mouseWheel = 1;
+			break;
+
+		default:
+			break;
+		}
+
+		if (_debugger && _debugger->isAttached())
+			_debugger->onFrame();
+
+		if (breakLoop)
+			break;
+
+		_eventList.erase(_eventList.begin());
+	}
+
+	GUI *guiInstance = gui();
+	if (guiInstance)
+		return guiInstance->processButtonList(buttonList, keys | 0x8000, mouseWheel);
+	else
+		return keys;
+}
+
+void KyraEngine_v1::updateInput() {
+	Common::Event event;
+
+	while (_eventMan->pollEvent(event)) {
+		switch (event.type) {
+		case Common::EVENT_KEYDOWN:
+			if (event.kbd.keycode == '.' || event.kbd.keycode == Common::KEYCODE_ESCAPE)
+				_eventList.push_back(Event(event, true));
+			else if (event.kbd.keycode == 'q' && event.kbd.flags == Common::KBD_CTRL)
+				quitGame();
+			else
+				_eventList.push_back(event);
+			break;
+
+		case Common::EVENT_LBUTTONDOWN:
+			_eventList.push_back(Event(event, true));
+			break;
+
+		case Common::EVENT_MOUSEMOVE:
+			screen()->updateScreen();
+			// fall through
+
+		case Common::EVENT_LBUTTONUP:
+		case Common::EVENT_WHEELUP:
+		case Common::EVENT_WHEELDOWN:
+			_eventList.push_back(event);
+			break;
+
+		default:
+			break;
+		}
+	}
+}
+
+void KyraEngine_v1::removeInputTop() {
+	if (!_eventList.empty())
+		_eventList.erase(_eventList.begin());
+}
+
+bool KyraEngine_v1::skipFlag() const {
+	for (Common::List<Event>::const_iterator i = _eventList.begin(); i != _eventList.end(); ++i) {
+		if (i->causedSkip)
+			return true;
+	}
+	return false;
+}
+
+void KyraEngine_v1::resetSkipFlag(bool removeEvent) {
+	for (Common::List<Event>::iterator i = _eventList.begin(); i != _eventList.end(); ++i) {
+		if (i->causedSkip) {
+			if (removeEvent)
+				_eventList.erase(i);
+			else
+				i->causedSkip = false;
+			return;
+		}
+	}
+}
+
+
 int KyraEngine_v1::setGameFlag(int flag) {
 	_flagsTable[flag >> 3] |= (1 << (flag & 7));
 	return 1;
@@ -235,7 +410,7 @@ int KyraEngine_v1::resetGameFlag(int flag) {
 }
 
 void KyraEngine_v1::delayUntil(uint32 timestamp, bool updateTimers, bool update, bool isMainLoop) {
-	while (_system->getMillis() < timestamp && !quit()) {
+	while (_system->getMillis() < timestamp && !shouldQuit()) {
 		if (timestamp - _system->getMillis() >= 10)
 			delay(10, update, isMainLoop);
 	}
@@ -265,7 +440,7 @@ void KyraEngine_v1::registerDefaultSettings() {
 void KyraEngine_v1::readSettings() {
 	_configWalkspeed = ConfMan.getInt("walkspeed");
 	_configMusic = 0;
-	
+
 	if (!ConfMan.getBool("music_mute")) {
 		if (_flags.platform == Common::kPlatformFMTowns || _flags.platform == Common::kPlatformPC98)
 			_configMusic = ConfMan.getBool("cdaudio") ? 2 : 1;
@@ -355,7 +530,7 @@ void KyraEngine_v1::setVolume(kVolumeEntry vol, uint8 value) {
 	case kVolumeSfx:
 		ConfMan.setInt("sfx_volume", convertValueToMixer(value));
 		break;
-	
+
 	case kVolumeSpeech:
 		ConfMan.setInt("speech_volume", convertValueToMixer(value));
 		break;
@@ -378,7 +553,7 @@ uint8 KyraEngine_v1::getVolume(kVolumeEntry vol) {
 	case kVolumeSfx:
 		return convertValueFromMixer(ConfMan.getInt("sfx_volume"));
 		break;
-	
+
 	case kVolumeSpeech:
 		if (speechEnabled())
 			return convertValueFromMixer(ConfMan.getInt("speech_volume"));
@@ -388,6 +563,13 @@ uint8 KyraEngine_v1::getVolume(kVolumeEntry vol) {
 	}
 
 	return 2;
+}
+
+void KyraEngine_v1::syncSoundSettings() {
+	Engine::syncSoundSettings();
+
+	if (_sound)
+		_sound->updateVolumeSettings();
 }
 
 } // End of namespace Kyra

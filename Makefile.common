@@ -25,9 +25,9 @@ MODULES += \
 	gui \
 	graphics \
 	sound \
+	backends \
 	common \
 	engines \
-	backends
 
 ifdef USE_MT32EMU
 MODULES += sound/softsynth/mt32
@@ -178,7 +178,7 @@ dist-src: \
 
 
 # Themes files
-DIST_FILES_THEMES:=$(addprefix $(srcdir)/gui/themes/,modern.ini modern.zip classic080.ini)
+DIST_FILES_THEMES:=$(addprefix $(srcdir)/gui/themes/,scummmodern.zip scummclassic.zip)
 
 # Engine data files
 DIST_FILES_ENGINEDATA=

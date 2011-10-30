@@ -17,9 +17,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  */
 
-/*  
+/*
  * Raw MIDI output for the Atari ST line of computers.
- * Based on the ScummVM SEQ & CoreMIDI drivers.  
+ * Based on the ScummVM SEQ & CoreMIDI drivers.
  * Atari code by Keith Scroggins
  * We, unfortunately, could not use the SEQ driver because the /dev/midi under
  * FreeMiNT (and hence in libc) is considered to be a serial port for machine
@@ -91,7 +91,10 @@ void MidiDriver_STMIDI::send(uint32 b) {
 }
 
 void MidiDriver_STMIDI::sysEx (const byte *msg, uint16 length) {
-	if (length > 254) {
+	// FIXME: LordHoto doesn't know if this will still work
+	// when sending 264 byte sysEx data, as needed by KYRA,
+	// feel free to revert it to 254 again if needed.
+	if (length > 264) {
 		warning ("Cannot send SysEx block - data too large");
 		return;
 	}
@@ -119,7 +122,7 @@ public:
         }
 
         MusicDevices getDevices() const;
-        PluginError createInstance(Audio::Mixer *mixer, MidiDriver **mididriver)
+        Common::Error createInstance(Audio::Mixer *mixer, MidiDriver **mididriver)
  const;
 };
 
@@ -131,10 +134,10 @@ MusicDevices StMidiMusicPlugin::getDevices() const {
         return devices;
 }
 
-PluginError StMidiMusicPlugin::createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const {
+Common::Error StMidiMusicPlugin::createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const {
         *mididriver = new MidiDriver_STMIDI();
 
-        return kNoError;
+        return Common::kNoError;
 }
 
 MidiDriver *MidiDriver_STMIDI_create(Audio::Mixer *mixer) {

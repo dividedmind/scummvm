@@ -221,7 +221,7 @@ void Script::endgameSequence(uint16 v1, uint16 v2, uint16 v3) {
 	anim->show();
 	if (!events.interruptableDelay(30000)) {
 		// No key yet pressed, so keep waiting
-		while (Sound.musicInterface_CheckPlaying(6) && !engine.quit()) {
+		while (Sound.musicInterface_CheckPlaying(6) && !engine.shouldQuit()) {
 			if (events.interruptableDelay(20))
 				break;
 		}
@@ -1094,7 +1094,7 @@ uint16 Script::execute(uint16 startOffset) {
 					sprintf(debugInfo + strlen(debugInfo), " (%d)", stack[stack.size()-1]);
 				strcat(debugInfo, ")");
 
-				debugC(ERROR_DETAILED, kLureDebugScripts, debugInfo);
+				debugC(ERROR_DETAILED, kLureDebugScripts, "%s", debugInfo);
 			}
 
 			param1 = 0; param2 = 0; param3 = 0;
@@ -1164,7 +1164,7 @@ uint16 Script::execute(uint16 startOffset) {
 				break;
 			}
 
-			debugC(ERROR_DETAILED, kLureDebugScripts, debugInfo);
+			debugC(ERROR_DETAILED, kLureDebugScripts, "%s", debugInfo);
 		}
 	}
 

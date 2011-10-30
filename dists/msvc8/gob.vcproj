@@ -307,6 +307,10 @@
 			>
 		</File>
 		<File
+			RelativePath="..\..\engines\gob\game_v6.cpp"
+			>
+		</File>
+		<File
 			RelativePath="..\..\engines\gob\global.cpp"
 			>
 		</File>
@@ -344,6 +348,18 @@
 		</File>
 		<File
 			RelativePath="..\..\engines\gob\goblin_v4.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\engines\gob\indeo3.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\engines\gob\indeo3.h"
+			>
+		</File>
+		<File
+			RelativePath="..\..\engines\gob\indeo3data.h"
 			>
 		</File>
 		<File
@@ -480,6 +496,10 @@
 		</File>
 		<File
 			RelativePath="..\..\engines\gob\saveload_v4.cpp"
+			>
+		</File>
+		<File
+			RelativePath="..\..\engines\gob\saveload_v6.cpp"
 			>
 		</File>
 		<File

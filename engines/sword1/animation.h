@@ -26,8 +26,8 @@
 #ifndef SWORD1_ANIMATION_H
 #define SWORD1_ANIMATION_H
 
-#include "graphics/dxa_player.h"
-#include "graphics/mpeg_player.h"
+#include "graphics/video/dxa_player.h"
+#include "graphics/video/mpeg_player.h"
 
 #include "sword1/screen.h"
 #include "sword1/sound.h"
@@ -66,7 +66,7 @@ public:
 	uint16 _startFrame;
 	uint16 _endFrame;
 	char *_text;
-	MovieText(int startFrame, int endFrame, char *text) {
+	MovieText(int startFrame, int endFrame, const char *text) {
 		_startFrame = startFrame;
 		_endFrame = endFrame;
 		_text = strdup(text);
@@ -78,7 +78,7 @@ public:
 
 class MoviePlayer {
 public:
-	MoviePlayer(Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system);
+	MoviePlayer(SwordEngine *vm, Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system);
 	virtual ~MoviePlayer(void);
 	virtual bool load(uint32 id);
 	void play(void);
@@ -86,12 +86,12 @@ public:
 private:
 	bool checkSkipFrame(void);
 protected:
+	SwordEngine *_vm;
 	Screen *_screen;
 	Text *_textMan;
 	Audio::Mixer *_snd;
 	OSystem *_system;
 	Common::Array<MovieText *> _movieTexts;
-	byte *_textSpriteBuf;
 	int _textX, _textY, _textWidth, _textHeight;
 	byte _black, _white;
 
@@ -122,7 +122,7 @@ class MoviePlayerDXA : public MoviePlayer, ::Graphics::DXAPlayer {
 protected:
 	virtual void setPalette(byte *pal);
 public:
-	MoviePlayerDXA(Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system);
+	MoviePlayerDXA(SwordEngine *vm, Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system);
 	virtual ~MoviePlayerDXA(void);
 	bool load(uint32 id);
 protected:
@@ -159,7 +159,7 @@ protected:
 
 class MoviePlayerMPEG : public MoviePlayer {
 public:
-	MoviePlayerMPEG(Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system);
+	MoviePlayerMPEG(SwordEngine *vm, Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system);
 	virtual ~MoviePlayerMPEG(void);
 	bool load(uint32 id);
 protected:
@@ -195,7 +195,7 @@ private:
 	FileQueue *_queue;
 };
 
-MoviePlayer *makeMoviePlayer(uint32 id, Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system);
+MoviePlayer *makeMoviePlayer(uint32 id, SwordEngine *vm, Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system);
 
 } // End of namespace Sword1
 

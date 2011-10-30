@@ -356,7 +356,7 @@ void AGOSEngine_Feeble::drawIconArray(uint num, Item *itemRef, int line, int cla
 		removeIconArray(num);
 
 	window->iconPtr=(IconBlock *)malloc(sizeof(IconBlock));
-        window->iconPtr->itemRef = itemRef;
+	window->iconPtr->itemRef = itemRef;
 	window->iconPtr->upArrow = -1;
 	window->iconPtr->downArrow = -1;
 	window->iconPtr->line = line;
@@ -536,12 +536,12 @@ void AGOSEngine::drawIconArray(uint num, Item *itemRef, int line, int classMask)
 	}
 }
 
-uint AGOSEngine_Feeble::setupIconHitArea(WindowBlock *window, uint num, uint x, uint y, Item *item_ptr) {
+uint AGOSEngine_Feeble::setupIconHitArea(WindowBlock *window, uint num, uint x, uint y, Item *itemPtr) {
 	HitArea *ha = findEmptyHitArea();
 
 	ha->x = x;
 	ha->y = y;
-	ha->item_ptr = item_ptr;
+	ha->itemPtr = itemPtr;
 	ha->width = 45;
 	ha->height = 44;
 	ha->flags = kBFBoxInUse | kBFBoxItem;
@@ -552,12 +552,12 @@ uint AGOSEngine_Feeble::setupIconHitArea(WindowBlock *window, uint num, uint x, 
 	return ha - _hitAreas;
 }
 
-uint AGOSEngine_Simon2::setupIconHitArea(WindowBlock *window, uint num, uint x, uint y, Item *item_ptr) {
+uint AGOSEngine_Simon2::setupIconHitArea(WindowBlock *window, uint num, uint x, uint y, Item *itemPtr) {
 	HitArea *ha = findEmptyHitArea();
 
 	ha->x = x + 110;
 	ha->y = window->y + y;
-	ha->item_ptr = item_ptr;
+	ha->itemPtr = itemPtr;
 	ha->width = 20;
 	ha->height = 20;
 	ha->flags = kBFDragBox | kBFBoxInUse | kBFBoxItem;
@@ -568,12 +568,12 @@ uint AGOSEngine_Simon2::setupIconHitArea(WindowBlock *window, uint num, uint x, 
 	return ha - _hitAreas;
 }
 
-uint AGOSEngine_Simon1::setupIconHitArea(WindowBlock *window, uint num, uint x, uint y, Item *item_ptr) {
+uint AGOSEngine_Simon1::setupIconHitArea(WindowBlock *window, uint num, uint x, uint y, Item *itemPtr) {
 	HitArea *ha = findEmptyHitArea();
 
 	ha->x = (x + window->x) * 8;
 	ha->y = y * 25 + window->y;
-	ha->item_ptr = item_ptr;
+	ha->itemPtr = itemPtr;
 	ha->width = 24;
 	ha->height = 24;
 	ha->flags = kBFDragBox | kBFBoxInUse | kBFBoxItem;
@@ -584,12 +584,12 @@ uint AGOSEngine_Simon1::setupIconHitArea(WindowBlock *window, uint num, uint x, 
 	return ha - _hitAreas;
 }
 
-uint AGOSEngine_Waxworks::setupIconHitArea(WindowBlock *window, uint num, uint x, uint y, Item *item_ptr) {
+uint AGOSEngine_Waxworks::setupIconHitArea(WindowBlock *window, uint num, uint x, uint y, Item *itemPtr) {
 	HitArea *ha = findEmptyHitArea();
 
 	ha->x = (x + window->x) * 8;
 	ha->y = y * 20 + window->y;
-	ha->item_ptr = item_ptr;
+	ha->itemPtr = itemPtr;
 	ha->width = 24;
 	ha->height = 20;
 	ha->flags = kBFDragBox | kBFBoxInUse | kBFBoxItem;
@@ -600,12 +600,12 @@ uint AGOSEngine_Waxworks::setupIconHitArea(WindowBlock *window, uint num, uint x
 	return ha - _hitAreas;
 }
 
-uint AGOSEngine_Elvira2::setupIconHitArea(WindowBlock *window, uint num, uint x, uint y, Item *item_ptr) {
+uint AGOSEngine_Elvira2::setupIconHitArea(WindowBlock *window, uint num, uint x, uint y, Item *itemPtr) {
 	HitArea *ha = findEmptyHitArea();
 
 	ha->x = (x + window->x) * 8;
 	ha->y = y * 8 + window->y;
-	ha->item_ptr = item_ptr;
+	ha->itemPtr = itemPtr;
 	ha->width = 24;
 	ha->height = 24;
 	ha->id = 0x7FFD;
@@ -622,12 +622,12 @@ uint AGOSEngine_Elvira2::setupIconHitArea(WindowBlock *window, uint num, uint x,
 	return ha - _hitAreas;
 }
 
-uint AGOSEngine::setupIconHitArea(WindowBlock *window, uint num, uint x, uint y, Item *item_ptr) {
+uint AGOSEngine::setupIconHitArea(WindowBlock *window, uint num, uint x, uint y, Item *itemPtr) {
 	HitArea *ha = findEmptyHitArea();
 
 	ha->x = (x + window->x) * 8;
 	ha->y = y * 8 + window->y;
-	ha->item_ptr = item_ptr;
+	ha->itemPtr = itemPtr;
 	ha->width = 24;
 	ha->height = 24;
 	ha->flags = kBFDragBox | kBFBoxInUse | kBFBoxItem;
@@ -921,23 +921,29 @@ void AGOSEngine::drawArrow(uint16 x, uint16 y, int8 dir) {
 	_system->unlockScreen();
 }
 
-void AGOSEngine::removeArrows(WindowBlock *window, uint num) {
+void AGOSEngine_Simon1::removeArrows(WindowBlock *window, uint num) {
 	if (getGameType() == GType_SIMON1) {
 		restoreBlock(200, 320, 146, 304);
-	} else if (getGameType() == GType_WW) {
-		setBitFlag(22, false);
-		setWindowImageEx(6, 103);
-	} else if (getGameType() == GType_ELVIRA2) {
-		setBitFlag(21, false);
-		setWindowImageEx(6, 106);
-	} else if (getGameType() == GType_ELVIRA1) {
-		if (num != 2) {
-			uint y = window->height * 4 + window->y - 19;
-			uint x = window->width + window->x;
-			restoreBlock(y + 38, x + 16, y, x);
-		} else {
-			colorBlock(window, 240, 151, 16, 38);
-		}
+	}
+}
+
+void AGOSEngine_Waxworks::removeArrows(WindowBlock *window, uint num) {
+	setBitFlag(22, false);
+	setWindowImageEx(6, 103);
+}
+
+void AGOSEngine_Elvira2::removeArrows(WindowBlock *window, uint num) {
+	setBitFlag(21, false);
+	setWindowImageEx(6, 106);
+}
+
+void AGOSEngine::removeArrows(WindowBlock *window, uint num) {
+	if (num != 2) {
+		uint y = window->height * 4 + window->y - 19;
+		uint x = window->width + window->x;
+		restoreBlock(y + 38, x + 16, y, x);
+	} else {
+		colorBlock(window, 240, 151, 16, 38);
 	}
 }
 

@@ -68,6 +68,9 @@ _mt32emu=yes
 # default option behaviour yes/no
 _build_hq_scalers=yes
 _build_scalers=yes
+# default vkeybd/keymapper options
+_vkeybd=no
+_keymapper=no
 
 # Add an engine: id name build subengines
 add_engine() {
@@ -89,6 +92,7 @@ add_engine cine "Cinematique evo 1" yes
 add_engine cruise "Cinematique evo 2" no
 add_engine drascula "Drascula: The Vampire Strikes Back" yes
 add_engine gob "Gobli*ns" yes
+add_engine groovie "Groovie" yes
 add_engine igor "Igor: Objective Uikokahonia" no
 add_engine kyra "Legend of Kyrandia" yes
 add_engine lure "Lure of the Temptress" yes
@@ -96,13 +100,16 @@ add_engine m4 "M4/MADS" no
 add_engine made "MADE" no
 add_engine parallaction "Parallaction" yes
 add_engine queen "Flight of the Amazon Queen" yes
-add_engine saga "SAGA" yes
+add_engine saga "SAGA" yes "ihnm saga2"
+add_engine ihnm "IHNM" yes
+add_engine saga2 "SAGA 2 games" no
 add_engine sky "Beneath a Steel Sky" yes
 add_engine sword1 "Broken Sword 1" yes
 add_engine sword2 "Broken Sword 2" yes
 add_engine tinsel "Tinsel" no
 add_engine touche "Touche: The Adventures of the Fifth Musketeer" yes
 add_engine innocent "Innocent Until Caught" no
+add_engine tucker "Bud Tucker in Double Trouble" yes
 
 _endian=unknown
 _need_memalign=no
@@ -554,6 +561,15 @@ get_scumm_build_string() {
 	fi
 }
 
+get_saga_build_string() {
+	if test `get_engine_build $1` != no ; then
+		if test $2 != no ; then
+			base="[ITE]"
+		fi
+		get_subengines_build_string $1 $2 "$base"
+	fi
+}
+
 #
 # Greet user
 #
@@ -584,7 +600,7 @@ Usage: $0 [OPTIONS]...
 
 Configuration:
   -h, --help             display this help and exit
-  --backend=BACKEND      backend to build (sdl, x11, morphos, dc, gp2x, iphone, null) [sdl]
+  --backend=BACKEND      backend to build (sdl, morphos, dc, gp2x, iphone, null) [sdl]
 
 Installation directories:
   --prefix=DIR           use this prefix for installing ScummVM [/usr/local]
@@ -683,6 +699,10 @@ for ac_option in $@; do
 	--default-dynamic)        _plugins_default=dynamic ;;
 	--enable-mt32emu)         _mt32emu=yes    ;;
 	--disable-mt32emu)        _mt32emu=no     ;;
+	--enable-vkeybd)          _vkeybd=yes     ;;
+	--disable-vkeybd)         _vkeybd=no      ;;
+	--enable-keymapper)       _keymapper=yes  ;;
+	--disable-keymapper)      _keymapper=no   ;;
 	--with-fluidsynth-prefix=*)
 		arg=`echo $ac_option | cut -d '=' -f 2`
 		FLUIDSYNTH_CFLAGS="-I$arg/include"
@@ -1017,7 +1037,7 @@ test $TMP -eq 0 || exit 1	# check exit code of subshell
 #
 # Check whether we can use x86 asm routines
 #
-echo_n "Running on x86... "
+echo_n "Compiling for x86... "
 case $_host_cpu in
 	i386|i486|i586|i686)
 		_have_x86=yes
@@ -1040,7 +1060,19 @@ case $_host_os in
 	beos*)
 		DEFINES="$DEFINES -DUNIX -DSYSTEM_NOT_SUPPORTING_D_TYPE"
 		# Needs -lbind -lsocket for the timidity MIDI driver
+		LDFLAGS="-L/boot/home/config/lib"
+		CFLAGS="-I/boot/home/config/include"
+		CXXFLAGS="$CXXFLAGS -fhuge-objects"
 		LIBS="$LIBS -lbind -lsocket"
+		type_1_byte='char'
+		type_2_byte='short'
+		type_4_byte='long'
+		;;	
+	haiku*)
+		DEFINES="$DEFINES -DUNIX -DSYSTEM_NOT_SUPPORTING_D_TYPE"
+		# Needs -lnetwork for the timidity MIDI driver
+		LIBS="$LIBS -lnetwork"
+		CXXFLAGS="$CXXFLAGS -fhuge-objects"
 		type_1_byte='char'
 		type_2_byte='short'
 		type_4_byte='long'
@@ -1588,6 +1620,16 @@ add_to_config_h_if_yes $_nasm '#define USE_NASM'
 add_to_config_mk_if_yes $_nasm 'HAVE_NASM = 1'
 
 #
+# Enable vkeybd / keymapper 
+#
+if test "$_vkeybd" = yes ; then
+	DEFINES="$DEFINES -DENABLE_VKEYBD"
+fi
+if test "$_keymapper" = yes ; then
+	DEFINES="$DEFINES -DENABLE_KEYMAPPER"
+fi
+
+#
 # figure out installation directories
 #
 test -z "$_bindir" && _bindir="$_prefix/bin"
@@ -1598,6 +1640,66 @@ test -z "$_libdir" && _libdir="$_prefix/lib"
 DEFINES="$DEFINES -DDATA_PATH=\\\"$_datadir/scummvm\\\""
 DEFINES="$DEFINES -DPLUGIN_DIRECTORY=\\\"$_libdir/scummvm\\\""
 
+
+echo_n "Backend... "
+echo_n "$_backend"
+
+if test "$_nasm" = yes ; then
+	echo_n ", assembly routines"
+fi
+
+if test "$_build_hq_scalers" = yes ; then
+	echo_n ", HQ scalers"
+fi
+
+if test "$_mt32emu" = yes ; then
+	echo_n ", MT-32 emu"
+fi
+
+if test "$_vkeybd" = yes ; then
+	echo_n ", virtual keyboard"
+fi
+
+if test "$_keymapper" = yes ; then
+	echo ", keymapper"
+else
+	echo
+fi
+
+#
+# Backend related stuff
+#
+case $_backend in
+	null)
+		DEFINES="$DEFINES -DUSE_NULL_DRIVER"
+		MODULES="$MODULES backends/platform/null"
+		;;
+	sdl)
+		find_sdlconfig
+		INCLUDES="$INCLUDES `$_sdlconfig --prefix="$_sdlpath" --cflags`"
+		LIBS="$LIBS `$_sdlconfig --prefix="$_sdlpath" --libs`"
+		DEFINES="$DEFINES -DSDL_BACKEND"
+		MODULES="$MODULES backends/platform/sdl"
+		;;
+	gp2x)
+		find_sdlconfig
+		INCLUDES="$INCLUDES `$_sdlconfig --prefix="$_sdlpath" --cflags`"
+		LIBS="$LIBS `$_sdlconfig --prefix="$_sdlpath" --libs`"
+		LDFLAGS="$LDFLAGS -static"
+		CXXFLAGS="$CXXFLAGS -march=armv4t"
+		MODULES="$MODULES backends/platform/gp2x"
+		;;
+	iphone)
+		OBJCFLAGS="$OBJCFLAGS --std=c99"
+		LIBS="$LIBS -lobjc -framework UIKit -framework CoreGraphics -framework CoreSurface -framework LayerKit -framework GraphicsServices -framework CoreFoundation -framework Foundation -framework AudioToolbox -framework CoreAudio"
+		DEFINES="$DEFINES -DIPHONE_BACKEND"
+		MODULES="$MODULES backends/platform/iphone"
+		;;
+	*)
+		echo "support for $_backend backend not implemented in configure script yet"
+		exit 1
+		;;
+esac
 
 #
 # Engine selection
@@ -1678,63 +1780,6 @@ if test -n "$_engines_skipped" ; then
 s/#/    /g'
 fi
 
-echo_n "Backend... "
-echo_n "$_backend"
-
-if test "$_nasm" = yes ; then
-	echo_n ", assembly routines"
-fi
-
-if test "$_build_hq_scalers" = yes ; then
-	echo_n ", HQ scalers"
-fi
-
-if test "$_mt32emu" = yes ; then
-	echo ", MT-32 emu"
-else
-	echo
-fi
-#
-# Backend related stuff
-#
-case $_backend in
-	null)
-		DEFINES="$DEFINES -DUSE_NULL_DRIVER"
-		MODULES="$MODULES backends/platform/null"
-		;;
-	sdl)
-		find_sdlconfig
-		INCLUDES="$INCLUDES `$_sdlconfig --prefix="$_sdlpath" --cflags`"
-		LIBS="$LIBS `$_sdlconfig --prefix="$_sdlpath" --libs`"
-		DEFINES="$DEFINES -DSDL_BACKEND"
-		MODULES="$MODULES backends/platform/sdl"
-		;;
-	gp2x)
-		find_sdlconfig
-		INCLUDES="$INCLUDES `$_sdlconfig --prefix="$_sdlpath" --cflags`"
-		LIBS="$LIBS `$_sdlconfig --prefix="$_sdlpath" --libs`"
-		LDFLAGS="$LDFLAGS -static"
-		CXXFLAGS="$CXXFLAGS -march=armv4t"
-		MODULES="$MODULES backends/platform/gp2x"
-		;;
-	x11)
-		INCLUDES="$INCLUDES -I/usr/X11R6/include"
-		LIBS="$LIBS -lpthread -lXext -lX11"
-		LDFLAGS="$LDFLAGS -L/usr/X11R6/lib -L/usr/local/lib"
-		DEFINES="$DEFINES -DX11_BACKEND"
-		MODULES="$MODULES backends/platform/x11"
-		;;
-	iphone)
-		OBJCFLAGS="$OBJCFLAGS --std=c99"
-		LIBS="$LIBS -lobjc -framework UIKit -framework CoreGraphics -framework CoreSurface -framework LayerKit -framework GraphicsServices -framework CoreFoundation -framework Foundation -framework AudioToolbox -framework CoreAudio"
-		DEFINES="$DEFINES -DIPHONE_BACKEND"
-		MODULES="$MODULES backends/platform/iphone"
-		;;
-	*)
-		echo "support for $_backend backend not implemented in configure script yet"
-		exit 1
-		;;
-esac
 
 echo
 echo "Creating config.h"

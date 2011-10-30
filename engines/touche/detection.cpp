@@ -24,8 +24,9 @@
  */
 
 #include "common/config-manager.h"
-#include "common/advancedDetector.h"
+#include "engines/advancedDetector.h"
 #include "common/savefile.h"
+#include "common/system.h"
 
 #include "base/plugins.h"
 
@@ -38,14 +39,14 @@ static const PlainGameDescriptor toucheGames[] = {
 
 namespace Touche {
 
-static const Common::ADGameDescription gameDescriptions[] = {
+static const ADGameDescription gameDescriptions[] = {
 	{ // retail version
 		"touche",
 		"",
 		AD_ENTRY1s("touche.dat", "2af0177f8887e3430f345e6b4d8b1414", 26350211),
 		Common::EN_ANY,
 		Common::kPlatformPC,
-		Common::ADGF_NO_FLAGS
+		ADGF_NO_FLAGS
 	},
 	{ // retail version - tracker item #1601818
 		"touche",
@@ -53,7 +54,7 @@ static const Common::ADGameDescription gameDescriptions[] = {
 		AD_ENTRY1s("touche.dat", "95967f0b51d2e813e99ca00325098340", 26350190),
 		Common::EN_ANY,
 		Common::kPlatformPC,
-		Common::ADGF_NO_FLAGS
+		ADGF_NO_FLAGS
 	},
 	{ // retail version
 		"touche",
@@ -61,7 +62,7 @@ static const Common::ADGameDescription gameDescriptions[] = {
 		AD_ENTRY1s("touche.dat", "1caa20bb4d4fc2ce8eb867b6610082b3", 26558232),
 		Common::FR_FRA,
 		Common::kPlatformPC,
-		Common::ADGF_NO_FLAGS
+		ADGF_NO_FLAGS
 	},
 	{ // retail version - tracker item #1598643
 		"touche",
@@ -69,7 +70,7 @@ static const Common::ADGameDescription gameDescriptions[] = {
 		AD_ENTRY1s("touche.dat", "be2ae6454b3325e410946f2322547cd4", 26625537),
 		Common::DE_DEU,
 		Common::kPlatformPC,
-		Common::ADGF_NO_FLAGS
+		ADGF_NO_FLAGS
 	},
 	{ // retail version - tracker item #1681643
 		"touche",
@@ -77,7 +78,7 @@ static const Common::ADGameDescription gameDescriptions[] = {
 		AD_ENTRY1s("touche.dat", "64e95ba1decf5a5a60f8fa1840f40c62", 26529523),
 		Common::ES_ESP,
 		Common::kPlatformPC,
-		Common::ADGF_NO_FLAGS
+		ADGF_NO_FLAGS
 	},
 	{ // fan-made translation (http://www.iagtg.net/) - tracker item #1602360
 		"touche",
@@ -85,7 +86,7 @@ static const Common::ADGameDescription gameDescriptions[] = {
 		AD_ENTRY1s("touche.dat", "1f442331d4b327c3488a9f6ffe9bdd25", 26367792),
 		Common::IT_ITA,
 		Common::kPlatformPC,
-		Common::ADGF_NO_FLAGS
+		ADGF_NO_FLAGS
 	},
 	{ // retail version - tracker item #1800500
 		"touche",
@@ -93,7 +94,7 @@ static const Common::ADGameDescription gameDescriptions[] = {
 		AD_ENTRY1s("touche.dat", "42d19a0bef65465109020440a9caa228", 26487370),
 		Common::PL_POL,
 		Common::kPlatformPC,
-		Common::ADGF_NO_FLAGS
+		ADGF_NO_FLAGS
 	},
 	{ // demo version
 		"touche",
@@ -101,32 +102,32 @@ static const Common::ADGameDescription gameDescriptions[] = {
 		AD_ENTRY1s("touche.dat", "ddaed436445b2e77294ed19e8ae4aa2c", 8720683),
 		Common::EN_ANY,
 		Common::kPlatformPC,
-		Common::ADGF_DEMO
+		ADGF_DEMO
 	},
 	AD_TABLE_END_MARKER
 };
 
-static const Common::ADFileBasedFallback fileBasedFallback[] = {
+static const ADFileBasedFallback fileBasedFallback[] = {
 	{ &gameDescriptions[0], { "touche.dat", 0 } }, // default to english version
 	{ 0, { 0 } }
 };
 
 } // End of namespace Touche
 
-static const Common::ADParams detectionParams = {
+static const ADParams detectionParams = {
 	(const byte *)Touche::gameDescriptions,
-	sizeof(Common::ADGameDescription),
+	sizeof(ADGameDescription),
 	4096, // number of md5 bytes
 	toucheGames,
 	0, // no obsolete targets data
 	"touche",
 	Touche::fileBasedFallback, // file-based detection data to enable not yet known versions to start
-	Common::kADFlagPrintWarningOnFileBasedFallback
+	kADFlagPrintWarningOnFileBasedFallback
 };
 
-class ToucheMetaEngine : public Common::AdvancedMetaEngine {
+class ToucheMetaEngine : public AdvancedMetaEngine {
 public:
-	ToucheMetaEngine() : Common::AdvancedMetaEngine(detectionParams) {}
+	ToucheMetaEngine() : AdvancedMetaEngine(detectionParams) {}
 
 	virtual const char *getName() const {
 		return "Touche Engine";
@@ -137,85 +138,69 @@ public:
 	}
 
 	virtual bool hasFeature(MetaEngineFeature f) const;
-	virtual bool createInstance(OSystem *syst, Engine **engine, const Common::ADGameDescription *desc) const;
+	virtual bool createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const;
 	virtual SaveStateList listSaves(const char *target) const;
+	virtual int getMaximumSaveSlot() const;
 	virtual void removeSaveState(const char *target, int slot) const;
 };
 
 bool ToucheMetaEngine::hasFeature(MetaEngineFeature f) const {
 	return
-		(f == kSupportsRTL) ||
 		(f == kSupportsListSaves) ||
-		(f == kSupportsDirectLoad) ||
+		(f == kSupportsLoadingDuringStartup) ||
 		(f == kSupportsDeleteSave);
 }
 
-bool ToucheMetaEngine::createInstance(OSystem *syst, Engine **engine, const Common::ADGameDescription *desc) const {
-	const Common::ADGameDescription *gd = desc;
-	if (gd) {
-		*engine = new Touche::ToucheEngine(syst, gd->language);
+bool Touche::ToucheEngine::hasFeature(EngineFeature f) const {
+	return
+		(f == kSupportsRTL) ||
+		(f == kSupportsLoadingDuringRuntime) ||
+		(f == kSupportsSavingDuringRuntime) ||
+		(f == kSupportsSubtitleOptions);
+}
+
+bool ToucheMetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const {
+	if (desc) {
+		*engine = new Touche::ToucheEngine(syst, desc->language);
 	}
-	return gd != 0;
+	return desc != 0;
 }
 
 SaveStateList ToucheMetaEngine::listSaves(const char *target) const {
-	Common::SaveFileManager *saveFileMan = g_system->getSavefileManager();
-	Common::StringList filenames;
-	char saveDesc[Touche::kGameStateDescriptionLen];
-	Common::String pattern = target;
-	pattern += ".?";
-
-	filenames = saveFileMan->listSavefiles(pattern.c_str());
-	sort(filenames.begin(), filenames.end());	// Sort (hopefully ensuring we are sorted numerically..)
-
+	Common::String pattern = Touche::generateGameStateFileName(target, 0, true);
+	Common::StringList filenames = g_system->getSavefileManager()->listSavefiles(pattern.c_str());
+	bool slotsTable[Touche::kMaxSaveStates];
+	memset(slotsTable, 0, sizeof(slotsTable));
 	SaveStateList saveList;
 	for (Common::StringList::const_iterator file = filenames.begin(); file != filenames.end(); ++file) {
-		// Obtain the last digit of the filename, since they correspond to the save slot
-		int slotNum = atoi(file->c_str() + file->size() - 1);
-	
-		if (slotNum >= 0 && slotNum <= 9) {
-			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
+		int slot = Touche::getGameStateFileSlot(file->c_str());
+		if (slot >= 0 && slot < Touche::kMaxSaveStates) {
+			slotsTable[slot] = true;
+		}
+	}
+	for (int slot = 0; slot < Touche::kMaxSaveStates; ++slot) {
+		if (slotsTable[slot]) {
+			Common::String file = Touche::generateGameStateFileName(target, slot);
+			Common::InSaveFile *in = g_system->getSavefileManager()->openForLoading(file.c_str());
 			if (in) {
-				in->readUint16LE();
-				in->readUint16LE();
-				in->read(saveDesc, Touche::kGameStateDescriptionLen);
-				saveList.push_back(SaveStateDescriptor(slotNum, Common::String(saveDesc), *file));
+				char description[64];
+				Touche::readGameStateDescription(in, description, sizeof(description) - 1);
+				if (description[0]) {
+					saveList.push_back(SaveStateDescriptor(slot, description));
+				}
 				delete in;
 			}
 		}
 	}
-	
-	pattern += "?";
-
-	filenames = saveFileMan->listSavefiles(pattern.c_str());
-	sort(filenames.begin(), filenames.end());	// Sort (hopefully ensuring we are sorted numerically..)
-
-	for (Common::StringList::const_iterator file = filenames.begin(); file != filenames.end(); ++file) {
-		// Obtain the last 2 digits of the filename, since they correspond to the save slot
-		int slotNum = atoi(file->c_str() + file->size() - 2);
-	
-		if (slotNum >= 10 && slotNum <= 99) {
-			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
-			if (in) {
-				in->readUint16LE();
-				in->readUint16LE();
-				in->read(saveDesc, Touche::kGameStateDescriptionLen);
-				saveList.push_back(SaveStateDescriptor(slotNum, Common::String(saveDesc), *file));
-				delete in;
-			}
-		}
-	}
-
 	return saveList;
 }
 
+int ToucheMetaEngine::getMaximumSaveSlot() const {
+	return Touche::kMaxSaveStates - 1;
+}
+
 void ToucheMetaEngine::removeSaveState(const char *target, int slot) const {
-	char extension[5];
-	snprintf(extension, sizeof(extension), ".%d", slot);
-
-	Common::String filename = target;
-	filename += extension;
-
+	Common::String filename = Touche::generateGameStateFileName(target, slot);
 	g_system->getSavefileManager()->removeSavefile(filename.c_str());
 }
 

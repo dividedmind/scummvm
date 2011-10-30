@@ -27,13 +27,14 @@
 
 #include "saga/saga.h"
 #include "saga/gfx.h"
-#include "saga/rscfile.h"
-
+#include "saga/resource.h"
+#include "saga/scene.h"
 #include "saga/font.h"
+#include "saga/render.h"
 
 namespace Saga {
 
-Font::Font(SagaEngine *vm) : _vm(vm), _initialized(false) {
+Font::Font(SagaEngine *vm) : _vm(vm) {
 	int i;
 
 	// Load font module resource context
@@ -47,7 +48,6 @@ Font::Font(SagaEngine *vm) : _vm(vm), _initialized(false) {
 		loadFont(_vm->getFontDescription(i)->fontResourceId);
 	}
 
-	_initialized = true;
 	_fontMapping = 0;
 }
 
@@ -279,7 +279,7 @@ int Font::getStringWidth(FontId fontId, const char *text, size_t count, FontEffe
 }
 
 
-void Font::draw(FontId fontId, Surface *ds, const char *text, size_t count, const Common::Point &point,
+void Font::draw(FontId fontId, const char *text, size_t count, const Common::Point &point,
 			   int color, int effectColor, FontEffectFlags flags) {
 	FontData *font;
 	Point offsetPoint(point);
@@ -289,38 +289,38 @@ void Font::draw(FontId fontId, Surface *ds, const char *text, size_t count, cons
 	if (flags & kFontOutline) {
 		offsetPoint.x--;
 		offsetPoint.y--;
-		outFont(font->outline, ds, text, count, offsetPoint, effectColor, flags);
-		outFont(font->normal, ds, text, count, point, color, flags);
+		outFont(font->outline, text, count, offsetPoint, effectColor, flags);
+		outFont(font->normal, text, count, point, color, flags);
 	} else if (flags & kFontShadow) {
 		offsetPoint.x--;
 		offsetPoint.y++;
-		outFont(font->normal, ds, text, count, offsetPoint, effectColor, flags);
-		outFont(font->normal, ds, text, count, point, color, flags);
+		outFont(font->normal, text, count, offsetPoint, effectColor, flags);
+		outFont(font->normal, text, count, point, color, flags);
 	} else { // FONT_NORMAL
-		outFont(font->normal, ds, text, count, point, color, flags);
+		outFont(font->normal, text, count, point, color, flags);
 	}
 }
 
-void Font::outFont(const FontStyle &drawFont, Surface *ds, const char *text, size_t count, const Common::Point &point, int color, FontEffectFlags flags) {
+void Font::outFont(const FontStyle &drawFont, const char *text, size_t count, const Common::Point &point, int color, FontEffectFlags flags) {
 	const byte *textPointer;
 	byte *c_dataPointer;
 	int c_code;
-	int charRow;
+	int charRow = 0;
 	Point textPoint(point);
 
 	byte *outputPointer;
 	byte *outputPointer_min;
 	byte *outputPointer_max;
 
-	int row;
-	int rowLimit;
+	int row = 0;
+	int rowLimit = 0;
 
 	int c_byte_len;
 	int c_byte;
 	int c_bit;
 	int ct;
 
-	if ((point.x > ds->w) || (point.y > ds->h)) {
+	if ((point.x > _vm->_gfx->getBackBufferWidth()) || (point.y > _vm->_gfx->getBackBufferHeight())) {
 		// Output string can't be visible
 		return;
 	}
@@ -341,11 +341,15 @@ void Font::outFont(const FontStyle &drawFont, Surface *ds, const char *text, siz
 			// versions of IHNM, so it has been changed to apply for ITE only.
 			// It doesn't make any difference for the English version of IHNM.
 			// Fixes bug #1796045: "IHNM: Spanish font wrong".
-			if (!(flags & kFontDontmap) && _vm->getGameType() == GType_ITE) {
-				// Don't do any special font mapping for the Italian fan
-				// translation of ITE
-				if (_vm->getLanguage() != Common::IT_ITA)
+			if (!(flags & kFontDontmap) && _vm->getGameId() == GID_ITE) {
+				if (_vm->getLanguage() != Common::IT_ITA) {
 					c_code = translateChar(c_code);
+				} else {
+					// The in-game fonts of the Italian version should not be mapped.
+					// The ones in the intro are hardcoded and should be mapped normally.
+					 if (_vm->_scene->isInIntro())
+						 c_code = translateChar(c_code);
+				}
 			}
 		} else if (_fontMapping == 1) {
 			// Force font mapping
@@ -376,7 +380,7 @@ void Font::outFont(const FontStyle &drawFont, Surface *ds, const char *text, siz
 
 		// Get length of character in bytes
 		c_byte_len = ((drawFont.fontCharEntry[c_code].width - 1) / 8) + 1;
-		rowLimit = (ds->h < (textPoint.y + drawFont.header.charHeight)) ? ds->h : textPoint.y + drawFont.header.charHeight;
+		rowLimit = (_vm->_gfx->getBackBufferHeight() < (textPoint.y + drawFont.header.charHeight)) ? _vm->_gfx->getBackBufferHeight() : textPoint.y + drawFont.header.charHeight;
 		charRow = 0;
 
 		for (row = textPoint.y; row < rowLimit; row++, charRow++) {
@@ -385,9 +389,9 @@ void Font::outFont(const FontStyle &drawFont, Surface *ds, const char *text, siz
 				continue;
 			}
 
-			outputPointer = (byte *)ds->pixels + (ds->pitch * row) + textPoint.x;
-			outputPointer_min = (byte *)ds->pixels + (ds->pitch * row) + (textPoint.x > 0 ? textPoint.x : 0);
-			outputPointer_max = outputPointer + (ds->pitch - textPoint.x);
+			outputPointer = _vm->_gfx->getBackBufferPixels() + (_vm->_gfx->getBackBufferPitch() * row) + textPoint.x;
+			outputPointer_min = _vm->_gfx->getBackBufferPixels() + (_vm->_gfx->getBackBufferPitch() * row) + (textPoint.x > 0 ? textPoint.x : 0);
+			outputPointer_max = outputPointer + (_vm->_gfx->getBackBufferPitch() - textPoint.x);
 
 			// If character starts off the screen, jump to next character
 			if (outputPointer < outputPointer_min) {
@@ -410,10 +414,13 @@ void Font::outFont(const FontStyle &drawFont, Surface *ds, const char *text, siz
 		// Advance tracking position
 		textPoint.x += drawFont.fontCharEntry[c_code].tracking;
 	} // end per-character processing
+
+	rowLimit = (_vm->_gfx->getBackBufferHeight() < (textPoint.y + drawFont.header.charHeight)) ? _vm->_gfx->getBackBufferHeight() : textPoint.y + drawFont.header.charHeight;
+	_vm->_render->addDirtyRect(Common::Rect(point.x, point.y, textPoint.x, rowLimit));
 }
 
 
-void Font::textDraw(FontId fontId, Surface *ds, const char *text, const Common::Point &point, int color, int effectColor, FontEffectFlags flags) {
+void Font::textDraw(FontId fontId, const char *text, const Common::Point &point, int color, int effectColor, FontEffectFlags flags) {
 	int textWidth;
 	int textLength;
 	int fitWidth;
@@ -423,7 +430,7 @@ void Font::textDraw(FontId fontId, Surface *ds, const char *text, const Common::
 
 	if (!(flags & kFontCentered)) {
 		// Text is not centered; No formatting required
-		draw(fontId, ds, text, textLength, point, color, effectColor, flags);
+		draw(fontId, text, textLength, point, color, effectColor, flags);
 		return;
 	}
 
@@ -433,8 +440,8 @@ void Font::textDraw(FontId fontId, Surface *ds, const char *text, const Common::
 		textPoint.x = TEXT_CENTERLIMIT;
 	}
 
-	if (textPoint.x > ds->w - TEXT_CENTERLIMIT) {
-		textPoint.x = ds->w - TEXT_CENTERLIMIT;
+	if (textPoint.x > _vm->_gfx->getBackBufferWidth() - TEXT_CENTERLIMIT) {
+		textPoint.x = _vm->_gfx->getBackBufferWidth() - TEXT_CENTERLIMIT;
 	}
 
 	if (textPoint.x < (TEXT_MARGIN * 2)) {
@@ -444,12 +451,12 @@ void Font::textDraw(FontId fontId, Surface *ds, const char *text, const Common::
 
 	textWidth = getStringWidth(fontId, text, textLength, flags);
 
-	if (textPoint.x < (ds->w / 2)) {
+	if (textPoint.x < (_vm->_gfx->getBackBufferWidth() / 2)) {
 		// Fit to right side
 		fitWidth = (textPoint.x - TEXT_MARGIN) * 2;
 	} else {
 		// Fit to left side
-		fitWidth = ((ds->w - TEXT_MARGIN) - textPoint.x) * 2;
+		fitWidth = ((_vm->_gfx->getBackBufferWidth() - TEXT_MARGIN) - textPoint.x) * 2;
 	}
 
 	if (fitWidth < textWidth) {
@@ -458,7 +465,7 @@ void Font::textDraw(FontId fontId, Surface *ds, const char *text, const Common::
 	}
 	// Entire string fits, draw it
 	textPoint.x = textPoint.x - (textWidth / 2);
-	draw(fontId, ds, text, textLength, textPoint, color, effectColor, flags);
+	draw(fontId, text, textLength, textPoint, color, effectColor, flags);
 }
 
 int Font::getHeight(FontId fontId, const char *text, int width, FontEffectFlags flags) {
@@ -545,7 +552,7 @@ int Font::getHeight(FontId fontId, const char *text, int width, FontEffectFlags 
 	}
 }
 
-void Font::textDrawRect(FontId fontId, Surface *ds, const char *text, const Common::Rect &rect, int color, int effectColor, FontEffectFlags flags) {
+void Font::textDrawRect(FontId fontId, const char *text, const Common::Rect &rect, int color, int effectColor, FontEffectFlags flags) {
 	int textWidth;
 	int textLength;
 	int fitWidth;
@@ -574,7 +581,7 @@ void Font::textDrawRect(FontId fontId, Surface *ds, const char *text, const Comm
 	if (fitWidth >= textWidth) {
 		// Entire string fits, draw it
 		textPoint.x -= (textWidth / 2);
-		draw(fontId, ds, text, textLength, textPoint, color, effectColor, flags);
+		draw(fontId, text, textLength, textPoint, color, effectColor, flags);
 		return;
 	}
 
@@ -611,7 +618,7 @@ void Font::textDrawRect(FontId fontId, Surface *ds, const char *text, const Comm
 			// Wrap what we've got and restart
 			textPoint2.x = textPoint.x - (w_total / 2);
 			textPoint2.y = textPoint.y;
-			draw(fontId, ds, startPointer, len_total, textPoint2, color, effectColor, flags);
+			draw(fontId, startPointer, len_total, textPoint2, color, effectColor, flags);
 			textPoint.y += h + TEXT_LINESPACING;
 			if (textPoint.y >= rect.bottom) {
 				return;
@@ -646,7 +653,7 @@ void Font::textDrawRect(FontId fontId, Surface *ds, const char *text, const Comm
 				// Since word hit NULL but fit, we are done
 				textPoint2.x = textPoint.x - (w_total / 2);
 				textPoint2.y = textPoint.y;
-				draw(fontId, ds, startPointer, len_total, textPoint2, color,
+				draw(fontId, startPointer, len_total, textPoint2, color,
 					effectColor, flags);
 				return;
 			}
@@ -659,7 +666,7 @@ Font::FontId Font::knownFont2FontIdx(KnownFont font) {
 	FontId fontId = kSmallFont;
 
 	// The demo version of IHNM has 3 font types (like ITE), not 6 (like the full version of IHNM)
-	if (_vm->getGameType() == GType_ITE || _vm->getGameId() == GID_IHNM_DEMO) {
+	if (_vm->getGameId() == GID_ITE || _vm->getFeatures() & GF_IHNM_DEMO) {
 		switch (font) {
 		case (kKnownFontSmall):
 			fontId = kSmallFont;
@@ -681,7 +688,8 @@ Font::FontId Font::knownFont2FontIdx(KnownFont font) {
 			fontId = _vm->_font->valid(kBigFont) ? kBigFont : kMediumFont;
 			break;
 		}
-	} else if (_vm->getGameType() == GType_IHNM && _vm->getGameId() != GID_IHNM_DEMO) {
+#ifdef ENABLE_IHNM
+	} else if (_vm->getGameId() == GID_IHNM && !(_vm->getFeatures() & GF_IHNM_DEMO)) {
 		switch (font) {
 		case (kKnownFontSmall):
 			fontId = kSmallFont;
@@ -703,6 +711,7 @@ Font::FontId Font::knownFont2FontIdx(KnownFont font) {
 			fontId = kMediumFont; // unchecked
 			break;
 		}
+#endif
 	}
 	return fontId;
 }

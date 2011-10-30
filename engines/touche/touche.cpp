@@ -67,25 +67,22 @@ ToucheEngine::ToucheEngine(OSystem *system, Common::Language language)
 	_menuRedrawCounter = 0;
 	memset(_paletteBuffer, 0, sizeof(_paletteBuffer));
 
-	Common::addSpecialDebugLevel(kDebugEngine,   "Engine",   "Engine debug level");
-	Common::addSpecialDebugLevel(kDebugGraphics, "Graphics", "Graphics debug level");
-	Common::addSpecialDebugLevel(kDebugResource, "Resource", "Resource debug level");
-	Common::addSpecialDebugLevel(kDebugOpcodes,  "Opcodes",  "Opcodes debug level");
-	Common::addSpecialDebugLevel(kDebugMenu,     "Menu",     "Menu debug level");
+	Common::addDebugChannel(kDebugEngine,   "Engine",   "Engine debug level");
+	Common::addDebugChannel(kDebugGraphics, "Graphics", "Graphics debug level");
+	Common::addDebugChannel(kDebugResource, "Resource", "Resource debug level");
+	Common::addDebugChannel(kDebugOpcodes,  "Opcodes",  "Opcodes debug level");
+	Common::addDebugChannel(kDebugMenu,     "Menu",     "Menu debug level");
 
 	_eventMan->registerRandomSource(_rnd, "touche");
 }
 
 ToucheEngine::~ToucheEngine() {
-	Common::clearAllSpecialDebugLevels();
+	Common::clearAllDebugChannels();
 	delete _midiPlayer;
 }
 
-int ToucheEngine::init() {
-	_system->beginGFXTransaction();
-		initCommonGFX(true);
-		_system->initSize(kScreenWidth, kScreenHeight);
-	_system->endGFXTransaction();
+Common::Error ToucheEngine::init() {
+	initGraphics(kScreenWidth, kScreenHeight, true);
 
 	Graphics::setupFont(_language);
 
@@ -96,10 +93,10 @@ int ToucheEngine::init() {
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, ConfMan.getInt("speech_volume"));
 	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, ConfMan.getInt("music_volume"));
-	return 0;
+	return Common::kNoError;
 }
 
-int ToucheEngine::go() {
+Common::Error ToucheEngine::go() {
 	res_openDataFile();
 	res_allocateTables();
 	res_loadSpriteImage(18, _menuKitData);
@@ -111,12 +108,13 @@ int ToucheEngine::go() {
 
 	res_deallocateTables();
 	res_closeDataFile();
-	return 0;
+	return Common::kNoError;
 }
 
 void ToucheEngine::restart() {
 	_midiPlayer->stop();
 
+	_gameState = kGameStateGameLoop;
 	_displayQuitDialog = false;
 
 	memset(_flagsTable, 0, sizeof(_flagsTable));
@@ -240,7 +238,7 @@ void ToucheEngine::syncSoundSettings() {
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, ConfMan.getInt("speech_volume"));
 	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, ConfMan.getInt("music_volume"));
 }
-	
+
 void ToucheEngine::mainLoop() {
 	restart();
 
@@ -268,7 +266,7 @@ void ToucheEngine::mainLoop() {
 	}
 
 	uint32 frameTimeStamp = _system->getMillis();
-	for (uint32 cycleCounter = 0; !quit(); ++cycleCounter) {
+	for (uint32 cycleCounter = 0; !shouldQuit(); ++cycleCounter) {
 		if ((cycleCounter % 3) == 0) {
 			runCycle();
 		}
@@ -304,8 +302,9 @@ void ToucheEngine::processEvents(bool handleKeyEvents) {
 			_flagsTable[600] = event.kbd.keycode;
 			if (event.kbd.keycode == Common::KEYCODE_ESCAPE) {
 				if (_displayQuitDialog) {
-					if (displayQuitDialog())
+					if (displayQuitDialog()) {
 						quitGame();
+					}
 				}
 			} else if (event.kbd.keycode == Common::KEYCODE_F5) {
 				if (_flagsTable[618] == 0 && !_hideInventoryTexts) {
@@ -528,7 +527,7 @@ void ToucheEngine::sortKeyChars() {
 					SWAP(_sortedKeyCharsTable[j], _sortedKeyCharsTable[j + 1]);
 					hasSwapped = true;
 				}
-			} else if (key1->num != 0) {
+			} else if (key2->num != 0) {
 				SWAP(_sortedKeyCharsTable[j], _sortedKeyCharsTable[j + 1]);
 				hasSwapped = true;
 			}
@@ -1837,7 +1836,7 @@ int ToucheEngine::handleActionMenuUnderCursor(const int16 *actions, int offs, in
 	_menuRedrawCounter = 2;
 	Common::Rect rect(0, y, kScreenWidth, y + h);
 	i = -1;
-	while (_inp_rightMouseButtonPressed && !quit()) {
+	while (_inp_rightMouseButtonPressed && !shouldQuit()) {
 		Common::Point mousePos = getMousePos();
 		if (rect.contains(mousePos)) {
 			int c = (mousePos.y - y) / kTextHeight;
@@ -3284,6 +3283,14 @@ void ToucheEngine::updateDirtyScreenAreas() {
 
 void ToucheEngine::updatePalette() {
 	_system->setPalette(_paletteBuffer, 0, 256);
+}
+
+bool ToucheEngine::canLoadGameStateCurrently() {
+	return _gameState == kGameStateGameLoop && _flagsTable[618] == 0 && !_hideInventoryTexts;
+}
+
+bool ToucheEngine::canSaveGameStateCurrently() {
+	return _gameState == kGameStateGameLoop && _flagsTable[618] == 0 && !_hideInventoryTexts;
 }
 
 } // namespace Touche

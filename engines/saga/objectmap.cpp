@@ -141,13 +141,15 @@ bool HitZone::hitTest(const Point &testPoint) {
 	return false;
 }
 
-void HitZone::draw(SagaEngine *vm, Surface *ds, int color) {
+#ifdef SAGA_DEBUG
+void HitZone::draw(SagaEngine *vm, int color) {
 	int i, pointsCount, j;
 	Location location;
 	HitZone::ClickArea *clickArea;
 	Point *points;
 	Point specialPoint1;
 	Point specialPoint2;
+
 	for (i = 0; i < _clickAreasCount; i++) {
 		clickArea = &_clickAreas[i];
 		pointsCount = clickArea->pointsCount;
@@ -165,11 +167,13 @@ void HitZone::draw(SagaEngine *vm, Surface *ds, int color) {
 
 		if (pointsCount == 2) {
 			// 2 points represent a box
-			ds->drawFrame(points[0], points[1], color);
+			vm->_gfx->drawFrame(points[0], points[1], color);
 		} else {
 			if (pointsCount > 2) {
 				// Otherwise draw a polyline
-				ds->drawPolyLine(points, pointsCount, color);
+				// Do a full refresh so that the polyline can be shown
+				vm->_render->setFullRefresh(true);
+				vm->_gfx->drawPolyLine(points, pointsCount, color);
 			}
 		}
 		if (vm->_scene->getFlags() & kSceneFlagISO) {
@@ -183,10 +187,10 @@ void HitZone::draw(SagaEngine *vm, Surface *ds, int color) {
 		specialPoint1.y--;
 		specialPoint2.x++;
 		specialPoint2.y++;
-		ds->drawFrame(specialPoint1, specialPoint2, color);
+		vm->_gfx->drawFrame(specialPoint1, specialPoint2, color);
 	}
 }
-
+#endif
 
 // Loads an object map resource ( objects ( clickareas ( points ) ) )
 void ObjectMap::load(const byte *resourcePointer, size_t resourceLength) {
@@ -235,8 +239,8 @@ void ObjectMap::freeMem() {
 }
 
 
-
-void ObjectMap::draw(Surface *ds, const Point& testPoint, int color, int color2) {
+#ifdef SAGA_DEBUG
+void ObjectMap::draw(const Point& testPoint, int color, int color2) {
 	int i;
 	int hitZoneIndex;
 	char txtBuf[32];
@@ -254,16 +258,17 @@ void ObjectMap::draw(Surface *ds, const Point& testPoint, int color, int color2)
 	hitZoneIndex = hitTest(pickPoint);
 
 	for (i = 0; i < _hitZoneListCount; i++) {
-		_hitZoneList[i]->draw(_vm, ds, (hitZoneIndex == i) ? color2 : color);
+		_hitZoneList[i]->draw(_vm, (hitZoneIndex == i) ? color2 : color);
 	}
 
 	if (hitZoneIndex != -1) {
 		snprintf(txtBuf, sizeof(txtBuf), "hitZone %d", hitZoneIndex);
 		textPoint.x = 2;
 		textPoint.y = 2;
-		_vm->_font->textDraw(kKnownFontSmall, ds, txtBuf, textPoint, kITEColorBrightWhite, kITEColorBlack, kFontOutline);
+		_vm->_font->textDraw(kKnownFontSmall, txtBuf, textPoint, kITEColorBrightWhite, kITEColorBlack, kFontOutline);
 	}
 }
+#endif
 
 int ObjectMap::hitTest(const Point& testPoint) {
 	int i;

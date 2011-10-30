@@ -202,14 +202,14 @@ KyraEngine_MR::~KyraEngine_MR() {
 	delete _album.rightPage.wsa;
 }
 
-int KyraEngine_MR::init() {
+Common::Error KyraEngine_MR::init() {
 	_screen = new Screen_MR(this, _system);
 	assert(_screen);
 	_screen->setResolution();
 
 	KyraEngine_v1::init();
 	initStaticResource();
-	
+
 	_debugger = new Debugger_v2(this);
 	assert(_debugger);
 
@@ -229,14 +229,14 @@ int KyraEngine_MR::init() {
 	_screen->setFont(Screen::FID_6_FNT);
 	_screen->setAnimBlockPtr(3500);
 	_screen->setScreenDim(0);
-	
+
 	_res->loadFileToBuf("PALETTE.COL", _screen->getPalette(0), 768);
 	_screen->setScreenPalette(_screen->getPalette(0));
 
-	return 0;
+	return Common::kNoError;
 }
 
-int KyraEngine_MR::go() {
+Common::Error KyraEngine_MR::go() {
 	bool running = true;
 	preinit();
 	_screen->hideMouse();
@@ -263,7 +263,7 @@ int KyraEngine_MR::go() {
 		running = false;
 	}
 
-	while (running && !quit()) {
+	while (running && !shouldQuit()) {
 		_screen->_curPage = 0;
 		_screen->clearPage(0);
 
@@ -272,14 +272,14 @@ int KyraEngine_MR::go() {
 		// XXX
 		playMenuAudioFile();
 
-		for (int i = 0; i < 64 && !quit(); ++i) {
+		for (int i = 0; i < 64 && !shouldQuit(); ++i) {
 			uint32 nextRun = _system->getMillis() + 3 * _tickLength;
 			_menuAnim->displayFrame(i, 0);
 			_screen->updateScreen();
 			delayUntil(nextRun);
 		}
 
-		for (int i = 64; i > 29 && !quit(); --i) {
+		for (int i = 64; i > 29 && !shouldQuit(); --i) {
 			uint32 nextRun = _system->getMillis() + 3 * _tickLength;
 			_menuAnim->displayFrame(i, 0);
 			_screen->updateScreen();
@@ -324,7 +324,7 @@ int KyraEngine_MR::go() {
 	if (_showOutro)
 		playVQA("CREDITS");
 
-	return 0;
+	return Common::kNoError;
 }
 
 void KyraEngine_MR::initMainMenu() {
@@ -337,10 +337,10 @@ void KyraEngine_MR::initMainMenu() {
 
 	_menu = new MainMenu(this);
 	MainMenu::StaticData data = {
-		{ _mainMenuStrings[_lang*4+0], _mainMenuStrings[_lang*4+1], _mainMenuStrings[_lang*4+2], _mainMenuStrings[_lang*4+3] },
-		{ 0x01, 0x04, 0x0C, 0x04, 0x00, 0x80, 0xFF, 0x00, 0x01, 0x02, 0x03 },
+		{ _mainMenuStrings[_lang*4+0], _mainMenuStrings[_lang*4+1], _mainMenuStrings[_lang*4+2], _mainMenuStrings[_lang*4+3], 0 },
+		{ 0x01, 0x04, 0x0C, 0x04, 0x00, 0x80, 0xFF },
 		{ 0x16, 0x19, 0x1A, 0x16 },
-		0x80, 0xFF
+		Screen::FID_8_FNT, 240
 	};
 
 	if (_flags.lang == Common::ES_ESP) {
@@ -545,7 +545,7 @@ void KyraEngine_MR::playStudioSFX(const char *str) {
 
 void KyraEngine_MR::preinit() {
 	debugC(9, kDebugLevelMain, "KyraEngine_MR::preinit()");
-	
+
 	_itemBuffer1 = new int8[72];
 	_itemBuffer2 = new int8[144];
 	initMouseShapes();
@@ -583,7 +583,7 @@ void KyraEngine_MR::startup() {
 
 	_screen->setFont(Screen::FID_6_FNT);
 
-	_stringBuffer = new char[500];	
+	_stringBuffer = new char[500];
 	//XXX
 	musicUpdate(0);
 	//XXX
@@ -676,7 +676,7 @@ void KyraEngine_MR::startup() {
 	assert(_sceneList);
 	memset(_sceneList, 0, sizeof(SceneDesc)*98);
 	_sceneListSize = 98;
-	
+
 	musicUpdate(0);
 	runStartupScript(1, 0);
 	_res->exists("MOODOMTR.WSA", true);
@@ -684,13 +684,13 @@ void KyraEngine_MR::startup() {
 	assert(_invWsa);
 	_invWsa->open("MOODOMTR.WSA", 1, 0);
 	_invWsaFrame = 6;
-	saveGame(getSavegameFilename(0), "New Game", 0);
+	saveGameState(0, "New Game", 0);
 	_soundDigital->beginFadeOut(_musicSoundChannel, 60);
 	delayWithTicks(60);
 	if (_gameToLoad == -1)
 		enterNewScene(_mainCharacter.sceneId, _mainCharacter.facing, 0, 0, 1);
 	else
-		loadGame(getSavegameFilename(_gameToLoad));
+		loadGameStateCheck(_gameToLoad);
 
 	if (_menuDirectlyToLoad)
 		(*_mainButtonData[0].buttonCallback)(&_mainButtonData[0]);
@@ -805,8 +805,11 @@ void KyraEngine_MR::openTalkFile(int file) {
 	_currentTalkFile = file;
 	if (!_res->loadPakFile(talkFilename)) {
 		if (speechEnabled()) {
-			warning("Couldn't load file '%s' falling back to text only mode", talkFilename);
+			warning("Couldn't load voice file '%s', falling back to text only mode", talkFilename);
 			_configVoice = 0;
+
+			// Sync the config manager with the new settings
+			writeSettings();
 		}
 	}
 }
@@ -1001,7 +1004,7 @@ void KyraEngine_MR::runLoop() {
 	_eventList.clear();
 
 	_runFlag = true;
-	while (_runFlag && !quit()) {
+	while (_runFlag && !shouldQuit()) {
 		if (_deathHandler >= 0) {
 			removeHandItem();
 			delay(5);
@@ -1009,12 +1012,12 @@ void KyraEngine_MR::runLoop() {
 			_gui->optionsButton(0);
 			_deathHandler = -1;
 
-			if (quit())
+			if (!_runFlag || shouldQuit())
 				break;
 		}
 
 		checkAutosave();
-		
+
 		if (_system->getMillis() >= _nextIdleAnim)
 			showIdleAnim();
 
@@ -1054,7 +1057,7 @@ void KyraEngine_MR::handleInput(int x, int y) {
 	}
 
 	setNextIdleAnimTimer();
-	
+
 	int skip = 0;
 
 	if (checkCharCollision(x, y) && _unk3 >= -1 && runSceneScript2()) {
@@ -1381,7 +1384,7 @@ char *KyraEngine_MR::appendLanguage(char *buf, int lang, int bufSize) {
 int KyraEngine_MR::loadLanguageFile(const char *file, uint8 *&buffer) {
 	debugC(9, kDebugLevelMain, "KyraEngine_MR::loadLanguageFile('%s', %p)", file, (const void*)buffer);
 
-	delete[] buffer; 
+	delete[] buffer;
 	buffer = 0;
 
 	uint32 size = 0;
@@ -1487,7 +1490,7 @@ void KyraEngine_MR::scoreIncrease(int count, const char *str) {
 			drawScore(0, 215, 191);
 		_screen->updateScreen();
 		delay(20, true);
-		
+
 		snd_playSoundEffect(0x0E, 0xC8);
 		drawOld = 0;
 	}
@@ -1498,7 +1501,7 @@ void KyraEngine_MR::scoreIncrease(int count, const char *str) {
 #pragma mark -
 
 void KyraEngine_MR::changeChapter(int newChapter, int sceneId, int malcolmShapes, int facing) {
-	debugC(9, kDebugLevelMain, "KyraEngine_MR::changeChapter(%d, %d, %d, %d)", newChapter, sceneId, malcolmShapes, facing);	
+	debugC(9, kDebugLevelMain, "KyraEngine_MR::changeChapter(%d, %d, %d, %d)", newChapter, sceneId, malcolmShapes, facing);
 	resetItemList();
 
 	_currentChapter = newChapter;

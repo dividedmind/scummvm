@@ -25,6 +25,9 @@
 
 #include "common/endian.h"
 #include "graphics/cursorman.h"
+#include "graphics/fontman.h"
+#include "graphics/surface.h"
+#include "graphics/dither.h"
 
 #include "gob/gob.h"
 #include "gob/video.h"
@@ -32,6 +35,7 @@
 #include "gob/util.h"
 #include "gob/dataio.h"
 #include "gob/draw.h"
+#include "gob/indeo3.h"
 
 #include "gob/driver_vga.h"
 
@@ -103,6 +107,10 @@ Video::Video(GobEngine *vm) : _vm(vm) {
 
 	_curSparse = 0;
 	_lastSparse = 0xFFFFFFFF;
+
+	_dirtyAll = false;
+
+	_palLUT = new Graphics::PaletteLUT(6, Graphics::PaletteLUT::kPaletteYUV);
 }
 
 char Video::initDriver(int16 vidMode) {
@@ -111,6 +119,10 @@ char Video::initDriver(int16 vidMode) {
 
 	_videoDriver = new VGAVideoDriver();
 	return 1;
+}
+
+Video::~Video() {
+	delete _palLUT;
 }
 
 void Video::freeDriver() {
@@ -169,10 +181,7 @@ void Video::clearScreen() {
 }
 
 void Video::setSize(bool defaultTo1XScaler) {
-	_vm->_system->beginGFXTransaction();
-		_vm->_system->initSize(_vm->_width, _vm->_height);
-		_vm->initCommonGFX(defaultTo1XScaler);
-	_vm->_system->endGFXTransaction();
+	initGraphics(_vm->_width, _vm->_height, defaultTo1XScaler);
 }
 
 void Video::retrace(bool mouse) {
@@ -185,8 +194,8 @@ void Video::retrace(bool mouse) {
 		int screenWidth = MIN<int>(_surfWidth - _scrollOffsetX, _vm->_width);
 		int screenHeight = MIN<int>(_surfHeight - _splitHeight2 - _scrollOffsetY, _vm->_height);
 
-		g_system->copyRectToScreen(_vm->_global->_primarySurfDesc->getVidMem() + screenOffset,
-				_surfWidth, screenX, screenY, screenWidth, screenHeight);
+		dirtyRectsApply(_scrollOffsetX, _scrollOffsetY, screenWidth, screenHeight,
+				screenX, screenY);
 
 		if (_splitSurf) {
 
@@ -207,13 +216,13 @@ void Video::retrace(bool mouse) {
 			screenWidth = MIN<int>(_surfWidth, _vm->_width);
 			screenHeight = _splitHeight2;
 
-			g_system->copyRectToScreen(_vm->_global->_primarySurfDesc->getVidMem() + screenOffset,
-					_surfWidth, screenX, screenY, screenWidth, screenHeight);
-
+			dirtyRectsApply(0, _splitStart, screenWidth, screenHeight, screenX, screenY);
 		}
 
+		dirtyRectsClear();
 		g_system->updateScreen();
 	}
+
 }
 
 void Video::waitRetrace(bool mouse) {
@@ -482,6 +491,81 @@ void Video::setPalette(Color *palette) {
 
 	_vm->_global->_setAllPalette = setAllPalBak;
 	_vm->_global->_pPaletteDesc->vgaPal = palBak;
+}
+
+void Video::dirtyRectsClear() {
+	_dirtyRects.clear();
+	_dirtyAll = false;
+}
+
+void Video::dirtyRectsAll() {
+	_dirtyRects.clear();
+	_dirtyAll = true;
+}
+
+void Video::dirtyRectsAdd(int16 left, int16 top, int16 right, int16 bottom) {
+	if (_dirtyAll)
+		return;
+
+	_dirtyRects.push_back(Common::Rect(left, top, right + 1, bottom + 1));
+}
+
+void Video::dirtyRectsApply(int left, int top, int width, int height, int x, int y) {
+	byte *vidMem = _vm->_global->_primarySurfDesc->getVidMem();
+
+	if (_dirtyAll) {
+		g_system->copyRectToScreen(vidMem + top * _surfWidth + left,
+				_surfWidth, x, y, width, height);
+		return;
+	}
+
+	int right = left + width;
+	int bottom = top + height;
+
+	Common::List<Common::Rect>::const_iterator it;
+	for (it = _dirtyRects.begin(); it != _dirtyRects.end(); ++it) {
+		int l = MAX<int>(left, it->left);
+		int t = MAX<int>(top, it->top);
+		int r = MIN<int>(right, it->right);
+		int b = MIN<int>(bottom, it->bottom);
+		int w = r - l;
+		int h = b - t;
+
+		if ((w <= 0) || (h <= 0))
+			continue;
+
+		byte *v = vidMem + t * _surfWidth + l;
+
+		g_system->copyRectToScreen(v, _surfWidth, x + (l - left), y + (t - top), w, h);
+	}
+}
+
+void Video::initOSD() {
+	const byte palOSD[] = {
+		0, 0, 0, 0,
+		0, 0, 171, 0,
+		0, 171, 0, 0,
+		0, 171, 171, 0,
+		171, 0, 0, 0
+	};
+
+  g_system->setPalette(palOSD, 0, 5);
+}
+
+void Video::drawOSDText(const char *text) {
+	const Graphics::Font &font(*FontMan.getFontByUsage(Graphics::FontManager::kOSDFont));
+	uint32 color = 0x2;
+	Graphics::Surface surf;
+
+	surf.create(g_system->getWidth(), font.getFontHeight(), 1);
+
+	font.drawString(&surf, text, 0, 0, surf.w, color, Graphics::kTextAlignCenter);
+
+	int y = g_system->getHeight() / 2 - font.getFontHeight() / 2;
+	g_system->copyRectToScreen((byte *)surf.pixels, surf.pitch, 0, y, surf.w, surf.h);
+	g_system->updateScreen();
+
+	surf.free();
 }
 
 } // End of namespace Gob

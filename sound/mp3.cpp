@@ -27,6 +27,7 @@
 
 #ifdef USE_MAD
 
+#include "common/debug.h"
 #include "common/stream.h"
 #include "common/util.h"
 
@@ -117,7 +118,7 @@ MP3InputStream::MP3InputStream(Common::SeekableReadStream *inStream, bool dispos
 	// Calculate play time
 	mad_timer_t length;
 
-	mad_timer_set(&length, 0, 0, 1000);	
+	mad_timer_set(&length, 0, 0, 1000);
 	mad_timer_add(&length, start);
 	mad_timer_negate(&length);
 
@@ -175,7 +176,7 @@ MP3InputStream::MP3InputStream(Common::SeekableReadStream *inStream, bool dispos
 	}
 
 	_totalPlayTime = mad_timer_count(length, MAD_UNITS_MILLISECONDS);
-	
+
 	if (numLoops && mad_timer_sign(length) >= 0)
 		_totalPlayTime *= numLoops;
 	else

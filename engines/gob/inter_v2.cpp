@@ -212,8 +212,8 @@ void Inter_v2::setupOpcodes() {
 		/* 40 */
 		OPCODE(o2_totSub),
 		OPCODE(o2_switchTotSub),
-		OPCODE(o2_copyVars),
-		OPCODE(o2_pasteVars),
+		OPCODE(o2_pushVars),
+		OPCODE(o2_popVars),
 		/* 44 */
 		{NULL, ""},
 		{NULL, ""},
@@ -500,7 +500,7 @@ void Inter_v2::setupOpcodes() {
 		/* 24 */
 		OPCODE(o1_putPixel),
 		OPCODE(o2_goblinFunc),
-		OPCODE(o2_createSprite),
+		OPCODE(o1_createSprite),
 		OPCODE(o1_freeSprite),
 		/* 28 */
 		{NULL, ""},
@@ -1178,39 +1178,40 @@ void Inter_v2::o2_switchTotSub() {
 	_vm->_game->switchTotSub(index, skipPlay);
 }
 
-void Inter_v2::o2_copyVars() {
+void Inter_v2::o2_pushVars() {
 	byte count;
 	int16 varOff;
 
 	count = *_vm->_global->_inter_execPtr++;
-	for (int i = 0; i < count; i++, _pastePos++) {
+	for (int i = 0; i < count; i++, _varStackPos++) {
 		if ((*_vm->_global->_inter_execPtr == 25) ||
 				(*_vm->_global->_inter_execPtr == 28)) {
 
 			varOff = _vm->_parse->parseVarIndex();
 			_vm->_global->_inter_execPtr++;
 
-			_variables->copyTo(varOff, _pasteBuf + _pastePos, _pasteSizeBuf + _pastePos,
+			_variables->copyTo(varOff, _varStack + _varStackPos,
+					_varSizesStack + _varStackPos,
 					_vm->_global->_inter_animDataSize * 4);
 
-			_pastePos += _vm->_global->_inter_animDataSize * 4;
-			_pasteBuf[_pastePos] = _vm->_global->_inter_animDataSize * 4;
-			_pasteSizeBuf[_pastePos] = _vm->_global->_inter_animDataSize * 4;
+			_varStackPos += _vm->_global->_inter_animDataSize * 4;
+			_varStack[_varStackPos] = _vm->_global->_inter_animDataSize * 4;
+			_varSizesStack[_varStackPos] = _vm->_global->_inter_animDataSize * 4;
 
 		} else {
-			if (evalExpr(&varOff) == 20)
+			if (evalExpr(&varOff) != 20)
 				_vm->_global->_inter_resVal = 0;
 
-			memcpy(_pasteBuf + _pastePos, &_vm->_global->_inter_resVal, 4);
-			memcpy(_pasteSizeBuf + _pastePos, &_vm->_global->_inter_resVal, 4);
-			_pastePos += 4;
-			_pasteBuf[_pastePos] = 4;
-			_pasteSizeBuf[_pastePos] = 4;
+			memcpy(_varStack + _varStackPos, &_vm->_global->_inter_resVal, 4);
+			memcpy(_varSizesStack + _varStackPos, &_vm->_global->_inter_resVal, 4);
+			_varStackPos += 4;
+			_varStack[_varStackPos] = 4;
+			_varSizesStack[_varStackPos] = 4;
 		}
 	}
 }
 
-void Inter_v2::o2_pasteVars() {
+void Inter_v2::o2_popVars() {
 	byte count;
 	int16 varOff;
 	int16 sizeV;
@@ -1219,12 +1220,13 @@ void Inter_v2::o2_pasteVars() {
 	count = *_vm->_global->_inter_execPtr++;
 	for (int i = 0; i < count; i++) {
 		varOff = _vm->_parse->parseVarIndex();
-		sizeV = _pasteBuf[--_pastePos];
-		sizeS = _pasteSizeBuf[_pastePos];
+		sizeV = _varStack[--_varStackPos];
+		sizeS = _varSizesStack[_varStackPos];
 		assert(sizeV == sizeS);
 
-		_pastePos -= sizeV;
-		_variables->copyFrom(varOff, _pasteBuf + _pastePos, _pasteSizeBuf + _pastePos, sizeV);
+		_varStackPos -= sizeV;
+		_variables->copyFrom(varOff, _varStack + _varStackPos,
+				_varSizesStack + _varStackPos, sizeV);
 	}
 }
 
@@ -1490,7 +1492,7 @@ void Inter_v2::o2_scroll() {
 
 	curX = startX;
 	curY = startY;
-	while (!_vm->quit() && ((curX != endX) || (curY != endY))) {
+	while (!_vm->shouldQuit() && ((curX != endX) || (curY != endY))) {
 		curX = stepX > 0 ? MIN(curX + stepX, (int) endX) :
 			MAX(curX + stepX, (int) endX);
 		curY = stepY > 0 ? MIN(curY + stepY, (int) endY) :
@@ -1499,6 +1501,7 @@ void Inter_v2::o2_scroll() {
 		_vm->_draw->_scrollOffsetX = curX;
 		_vm->_draw->_scrollOffsetY = curY;
 		_vm->_util->setScrollOffset();
+		_vm->_video->dirtyRectsAll();
 	}
 }
 
@@ -1522,6 +1525,7 @@ void Inter_v2::o2_setScrollOffset() {
 
 		_vm->_draw->_scrollOffsetX = CLIP<int16>(offsetX, 0, screenW);
 		_vm->_draw->_scrollOffsetY = CLIP<int16>(offsetY, 0, screenH);
+		_vm->_video->dirtyRectsAll();
 	}
 
 	_vm->_util->setScrollOffset();
@@ -1850,23 +1854,6 @@ bool Inter_v2::o2_goblinFunc(OpFuncParams &params) {
 	return false;
 }
 
-bool Inter_v2::o2_createSprite(OpFuncParams &params) {
-	int16 index;
-	int16 width, height;
-	int16 flag;
-
-	index = load16();
-	width = load16();
-	height = load16();
-
-	_vm->_draw->adjustCoords(0, &width, &height);
-
-	flag = load16();
-	_vm->_draw->initSpriteSurf(index, width, height, flag);
-
-	return false;
-}
-
 bool Inter_v2::o2_stopSound(OpFuncParams &params) {
 	int16 expr;
 
@@ -1923,6 +1910,8 @@ bool Inter_v2::o2_checkData(OpFuncParams &params) {
 			warning("File \"%s\" not found", _vm->_global->_inter_resStr);
 	} else if (mode == SaveLoad::kSaveModeSave)
 		size = _vm->_saveLoad->getSize(_vm->_global->_inter_resStr);
+	else if (mode == SaveLoad::kSaveModeExists)
+		size = 23;
 
 	if (size == -1)
 		handle = -1;

@@ -53,15 +53,12 @@ class Mouse;
 class Screen;
 class Control;
 class MusicBase;
-class Intro;
 class Debugger;
 class SkyCompact;
 
 class SkyEngine : public Engine {
-	GUI::Debugger *getDebugger();
 protected:
 	Common::KeyState _keyPressed;
-	bool _floppyIntro;
 
 	Sound *_skySound;
 	Disk *_skyDisk;
@@ -74,7 +71,6 @@ protected:
 	Debugger *_debugger;
 
 	MusicBase *_skyMusic;
-	Intro *_skyIntro;
 
 public:
 	SkyEngine(OSystem *syst);
@@ -83,21 +79,30 @@ public:
 	static bool isDemo(void);
 	static bool isCDVersion(void);
 
+	Common::Error loadGameState(int slot);
+	Common::Error saveGameState(int slot, const char *desc);
+	bool canLoadGameStateCurrently();
+	bool canSaveGameStateCurrently();
+
 	static void *fetchItem(uint32 num);
 	static void *_itemList[300];
 
 	static SystemVars _systemVars;
 
 protected:
+	// Engine APIs
+	virtual Common::Error init();
+	virtual Common::Error go();
+	virtual GUI::Debugger *getDebugger();
+	virtual bool hasFeature(EngineFeature f) const;
+
 	byte _fastMode;
 
 	void delay(int32 amount);
-	int go();
 	void handleKey(void);
 
 	uint32 _lastSaveTime;
 
-	int init();
 	void initItemList();
 
 	void initVirgin();

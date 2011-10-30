@@ -59,6 +59,8 @@ public:
 	void storeMouse();
 	void storeKey(int16 key);
 
+	void writeVar(uint32 offset, uint16 type, uint32 value);
+
 	void funcBlock(int16 retFlag);
 	void callSub(int16 retFlag);
 
@@ -89,9 +91,9 @@ protected:
 	int16 _animPalHighIndex[8];
 	int16 _animPalDir[8];
 
-	byte _pasteBuf[300];
-	byte _pasteSizeBuf[300];
-	int16 _pastePos;
+	byte _varStack[300];
+	byte _varSizesStack[300];
+	int16 _varStackPos;
 
 	// The busy-wait detection in o1_keyFunc breaks fast scrolling in Ween
 	bool _noBusyWait;
@@ -364,8 +366,8 @@ protected:
 	void o2_loadFontToSprite();
 	void o2_totSub();
 	void o2_switchTotSub();
-	void o2_copyVars();
-	void o2_pasteVars();
+	void o2_pushVars();
+	void o2_popVars();
 	void o2_loadMapObjects();
 	void o2_freeGoblins();
 	void o2_moveGoblin();
@@ -388,7 +390,6 @@ protected:
 	bool o2_addCollision(OpFuncParams &params);
 	bool o2_freeCollision(OpFuncParams &params);
 	bool o2_goblinFunc(OpFuncParams &params);
-	bool o2_createSprite(OpFuncParams &params);
 	bool o2_stopSound(OpFuncParams &params);
 	bool o2_loadSound(OpFuncParams &params);
 	bool o2_getFreeMem(OpFuncParams &params);
@@ -566,6 +567,7 @@ protected:
 	byte _byte_8AA14;
 
 	void o5_deleteFile();
+	void o5_initScreen();
 
 	bool o5_istrlen(OpFuncParams &params);
 
@@ -613,6 +615,8 @@ protected:
 	const OpcodeGoblinEntryV6 *_opcodesGoblinV6;
 	static const int _goblinFuncLookUp[][2];
 
+	bool _gotFirstPalette;
+
 	virtual void setupOpcodes();
 	virtual void executeDrawOpcode(byte i);
 	virtual bool executeFuncOpcode(byte i, byte j, OpFuncParams &params);
@@ -621,8 +625,17 @@ protected:
 	virtual const char *getOpcodeFuncDesc(byte i, byte j);
 	virtual const char *getOpcodeGoblinDesc(int i);
 
+	void o6_totSub();
+	void o6_playVmdOrMusic();
+	void o6_openItk();
+
 	bool o6_loadCursor(OpFuncParams &params);
 	bool o6_evaluateStore(OpFuncParams &params);
+	bool o6_palLoad(OpFuncParams &params);
+	bool o6_freeCollision(OpFuncParams &params);
+	bool o6_fillRect(OpFuncParams &params);
+
+	void probe16bitMusic(char *fileName);
 };
 
 } // End of namespace Gob

@@ -66,10 +66,6 @@ static const GameSettings madeSettings[] = {
 
 MadeEngine::MadeEngine(OSystem *syst, const MadeGameDescription *gameDesc) : Engine(syst), _gameDescription(gameDesc) {
 
-	// Setup mixer
-	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));
-	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, ConfMan.getInt("music_volume"));
-
 	const GameSettings *g;
 
 	const char *gameid = ConfMan.get("gameid").c_str();
@@ -83,9 +79,9 @@ MadeEngine::MadeEngine(OSystem *syst, const MadeGameDescription *gameDesc) : Eng
 	int cd_num = ConfMan.getInt("cdrom");
 	if (cd_num >= 0)
 		_system->openCD(cd_num);
-		
+
 	_pmvPlayer = new PmvPlayer(this, _mixer);
-	_res = new ProjectReader();
+	_res = new ResourceReader();
 	_screen = new Screen(this);
 
 	if (getGameID() == GID_LGOP2 || getGameID() == GID_MANHOLE || getGameID() == GID_RODNEY) {
@@ -110,22 +106,23 @@ MadeEngine::MadeEngine(OSystem *syst, const MadeGameDescription *gameDesc) : Eng
 	_music->setNativeMT32(native_mt32);
 	//_music->setAdlib(adlib);
 
-	_musicVolume = ConfMan.getInt("music_volume");
-
-	if (!_musicVolume) {
-		debug(1, "Music disabled.");
-	}
-	
-	_quit = false;
-
 	// Set default sound frequency
-	// Return to Zork sets it itself via a script funtion
-	if (getGameID() == GID_MANHOLE || getGameID() == GID_RODNEY) {
+	switch (getGameID()) {
+	case GID_RODNEY:
 		_soundRate = 11025;
-	} else {
+		break;
+	case GID_MANHOLE:
+		_soundRate = 11025;
+		break;
+	case GID_LGOP2:
 		_soundRate = 8000;
+		break;
+	case GID_RTZ:
+		// Return to Zork sets it itself via a script funtion
+		break;
 	}
 
+	syncSoundSettings();
 }
 
 MadeEngine::~MadeEngine() {
@@ -138,14 +135,19 @@ MadeEngine::~MadeEngine() {
 	delete _music;
 }
 
-int MadeEngine::init() {
+Common::Error MadeEngine::init() {
 	// Initialize backend
-	_system->beginGFXTransaction();
-	initCommonGFX(false);
-	_system->initSize(320, 200);
-	_system->endGFXTransaction();
+	initGraphics(320, 200, false);
 
-	return 0;
+	return Common::kNoError;
+}
+
+void MadeEngine::syncSoundSettings() {
+	_music->setVolume(ConfMan.getInt("music_volume"));
+	_mixer->setVolumeForSoundType(Audio::Mixer::kPlainSoundType, ConfMan.getInt("sfx_volume"));
+	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));
+	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, ConfMan.getInt("speech_volume"));
+	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, ConfMan.getInt("music_volume"));
 }
 
 int16 MadeEngine::getTicks() {
@@ -182,6 +184,11 @@ int16 MadeEngine::allocTimer() {
 void MadeEngine::freeTimer(int16 timerNum) {
 	if (timerNum > 0 && timerNum <= ARRAYSIZE(_timers))
 		_timers[timerNum - 1] = -1;
+}
+
+void MadeEngine::resetAllTimers() {
+	for (int i = 0; i < ARRAYSIZE(_timers); i++)
+		_timers[i] = -1;
 }
 
 Common::String MadeEngine::getSavegameFilename(int16 saveNum) {
@@ -230,10 +237,6 @@ void MadeEngine::handleEvents() {
 			_eventNum = 5;
 			break;
 
-		case Common::EVENT_QUIT:
-			_quit = true;
-			break;
-
 		default:
 			break;
 
@@ -244,13 +247,11 @@ void MadeEngine::handleEvents() {
 
 }
 
-int MadeEngine::go() {
+Common::Error MadeEngine::go() {
 
-	for (int i = 0; i < ARRAYSIZE(_timers); i++)
-		_timers[i] = -1;
+	resetAllTimers();
 
 	if (getGameID() == GID_RTZ) {
-		_engineVersion = 3;
 		if (getFeatures() & GF_DEMO) {
 			_dat->open("demo.dat");
 			_res->open("demo.prj");
@@ -267,29 +268,29 @@ int MadeEngine::go() {
 			error("Unknown RTZ game features");
 		}
 	} else if (getGameID() == GID_MANHOLE) {
-		_engineVersion = 2;
 		_dat->open("manhole.dat");
-		_res->open("manhole.prj");
+
+		if (getVersion() == 2) {
+			_res->open("manhole.prj");
+		} else {
+			_res->openResourceBlocks();
+		}
 	} else if (getGameID() == GID_LGOP2) {
-		_engineVersion = 2;
 		_dat->open("lgop2.dat");
 		_res->open("lgop2.prj");
 	} else if (getGameID() == GID_RODNEY) {
-		_engineVersion = 2;
 		_dat->open("rodneys.dat");
 		_res->open("rodneys.prj");
 	} else {
 		error ("Unknown MADE game");
 	}
-
-	// FIXME: This should make things a little faster until proper dirty rectangles
-	//        are implemented.
-	// NOTE: Disabled again since it causes major graphics errors.
-	//_system->setFeatureState(OSystem::kFeatureAutoComputeDirtyRects, true);
+	
+	if ((getFeatures() & GF_CD) || (getFeatures() & GF_CD_COMPRESSED))
+		checkCD();
 
 	_autoStopSound = false;
 	_eventNum = _eventKey = _eventMouseX = _eventMouseY = 0;
-	
+
 #ifdef DUMP_SCRIPTS
 	_script->dumpAllScripts();
 #else
@@ -297,7 +298,7 @@ int MadeEngine::go() {
 	_script->runScript(_dat->getMainCodeObjectIndex());
 #endif
 
-	return 0;
+	return Common::kNoError;
 }
 
 } // End of namespace Made

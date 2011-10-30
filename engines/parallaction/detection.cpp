@@ -26,14 +26,15 @@
 #include "base/plugins.h"
 
 #include "common/config-manager.h"
-#include "common/advancedDetector.h"
+#include "engines/advancedDetector.h"
+#include "common/system.h"
 
 #include "parallaction/parallaction.h"
 
 namespace Parallaction {
 
 struct PARALLACTIONGameDescription {
-	Common::ADGameDescription desc;
+	ADGameDescription desc;
 
 	int gameType;
 	uint32 features;
@@ -72,7 +73,7 @@ static const PARALLACTIONGameDescription gameDescriptions[] = {
 			},
 			Common::UNK_LANG,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_Nippon,
 		GF_LANG_EN | GF_LANG_FR | GF_LANG_DE | GF_LANG_IT | GF_LANG_MULT,
@@ -95,7 +96,7 @@ static const PARALLACTIONGameDescription gameDescriptions[] = {
 			},
 			Common::UNK_LANG,
 			Common::kPlatformAmiga,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_Nippon,
 		GF_LANG_EN | GF_LANG_FR | GF_LANG_DE | GF_LANG_MULT,
@@ -112,7 +113,7 @@ static const PARALLACTIONGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformAmiga,
-			Common::ADGF_DEMO
+			ADGF_DEMO
 		},
 		GType_Nippon,
 		GF_LANG_EN | GF_DEMO,
@@ -134,7 +135,7 @@ static const PARALLACTIONGameDescription gameDescriptions[] = {
 			},
 			Common::IT_ITA,
 			Common::kPlatformAmiga,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_Nippon,
 		GF_LANG_IT,
@@ -151,7 +152,7 @@ static const PARALLACTIONGameDescription gameDescriptions[] = {
 			},
 			Common::UNK_LANG,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_BRA,
 		GF_LANG_EN | GF_LANG_FR | GF_LANG_DE | GF_LANG_IT | GF_LANG_MULT,
@@ -167,7 +168,7 @@ static const PARALLACTIONGameDescription gameDescriptions[] = {
 			},
 			Common::UNK_LANG,
 			Common::kPlatformPC,
-			Common::ADGF_DEMO
+			ADGF_DEMO
 		},
 		GType_BRA,
 		GF_LANG_EN | GF_DEMO,
@@ -184,7 +185,7 @@ static const PARALLACTIONGameDescription gameDescriptions[] = {
 			},
 			Common::UNK_LANG,
 			Common::kPlatformAmiga,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_BRA,
 		GF_LANG_EN | GF_LANG_FR | GF_LANG_DE | GF_LANG_IT | GF_LANG_MULT,
@@ -201,7 +202,7 @@ static const PARALLACTIONGameDescription gameDescriptions[] = {
 			},
 			Common::UNK_LANG,
 			Common::kPlatformAmiga,
-			Common::ADGF_DEMO
+			ADGF_DEMO
 		},
 		GType_BRA,
 		GF_LANG_EN | GF_DEMO,
@@ -212,7 +213,7 @@ static const PARALLACTIONGameDescription gameDescriptions[] = {
 
 }
 
-static const Common::ADParams detectionParams = {
+static const ADParams detectionParams = {
 	// Pointer to ADGameDescription or its superset structure
 	(const byte *)Parallaction::gameDescriptions,
 	// Size of that superset structure
@@ -231,9 +232,9 @@ static const Common::ADParams detectionParams = {
 	0
 };
 
-class ParallactionMetaEngine : public Common::AdvancedMetaEngine {
+class ParallactionMetaEngine : public AdvancedMetaEngine {
 public:
-	ParallactionMetaEngine() : Common::AdvancedMetaEngine(detectionParams) {}
+	ParallactionMetaEngine() : AdvancedMetaEngine(detectionParams) {}
 
 	virtual const char *getName() const {
 		return "Parallaction engine";
@@ -244,20 +245,25 @@ public:
 	}
 
 	virtual bool hasFeature(MetaEngineFeature f) const;
-	virtual bool createInstance(OSystem *syst, Engine **engine, const Common::ADGameDescription *desc) const;
+	virtual bool createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const;
 	virtual SaveStateList listSaves(const char *target) const;
+	virtual int getMaximumSaveSlot() const;
 	virtual void removeSaveState(const char *target, int slot) const;
 };
 
 bool ParallactionMetaEngine::hasFeature(MetaEngineFeature f) const {
 	return
-		(f == kSupportsRTL) ||
 		(f == kSupportsListSaves) ||
-		(f == kSupportsDirectLoad) ||
+		(f == kSupportsLoadingDuringStartup) ||
 		(f == kSupportsDeleteSave);
 }
 
-bool ParallactionMetaEngine::createInstance(OSystem *syst, Engine **engine, const Common::ADGameDescription *desc) const {
+bool Parallaction::Parallaction::hasFeature(EngineFeature f) const {
+	return
+		(f == kSupportsRTL);
+}
+
+bool ParallactionMetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const {
 	const Parallaction::PARALLACTIONGameDescription *gd = (const Parallaction::PARALLACTIONGameDescription *)desc;
 	bool res = true;
 
@@ -294,7 +300,7 @@ SaveStateList ParallactionMetaEngine::listSaves(const char *target) const {
 			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
 			if (in) {
 				Common::String saveDesc = in->readLine();
-				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc, *file));
+				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc));
 				delete in;
 			}
 		}
@@ -302,6 +308,8 @@ SaveStateList ParallactionMetaEngine::listSaves(const char *target) const {
 
 	return saveList;
 }
+
+int ParallactionMetaEngine::getMaximumSaveSlot() const { return 99; }
 
 void ParallactionMetaEngine::removeSaveState(const char *target, int slot) const {
 	char extension[6];

@@ -352,9 +352,16 @@ private:
 
 	bool _dimPalette;
 
+	uint32 _pauseTicks;
+	uint32 _pauseStartTick;
+
+	uint32 getTick();
+
 public:
 	Screen(Sword2Engine *vm, int16 width, int16 height);
 	~Screen();
+
+	void pauseScreen(bool pause);
 
 	int8 getRenderLevel();
 	void setRenderLevel(int8 level);

@@ -131,7 +131,7 @@ uint8 Menu::execute() {
 
 	while (mouse.lButton() || mouse.rButton()) {
 		while (events.pollEvent()) {
-			if (engine.quit()) return MENUITEM_NONE;
+			if (engine.shouldQuit()) return MENUITEM_NONE;
 
 			if (mouse.y() < MENUBAR_Y_SIZE) {
 				MenuRecord *p = getMenuAt(mouse.x());
@@ -480,10 +480,10 @@ uint16 PopupMenu::Show(int numEntries, const char *actions[]) {
 	byte whiteColour = isEGA ? EGA_DIALOG_WHITE_COLOUR : VGA_DIALOG_WHITE_COLOUR;
 
 
-	uint16 oldX = mouse.x();
-	uint16 oldY = mouse.y();
 	const uint16 yMiddle = FULL_SCREEN_HEIGHT / 2;
 #ifndef LURE_CLICKABLE_MENUS
+	uint16 oldX = mouse.x();
+	uint16 oldY = mouse.y();
 	mouse.cursorOff();
 	mouse.setPosition(FULL_SCREEN_WIDTH / 2, yMiddle);
 
@@ -547,7 +547,7 @@ uint16 PopupMenu::Show(int numEntries, const char *actions[]) {
 		}
 
 		while (e.pollEvent()) {
-			if (engine.quit()) {
+			if (engine.shouldQuit()) {
 				selectedIndex = 0xffff;
 				goto bail_out;
 

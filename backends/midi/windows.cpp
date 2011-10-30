@@ -42,7 +42,7 @@
 class MidiDriver_WIN : public MidiDriver_MPU401 {
 private:
 	MIDIHDR _streamHeader;
-	byte _streamBuffer[256];	// SysEx blocks should be no larger than 256 bytes
+	byte _streamBuffer[266];	// SysEx blocks should be no larger than 266 bytes
 	HANDLE _streamEvent;
 	HMIDIOUT _mo;
 	bool _isOpen;
@@ -106,7 +106,7 @@ void MidiDriver_WIN::sysEx(const byte *msg, uint16 length) {
 		return;
 	}
 
-	assert(length+2 <= 256);
+	assert(length+2 <= 266);
 
 	midiOutUnprepareHeader(_mo, &_streamHeader, sizeof(_streamHeader));
 
@@ -158,7 +158,7 @@ public:
 	}
 
 	MusicDevices getDevices() const;
-	PluginError createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const;
+	Common::Error createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const;
 };
 
 MusicDevices WindowsMusicPlugin::getDevices() const {
@@ -169,10 +169,10 @@ MusicDevices WindowsMusicPlugin::getDevices() const {
 	return devices;
 }
 
-PluginError WindowsMusicPlugin::createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const {
+Common::Error WindowsMusicPlugin::createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const {
 	*mididriver = new MidiDriver_WIN();
 
-	return kNoError;
+	return Common::kNoError;
 }
 
 MidiDriver *MidiDriver_WIN_create(Audio::Mixer *mixer) {

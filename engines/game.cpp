@@ -38,6 +38,25 @@ const PlainGameDescriptor *findPlainGameDescriptor(const char *gameid, const Pla
 	return 0;
 }
 
+GameDescriptor::GameDescriptor() {
+	setVal("gameid", "");
+	setVal("description", "");
+}
+
+GameDescriptor::GameDescriptor(const PlainGameDescriptor &pgd) {
+	setVal("gameid", pgd.gameid);
+	setVal("description", pgd.description);
+}
+
+GameDescriptor::GameDescriptor(const Common::String &g, const Common::String &d, Common::Language l, Common::Platform p) {
+	setVal("gameid", g);
+	setVal("description", d);
+	if (l != Common::UNK_LANG)
+		setVal("language", Common::getLanguageCode(l));
+	if (p != Common::kPlatformUnknown)
+		setVal("platform", Common::getPlatformCode(p));
+}
+
 void GameDescriptor::updateDesc(const char *extra) {
 	// TODO: The format used here (LANG/PLATFORM/EXTRA) is not set in stone.
 	// We may want to change the order (PLATFORM/EXTRA/LANG, anybody?), or
@@ -79,11 +98,11 @@ bool SaveStateDescriptor::getBool(const Common::String &key) const {
 	if (contains(key)) {
 		Common::String value = getVal(key);
 		if (value.equalsIgnoreCase("true") ||
-			value.equalsIgnoreCase("yes") || 
+			value.equalsIgnoreCase("yes") ||
 			value.equals("1"))
 			return true;
 		if (value.equalsIgnoreCase("false") ||
-			value.equalsIgnoreCase("no") || 
+			value.equalsIgnoreCase("no") ||
 			value.equals("0"))
 			return false;
 		error("SaveStateDescriptor: %s '%s' has unknown value '%s' for boolean '%s'",
@@ -94,6 +113,10 @@ bool SaveStateDescriptor::getBool(const Common::String &key) const {
 
 void SaveStateDescriptor::setDeletableFlag(bool state) {
 	setVal("is_deletable", state ? "true" : "false");
+}
+
+void SaveStateDescriptor::setWriteProtectedFlag(bool state) {
+	setVal("is_write_protected", state ? "true" : "false");
 }
 
 void SaveStateDescriptor::setSaveDate(int year, int month, int day) {

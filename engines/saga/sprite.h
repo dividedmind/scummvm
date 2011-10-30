@@ -49,8 +49,7 @@ struct SpriteList {
 	SpriteInfo *infoList;
 
 	void freeMem() {
-		int i;
-		for (i = 0; i < spriteCount; i++) {
+		for (int i = 0; i < spriteCount; i++) {
 			free(infoList[i].decodedBuffer);
 		}
 		free(infoList);
@@ -74,15 +73,15 @@ public:
 	~Sprite(void);
 
 	// draw scaled sprite using background scene mask
-	void drawOccluded(Surface *ds, const Rect &clipRect, SpriteList &spriteList, int spriteNumber, const Point &screenCoord, int scale, int depth);
+	void drawOccluded(SpriteList &spriteList, int spriteNumber, const Point &screenCoord, int scale, int depth);
 
 	// draw scaled sprite using background scene mask
-	void draw(Surface *ds, const Rect &clipRect, SpriteList &spriteList, int32 spriteNumber, const Point &screenCoord, int scale);
+	void draw(SpriteList &spriteList, int32 spriteNumber, const Point &screenCoord, int scale, bool clipToScene = false);
 
 	// main function
-	void drawClip(Surface *ds, const Rect &clipRect, const Point &spritePointer, int width, int height, const byte *spriteBuffer);
+	void drawClip(const Point &spritePointer, int width, int height, const byte *spriteBuffer, bool clipToScene = false);
 
-	void draw(Surface *ds, const Rect &clipRect, SpriteList &spriteList, int32 spriteNumber, const Rect &screenRect, int scale);
+	void draw(SpriteList &spriteList, int32 spriteNumber, const Rect &screenRect, int scale, bool clipToScene = false);
 
 	void loadList(int resourceId, SpriteList &spriteList); // load or append spriteList
 	bool hitTest(SpriteList &spriteList, int spriteNumber, const Point &screenCoord, int scale, const Point &testPoint);

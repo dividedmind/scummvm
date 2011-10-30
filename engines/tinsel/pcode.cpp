@@ -25,13 +25,16 @@
  */
 
 #include "tinsel/dw.h"
+#include "tinsel/drives.h"
 #include "tinsel/events.h"	// 'POINTED' etc.
 #include "tinsel/handle.h"	// LockMem()
-#include "tinsel/inventory.h"	// for inventory id's
+#include "tinsel/dialogs.h"	// for inventory id's
 #include "tinsel/pcode.h"	// opcodes etc.
 #include "tinsel/scn.h"	// FindChunk()
 #include "tinsel/serializer.h"
+#include "tinsel/timers.h"
 #include "tinsel/tinlib.h"	// Library routines
+#include "tinsel/tinsel.h"
 
 #include "common/util.h"
 
@@ -97,7 +100,7 @@ enum OPCODE {
 
 #define	OPMASK		0x3F	//!< mask to isolate the opcode
 
-
+bool bNoPause = false;
 
 //----------------- LOCAL GLOBAL DATA --------------------
 
@@ -107,13 +110,19 @@ static int numGlobals = 0;		// How many global variables to save/restore
 
 static INT_CONTEXT *icList = 0;
 
+static uint32 hMasterScript;
+
 /**
  * Keeps the code array pointer up to date.
  */
 void LockCode(INT_CONTEXT *ic) {
-	if (ic->GSort == GS_MASTER)
-		ic->code = (byte *)FindChunk(MASTER_SCNHANDLE, CHUNK_PCODE);
-	else
+	if (ic->GSort == GS_MASTER) {
+		if (TinselV2)
+			// Get the srcipt handle from a specific global chunk
+			ic->code = (byte *)LockMem(hMasterScript);
+		else
+			ic->code = (byte *)FindChunk(MASTER_SCNHANDLE, CHUNK_PCODE);
+	} else
 		ic->code = (byte *)LockMem(ic->hCode);
 }
 
@@ -124,7 +133,7 @@ static INT_CONTEXT *AllocateInterpretContext(GSORT gsort) {
 	INT_CONTEXT *pic;
 	int	i;
 
-	for (i = 0, pic = icList; i < MAX_INTERPRET; i++, pic++) {
+	for (i = 0, pic = icList; i < NUM_INTERPRET; i++, pic++) {
 		if (pic->GSort == GS_NONE) {
 			pic->pProc = g_scheduler->getCurrentProcess();
 			pic->GSort = gsort;
@@ -141,11 +150,41 @@ static INT_CONTEXT *AllocateInterpretContext(GSORT gsort) {
 	error("Out of interpret contexts");
 }
 
+static void FreeWaitCheck(PINT_CONTEXT pic, bool bVoluntary) {
+	int i;
+
+	// Is this waiting for something?
+	if (pic->waitNumber1) {
+		for (i = 0; i < NUM_INTERPRET; i++) {
+			if ((icList + i)->waitNumber2 == pic->waitNumber1) {
+				(icList + i)->waitNumber2 = 0;
+				break;
+			}
+		}
+	}
+
+	// Is someone waiting for this?
+	if (pic->waitNumber2) {
+		for (i = 0; i < NUM_INTERPRET; i++) {
+			if ((icList + i)->waitNumber1 == pic->waitNumber2) {
+				(icList + i)->waitNumber1 = 0;
+				(icList + i)->resumeCode = bVoluntary ? RES_FINISHED : RES_CUTSHORT;
+				g_scheduler->reschedule((icList + i)->pProc);
+				break;
+			}
+		}
+		assert(i < NUM_INTERPRET);
+	}
+}
+
 /**
  * Normal release of an interpret context.
  * Called from the end of Interpret().
  */
 static void FreeInterpretContextPi(INT_CONTEXT *pic) {
+	FreeWaitCheck(pic, true);
+	if (TinselV2)
+		memset(pic, 0, sizeof(INT_CONTEXT));
 	pic->GSort = GS_NONE;
 }
 
@@ -158,8 +197,11 @@ void FreeInterpretContextPr(PROCESS *pProc) {
 	INT_CONTEXT *pic;
 	int	i;
 
-	for (i = 0, pic = icList; i < MAX_INTERPRET; i++, pic++) {
+	for (i = 0, pic = icList; i < NUM_INTERPRET; i++, pic++) {
 		if (pic->GSort != GS_NONE && pic->pProc == pProc) {
+			FreeWaitCheck(pic, false);
+			if (TinselV2)
+				memset(pic, 0, sizeof(INT_CONTEXT));
 			pic->GSort = GS_NONE;
 			break;
 		}
@@ -173,8 +215,9 @@ void FreeMostInterpretContexts(void) {
 	INT_CONTEXT *pic;
 	int	i;
 
-	for (i = 0, pic = icList; i < MAX_INTERPRET; i++, pic++) {
-		if (pic->GSort != GS_MASTER) {
+	for (i = 0, pic = icList; i < NUM_INTERPRET; i++, pic++) {
+		if ((pic->GSort != GS_MASTER) && (pic->GSort != GS_GPROCESS)) {
+			memset(pic, 0, sizeof(INT_CONTEXT));
 			pic->GSort = GS_NONE;
 		}
 	}
@@ -187,8 +230,9 @@ void FreeMasterInterpretContext(void) {
 	INT_CONTEXT *pic;
 	int	i;
 
-	for (i = 0, pic = icList; i < MAX_INTERPRET; i++, pic++) 	{
-		if (pic->GSort == GS_MASTER) {
+	for (i = 0, pic = icList; i < NUM_INTERPRET; i++, pic++) 	{
+		if ((pic->GSort == GS_MASTER) || (pic->GSort == GS_GPROCESS)) {
+			memset(pic, 0, sizeof(INT_CONTEXT));
 			pic->GSort = GS_NONE;
 			return;
 		}
@@ -205,8 +249,8 @@ void FreeMasterInterpretContext(void) {
  * @param actorId		Associated actor (if any)
  * @param pinvo			Associated inventory object
  */
-INT_CONTEXT *InitInterpretContext(GSORT gsort, SCNHANDLE hCode,	USER_EVENT event, 
-		HPOLYGON hpoly, int actorid, INV_OBJECT *pinvo) {
+INT_CONTEXT *InitInterpretContext(GSORT gsort, SCNHANDLE hCode,	TINSEL_EVENT event,
+		HPOLYGON hpoly, int actorid, INV_OBJECT *pinvo, int myEscape) {
 	INT_CONTEXT *ic;
 
 	ic = AllocateInterpretContext(gsort);
@@ -215,14 +259,14 @@ INT_CONTEXT *InitInterpretContext(GSORT gsort, SCNHANDLE hCode,	USER_EVENT event
 	ic->hCode = hCode;
 	LockCode(ic);
 	ic->event = event;
-	ic->hpoly = hpoly;
-	ic->actorid = actorid;
+	ic->hPoly = hpoly;
+	ic->idActor = actorid;
 	ic->pinvo = pinvo;
 
 	// Previously local variables in Interpret()
 	ic->bHalt = false;		// set to exit interpeter
-	ic->escOn = false;
-	ic->myescEvent = 0;		// only initialised to prevent compiler warning!
+	ic->escOn = myEscape > 0;
+	ic->myEscape = myEscape;
 	ic->sp = 0;
 	ic->bp = ic->sp + 1;
 	ic->ip = 0;			// start of code
@@ -256,6 +300,9 @@ void RegisterGlobals(int num) {
 	if (pGlobals == NULL) {
 		numGlobals = num;
 
+		hMasterScript = !TinselV2 ? 0 :
+			READ_LE_UINT32(FindChunk(MASTER_SCNHANDLE, CHUNK_MASTER_SCRIPT));
+
 		// Allocate RAM for pGlobals and make sure it's allocated
 		pGlobals = (int32 *)calloc(numGlobals, sizeof(int32));
 		if (pGlobals == NULL) {
@@ -263,18 +310,38 @@ void RegisterGlobals(int num) {
 		}
 
 		// Allocate RAM for interpret contexts and make sure it's allocated
-		icList = (INT_CONTEXT *)calloc(MAX_INTERPRET, sizeof(INT_CONTEXT));
+		icList = (INT_CONTEXT *)calloc(NUM_INTERPRET, sizeof(INT_CONTEXT));
 		if (icList == NULL) {
 			error("Cannot allocate memory for interpret contexts");
 		}
-
 		g_scheduler->setResourceCallback(FreeInterpretContextPr);
 	} else {
 		// Check size is still the same
 		assert(numGlobals == num);
 
 		memset(pGlobals, 0, numGlobals * sizeof(int32));
-		memset(icList, 0, MAX_INTERPRET * sizeof(INT_CONTEXT));
+		memset(icList, 0, NUM_INTERPRET * sizeof(INT_CONTEXT));
+	}
+
+	if (TinselV2) {
+		// read initial values
+		CdCD(nullContext);
+
+		Common::File f;
+		if (!f.open(GLOBALS_FILENAME))
+			error(CANNOT_FIND_FILE, GLOBALS_FILENAME);
+
+		int32 length = f.readSint32LE();
+		if (length != num)
+			error(FILE_IS_CORRUPT, GLOBALS_FILENAME);
+
+		for (int i = 0; i < length; ++i)
+			pGlobals[i] = f.readSint32LE();
+
+		if (f.ioFailed())
+			error(FILE_IS_CORRUPT, GLOBALS_FILENAME);
+
+		f.close();
 	}
 }
 
@@ -309,8 +376,8 @@ void INT_CONTEXT::syncWithSerializer(Serializer &s) {
 	s.syncAsUint32LE(GSort);
 	s.syncAsUint32LE(hCode);
 	s.syncAsUint32LE(event);
-	s.syncAsSint32LE(hpoly);
-	s.syncAsSint32LE(actorid);
+	s.syncAsSint32LE(hPoly);
+	s.syncAsSint32LE(idActor);
 
 	for (int i = 0; i < PCODE_STACK_SIZE; ++i)
 		s.syncAsSint32LE(stack[i]);
@@ -320,14 +387,14 @@ void INT_CONTEXT::syncWithSerializer(Serializer &s) {
 	s.syncAsSint32LE(ip);
 	s.syncAsUint32LE(bHalt);
 	s.syncAsUint32LE(escOn);
-	s.syncAsSint32LE(myescEvent);
+	s.syncAsSint32LE(myEscape);
 }
 
 /**
  * Return pointer to and size of global data for save/restore game.
  */
 void SaveInterpretContexts(INT_CONTEXT *sICInfo) {
-	memcpy(sICInfo, icList, MAX_INTERPRET * sizeof(INT_CONTEXT));
+	memcpy(sICInfo, icList, NUM_INTERPRET * sizeof(INT_CONTEXT));
 }
 
 /**
@@ -336,7 +403,10 @@ void SaveInterpretContexts(INT_CONTEXT *sICInfo) {
  */
 static int32 Fetch(byte opcode, byte *code, int &ip) {
 	int32 tmp;
-	if (opcode & OPSIZE8) {
+	if (TinselV0) {
+		// Fetch a 32 bit value.
+		tmp = (int32)READ_LE_UINT32(code + ip++ * 4);
+	} else if (opcode & OPSIZE8) {
 		// Fetch and sign extend a 8 bit value to 32 bits.
 		tmp = *(int8 *)(code + ip);
 		ip += 1;
@@ -359,8 +429,11 @@ void Interpret(CORO_PARAM, INT_CONTEXT *ic) {
 	do {
 		int tmp, tmp2;
 		int ip = ic->ip;
-		byte opcode = ic->code[ip++];
-		debug(7, "  Opcode %d (-> %d)", opcode, opcode & OPMASK);
+		byte opcode = ic->code[ip++ * (TinselV0 ? 4 : 1)];
+		if (TinselV0 && ((opcode & OPMASK) > OP_IMM))
+			opcode += 3;
+
+		debug(7, "ip=%d  Opcode %d (-> %d)", ic->ip, opcode, opcode & OPMASK);
 		switch (opcode & OPMASK) {
 		case OP_HALT:			// end of program
 
@@ -441,7 +514,7 @@ void Interpret(CORO_PARAM, INT_CONTEXT *ic) {
 			// same spot (i.e. here).
 			//
 			// The reasons we do it this way, instead of turning Interpret into
-			// a 'proper' coroutine are (1) we avoid implementation problems 
+			// a 'proper' coroutine are (1) we avoid implementation problems
 			// (CORO_INVOKE involves adding 'case' statements, but Interpret
 			// already has a huge switch/case, so that would not work out of the
 			// box), (2) we incurr less overhead, (3) it's easier to debug,
@@ -449,8 +522,11 @@ void Interpret(CORO_PARAM, INT_CONTEXT *ic) {
 			tmp2 = CallLibraryRoutine(coroParam, tmp, &ic->stack[ic->sp], ic, &ic->resumeState);
 			if (coroParam)
 				return;
-			ic->sp += tmp2;
+			if (!TinselV0)
+				ic->sp += tmp2;
 			LockCode(ic);
+			if (TinselV2 && (ic->resumeState == RES_1))
+				ic->resumeState = RES_NOT;
 			break;
 
 		case OP_RET:			// procedure return
@@ -462,7 +538,7 @@ void Interpret(CORO_PARAM, INT_CONTEXT *ic) {
 
 		case OP_ALLOC:			// allocate storage on stack
 
-			ic->sp += Fetch(opcode, ic->code, ip);
+			ic->sp += (int32)Fetch(opcode, ic->code, ip);
 			break;
 
 		case OP_JUMP:	// unconditional jump
@@ -567,12 +643,14 @@ void Interpret(CORO_PARAM, INT_CONTEXT *ic) {
 			break;
 
 		case OP_ESCON:
+			bNoPause = true;
 			ic->escOn = true;
-			ic->myescEvent = GetEscEvents();
+			ic->myEscape = GetEscEvents();
 			break;
 
 		case OP_ESCOFF:
 			ic->escOn = false;
+			ic->myEscape = 0;
 			break;
 
 		default:
@@ -588,6 +666,130 @@ void Interpret(CORO_PARAM, INT_CONTEXT *ic) {
 	assert(ic->sp == 0);
 
 	FreeInterpretContextPi(ic);
+}
+
+/**
+ * Associates an interpret context with the
+ * process that will run it.
+ */
+void AttachInterpret(INT_CONTEXT *pic, PROCESS *pProc) {
+	// Attach the process which is using this context
+	pic->pProc = pProc;
+}
+
+/**
+ * Generate a number that isn't being used.
+ */
+static uint32 UniqueWaitNumber(void) {
+	uint32 retval;
+	int i;
+
+	for (retval = DwGetCurrentTime(); 1; retval--) {
+		if (retval == 0)
+			retval = (uint32)-1;
+
+		for (i = 0; i < NUM_INTERPRET; i++) {
+			if ((icList+i)->waitNumber1 == retval
+			 || (icList+i)->waitNumber2 == retval)
+				break;
+		}
+
+		if (i == NUM_INTERPRET)
+			return retval;
+	}
+}
+
+/**
+ * WaitInterpret
+ */
+void WaitInterpret(CORO_PARAM, PPROCESS pWaitProc, bool *result) {
+	int i;
+	PPROCESS currentProcess = g_scheduler->getCurrentProcess();
+	assert(currentProcess);
+	assert(currentProcess != pWaitProc);
+	if (result) *result = false;
+
+	/*
+	 * Calling process is the waiter, find its interpret context.
+	 */
+
+	CORO_BEGIN_CONTEXT;
+		PINT_CONTEXT picWaiter, picWaitee;
+	CORO_END_CONTEXT(_ctx);
+
+
+	CORO_BEGIN_CODE(_ctx);
+
+	for (i = 0, _ctx->picWaiter = icList; i < NUM_INTERPRET; i++, _ctx->picWaiter++) {
+		if (_ctx->picWaiter->GSort != GS_NONE && _ctx->picWaiter->pProc == currentProcess) {
+			break;
+		}
+	}
+
+	/*
+	 * Find the interpret context of the process we're waiting for
+	 */
+	for (i = 0, _ctx->picWaitee = icList; i < NUM_INTERPRET; i++, _ctx->picWaitee++) {
+		if (_ctx->picWaitee->GSort != GS_NONE && _ctx->picWaitee->pProc == pWaitProc) {
+			break;
+		}
+	}
+
+	/*
+	 * Set the first as waiting for the second
+	 */
+	assert(_ctx->picWaitee->waitNumber2 == 0);
+	_ctx->picWaiter->waitNumber1 = _ctx->picWaitee->waitNumber2 = UniqueWaitNumber();
+	_ctx->picWaiter->resumeCode = RES_WAITING;
+
+	/*
+	 * Wait for it
+	 */
+	CORO_GIVE_WAY;
+	while (_ctx->picWaiter->resumeCode == RES_WAITING) {
+		CORO_SLEEP(1);
+	}
+
+	if (result)
+		*result = (_ctx->picWaiter->resumeCode == RES_FINISHED);
+	CORO_END_CODE;
+}
+
+/**
+ * CheckOutWaiters
+ */
+void CheckOutWaiters(void) {
+	int i, j;
+
+	// Check all waited for have someone waiting
+	for (i = 0; i < NUM_INTERPRET; i++) 	{
+		// If someone is supposedly waiting for this one
+		if ((icList + i)->GSort != GS_NONE && (icList + i)->waitNumber2) {
+			// Someone really must be waiting for this one
+			for (j = 0; j < NUM_INTERPRET; j++) {
+				if ((icList + j)->GSort != GS_NONE
+				 && (icList + j)->waitNumber1 == (icList + i)->waitNumber2) {
+					break;
+				}
+			}
+			assert(j < NUM_INTERPRET);
+		}
+	}
+
+	// Check waiting for someone to wait for
+	for (i = 0; i < NUM_INTERPRET; i++) {
+		// If someone is supposedly waiting for this one
+		if ((icList + i)->GSort != GS_NONE && (icList + i)->waitNumber1) {
+			// Someone really must be waiting for this one
+			for (j = 0; j < NUM_INTERPRET; j++) {
+				if ((icList + j)->GSort != GS_NONE
+				 && (icList + j)->waitNumber2 == (icList + i)->waitNumber1) {
+					break;
+				}
+			}
+			assert(j < NUM_INTERPRET);
+		}
+	}
 }
 
 } // end of namespace Tinsel

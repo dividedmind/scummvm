@@ -23,6 +23,7 @@
  *
  */
 
+#include "common/events.h"
 #include "common/savefile.h"
 #include "common/stream.h"
 
@@ -50,7 +51,7 @@ int Mickey::getDat(int iRoom) {
 
 void Mickey::readExe(int ofs, uint8 *buffer, long buflen) {
 	Common::File infile;
-	if (!infile.open(IDS_MSA_PATH_EXE))
+	if (!infile.open("mickey.exe"))
 		return;
 	infile.seek(ofs, SEEK_SET);
 	infile.read(buffer, buflen);
@@ -101,7 +102,7 @@ void Mickey::readOfsData(int offset, int iItem, uint8 *buffer, long buflen) {
 bool Mickey::chooseY_N(int ofsPrompt, bool fErrorMsg) {
 	printExeStr(ofsPrompt);
 
-	for (;;) {
+	while (!_vm->shouldQuit()) {
 		switch (_vm->getSelection(kSelYesNo)) {
 		case 0: return false;
 		case 1: return true;
@@ -114,13 +115,15 @@ bool Mickey::chooseY_N(int ofsPrompt, bool fErrorMsg) {
 			break;
 		}
 	}
+	
+	return false;
 }
 
 int Mickey::choose1to9(int ofsPrompt) {
 	int answer = 0;
 	printExeStr(ofsPrompt);
 
-	for (;;) {
+	while (!_vm->shouldQuit()) {
 		answer = _vm->getSelection(kSelNumber);
 		if (answer == 10) {
 			printExeStr(IDO_MSA_PRESS_1_TO_9);
@@ -130,6 +133,7 @@ int Mickey::choose1to9(int ofsPrompt) {
 		} else return answer;
 	}
 
+	return 0;
 }
 
 void Mickey::printStr(char *buffer) {
@@ -151,6 +155,18 @@ void Mickey::printStr(char *buffer) {
 	_vm->_system->updateScreen();
 }
 
+void Mickey::printLine(const char *buffer) {
+	_vm->clearTextArea();
+
+	_vm->drawStr(22, 18 - strlen(buffer) / 2, IDA_DEFAULT, buffer);
+
+	// Show the string on screen
+	_vm->_gfx->doUpdate();
+	_vm->_system->updateScreen();
+
+	waitAnyKey(true);
+}
+
 void Mickey::printExeStr(int ofs) {
 	uint8 buffer[256] = {0};
 
@@ -170,7 +186,7 @@ void Mickey::printExeMsg(int ofs) {
 }
 
 void Mickey::printDatString(int iStr) {
-	char *buffer = (char *)malloc(256);
+	char buffer[256];
 	int iDat = getDat(_game.iRoom);
 
 	MSA_DAT_HEADER hdr;
@@ -189,7 +205,6 @@ void Mickey::printDatString(int iStr) {
 	infile.close();
 
 	printStr(buffer);
-	free(buffer);
 }
 
 void Mickey::printDesc(int iRoom) {
@@ -342,7 +357,7 @@ bool Mickey::getMenuSelRow(MSA_MENU menu, int *sel0, int *sel1, int iRow) {
 
 	drawMenu(menu, *sel0, *sel1);
 
-	for(;;) {
+	while (!_vm->shouldQuit()) {
 		while (_vm->_system->getEventManager()->pollEvent(event)) {
 			switch(event.type) {
 			case Common::EVENT_RTL:
@@ -494,6 +509,8 @@ bool Mickey::getMenuSelRow(MSA_MENU menu, int *sel0, int *sel1, int iRow) {
 		animate();
 		drawMenu(menu, *sel0, *sel1);
 	}
+	
+	return false;
 }
 
 void Mickey::getMenuSel(char *buffer, int *sel0, int *sel1) {
@@ -507,8 +524,8 @@ void Mickey::getMenuSel(char *buffer, int *sel0, int *sel1) {
 	// Show the mouse cursor for the menu
 	CursorMan.showMouse(true);
 
-	for (;;) {
-		for (;;) {
+	while (!_vm->shouldQuit()) {
+		while (!_vm->shouldQuit()) {
 			if (getMenuSelRow(menu, sel0, sel1, 0)) {
 				if (_clickToMove)
 					break;
@@ -518,6 +535,7 @@ void Mickey::getMenuSel(char *buffer, int *sel0, int *sel1) {
 				}
 			}
 		}
+		
 		if (_clickToMove || getMenuSelRow(menu, sel0, sel1, 2)) {
 			break;
 		}
@@ -928,7 +946,7 @@ bool Mickey::loadGame() {
 		// load game
 		sprintf(szFile, "%s.s%02d", _vm->getTargetName().c_str(), sel);
 		if (!(infile = _vm->getSaveFileMan()->openForLoading(szFile))) {
-			printExeStr(IDO_MSA_CHECK_DISK_DRIVE);
+			printLine("PLEASE CHECK THE DISK DRIVE");
 			if (_vm->getSelection(kSelAnyKey) == 0)
 				return false;
 		} else {
@@ -956,10 +974,10 @@ bool Mickey::loadGame() {
 
 			_game.nXtals = infile->readByte();
 
-			for(i = 0; i < IDI_MSA_MAX_DAT; i++)
+			for (i = 0; i < IDI_MSA_MAX_DAT; i++)
 				_game.iPlanetXtal[i] = infile->readByte();
 
-			for(i = 0; i < IDI_MSA_MAX_PLANET; i++)
+			for (i = 0; i < IDI_MSA_MAX_PLANET; i++)
 				_game.iClue[i] = infile->readUint16LE();
 
 			infile->read(_game.szAddr, IDI_MSA_MAX_BUTTON + 1);
@@ -974,30 +992,30 @@ bool Mickey::loadGame() {
 			_game.fTempleDoorOpen = infile->readByte() == 1;
 			_game.fAnimXL30 = infile->readByte() == 1;
 
-			for(i = 0; i < IDI_MSA_MAX_ITEM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ITEM; i++)
 				_game.fItem[i] = infile->readByte() == 1;
 
-			for(i = 0; i < IDI_MSA_MAX_ITEM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ITEM; i++)
 				_game.fItemUsed[i] = infile->readByte() == 1;
 
-			for(i = 0; i < IDI_MSA_MAX_ITEM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ITEM; i++)
 				_game.iItem[i] = infile->readSByte();
 
 			_game.nItems = infile->readByte();
 
-			for(i = 0; i < IDI_MSA_MAX_ROOM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ROOM; i++)
 				_game.iRmObj[i] = infile->readSByte();
 
-			for(i = 0; i < IDI_MSA_MAX_ROOM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ROOM; i++)
 				_game.iRmPic[i] = infile->readByte();
 
-			for(i = 0; i < IDI_MSA_MAX_ROOM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ROOM; i++)
 				_game.oRmTxt[i] = infile->readUint16LE();
 
-			for(i = 0; i < IDI_MSA_MAX_ROOM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ROOM; i++)
 				_game.iRmMenu[i] = infile->readByte();
 
-			for(i = 0; i < IDI_MSA_MAX_ROOM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ROOM; i++)
 				_game.nRmMenu[i] = infile->readByte();
 
 			_game.nFrame = infile->readSByte();
@@ -1044,7 +1062,7 @@ void Mickey::saveGame() {
 		// save game
 		sprintf(szFile, "%s.s%02d", _vm->getTargetName().c_str(), sel);
 		if (!(outfile = _vm->getSaveFileMan()->openForSaving(szFile))) {
-			printExeStr(IDO_MSA_CHECK_DISK_DRIVE);
+			printLine("PLEASE CHECK THE DISK DRIVE");
 			if (_vm->getSelection(kSelAnyKey) == 0)
 				return;
 		} else {
@@ -1061,10 +1079,10 @@ void Mickey::saveGame() {
 
 			outfile->writeByte(_game.nXtals);
 
-			for(i = 0; i < IDI_MSA_MAX_DAT; i++)
+			for (i = 0; i < IDI_MSA_MAX_DAT; i++)
 				outfile->writeByte(_game.iPlanetXtal[i]);
 
-			for(i = 0; i < IDI_MSA_MAX_PLANET; i++)
+			for (i = 0; i < IDI_MSA_MAX_PLANET; i++)
 				outfile->writeUint16LE(_game.iClue[i]);
 
 			outfile->write(_game.szAddr, IDI_MSA_MAX_BUTTON + 1);
@@ -1079,30 +1097,30 @@ void Mickey::saveGame() {
 			outfile->writeByte(_game.fTempleDoorOpen ? 1 : 0);
 			outfile->writeByte(_game.fAnimXL30 ? 1 : 0);
 
-			for(i = 0; i < IDI_MSA_MAX_ITEM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ITEM; i++)
 				outfile->writeByte(_game.fItem[i] ? 1 : 0);
 
-			for(i = 0; i < IDI_MSA_MAX_ITEM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ITEM; i++)
 				outfile->writeByte(_game.fItemUsed[i] ? 1 : 0);
 
-			for(i = 0; i < IDI_MSA_MAX_ITEM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ITEM; i++)
 				outfile->writeSByte(_game.iItem[i]);
 
 			outfile->writeByte(_game.nItems);
 
-			for(i = 0; i < IDI_MSA_MAX_ROOM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ROOM; i++)
 				outfile->writeSByte(_game.iRmObj[i]);
 
-			for(i = 0; i < IDI_MSA_MAX_ROOM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ROOM; i++)
 				outfile->writeByte(_game.iRmPic[i]);
 
-			for(i = 0; i < IDI_MSA_MAX_ROOM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ROOM; i++)
 				outfile->writeUint16LE(_game.oRmTxt[i]);
 
-			for(i = 0; i < IDI_MSA_MAX_ROOM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ROOM; i++)
 				outfile->writeByte(_game.iRmMenu[i]);
 
-			for(i = 0; i < IDI_MSA_MAX_ROOM; i++)
+			for (i = 0; i < IDI_MSA_MAX_ROOM; i++)
 				outfile->writeByte(_game.nRmMenu[i]);
 
 			outfile->writeSByte(_game.nFrame);
@@ -1121,7 +1139,7 @@ void Mickey::saveGame() {
 }
 
 void Mickey::showPlanetInfo() {
-	for (int i = 0; i < IDI_MSA_MAX_PLANET_INFO; i++) {
+	for (int i = 0; i < 4; i++) {
 		printExeStr(IDO_MSA_PLANET_INFO[_game.iPlanet][i]);
 		waitAnyKey();
 	}
@@ -1195,8 +1213,8 @@ void Mickey::pressOB(int iButton) {
 	}
 
 	// print pressed buttons
-	printExeStr(IDO_MSA_MICKEY_HAS_PRESSED);
-	_vm->drawStr(IDI_MSA_ROW_BUTTONS, IDI_MSA_COL_BUTTONS, IDA_DEFAULT, szButtons);
+	printLine("MICKEY HAS PRESSED:                   ");
+	_vm->drawStr(20, 22, IDA_DEFAULT, szButtons);
 	waitAnyKey();
 }
 
@@ -1207,6 +1225,10 @@ void Mickey::insertDisk(int iDisk) {
 }
 
 void Mickey::gameOver() {
+	// We shouldn't run the game over segment if we're quitting.
+	if (_vm->shouldQuit())
+		return;
+
 	drawPic(IDI_MSA_PIC_EARTH_SHIP_LEAVING);
 	printExeMsg(IDO_MSA_GAME_OVER[3]);
 	playSound(IDI_MSA_SND_GAME_OVER);
@@ -1221,7 +1243,6 @@ void Mickey::gameOver() {
 	}
 
 	waitAnyKey();
-	_vm->quitGame();
 }
 
 void Mickey::flipSwitch() {
@@ -1337,6 +1358,11 @@ void Mickey::intro() {
 
 	// show copyright and play theme
 	printExeMsg(IDO_MSA_COPYRIGHT);
+	
+	// Quit if necessary
+	if (_vm->shouldQuit())
+		return;
+	
 	playSound(IDI_MSA_SND_THEME);
 
 	// load game
@@ -1349,6 +1375,10 @@ void Mickey::intro() {
 			return;
 		}
 	}
+	
+	// Quit if necessary
+	if (_vm->shouldQuit())
+		return;
 
 	// play spaceship landing scene
 	_game.iPlanet = IDI_MSA_PLANET_EARTH;
@@ -1356,11 +1386,15 @@ void Mickey::intro() {
 
 	drawRoom();
 	printRoomDesc();
+	
+	// Quit if necessary
+	if (_vm->shouldQuit())
+		return;
 
 	playSound(IDI_MSA_SND_SHIP_LAND);
 
 	// Flash screen 3 times
-	for (int i = 1; i <= 3; i++) {
+	for (byte i = 0; i < 3; i++) {
 		playSound(IDI_MSA_SND_PRESS_BLUE);
 
 		//Set screen to white
@@ -1408,7 +1442,7 @@ bool Mickey::parse(int cmd, int arg) {
 		_game.iRoom = arg;
 		return true;
 	case IDI_MSA_ACTION_SHOW_INT_STR:
-		printExeMsg(IDO_MSA_ERROR[arg]);
+		printLine(IDS_MSA_ERRORS[arg]);
 		break;
 	case IDI_MSA_ACTION_SHOW_DAT_STR:
 		printDatMessage(arg);
@@ -1423,7 +1457,7 @@ bool Mickey::parse(int cmd, int arg) {
 		saveGame();
 		break;
 	case IDI_MSA_ACTION_LOOK_MICKEY:
-		printExeMsg(IDO_MSA_YOU_CAN_SEE_MICKEY_ALREADY);
+		printLine("YOU CAN SEE MICKEY ALREADY");
 		break;
 
 	// EARTH
@@ -1433,7 +1467,7 @@ bool Mickey::parse(int cmd, int arg) {
 			_game.iRmObj[_game.iRoom] = IDI_MSA_OBJECT_NONE;
 			_game.iRmMenu[_game.iRoom] = 3;
 			getItem(IDI_MSA_ITEM_ROPE);
-			printExeMsg(IDO_MSA_ERROR[7]);
+			printLine("MICKEY TAKES THE ROPE");
 		} else {
 			_game.iRmMenu[_game.iRoom] = 1;
 			printDatMessage(11);
@@ -1954,9 +1988,9 @@ bool Mickey::parse(int cmd, int arg) {
 		break;
 	case IDI_MSA_ACTION_READ_GAUGE:
 		printDatString(arg);
-		_vm->drawStr(IDI_MSA_ROW_TEMPERATURE, IDI_MSA_COL_TEMPERATURE_C, IDA_DEFAULT,
+		_vm->drawStr(21, 15, IDA_DEFAULT,
 			(const char *)IDS_MSA_TEMP_C[_game.iPlanet]);
-		_vm->drawStr(IDI_MSA_ROW_TEMPERATURE, IDI_MSA_COL_TEMPERATURE_F, IDA_DEFAULT,
+		_vm->drawStr(21, 23, IDA_DEFAULT,
 			(const char *)IDS_MSA_TEMP_F[_game.iPlanet]);
 		waitAnyKey();
 		break;
@@ -2022,7 +2056,7 @@ bool Mickey::parse(int cmd, int arg) {
 		break;
 	case IDI_MSA_ACTION_OPEN_CABINET_1:
 		if (_game.iRmMenu[_game.iRoom]) {
-			printExeMsg(IDO_MSA_THE_CABINET_IS_ALREADY_OPEN);
+			printLine("THE CABINET IS ALREADY OPEN");
 		} else {
 			_game.iRmMenu[_game.iRoom] = 1;
 			_game.iRmPic[_game.iRoom] = IDI_MSA_PIC_SHIP_KITCHEN_1;
@@ -2057,7 +2091,7 @@ void Mickey::waitAnyKey(bool anim) {
 	if (!anim)
 		_vm->_gfx->doUpdate();
 
-	for (;;) {
+	while (!_vm->shouldQuit()) {
 		while (_vm->_system->getEventManager()->pollEvent(event)) {
 			switch(event.type) {
 			case Common::EVENT_RTL:
@@ -2070,6 +2104,7 @@ void Mickey::waitAnyKey(bool anim) {
 				break;
 			}
 		}
+		
 		if (anim) {
 			animate();
 			_vm->_gfx->doUpdate();
@@ -2160,7 +2195,7 @@ void Mickey::run() {
 	intro();
 
 	// Game loop
-	while (!_vm->quit()) {
+	while (!_vm->shouldQuit()) {
 		drawRoom();
 
 		if (_game.fIntro) {
@@ -2176,7 +2211,7 @@ void Mickey::run() {
 			done = false;
 		}
 
-		while (!done) {
+		while (!done && !_vm->shouldQuit()) {
 			// Check air supply
 			if (_game.fSuit) {
 				_game.nAir -= 1;
@@ -2185,13 +2220,12 @@ void Mickey::run() {
 						playSound(IDI_MSA_SND_XL30);
 						printExeMsg(IDO_MSA_XL30_SPEAKING);
 						printExeMsg(IDO_MSA_AIR_SUPPLY[i]);
-						if (i == 3) {
-							exit(0);
-						}
+						if (i == 3)
+							return;
 					}
 				}
 			} else {
-				_game.nAir = IDI_MSA_MAX_AIR_SUPPLY;
+				_game.nAir = 50;	// max air supply
 			}
 
 			done = checkMenu();

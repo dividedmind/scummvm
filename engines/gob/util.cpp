@@ -33,6 +33,8 @@
 #include "gob/video.h"
 #include "gob/sound/sound.h"
 
+#include "common/events.h"
+
 namespace Gob {
 
 Util::Util(GobEngine *vm) : _vm(vm) {
@@ -71,7 +73,7 @@ void Util::longDelay(uint16 msecs) {
 		_vm->_video->waitRetrace();
 		processInput();
 		delay(15);
-	} while (!_vm->quit() &&
+	} while (!_vm->shouldQuit() &&
 	         ((g_system->getMillis() * _vm->_global->_speedFactor) < time));
 }
 
@@ -265,12 +267,13 @@ void Util::waitMouseRelease(char drawMouse) {
 	int16 mouseX;
 	int16 mouseY;
 
-	do {
-		_vm->_game->checkKeys(&mouseX, &mouseY, &buttons, drawMouse);
+	_vm->_game->checkKeys(&mouseX, &mouseY, &buttons, drawMouse);
+	while (buttons != 0) {
 		if (drawMouse != 0)
 			_vm->_draw->animateCursor(2);
 		delay(10);
-	} while (buttons != 0);
+		_vm->_game->checkKeys(&mouseX, &mouseY, &buttons, drawMouse);
+	}
 }
 
 void Util::forceMouseUp(bool onlyWhenSynced) {
@@ -283,13 +286,12 @@ void Util::forceMouseUp(bool onlyWhenSynced) {
 
 void Util::clearPalette(void) {
 	int16 i;
-	byte colors[768];
+	byte colors[1024];
 
 	_vm->validateVideoMode(_vm->_global->_videoMode);
 
 	if (_vm->_global->_setAllPalette) {
-		for (i = 0; i < 768; i++)
-			colors[i] = 0;
+		memset(colors, 0, 1024);
 		g_system->setPalette(colors, 0, 256);
 		return;
 	}
@@ -332,12 +334,12 @@ void Util::setScrollOffset(int16 x, int16 y) {
 	processInput();
 
 	if (x >= 0)
-		_vm->_video->_scrollOffsetX = x; 
+		_vm->_video->_scrollOffsetX = x;
 	else
 		_vm->_video->_scrollOffsetX = _vm->_draw->_scrollOffsetX;
 
 	if (y >= 0)
-		_vm->_video->_scrollOffsetY = y; 
+		_vm->_video->_scrollOffsetY = y;
 	else
 		_vm->_video->_scrollOffsetY = _vm->_draw->_scrollOffsetY;
 
@@ -374,11 +376,6 @@ Video::FontDesc *Util::loadFont(const char *path) {
 		fontDesc->extraData = 0;
 
 	return fontDesc;
-}
-
-void Util::freeFont(Video::FontDesc *fontDesc) {
-	delete[] (fontDesc->dataPtr - 4);
-	delete fontDesc;
 }
 
 void Util::insertStr(const char *str1, char *str2, int16 pos) {

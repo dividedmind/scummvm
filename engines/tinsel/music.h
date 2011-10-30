@@ -30,11 +30,11 @@
 
 #include "sound/mididrv.h"
 #include "sound/midiparser.h"
+#include "sound/audiostream.h"
+#include "sound/mixer.h"
 #include "common/mutex.h"
 
 namespace Tinsel {
-
-#define MAXMIDIVOL 127
 
 bool PlayMidiSequence(		// Plays the specified MIDI sequence through the sound driver
 	uint32 dwFileOffset,		// handle of MIDI sequence data
@@ -60,11 +60,10 @@ SCNHANDLE GetTrackOffset(int trackNumber);
 
 void dumpMusic();
 
-
-class MusicPlayer : public MidiDriver {
+class MidiMusicPlayer : public MidiDriver {
 public:
-	MusicPlayer(MidiDriver *driver);
-	~MusicPlayer();
+	MidiMusicPlayer(MidiDriver *driver);
+	~MidiMusicPlayer();
 
 	bool isPlaying() { return _isPlaying; }
 	void setPlaying(bool playing) { _isPlaying = playing; }
@@ -73,6 +72,7 @@ public:
 	int getVolume() { return _masterVolume; }
 
 	void playXMIDI(byte *midiData, uint32 size, bool loop);
+
 	void stop();
 	void pause();
 	void resume();
@@ -113,6 +113,93 @@ protected:
 	byte _masterVolume;
 };
 
-} // End of namespace Made
+class PCMMusicPlayer : public Audio::AudioStream {
+public:
+	PCMMusicPlayer();
+	~PCMMusicPlayer();
+
+	bool isPlaying() const;
+
+	bool isDimmed() const;
+
+	void getTunePlaying(void *voidPtr, int length);
+	void restoreThatTune(void *voidPtr);
+
+	void setMusicSceneDetails(SCNHANDLE hScript, SCNHANDLE hSegment, const char *fileName);
+
+	void setVolume(int volume);
+
+	void startPlay(int id);
+	void stopPlay();
+
+	bool getMusicTinselDimmed() const;
+	void dim(bool bTinselDim);
+	void unDim(bool bTinselUnDim);
+	void dimIteration();
+
+	void startFadeOut(int ticks);
+	void fadeOutIteration();
+
+	int readBuffer(int16 *buffer, const int numSamples);
+	bool isStereo() const { return false; }
+	bool endOfData() const { return _end; }
+	bool endOfStream() const { return false; }
+	int getRate() const { return 22050; }
+
+protected:
+	enum State {
+		S_IDLE,
+		S_NEW,
+		S_MID,
+		S_END1,
+		S_END2,
+		S_END3,
+		S_NEXT,
+		S_STOP
+	};
+
+	struct MusicSegment {
+		uint32 numChannels;
+		uint32 bitsPerSec;
+		uint32 bitsPerSample;
+		uint32 sampleLength;
+		uint32 sampleOffset;
+	};
+
+	Audio::SoundHandle _handle;
+	Audio::AudioStream *_curChunk;
+	Common::Mutex _mutex;
+
+	bool _end;
+
+	int _silenceSamples;
+
+	State _state, _mState;
+	bool _forcePlay;
+	int32 _scriptNum;
+	int32 _scriptIndex;
+	SCNHANDLE _hScript;
+	SCNHANDLE _hSegment;
+	char *_fileName;
+
+	uint8 _volume;
+
+	bool _dimmed;
+	bool _dimmedTinsel;
+	uint8 _dimmedVolume;
+	int _dimIteration;
+	int _dimPosition;
+
+	uint8 _fadeOutVolume;
+	int _fadeOutIteration;
+
+	void play();
+	void stop();
+	void setVol(uint8 volume);
+
+	bool getNextChunk();
+};
+
+} // End of namespace Tinsel
 
 #endif

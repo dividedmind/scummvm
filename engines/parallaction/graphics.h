@@ -28,6 +28,7 @@
 
 #include "common/list.h"
 #include "common/rect.h"
+#include "common/hashmap.h"
 #include "common/hash-str.h"
 #include "common/stream.h"
 
@@ -124,189 +125,6 @@ public:
 
 };
 
-/*
-	this adapter can handle Surfaces containing multiple frames,
-	provided all these frames are the same width and height
-*/
-struct SurfaceToMultiFrames : public Frames {
-
-	uint _num;
-	uint _width, _height;
-	Graphics::Surface *_surf;
-
-	SurfaceToMultiFrames(uint num, uint w, uint h, Graphics::Surface *surf) : _num(num), _width(w), _height(h), _surf(surf) {
-
-	}
-
-	~SurfaceToMultiFrames() {
-		delete _surf;
-	}
-
-	uint16	getNum() {
-		return _num;
-	}
-	byte*	getData(uint16 index) {
-		assert(index < _num);
-		return (byte*)_surf->getBasePtr(0, _height * index);
-	}
-	void	getRect(uint16 index, Common::Rect &r) {
-		assert(index < _num);
-		r.left = 0;
-		r.top = 0;
-		r.setWidth(_width);
-		r.setHeight(_height);
-	}
-	uint	getRawSize(uint16 index) {
-		assert(index < _num);
-		return getSize(index);
-	}
-	uint	getSize(uint16 index) {
-		assert(index < _num);
-		return _width * _height;
-	}
-
-};
-
-struct MaskBuffer {
-	// handles a 2-bit depth buffer used for z-buffering
-
-	uint16	w;
-	uint16  internalWidth;
-	uint16	h;
-	uint	size;
-	byte	*data;
-	bool	bigEndian;
-
-public:
-	MaskBuffer() : w(0), internalWidth(0), h(0), size(0), data(0), bigEndian(true) {
-	}
-
-	void create(uint16 width, uint16 height) {
-		w = width;
-		internalWidth = w >> 2;
-		h = height;
-		size = (internalWidth * h);
-		data = (byte*)calloc(size, 1);
-	}
-
-	void free() {
-		::free(data);
-		data = 0;
-		w = 0;
-		h = 0;
-		internalWidth = 0;
-		size = 0;
-	}
-
-	inline byte getValue(uint16 x, uint16 y) {
-		byte m = data[(x >> 2) + y * internalWidth];
-		uint n;
-		if (bigEndian) {
-			n = (x & 3) << 1;
-		} else {
-			n = (3 - (x & 3)) << 1;
-		}
-		return (m >> n) & 3;
-	}
-
-	inline byte* getPtr(uint16 x, uint16 y) const {
-		return data + (x >> 2) + y * internalWidth;
-	}
-
-	void bltOr(uint16 dx, uint16 dy, const MaskBuffer &src, uint16 sx, uint16 sy, uint width, uint height) {
-		assert((width <= w) && (width <= src.w) && (height <= h) && (height <= src.h));
-
-		byte *s = src.getPtr(sx, sy);
-		byte *d = getPtr(dx, dy);
-
-		// this code assumes buffers are aligned on 4-pixels boundaries, as the original does
-		uint16 linewidth = width >> 2;
-		for (uint16 i = 0; i < height; i++) {
-			for (uint16 j = 0; j < linewidth; j++) {
-				*d++ |= *s++;
-			}
-			d += internalWidth - linewidth;
-			s += src.internalWidth - linewidth;
-		}
-	}
-
-	void bltCopy(uint16 dx, uint16 dy, const MaskBuffer &src, uint16 sx, uint16 sy, uint width, uint height) {
-		assert((width <= w) && (width <= src.w) && (height <= h) && (height <= src.h));
-
-		byte *s = src.getPtr(sx, sy);
-		byte *d = getPtr(dx, dy);
-
-		// this code assumes buffers are aligned on 4-pixels boundaries, as the original does
-		for (uint16 i = 0; i < height; i++) {
-			memcpy(d, s, (width >> 2));
-			d += internalWidth;
-			s += src.internalWidth;
-		}
-	}
-
-
-};
-
-
-struct PathBuffer {
-	// handles a 1-bit depth buffer used for masking non-walkable areas
-
-	uint16	w;
-	uint16  internalWidth;
-	uint16	h;
-	uint	size;
-	byte	*data;
-
-public:
-	PathBuffer() : w(0), internalWidth(0), h(0), size(0), data(0) {
-	}
-
-	void create(uint16 width, uint16 height) {
-		w = width;
-		internalWidth = w >> 3;
-		h = height;
-		size = (internalWidth * h);
-		data = (byte*)calloc(size, 1);
-	}
-
-	void free() {
-		::free(data);
-		data = 0;
-		w = 0;
-		h = 0;
-		internalWidth = 0;
-		size = 0;
-	}
-
-	inline byte getValue(uint16 x, uint16 y);
-};
-
-
-class Palette {
-
-	byte	_data[768];
-	uint	_colors;
-	uint	_size;
-	bool	_hb;
-
-public:
-	Palette();
-	Palette(const Palette &pal);
-
-	void clone(const Palette &pal);
-
-	void makeBlack();
-	void setEntries(byte* data, uint first, uint num);
-	void getEntry(uint index, int &red, int &green, int &blue);
-	void setEntry(uint index, int red, int green, int blue);
-	void makeGrayscale();
-	void fadeTo(const Palette& target, uint step);
-	uint fillRGBA(byte *rgba);
-
-	void rotate(uint first, uint last, bool forward);
-};
-
-
 struct Cnv : public Frames {
 	uint16	_count;		// # of frames
 	uint16	_width;		//
@@ -328,7 +146,7 @@ public:
 
 	~Cnv() {
 		if (_freeData)
-			free(_data);
+			delete []_data;
 	}
 
 	byte* getFramePtr(uint16 index) {
@@ -360,6 +178,81 @@ public:
 		return _width * _height;
 	}
 
+};
+
+
+struct MaskBuffer {
+	// handles a 2-bit depth buffer used for z-buffering
+
+	uint16	w;
+	uint16  internalWidth;
+	uint16	h;
+	uint	size;
+	byte	*data;
+	bool	bigEndian;
+
+	byte* getPtr(uint16 x, uint16 y) const;
+	void bltOr(uint16 dx, uint16 dy, const MaskBuffer &src, uint16 sx, uint16 sy, uint width, uint height);
+	void bltCopy(uint16 dx, uint16 dy, const MaskBuffer &src, uint16 sx, uint16 sy, uint width, uint height);
+
+public:
+	MaskBuffer();
+	~MaskBuffer();
+
+	void clone(const MaskBuffer &buf);
+	void create(uint16 width, uint16 height);
+	void free();
+
+	byte getValue(uint16 x, uint16 y) const;
+};
+
+
+struct PathBuffer {
+	// handles a 1-bit depth buffer used for masking non-walkable areas
+
+	uint16	w;
+	uint16  internalWidth;
+	uint16	h;
+	uint	size;
+	byte	*data;
+	bool	bigEndian;
+
+	byte* getPtr(uint16 x, uint16 y) const;
+	void bltCopy(uint16 dx, uint16 dy, const PathBuffer &src, uint16 sx, uint16 sy, uint width, uint height);
+
+public:
+	PathBuffer();
+	~PathBuffer();
+
+	void clone(const PathBuffer &buf);
+	void create(uint16 width, uint16 height);
+	void free();
+	byte getValue(uint16 x, uint16 y) const;
+};
+
+
+class Palette {
+
+	byte	_data[768];
+	uint	_colors;
+	uint	_size;
+	bool	_hb;
+
+public:
+	Palette();
+	Palette(const Palette &pal);
+
+	void clone(const Palette &pal);
+
+	void makeBlack();
+	void setEntries(byte* data, uint first, uint num);
+	void getEntry(uint index, int &red, int &green, int &blue);
+	void setEntry(uint index, int red, int green, int blue);
+	void makeGrayscale();
+	void fadeTo(const Palette& target, uint step);
+	uint fillRGBA(byte *rgba);
+
+	void rotate(uint first, uint last, bool forward);
 };
 
 
@@ -415,6 +308,12 @@ public:
 	uint transparentKey;
 	uint scale;
 
+	int	_maskId;
+	bool _hasMask;
+	int _pathId;
+	bool _hasPath;
+
+
 	GfxObj(uint type, Frames *frames, const char *name = NULL);
 	virtual ~GfxObj();
 
@@ -436,8 +335,6 @@ public:
 	void release();
 };
 
-typedef Common::List<GfxObj*> GfxObjList;
-
 #define LAYER_FOREGROUND   3
 
 /*
@@ -446,49 +343,54 @@ typedef Common::List<GfxObj*> GfxObjList;
 	being the most common options.
 */
 struct BackgroundInfo {
-	int x, y;		// used to display bitmaps smaller than the screen
+protected:
+	typedef Common::Array<MaskBuffer*> MaskPatches;
+	MaskPatches 	_maskPatches;
+	MaskBuffer		_maskBackup;
+	void clearMaskData();
+
+	typedef Common::Array<PathBuffer*> PathPatches;
+	PathPatches 	_pathPatches;
+	PathBuffer		_pathBackup;
+	void clearPathData();
+
+public:
+	int _x, _y;		// used to display bitmaps smaller than the screen
 	int width;
 	int height;
 
 	Graphics::Surface	bg;
-	MaskBuffer			mask;
-	PathBuffer			path;
+	MaskBuffer			*_mask;
+	PathBuffer			*_path;
 
 	Palette				palette;
 
 	int 				layers[4];
 	PaletteFxRange		ranges[6];
 
-	bool				hasMask;
 
-	BackgroundInfo() : x(0), y(0), width(0), height(0), hasMask(false) {
-		layers[0] = layers[1] = layers[2] = layers[3] = 0;
-		memset(ranges, 0, sizeof(ranges));
-	}
+	BackgroundInfo();
+	~BackgroundInfo();
 
-	void setPaletteRange(int index, const PaletteFxRange& range) {
-		assert(index < 6);
-		memcpy(&ranges[index], &range, sizeof(PaletteFxRange));
-	}
+	void setPaletteRange(int index, const PaletteFxRange& range);
 
-	uint16 getLayer(uint16 z) {
-		for (uint16 i = 0; i < 3; i++) {
-			if (layers[i+1] > z) return i;
-		}
-		return LAYER_FOREGROUND;
-	}
+	// mask management
+	bool hasMask();
+	uint addMaskPatch(MaskBuffer *patch);
+	void toggleMaskPatch(uint id, int x, int y, bool apply);
+	uint16 getMaskLayer(uint16 z) const;
+	void finalizeMask();
+	void loadGfxObjMask(const char *name, GfxObj *obj);
 
-	~BackgroundInfo() {
-		bg.free();
-		mask.free();
-		path.free();
-		x = 0;
-		y = 0;
-		width = 0;
-		height = 0;
-	}
-
+	// path management
+	bool hasPath();
+	uint addPathPatch(PathBuffer *patch);
+	void togglePathPatch(uint id, int x, int y, bool apply);
+	void finalizePath();
+	void loadGfxObjPath(const char *name, GfxObj *obj);
 };
+
+
 
 
 enum {
@@ -507,16 +409,17 @@ public:
 
 	virtual ~BalloonManager() { }
 
-	virtual void freeBalloons() = 0;
-	virtual int setLocationBalloon(char *text, bool endGame) = 0;
-	virtual int setDialogueBalloon(char *text, uint16 winding, TextColor textColor) = 0;
-	virtual int setSingleBalloon(char *text, uint16 x, uint16 y, uint16 winding, TextColor textColor) = 0;
-	virtual void setBalloonText(uint id, char *text, TextColor textColor) = 0;
+	virtual void reset() = 0;
+	virtual int setLocationBalloon(const char *text, bool endGame) = 0;
+	virtual int setDialogueBalloon(const char *text, uint16 winding, TextColor textColor) = 0;
+	virtual int setSingleBalloon(const char *text, uint16 x, uint16 y, uint16 winding, TextColor textColor) = 0;
+	virtual void setBalloonText(uint id, const char *text, TextColor textColor) = 0;
 	virtual int hitTestDialogueBalloon(int x, int y) = 0;
 };
 
 
-typedef Common::HashMap<Common::String, int32, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo> VarMap;
+typedef Common::Array<GfxObj*> GfxObjArray;
+
 
 class Gfx {
 
@@ -525,17 +428,19 @@ protected:
 
 public:
 	Disk *_disk;
-	VarMap _vars;
 
-	GfxObjList _gfxobjList;
+	GfxObjArray _sceneObjects;
 	GfxObj* loadAnim(const char *name);
 	GfxObj* loadGet(const char *name);
 	GfxObj* loadDoor(const char *name);
-	void drawGfxObjects(Graphics::Surface &surf);
+	GfxObj* loadCharacterAnim(const char *name);
+	void freeCharacterObjects();
+	void freeLocationObjects();
 	void showGfxObj(GfxObj* obj, bool visible);
 	void clearGfxObjects(uint filter);
-	void sortAnimations();
-
+	void sortScene();
+    void blt(const Common::Rect& r, byte *data, Graphics::Surface *surf, uint16 z, uint scale, byte transparentColor);
+	void unpackBlt(const Common::Rect& r, byte *data, uint size, Graphics::Surface *surf, uint16 z, uint scale, byte transparentColor);
 
 	// labels
 	void showFloatingLabel(uint label);
@@ -547,16 +452,11 @@ public:
 	void hideLabel(uint id);
 	void freeLabels();
 
-	// dialogue balloons
+	// dialogue handling
 	GfxObj* registerBalloon(Frames *frames, const char *text);
-	void destroyBalloons();
-
-	// other items
 	int setItem(GfxObj* obj, uint16 x, uint16 y, byte transparentColor = 0);
 	void setItemFrame(uint item, uint16 f);
-	void hideDialogueStuff();
-	void freeBalloons();
-	void freeItems();
+	void freeDialogueObjects();
 
 	// background surface
 	BackgroundInfo	*_backgroundInfo;
@@ -565,7 +465,6 @@ public:
 	void grabBackground(const Common::Rect& r, Graphics::Surface &dst);
 	void fillBackground(const Common::Rect& r, byte color);
 	void invertBackground(const Common::Rect& r);
-	void freeBackground();
 
 	// palette
 	void setPalette(Palette palette);
@@ -573,21 +472,18 @@ public:
 	void animatePalette();
 
 	// amiga specific
+	void applyHalfbriteEffect_NS(Graphics::Surface &surf);
 	void setHalfbriteMode(bool enable);
 	void setProjectorPos(int x, int y);
 	void setProjectorProgram(int16 *data);
 	int16 *_nextProjectorPos;
 
+	int getScrollPos();
+	void setScrollPos(int scrollX);
 
 	// init
 	Gfx(Parallaction* vm);
 	virtual ~Gfx();
-
-	void beginFrame();
-
-	void registerVar(const Common::String &name, int32 initialValue);
-	void setVar(const Common::String &name, int32 value);
-	int32 getVar(const Common::String &name);
 
 	void clearScreen();
 	void updateScreen();
@@ -595,15 +491,10 @@ public:
 public:
 	Palette				_palette;
 
-	uint				_screenX;		// scrolling position
-	uint				_screenY;
-
 	byte				*_unpackedBitmap;
 
 protected:
 	bool				_halfbrite;
-
-	bool 				_skipBackground;
 
 	Common::Point		_hbCirclePos;
 	int				_hbCircleRadius;
@@ -611,48 +502,37 @@ protected:
 	// BRA specific
 	Palette				_backupPal;
 
-	// frame data stored in programmable variables
-	int32				_varBackgroundMode;	// 1 = normal, 2 = only mask
-	int32				_varScrollX;
-	int32				_varAnimRenderMode;	// 1 = normal, 2 = flat
-	int32				_varMiscRenderMode;	// 1 = normal, 2 = flat
-	int32				_varRenderMode;
-	int32				_varDrawPathZones;	// 0 = don't draw, 1 = draw
-	Graphics::Surface 	_bitmapMask;
-	int32 				getRenderMode(const char *type);
 
-public:
+	Graphics::Surface	*lockScreen();
+	void				unlockScreen();
+	void 				updateScreenIntern();
 
-	struct Item {
-		GfxObj *data;
-	} _items[14];
+	bool				_doubleBuffering;
+	int					_gameType;
+	Graphics::Surface	_backBuffer;
+	void 				copyRectToScreen(const byte *buf, int pitch, int x, int y, int w, int h);
 
-	uint	_numItems;
+	int					_scrollPos;
+	int					_minScroll, _maxScroll;
 
-	#define MAX_NUM_LABELS	20
 	#define NO_FLOATING_LABEL	1000
 
-	typedef Common::Array<GfxObj*> GfxObjArray;
 	GfxObjArray	_labels;
 	GfxObjArray _balloons;
+	GfxObjArray	_items;
 
 	uint _floatingLabel;
 
-	void drawInventory();
+	// overlay mode enables drawing of graphics with automatic screen-to-game coordinate translation
+	bool				_overlayMode;
+	void				drawOverlay(Graphics::Surface &surf);
+	void 				drawInventory();
+
+	void drawList(Graphics::Surface &surface, GfxObjArray &list);
 	void updateFloatingLabel();
-	void drawLabels();
-	void drawItems();
-	void drawBalloons();
-
 	void copyRect(const Common::Rect &r, Graphics::Surface &src, Graphics::Surface &dst);
-
-	// low level text and patches
 	void drawText(Font *font, Graphics::Surface* surf, uint16 x, uint16 y, const char *text, byte color);
-
-	void drawGfxObject(GfxObj *obj, Graphics::Surface &surf, bool scene);
-    void blt(const Common::Rect& r, byte *data, Graphics::Surface *surf, uint16 z, uint scale, byte transparentColor);
-	void unpackBlt(const Common::Rect& r, byte *data, uint size, Graphics::Surface *surf, uint16 z, uint scale, byte transparentColor);
-
+	void drawGfxObject(GfxObj *obj, Graphics::Surface &surf);
 	void bltMaskScale(const Common::Rect& r, byte *data, Graphics::Surface *surf, uint16 z, uint scale, byte transparentColor);
 	void bltMaskNoScale(const Common::Rect& r, byte *data, Graphics::Surface *surf, uint16 z, byte transparentColor);
 	void bltNoMaskNoScale(const Common::Rect& r, byte *data, Graphics::Surface *surf, byte transparentColor);

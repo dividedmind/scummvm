@@ -25,6 +25,7 @@
 
 
 #include "common/md5.h"
+#include "common/events.h"
 #include "common/file.h"
 #include "common/savefile.h"
 #include "common/config-manager.h"
@@ -629,16 +630,16 @@ AgiEngine::AgiEngine(OSystem *syst, const AGIGameDescription *gameDesc) : AgiBas
 	_rnd = new Common::RandomSource();
 	syst->getEventManager()->registerRandomSource(*_rnd, "agi");
 
-	Common::addSpecialDebugLevel(kDebugLevelMain, "Main", "Generic debug level");
-	Common::addSpecialDebugLevel(kDebugLevelResources, "Resources", "Resources debugging");
-	Common::addSpecialDebugLevel(kDebugLevelSprites, "Sprites", "Sprites debugging");
-	Common::addSpecialDebugLevel(kDebugLevelInventory, "Inventory", "Inventory debugging");
-	Common::addSpecialDebugLevel(kDebugLevelInput, "Input", "Input events debugging");
-	Common::addSpecialDebugLevel(kDebugLevelMenu, "Menu", "Menu debugging");
-	Common::addSpecialDebugLevel(kDebugLevelScripts, "Scripts", "Scripts debugging");
-	Common::addSpecialDebugLevel(kDebugLevelSound, "Sound", "Sound debugging");
-	Common::addSpecialDebugLevel(kDebugLevelText, "Text", "Text output debugging");
-	Common::addSpecialDebugLevel(kDebugLevelSavegame, "Savegame", "Saving & restoring game debugging");
+	Common::addDebugChannel(kDebugLevelMain, "Main", "Generic debug level");
+	Common::addDebugChannel(kDebugLevelResources, "Resources", "Resources debugging");
+	Common::addDebugChannel(kDebugLevelSprites, "Sprites", "Sprites debugging");
+	Common::addDebugChannel(kDebugLevelInventory, "Inventory", "Inventory debugging");
+	Common::addDebugChannel(kDebugLevelInput, "Input", "Input events debugging");
+	Common::addDebugChannel(kDebugLevelMenu, "Menu", "Menu debugging");
+	Common::addDebugChannel(kDebugLevelScripts, "Scripts", "Scripts debugging");
+	Common::addDebugChannel(kDebugLevelSound, "Sound", "Sound debugging");
+	Common::addDebugChannel(kDebugLevelText, "Text", "Text output debugging");
+	Common::addDebugChannel(kDebugLevelSavegame, "Savegame", "Saving & restoring game debugging");
 
 
 	memset(&_game, 0, sizeof(struct AgiGame));
@@ -778,22 +779,19 @@ AgiEngine::~AgiEngine() {
 	free(_predictiveDictText);
 }
 
-int AgiBase::init() {
+Common::Error AgiBase::init() {
 
 	// Initialize backend
-	_system->beginGFXTransaction();
-	initCommonGFX(false);
-	_system->initSize(320, 200);
-	_system->endGFXTransaction();
+	initGraphics(320, 200, false);
 
 	initialize();
 
 	_gfx->gfxSetPalette();
 
-	return 0;
+	return Common::kNoError;
 }
 
-int AgiEngine::go() {
+Common::Error AgiEngine::go() {
 	CursorMan.showMouse(true);
 
 	report(" \nAGI engine %s is ready.\n", gScummVMVersion);
@@ -807,7 +805,7 @@ int AgiEngine::go() {
 
 	runGame();
 
-	return 0;
+	return Common::kNoError;
 }
 
 void AgiEngine::syncSoundSettings() {

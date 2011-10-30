@@ -146,11 +146,11 @@ void MidiDriver_SEQ::send(uint32 b) {
 }
 
 void MidiDriver_SEQ::sysEx (const byte *msg, uint16 length) {
-	unsigned char buf [1024];
+	unsigned char buf [266*4];
 	int position = 0;
 	const byte *chr = msg;
 
-	assert(length + 2 <= 256);
+	assert(length + 2 <= 266);
 
 	buf[position++] = SEQ_MIDIPUTC;
 	buf[position++] = 0xF0;
@@ -184,7 +184,7 @@ public:
 	}
 
 	MusicDevices getDevices() const;
-	PluginError createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const;
+	Common::Error createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const;
 };
 
 MusicDevices SeqMusicPlugin::getDevices() const {
@@ -195,10 +195,10 @@ MusicDevices SeqMusicPlugin::getDevices() const {
 	return devices;
 }
 
-PluginError SeqMusicPlugin::createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const {
+Common::Error SeqMusicPlugin::createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const {
 	*mididriver = new MidiDriver_SEQ();
 
-	return kNoError;
+	return Common::kNoError;
 }
 
 MidiDriver *MidiDriver_SEQ_create(Audio::Mixer *mixer) {

@@ -185,7 +185,7 @@ bool VQAMovie::open(const char *filename) {
 	debugC(9, kDebugLevelMovie, "VQAMovie::open('%s')", filename);
 	close();
 
-	_file = _vm->resource()->getFileStream(filename);
+	_file = _vm->resource()->createReadStream(filename);
 	if (!_file)
 		return false;
 
@@ -657,7 +657,7 @@ void VQAMovie::play() {
 
 			if (_vm->_mixer->isSoundHandleActive(_sound))
 				elapsedTime = _vm->_mixer->getSoundElapsedTime(_sound);
-			else 
+			else
 				elapsedTime = _system->getMillis() - startTick;
 
 			if (elapsedTime >= (i * 1000) / _header.frameRate)

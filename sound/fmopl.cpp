@@ -179,7 +179,8 @@ static int *VIB_TABLE;
 /* envelope output curve table */
 /* attack + decay + OFF */
 //static int ENV_CURVE[2*EG_ENT+1];
-static int ENV_CURVE[2 * 4096 + 1];   // to keep it static ...
+//static int ENV_CURVE[2 * 4096 + 1];   // to keep it static ...
+static int *ENV_CURVE;
 
 
 /* multiple table */
@@ -233,10 +234,10 @@ void OPLBuildTables(int ENV_BITS_PARAM, int EG_ENT_PARAM) {
 	EG_AED = EG_DST;
 	//EG_STEP = (96.0/EG_ENT);
 
-	for (i = 0; i < (int)(sizeof(KSL_TABLE_SEED) / sizeof(double)); i++)
+	for (i = 0; i < ARRAYSIZE(KSL_TABLE_SEED); i++)
 		KSL_TABLE[i] = SC_KSL(KSL_TABLE_SEED[i]);
 
-	for (i = 0; i < (int)(sizeof(SL_TABLE_SEED) / sizeof(uint)); i++)
+	for (i = 0; i < ARRAYSIZE(SL_TABLE_SEED); i++)
 		SL_TABLE[i] = SC_SL(SL_TABLE_SEED[i]);
 }
 
@@ -244,15 +245,6 @@ void OPLBuildTables(int ENV_BITS_PARAM, int EG_ENT_PARAM) {
 #undef SC_SL
 
 /* --------------------- subroutines  --------------------- */
-
-inline int Limit(int val, int max, int min) {
-	if ( val > max )
-		val = max;
-	else if ( val < min )
-		val = min;
-
-	return val;
-}
 
 /* status set and IRQ handling */
 inline void OPL_STATUS_SET(FM_OPL *OPL, int flag) {
@@ -692,6 +684,9 @@ static int OPLOpenTable(void) {
 		SIN_TABLE[SIN_ENT * 3 + s] = (s / (SIN_ENT / 4)) & 1 ? &TL_TABLE[EG_ENT] : SIN_TABLE[SIN_ENT * 2 + s];
 	}
 
+
+	ENV_CURVE = (int *)malloc(sizeof(int) * (2*EG_ENT+1));
+
 	/* envelope counter -> envelope output table */
 	for (i=0; i < EG_ENT; i++) {
 		/* ATTACK curve */
@@ -724,6 +719,7 @@ static void OPLCloseTable(void) {
 	free(SIN_TABLE);
 	free(AMS_TABLE);
 	free(VIB_TABLE);
+	free(ENV_CURVE);
 }
 
 /* CSM Key Controll */
@@ -1022,7 +1018,7 @@ void YM3812UpdateOne(FM_OPL *OPL, int16 *buffer, int length) {
 		if(rythm)
 			OPL_CALC_RH(OPL, S_CH);
 		/* limit check */
-		data = Limit(outd[0], OPL_MAXOUT, OPL_MINOUT);
+		data = CLIP(outd[0], OPL_MINOUT, OPL_MAXOUT);
 		/* store to sound buffer */
 		buf[i] = data >> OPL_OUTSB;
 	}

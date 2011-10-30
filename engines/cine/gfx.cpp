@@ -329,7 +329,7 @@ void FWRenderer::drawPlainBox(int x, int y, int width, int height, byte color) {
 	Common::Rect screenRect(320, 200);
 	boxRect.clip(screenRect);
 
-	// Draw the filled rectangle	
+	// Draw the filled rectangle
 	byte *dest = _backBuffer + boxRect.top * 320 + boxRect.left;
 	for (int i = 0; i < boxRect.height(); i++) {
 		memset(dest + i * 320, color, boxRect.width());
@@ -556,10 +556,9 @@ void FWRenderer::refreshPalette() {
 	assert(_activeLowPal);
 
 	for (i = 0; i < 16; i++) {
-		// This seems to match the output from DOSbox.
-		pal[i * 4 + 2] = ((_activeLowPal[i] & 0x00f) >> 0) * 32;
-		pal[i * 4 + 1] = ((_activeLowPal[i] & 0x0f0) >> 4) * 32;
-		pal[i * 4 + 0] = ((_activeLowPal[i] & 0xf00) >> 8) * 32;
+		pal[i * 4 + 2] = ((_activeLowPal[i] & 0x007) >> 0) * 32;
+		pal[i * 4 + 1] = ((_activeLowPal[i] & 0x070) >> 4) * 32;
+		pal[i * 4 + 0] = ((_activeLowPal[i] & 0x700) >> 8) * 32;
 		pal[i * 4 + 3] = 0;
 	}
 
@@ -585,7 +584,8 @@ void FWRenderer::reloadPalette() {
 /*! \brief Load background into renderer
  * \param bg Raw background data
  */
-void FWRenderer::loadBg16(const byte *bg, const char *name) {
+void FWRenderer::loadBg16(const byte *bg, const char *name, unsigned int idx) {
+	assert(idx == 0);
 	int i;
 
 	if (!_background) {
@@ -609,20 +609,8 @@ void FWRenderer::loadBg16(const byte *bg, const char *name) {
 
 /*! \brief Placeholder for Operation Stealth implementation
  */
-void FWRenderer::loadBg16(const byte *bg, const char *name, unsigned int idx) {
-	error("Future Wars renderer doesn't support multiple backgrounds");
-}
-
-/*! \brief Placeholder for Operation Stealth implementation
- */
 void FWRenderer::loadCt16(const byte *ct, const char *name) {
 	error("Future Wars renderer doesn't support multiple backgrounds");
-}
-
-/*! \brief Placeholder for Operation Stealth implementation
- */
-void FWRenderer::loadBg256(const byte *bg, const char *name) {
-	error("Future Wars renderer doesn't support 256 color mode");
 }
 
 /*! \brief Placeholder for Operation Stealth implementation
@@ -980,19 +968,15 @@ void OSRenderer::clear() {
  */
 void OSRenderer::incrustMask(const objectStruct &obj, uint8 color) {
 	const byte *data = animDataTable[obj.frame].data();
-	int x, y, width, height, i;
+	int x, y, width, height;
 
 	x = obj.x;
 	y = obj.y;
 	width = animDataTable[obj.frame]._realWidth;
 	height = animDataTable[obj.frame]._height;
 
-	for (i = 0; i < 8; i++) {
-		if (!_bgTable[i].bg) {
-			continue;
-		}
-
-		gfxFillSprite(data, width, height, _bgTable[i].bg, x, y, color);
+	if (_bgTable[_currentBg].bg) {
+		gfxFillSprite(data, width, height, _bgTable[_currentBg].bg, x, y, color);
 	}
 }
 
@@ -1017,7 +1001,7 @@ void OSRenderer::drawSprite(const objectStruct &obj) {
  */
 void OSRenderer::incrustSprite(const objectStruct &obj) {
 	const byte *data = animDataTable[obj.frame].data();
-	int x, y, width, height, transColor, i;
+	int x, y, width, height, transColor;
 
 	x = obj.x;
 	y = obj.y;
@@ -1025,12 +1009,8 @@ void OSRenderer::incrustSprite(const objectStruct &obj) {
 	width = animDataTable[obj.frame]._realWidth;
 	height = animDataTable[obj.frame]._height;
 
-	for (i = 0; i < 8; i++) {
-		if (!_bgTable[i].bg) {
-			continue;
-		}
-
-		drawSpriteRaw2(data, transColor, width, height, _bgTable[i].bg, x, y);
+	if (_bgTable[_currentBg].bg) {
+		drawSpriteRaw2(data, transColor, width, height, _bgTable[_currentBg].bg, x, y);
 	}
 }
 
@@ -1112,7 +1092,7 @@ void OSRenderer::renderOverlay(const Common::List<overlay>::iterator &it) {
 		}
 
 		_messageLen += messageTable[it->objIdx].size();
-		drawMessage(messageTable[it->objIdx].c_str(), it->x, it->y, it->width, it->color);		
+		drawMessage(messageTable[it->objIdx].c_str(), it->x, it->y, it->width, it->color);
 		if (it->color >= 0) { // This test isn't in Future Wars's implementation
 			waitForPlayerClick = 1;
 		}
@@ -1289,14 +1269,6 @@ void OSRenderer::transformPalette(int first, int last, int r, int g, int b) {
 /*! \brief Load 16 color background into renderer
  * \param bg Raw background data
  * \param name Background filename
- */
-void OSRenderer::loadBg16(const byte *bg, const char *name) {
-	loadBg16(bg, name, 0);
-}
-
-/*! \brief Load 16 color background into renderer
- * \param bg Raw background data
- * \param name Background filename
  * \param pos Background index
  */
 void OSRenderer::loadBg16(const byte *bg, const char *name, unsigned int idx) {
@@ -1331,14 +1303,6 @@ void OSRenderer::loadBg16(const byte *bg, const char *name, unsigned int idx) {
  */
 void OSRenderer::loadCt16(const byte *ct, const char *name) {
 	loadBg16(ct, name, 8);
-}
-
-/*! \brief Load 256 color background into renderer
- * \param bg Raw background data
- * \param name Background filename
- */
-void OSRenderer::loadBg256(const byte *bg, const char *name) {
-	loadBg256(bg, name, 0);
 }
 
 /*! \brief Load 256 color background into renderer

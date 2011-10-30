@@ -55,9 +55,9 @@ Inter::Inter(GobEngine *vm) : _vm(vm) {
 	_soundEndTimeKey = 0;
 	_soundStopVal = 0;
 
-	memset(_pasteBuf, 0, 300);
-	memset(_pasteSizeBuf, 0, 300);
-	_pastePos = 0;
+	memset(_varStack, 0, 300);
+	memset(_varSizesStack, 0, 300);
+	_varStackPos = 0;
 
 	_noBusyWait = false;
 
@@ -184,6 +184,25 @@ void Inter::storeKey(int16 key) {
 		_vm->_util->clearKeyBuf();
 }
 
+void Inter::writeVar(uint32 offset, uint16 type, uint32 value) {
+	switch (type) {
+	case 16:
+	case 18:
+		WRITE_VARO_UINT8(offset, value);
+		break;
+
+	case 17:
+	case 24:
+	case 27:
+		WRITE_VARO_UINT16(offset, value);
+		break;
+
+	default:
+		WRITE_VAR_OFFSET(offset, value);
+		break;
+	}
+}
+
 void Inter::funcBlock(int16 retFlag) {
 	OpFuncParams params;
 	byte cmd;
@@ -259,7 +278,7 @@ void Inter::funcBlock(int16 retFlag) {
 		if (executeFuncOpcode(cmd2, cmd, params))
 			return;
 
-		if (_vm->quit())
+		if (_vm->shouldQuit())
 			break;
 
 		if (_break) {
@@ -279,7 +298,7 @@ void Inter::funcBlock(int16 retFlag) {
 void Inter::callSub(int16 retFlag) {
 	byte block;
 
-	while (!_vm->quit() && _vm->_global->_inter_execPtr &&
+	while (!_vm->shouldQuit() && _vm->_global->_inter_execPtr &&
 			(_vm->_global->_inter_execPtr != _vm->_game->_totFileData)) {
 
 		block = *_vm->_global->_inter_execPtr;

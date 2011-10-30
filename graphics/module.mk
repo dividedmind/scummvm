@@ -2,7 +2,7 @@ MODULE := graphics
 
 MODULE_OBJS := \
 	cursorman.o \
-	dxa_player.o \
+	dither.o \
 	font.o \
 	fontman.o \
 	fonts/consolefont.o \
@@ -11,13 +11,18 @@ MODULE_OBJS := \
 	fonts/scummfont.o \
 	iff.o \
 	imagedec.o \
-	imageman.o \
-	mpeg_player.o \
 	primitives.o \
 	scaler.o \
 	scaler/thumbnail_intern.o \
 	surface.o \
-	thumbnail.o
+	thumbnail.o \
+	VectorRenderer.o \
+	VectorRendererSpec.o \
+	video/dxa_player.o \
+	video/flic_player.o \
+	video/mpeg_player.o \
+	video/smk_player.o \
+	video/video_player.o
 
 ifndef DISABLE_SCALERS
 MODULE_OBJS += \

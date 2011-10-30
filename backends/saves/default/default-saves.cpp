@@ -25,44 +25,19 @@
 
 #if !defined(DISABLE_DEFAULT_SAVEFILEMANAGER)
 
+#include "backends/saves/default/default-saves.h"
+
 #include "common/savefile.h"
 #include "common/util.h"
 #include "common/fs.h"
+#include "common/archive.h"
 #include "common/config-manager.h"
-#include "backends/saves/default/default-saves.h"
-#include "backends/saves/compressed/compressed-saves.h"
+#include "common/zlib.h"
 
-#include <stdio.h>
-#include <string.h>
-#include <errno.h>
+#include <errno.h>	// for removeSavefile()
 
-#if defined(UNIX)
-#include <sys/stat.h>
-#endif
-
-#ifdef UNIX
-#ifdef MACOSX
-#define DEFAULT_SAVE_PATH "Documents/ScummVM Savegames"
-#else
-#define DEFAULT_SAVE_PATH ".scummvm"
-#endif
-#endif
 
 DefaultSaveFileManager::DefaultSaveFileManager() {
-	// Register default savepath
-	// TODO: Remove this code here, and instead leave setting the
-	// default savepath to the ports using this class.
-#ifdef DEFAULT_SAVE_PATH
-	Common::String savePath;
-#if defined(UNIX) && !defined(IPHONE)
-	const char *home = getenv("HOME");
-	if (home && *home && strlen(home) < MAXPATHLEN) {
-		savePath = home;
-		savePath += "/" DEFAULT_SAVE_PATH;
-		ConfMan.registerDefault("savepath", savePath);
-	}
-#endif
-#endif // #ifdef DEFAULT_SAVE_PATH
 }
 
 DefaultSaveFileManager::DefaultSaveFileManager(const Common::String &defaultSavepath) {
@@ -70,144 +45,85 @@ DefaultSaveFileManager::DefaultSaveFileManager(const Common::String &defaultSave
 }
 
 
+void DefaultSaveFileManager::checkPath(const Common::FSNode &dir) {
+	clearError();
+	if (!dir.exists()) {
+		setError(Common::kPathDoesNotExist, "The savepath '"+dir.getPath()+"' does not exist");
+	} else if (!dir.isDirectory()) {
+		setError(Common::kPathNotDirectory, "The savepath '"+dir.getPath()+"' is not a directory");
+	}
+}
+
 Common::StringList DefaultSaveFileManager::listSavefiles(const char *pattern) {
-	Common::FilesystemNode savePath(getSavePath());
-	Common::FSList savefiles;
+	Common::FSNode savePath(getSavePath());
+	checkPath(savePath);
+	if (getError() != Common::kNoError)
+		return Common::StringList();
+
+	Common::FSDirectory dir(savePath);
+	Common::ArchiveMemberList savefiles;
 	Common::StringList results;
 	Common::String search(pattern);
 
-	if (savePath.lookupFile(savefiles, search, false, true, 0)) {
-		for (Common::FSList::const_iterator file = savefiles.begin(); file != savefiles.end(); ++file) {
-			results.push_back(file->getName());
+	if (dir.listMatchingMembers(savefiles, search) > 0) {
+		for (Common::ArchiveMemberList::const_iterator file = savefiles.begin(); file != savefiles.end(); ++file) {
+			results.push_back((*file)->getName());
 		}
 	}
 
 	return results;
 }
 
-void DefaultSaveFileManager::checkPath(const Common::FilesystemNode &dir) {
-	const Common::String path = dir.getPath();
-	clearError();
-
-#if defined(UNIX)
-	struct stat sb;
-
-	// Check whether the dir exists
-	if (stat(path.c_str(), &sb) == -1) {
-		// The dir does not exist, or stat failed for some other reason.
-		// If the problem was that the path pointed to nothing, try
-		// to create the dir (ENOENT case).
-		switch (errno) {
-		case EACCES:
-			setError(SFM_DIR_ACCESS, "Search or write permission denied: "+path);
-			break;
-		case ELOOP:
-			setError(SFM_DIR_LOOP, "Too many symbolic links encountered while traversing the path: "+path);
-			break;
-		case ENAMETOOLONG:
-			setError(SFM_DIR_NAMETOOLONG, "The path name is too long: "+path);
-			break;
-		case ENOENT:
-			if (mkdir(path.c_str(), 0755) != 0) {
-				// mkdir could fail for various reasons: The parent dir doesn't exist,
-				// or is not writeable, the path could be completly bogus, etc.
-				warning("mkdir for '%s' failed!", path.c_str());
-				perror("mkdir");
-
-				switch (errno) {
-				case EACCES:
-					setError(SFM_DIR_ACCESS, "Search or write permission denied: "+path);
-					break;
-				case EMLINK:
-					setError(SFM_DIR_LINKMAX, "The link count of the parent directory would exceed {LINK_MAX}: "+path);
-					break;
-				case ELOOP:
-					setError(SFM_DIR_LOOP, "Too many symbolic links encountered while traversing the path: "+path);
-					break;
-				case ENAMETOOLONG:
-					setError(SFM_DIR_NAMETOOLONG, "The path name is too long: "+path);
-					break;
-				case ENOENT:
-					setError(SFM_DIR_NOENT, "A component of the path does not exist, or the path is an empty string: "+path);
-					break;
-				case ENOTDIR:
-					setError(SFM_DIR_NOTDIR, "A component of the path prefix is not a directory: "+path);
-					break;
-				case EROFS:
-					setError(SFM_DIR_ROFS, "The parent directory resides on a read-only file system:"+path);
-					break;
-				}
-			}
-			break;
-		case ENOTDIR:
-			setError(SFM_DIR_NOTDIR, "A component of the path prefix is not a directory: "+path);
-			break;
-		}
-	} else {
-		// So stat() succeeded. But is the path actually pointing to a directory?
-		if (!S_ISDIR(sb.st_mode)) {
-			setError(SFM_DIR_NOTDIR, "The given savepath is not a directory: "+path);
-		}
-	}
-#else
-	if (!dir.exists()) {
-		// TODO: We could try to mkdir the directory here; or rather, we could
-		// add a mkdir method to FilesystemNode and invoke that here.
-		setError(SFM_DIR_NOENT, "A component of the path does not exist, or the path is an empty string: "+path);
-	} else if (!dir.isDirectory()) {
-		setError(SFM_DIR_NOTDIR, "The given savepath is not a directory: "+path);
-	}
-#endif
-}
-
 Common::InSaveFile *DefaultSaveFileManager::openForLoading(const char *filename) {
 	// Ensure that the savepath is valid. If not, generate an appropriate error.
-	Common::FilesystemNode savePath(getSavePath());
+	Common::FSNode savePath(getSavePath());
 	checkPath(savePath);
-
-	if (getError() == SFM_NO_ERROR) {
-		Common::FilesystemNode file = savePath.getChild(filename);
-
-		// Open the file for reading
-		Common::SeekableReadStream *sf = file.openForReading();
-
-		return wrapInSaveFile(sf);
-	} else {
+	if (getError() != Common::kNoError)
 		return 0;
-	}
+
+	Common::FSNode file = savePath.getChild(filename);
+
+	// Open the file for reading
+	Common::SeekableReadStream *sf = file.createReadStream();
+
+	return Common::wrapCompressedReadStream(sf);
 }
 
 Common::OutSaveFile *DefaultSaveFileManager::openForSaving(const char *filename) {
 	// Ensure that the savepath is valid. If not, generate an appropriate error.
-	Common::FilesystemNode savePath(getSavePath());
+	Common::FSNode savePath(getSavePath());
 	checkPath(savePath);
-
-	if (getError() == SFM_NO_ERROR) {
-		Common::FilesystemNode file = savePath.getChild(filename);
-
-		// Open the file for saving
-		Common::WriteStream *sf = file.openForWriting();
-
-		return wrapOutSaveFile(sf);
-	} else {
+	if (getError() != Common::kNoError)
 		return 0;
-	}
+
+	Common::FSNode file = savePath.getChild(filename);
+
+	// Open the file for saving
+	Common::WriteStream *sf = file.createWriteStream();
+
+	return Common::wrapCompressedWriteStream(sf);
 }
 
 bool DefaultSaveFileManager::removeSavefile(const char *filename) {
 	clearError();
 
-	Common::FilesystemNode savePath(getSavePath());
-	Common::FilesystemNode file = savePath.getChild(filename);
+	Common::FSNode savePath(getSavePath());
+	checkPath(savePath);
+	if (getError() != Common::kNoError)
+		return false;
 
-	// TODO: Add new method FilesystemNode::remove()
+	Common::FSNode file = savePath.getChild(filename);
+
+	// FIXME: remove does not exist on all systems. If your port fails to
+	// compile because of this, please let us know (scummvm-devel or Fingolfin).
+	// There is a nicely portable workaround, too: Make this method overloadable.
 	if (remove(file.getPath().c_str()) != 0) {
 #ifndef _WIN32_WCE
 		if (errno == EACCES)
-			setError(SFM_DIR_ACCESS, "Search or write permission denied: "+file.getName());
+			setError(Common::kWritePermissionDenied, "Search or write permission denied: "+file.getName());
 
 		if (errno == ENOENT)
-			setError(SFM_DIR_NOENT, "A component of the path does not exist, or the path is an empty string: "+file.getName());
+			setError(Common::kPathDoesNotExist, "removeSavefile: '"+file.getName()+"' does not exist or path is invalid");
 #endif
 		return false;
 	} else {

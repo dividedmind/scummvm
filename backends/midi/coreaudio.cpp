@@ -190,9 +190,9 @@ void MidiDriver_CORE::send(uint32 b) {
 }
 
 void MidiDriver_CORE::sysEx(const byte *msg, uint16 length) {
-	unsigned char buf[256];
+	unsigned char buf[266];
 
-	assert(length + 2 <= 256);
+	assert(length + 2 <= ARRAYSIZE(buf));
 	assert(_auGraph != NULL);
 
 	// Add SysEx frame
@@ -218,7 +218,7 @@ public:
 	}
 
 	MusicDevices getDevices() const;
-	PluginError createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const;
+	Common::Error createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const;
 };
 
 MusicDevices CoreAudioMusicPlugin::getDevices() const {
@@ -229,10 +229,10 @@ MusicDevices CoreAudioMusicPlugin::getDevices() const {
 	return devices;
 }
 
-PluginError CoreAudioMusicPlugin::createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const {
+Common::Error CoreAudioMusicPlugin::createInstance(Audio::Mixer *mixer, MidiDriver **mididriver) const {
 	*mididriver = new MidiDriver_CORE();
 
-	return kNoError;
+	return Common::kNoError;
 }
 
 MidiDriver *MidiDriver_CORE_create(Audio::Mixer *mixer) {

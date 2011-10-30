@@ -23,8 +23,6 @@
  *
  */
 
-
-
 #include "common/config-manager.h"
 #include "common/system.h"
 #include "common/savefile.h"
@@ -42,29 +40,27 @@ static LureEngine *int_engine = NULL;
 
 LureEngine::LureEngine(OSystem *system, const LureGameDescription *gameDesc): Engine(system), _gameDescription(gameDesc) {
 
-	Common::addSpecialDebugLevel(kLureDebugScripts, "scripts", "Scripts debugging");
-	Common::addSpecialDebugLevel(kLureDebugAnimations, "animations", "Animations debugging");
-	Common::addSpecialDebugLevel(kLureDebugHotspots, "hotspots", "Hotspots debugging");
-	Common::addSpecialDebugLevel(kLureDebugFights, "fights", "Fights debugging");
-	Common::addSpecialDebugLevel(kLureDebugSounds, "sounds", "Sounds debugging");
-	Common::addSpecialDebugLevel(kLureDebugStrings, "strings", "Strings debugging");
+	Common::addDebugChannel(kLureDebugScripts, "scripts", "Scripts debugging");
+	Common::addDebugChannel(kLureDebugAnimations, "animations", "Animations debugging");
+	Common::addDebugChannel(kLureDebugHotspots, "hotspots", "Hotspots debugging");
+	Common::addDebugChannel(kLureDebugFights, "fights", "Fights debugging");
+	Common::addDebugChannel(kLureDebugSounds, "sounds", "Sounds debugging");
+	Common::addDebugChannel(kLureDebugStrings, "strings", "Strings debugging");
 }
 
-int LureEngine::init() {
+Common::Error LureEngine::init() {
 	int_engine = this;
 	_initialised = false;
+	_saveLoadAllowed = false;
 
-	_system->beginGFXTransaction();
-	initCommonGFX(false);
-	_system->initSize(FULL_SCREEN_WIDTH, FULL_SCREEN_HEIGHT);
-	_system->endGFXTransaction();
+	initGraphics(FULL_SCREEN_WIDTH, FULL_SCREEN_HEIGHT, false);
 
 	// Check the version of the lure.dat file
 	Common::File f;
 	VersionStructure version;
 	if (!f.open(SUPPORT_FILENAME)) {
 		GUIError("Could not locate Lure support file");
-		return 1;
+		return Common::kUnknownError;
 	}
 
 	f.seek(0xbf * 8);
@@ -73,12 +69,12 @@ int LureEngine::init() {
 
 	if (READ_LE_UINT16(&version.id) != 0xffff) {
 		GUIError("Error validating %s - file is invalid or out of date", SUPPORT_FILENAME);
-		return 1;
+		return Common::kUnknownError;
 	} else if ((version.vMajor != LURE_DAT_MAJOR) || (version.vMinor != LURE_DAT_MINOR)) {
 		GUIError("Incorrect version of %s file - expected %d.%d but got %d.%d",
 			SUPPORT_FILENAME, LURE_DAT_MAJOR, LURE_DAT_MINOR,
 			version.vMajor, version.vMinor);
-		return 1;
+		return Common::kUnknownError;
 	}
 
 	_disk = new Disk();
@@ -94,12 +90,12 @@ int LureEngine::init() {
 
 	_gameToLoad = -1;
 	_initialised = true;
-	return 0;
+	return Common::kNoError;
 }
 
 LureEngine::~LureEngine() {
 	// Remove all of our debug levels here
-	Common::clearAllSpecialDebugLevels();
+	Common::clearAllDebugChannels();
 
 	if (_initialised) {
 		// Delete and deinitialise subsystems
@@ -121,23 +117,23 @@ LureEngine &LureEngine::getReference() {
 	return *int_engine;
 }
 
-int LureEngine::go() {
+Common::Error LureEngine::go() {
 	Game *gameInstance = new Game();
-	
+
 	// If requested, load a savegame instead of showing the intro
 	if (ConfMan.hasKey("save_slot")) {
 		_gameToLoad = ConfMan.getInt("save_slot");
 		if (_gameToLoad < 0 || _gameToLoad > 999)
 			_gameToLoad = -1;
 	}
-	
+
 	if (_gameToLoad == -1) {
 		if (ConfMan.getBool("copy_protection")) {
 			CopyProtectionDialog *dialog = new CopyProtectionDialog();
 			bool result = dialog->show();
 			delete dialog;
-			if (quit())
-				return 0;
+			if (shouldQuit())
+				return Common::kNoError;
 
 			if (!result)
 				error("Sorry - copy protection failed");
@@ -153,14 +149,15 @@ int LureEngine::go() {
 	}
 
 	// Play the game
-	if (!quit()) {
+	if (!shouldQuit()) {
 		// Play the game
+		_saveLoadAllowed = true;
 		Sound.loadSection(Sound.isRoland() ? ROLAND_MAIN_SOUND_RESOURCE_ID : ADLIB_MAIN_SOUND_RESOURCE_ID);
 		gameInstance->execute();
 	}
 
 	delete gameInstance;
-	return 0;
+	return Common::kNoError;
 }
 
 void LureEngine::pauseEngineIntern(bool pause) {
@@ -251,10 +248,14 @@ void LureEngine::GUIError(const char *msg, ...) {
 	vsnprintf(buffer, STRINGBUFLEN, msg, va);
 	va_end(va);
 
-	Engine::GUIErrorMessage(buffer);
+	GUIErrorMessage(buffer);
 }
 
-void LureEngine::syncSoundSettings() {	
+GUI::Debugger *LureEngine::getDebugger() {
+	return &Game::getReference().debugger();
+}
+
+void LureEngine::syncSoundSettings() {
 	Sound.syncSounds();
 }
 

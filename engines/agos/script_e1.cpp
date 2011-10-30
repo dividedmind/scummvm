@@ -563,9 +563,6 @@ void AGOSEngine_Elvira1::oe1_look() {
 	if (l) {
 		lobjFunc(l, "You can see ");	/* Show objects */
 	}
-	if (r && (r->flags & 4) && levelOf(i) < 10000) {
-		quitGame();
-	}
 }
 
 void AGOSEngine_Elvira1::oe1_doClass() {
@@ -592,7 +589,7 @@ void AGOSEngine_Elvira1::oe1_doClass() {
 }
 
 void AGOSEngine_Elvira1::oe1_pObj() {
-	// 112: print object
+	// 112: print object name
 	SubObject *subObject = (SubObject *)findChildOfType(getNextItemPtr(), kObjectType);
 	getVarOrWord();
 
@@ -601,17 +598,15 @@ void AGOSEngine_Elvira1::oe1_pObj() {
 }
 
 void AGOSEngine_Elvira1::oe1_pName() {
-	// 114:
+	// 114: print item name
 	Item *i = getNextItemPtr();
 	showMessageFormat("%s", (const char *)getStringPtrByID(i->itemName));
 }
 
 void AGOSEngine_Elvira1::oe1_pcName() {
-	// 115:
+	// 115: print item case (and change first letter to upper case)
 	Item *i = getNextItemPtr();
-
-	// TODO: Change first letter to upper case.
-	showMessageFormat("%s\n", (const byte *)getStringPtrByID(i->itemName)); // Difference
+	showMessageFormat("%s", (const byte *)getStringPtrByID(i->itemName, true));
 }
 
 void AGOSEngine_Elvira1::oe1_isCalled() {
@@ -944,6 +939,8 @@ restart:
 
 		if (confirmYesOrNo(120, 62) == 0x7FFF) {
 			quitGame();
+			// Make sure the quit event is processed immediately.
+			delay(0);
 		} else {
 			goto restart;
 		}
@@ -971,14 +968,6 @@ void AGOSEngine_Elvira1::oe1_printMonsterHit() {
 	mouseOff();
 	writeChar(window, 35, 166, 4, _variableArray[415]);
 	mouseOn();
-}
-
-int16 AGOSEngine::levelOf(Item *item) {
-	SubPlayer *p = (SubPlayer *)findChildOfType(item, kPlayerType);
-	if (p == NULL)
-		return 0;
-
-	return p->level;
 }
 
 int16 AGOSEngine::moreText(Item *i) {
@@ -1052,11 +1041,11 @@ uint AGOSEngine::confirmYesOrNo(uint16 x, uint16 y) {
 	ha->priority = 999;
 	ha->window = 0;
 
-	while (!quit()) {
+	while (!shouldQuit()) {
 		_lastHitArea = NULL;
 		_lastHitArea3 = NULL;
 
-		while (!quit()) {
+		while (!shouldQuit()) {
 			if (_lastHitArea3 != 0)
 				break;
 			delay(1);
@@ -1101,11 +1090,11 @@ uint AGOSEngine::continueOrQuit() {
 	ha->priority = 999;
 	ha->window = 0;
 
-	while (!quit()) {
+	while (!shouldQuit()) {
 		_lastHitArea = NULL;
 		_lastHitArea3 = NULL;
 
-		while (!quit()) {
+		while (!shouldQuit()) {
 			if (_lastHitArea3 != 0)
 				break;
 			delay(1);

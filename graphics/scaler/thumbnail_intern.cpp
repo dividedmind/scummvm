@@ -38,7 +38,7 @@ uint16 quadBlockInterpolate(const uint8* src, uint32 srcPitch) {
 	uint16 colorx1y2 = *(((const uint16*)(src + srcPitch)));
 	uint16 colorx2y2 = *(((const uint16*)(src + srcPitch)) + 1);
 
-	return interpolate32_1_1_1_1<bitFormat>(colorx1y1, colorx2y1, colorx1y2, colorx2y2);
+	return interpolate16_1_1_1_1<Graphics::ColorMasks<bitFormat> >(colorx1y1, colorx2y1, colorx1y2, colorx2y2);
 }
 
 template<int bitFormat>
@@ -65,14 +65,14 @@ void createThumbnail_4(const uint8* src, uint32 srcPitch, uint8* dstPtr, uint32 
 			uint16 downleft = quadBlockInterpolate<bitFormat>(src + srcPitch * 2 + 2 * x, srcPitch);
 			uint16 downright = quadBlockInterpolate<bitFormat>(src + srcPitch * 2 + 2 * (x + 2), srcPitch);
 
-			*((uint16*)dstPtr) = interpolate32_1_1_1_1<bitFormat>(upleft, upright, downleft, downright);
+			*((uint16*)dstPtr) = interpolate16_1_1_1_1<Graphics::ColorMasks<bitFormat> >(upleft, upright, downleft, downright);
 		}
 		dstPtr += (dstPitch - 2 * width / 4);
 		src += 4 * srcPitch;
 	}
 }
 
-void createThumbnail(const uint8* src, uint32 srcPitch, uint8* dstPtr, uint32 dstPitch, int width, int height) {
+static void createThumbnail(const uint8* src, uint32 srcPitch, uint8* dstPtr, uint32 dstPitch, int width, int height) {
 	// only 1/2 and 1/4 downscale supported
 	if (width != 320 && width != 640)
 		return;
@@ -80,15 +80,9 @@ void createThumbnail(const uint8* src, uint32 srcPitch, uint8* dstPtr, uint32 ds
 	int downScaleMode = (width == 320) ? 2 : 4;
 
 	if (downScaleMode == 2) {
-		if (gBitFormat == 565)
-			createThumbnail_2<565>(src, srcPitch, dstPtr, dstPitch, width, height);
-		else if (gBitFormat == 555)
-			createThumbnail_2<555>(src, srcPitch, dstPtr, dstPitch, width, height);
+		createThumbnail_2<565>(src, srcPitch, dstPtr, dstPitch, width, height);
 	} else if (downScaleMode == 4) {
-		if (gBitFormat == 565)
-			createThumbnail_4<565>(src, srcPitch, dstPtr, dstPitch, width, height);
-		else if (gBitFormat == 555)
-			createThumbnail_4<555>(src, srcPitch, dstPtr, dstPitch, width, height);
+		createThumbnail_4<565>(src, srcPitch, dstPtr, dstPitch, width, height);
 	}
 }
 
@@ -118,7 +112,7 @@ static bool grabScreen565(Graphics::Surface *surf) {
 			g = palette[((uint8*)screen->pixels)[y * screen->pitch + x] * 4 + 1];
 			b = palette[((uint8*)screen->pixels)[y * screen->pitch + x] * 4 + 2];
 
-			((uint16*)surf->pixels)[y * surf->w + x] = RGBToColor<ColorMasks<565> >(r, g, b);
+			((uint16*)surf->pixels)[y * surf->w + x] = Graphics::RGBToColor<Graphics::ColorMasks<565> >(r, g, b);
 		}
 	}
 
@@ -174,11 +168,8 @@ static bool createThumbnail(Graphics::Surface &out, Graphics::Surface &in) {
 
 	uint16 newHeight = !(inHeight % 240) ? kThumbnailHeight2 : kThumbnailHeight1;
 
-	int gBitFormatBackUp = gBitFormat;
-	gBitFormat = 565;
 	out.create(kThumbnailWidth, newHeight, sizeof(uint16));
 	createThumbnail((const uint8 *)in.pixels, width * sizeof(uint16), (uint8 *)out.pixels, out.pitch, width, inHeight);
-	gBitFormat = gBitFormatBackUp;
 
 	in.free();
 
@@ -209,7 +200,7 @@ bool createThumbnail(Graphics::Surface *surf, const uint8 *pixels, int w, int h,
 			g = palette[pixels[y * w + x] * 3 + 1];
 			b = palette[pixels[y * w + x] * 3 + 2];
 
-			((uint16 *)screen.pixels)[y * screen.w + x] = RGBToColor<ColorMasks<565> >(r, g, b);
+			((uint16 *)screen.pixels)[y * screen.w + x] = Graphics::RGBToColor<Graphics::ColorMasks<565> >(r, g, b);
 		}
 	}
 

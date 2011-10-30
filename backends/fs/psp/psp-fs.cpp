@@ -36,9 +36,9 @@
 /**
  * Implementation of the ScummVM file system API based on PSPSDK API.
  *
- * Parts of this class are documented in the base interface class, AbstractFilesystemNode.
+ * Parts of this class are documented in the base interface class, AbstractFSNode.
  */
-class PSPFilesystemNode : public AbstractFilesystemNode {
+class PSPFilesystemNode : public AbstractFSNode {
 protected:
 	Common::String _displayName;
 	Common::String _path;
@@ -67,12 +67,12 @@ public:
 	virtual bool isReadable() const { return access(_path.c_str(), R_OK) == 0; }
 	virtual bool isWritable() const { return access(_path.c_str(), W_OK) == 0; }
 
-	virtual AbstractFilesystemNode *getChild(const Common::String &n) const;
+	virtual AbstractFSNode *getChild(const Common::String &n) const;
 	virtual bool getChildren(AbstractFSList &list, ListMode mode, bool hidden) const;
-	virtual AbstractFilesystemNode *getParent() const;
+	virtual AbstractFSNode *getParent() const;
 
-	virtual Common::SeekableReadStream *openForReading();
-	virtual Common::WriteStream *openForWriting();
+	virtual Common::SeekableReadStream *createReadStream();
+	virtual Common::WriteStream *createWriteStream();
 };
 
 PSPFilesystemNode::PSPFilesystemNode() {
@@ -97,7 +97,7 @@ PSPFilesystemNode::PSPFilesystemNode(const Common::String &p, bool verify) {
 	}
 }
 
-AbstractFilesystemNode *PSPFilesystemNode::getChild(const Common::String &n) const {
+AbstractFSNode *PSPFilesystemNode::getChild(const Common::String &n) const {
 	// FIXME: Pretty lame implementation! We do no error checking to speak
 	// of, do not check if this is a special node, etc.
 	assert(_isDirectory);
@@ -129,16 +129,18 @@ bool PSPFilesystemNode::getChildren(AbstractFSList &myList, ListMode mode, bool 
 
 			entry._isValid = true;
 			entry._displayName = dir.d_name;
-			entry._path = _path;
-			entry._path += dir.d_name;
+
+			Common::String newPath(_path);
+			if (newPath.lastChar() != '/')
+				newPath += '/';
+			newPath += dir.d_name;
+
+			entry._path = newPath;
 			entry._isDirectory = dir.d_stat.st_attr & FIO_SO_IFDIR;
 
-			if (entry._isDirectory)
-				entry._path += "/";
-
 			// Honor the chosen mode
-			if ((mode == Common::FilesystemNode::kListFilesOnly && entry._isDirectory) ||
-			   (mode == Common::FilesystemNode::kListDirectoriesOnly && !entry._isDirectory))
+			if ((mode == Common::FSNode::kListFilesOnly && entry._isDirectory) ||
+			   (mode == Common::FSNode::kListDirectoriesOnly && !entry._isDirectory))
 				continue;
 
 			myList.push_back(new PSPFilesystemNode(entry));
@@ -151,7 +153,7 @@ bool PSPFilesystemNode::getChildren(AbstractFSList &myList, ListMode mode, bool 
 	}
 }
 
-AbstractFilesystemNode *PSPFilesystemNode::getParent() const {
+AbstractFSNode *PSPFilesystemNode::getParent() const {
 	if (_path == ROOT_PATH)
 		return 0;
 
@@ -161,11 +163,11 @@ AbstractFilesystemNode *PSPFilesystemNode::getParent() const {
 	return new PSPFilesystemNode(Common::String(start, end - start), false);
 }
 
-Common::SeekableReadStream *PSPFilesystemNode::openForReading() {
+Common::SeekableReadStream *PSPFilesystemNode::createReadStream() {
 	return StdioStream::makeFromPath(getPath().c_str(), false);
 }
 
-Common::WriteStream *PSPFilesystemNode::openForWriting() {
+Common::WriteStream *PSPFilesystemNode::createWriteStream() {
 	return StdioStream::makeFromPath(getPath().c_str(), true);
 }
 

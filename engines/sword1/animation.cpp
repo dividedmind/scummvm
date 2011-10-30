@@ -36,6 +36,7 @@
 #include "common/str.h"
 #include "common/events.h"
 #include "common/system.h"
+#include "graphics/surface.h"
 
 namespace Sword1 {
 
@@ -66,11 +67,10 @@ static const char *sequenceList[20] = {
 // Basic movie player
 ///////////////////////////////////////////////////////////////////////////////
 
-MoviePlayer::MoviePlayer(Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system)
-	: _screen(screen), _textMan(textMan), _snd(snd), _system(system) {
+MoviePlayer::MoviePlayer(SwordEngine *vm, Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system)
+	: _vm(vm), _screen(screen), _textMan(textMan), _snd(snd), _system(system) {
 	_bgSoundStream = NULL;
 	_ticks = 0;
-	_textSpriteBuf = NULL;
 	_black = 1;
 	_white = 255;
 	_currentFrame = 0;
@@ -184,22 +184,23 @@ bool MoviePlayer::load(uint32 id) {
 	if (SwordEngine::_systemVars.showText) {
 		sprintf(fileName, "%s.txt", sequenceList[id]);
 		if (f.open(fileName)) {
-			char line[120];
+			Common::String line;
 			int lineNo = 0;
 			int lastEnd = -1;
 
 			_movieTexts.clear();
-			while (f.readLine_OLD(line, sizeof(line))) {
+			while (!f.eos() && !f.err()) {
+				line = f.readLine();
 				lineNo++;
-				if (line[0] == '#' || line[0] == 0) {
+				if (line.empty() || line[0] == '#') {
 					continue;
 				}
 
-				char *ptr = line;
+				const char *ptr = line.c_str();
 
 				// TODO: Better error handling
-				int startFrame = strtoul(ptr, &ptr, 10);
-				int endFrame = strtoul(ptr, &ptr, 10);
+				int startFrame = strtoul(ptr, const_cast<char **>(&ptr), 10);
+				int endFrame = strtoul(ptr, const_cast<char **>(&ptr), 10);
 
 				while (*ptr && isspace(*ptr))
 					ptr++;
@@ -275,12 +276,9 @@ void MoviePlayer::play(void) {
 				_textHeight = frame->height;
 				_textX = 320 - _textWidth / 2;
 				_textY = 420 - _textHeight;
-				_textSpriteBuf = (byte *)calloc(_textHeight, _textWidth);
 			}
 			if (_currentFrame == _movieTexts[0]->_endFrame) {
-				_textMan->releaseText(2);
-				free(_textSpriteBuf);
-				_textSpriteBuf = NULL;
+				_textMan->releaseText(2, false);
 				delete _movieTexts.remove_at(0);
 			}
 		}
@@ -295,20 +293,24 @@ void MoviePlayer::play(void) {
 				handleScreenChanged();
 				break;
 			case Common::EVENT_KEYDOWN:
-				if (event.kbd.keycode == Common::KEYCODE_ESCAPE) {
-					_snd->stopHandle(_bgSoundHandle);
+				if (event.kbd.keycode == Common::KEYCODE_ESCAPE)
 					terminated = true;
-				}
 				break;
 			default:
 				break;
 			}
 		}
+		if (_vm->shouldQuit())
+			terminated = true;
 	}
 
-	while (!_movieTexts.empty()) {
+	if (terminated)
+		_snd->stopHandle(_bgSoundHandle);
+
+	_textMan->releaseText(2, false);
+
+	while (!_movieTexts.empty())
 		delete _movieTexts.remove_at(_movieTexts.size() - 1);
-	}
 
 	while (_snd->isSoundHandleActive(_bgSoundHandle))
 		_system->delayMillis(100);
@@ -390,8 +392,8 @@ int SplittedAudioStream::readBuffer(int16 *buffer, const int numSamples) {
 // Movie player for the new DXA movies
 ///////////////////////////////////////////////////////////////////////////////
 
-MoviePlayerDXA::MoviePlayerDXA(Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system)
-	: MoviePlayer(screen, textMan, snd, system) {
+MoviePlayerDXA::MoviePlayerDXA(SwordEngine *vm, Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system)
+	: MoviePlayer(vm, screen, textMan, snd, system) {
 	debug(0, "Creating DXA cutscene player");
 }
 
@@ -407,7 +409,7 @@ bool MoviePlayerDXA::load(uint32 id) {
 	snprintf(filename, sizeof(filename), "%s.dxa", sequenceList[id]);
 	if (loadFile(filename)) {
 		// The Broken Sword games always use external audio tracks.
-		if (_fd->readUint32BE() != MKID_BE('NULL'))
+		if (_fileStream->readUint32BE() != MKID_BE('NULL'))
 			return false;
 		_frameWidth = getWidth();
 		_frameHeight = getHeight();
@@ -428,7 +430,7 @@ void MoviePlayerDXA::setPalette(byte *pal) {
 }
 
 bool MoviePlayerDXA::decodeFrame(void) {
-	if (_currentFrame < _framesCount) {
+	if ((uint32)_currentFrame < (uint32)getFrameCount()) {
 		decodeNextFrame();
 		return true;
 	}
@@ -436,31 +438,26 @@ bool MoviePlayerDXA::decodeFrame(void) {
 }
 
 void MoviePlayerDXA::processFrame(void) {
+}
+
+void MoviePlayerDXA::updateScreen(void) {
+	Graphics::Surface *frameBuffer = _system->lockScreen();
+	copyFrameToBuffer((byte *)frameBuffer->pixels, _frameX, _frameY, _frameWidth);
+
 	// TODO: Handle the advanced cutscene packs. Do they really exist?
 
-	// We cannot draw the text to _drawBuffer, sinzce ethat's one of the
-	// decoder's internal buffers. Instead, we copy part of _drawBuffer
-	// to the text sprite.
+	// We cannot draw the text to _drawBuffer, since that's one of the
+	// decoder's internal buffers, and besides it may be much smaller than
+	// the screen, so it's possible that the subtitles don't fit on it.
+	// Instead, we get the frame buffer from the backend, after copying the
+	// frame to it, and draw on that.
 
-	if (_textSpriteBuf) {
-		memset(_textSpriteBuf, 0, _textWidth * _textHeight);
-
-		// FIXME: This is inefficient
-		int x, y;
-
-		for (y = _textY; y < _textY + _textHeight; y++) {
-			for (x = _textX; x < _textX + _textWidth; x++) {
-				if (x >= _frameX && x <= _frameX + _frameWidth && y >= _frameY && y <= _frameY + _frameHeight) {
-					_textSpriteBuf[(y - _textY) * _textWidth + x - _textX] = _drawBuffer[(y - _frameY) * _frameWidth + x - _frameX];
-				}
-			}
-		}
-
+	if (_textMan->giveSpriteData(2)) {
 		byte *src = (byte *)_textMan->giveSpriteData(2) + sizeof(FrameHeader);
-		byte *dst = _textSpriteBuf;
+		byte *dst = (byte *)frameBuffer->getBasePtr(_textX, _textY);
 
-		for (y = 0; y < _textHeight; y++) {
-			for (x = 0; x < _textWidth; x++) {
+		for (int y = 0; y < _textHeight; y++) {
+			for (int x = 0; x < _textWidth; x++) {
 				switch (src[x]) {
 				case BORDER_COL:
 					dst[x] = _black;
@@ -471,16 +468,13 @@ void MoviePlayerDXA::processFrame(void) {
 				}
 			}
 			src += _textWidth;
-			dst += _textWidth;
+			dst += frameBuffer->pitch;
 		}
-	}
-}
 
-void MoviePlayerDXA::updateScreen(void) {
-	_system->copyRectToScreen(_drawBuffer, _frameWidth, _frameX, _frameY, _frameWidth, _frameHeight);
-	if (_textSpriteBuf) {
-		_system->copyRectToScreen(_textSpriteBuf, _textWidth, _textX, _textY, _textWidth, _textHeight);
 	}
+
+	_system->unlockScreen();
+
 	_system->updateScreen();
 }
 
@@ -492,8 +486,8 @@ void MoviePlayerDXA::updateScreen(void) {
 // Movie player for the old MPEG movies
 ///////////////////////////////////////////////////////////////////////////////
 
-MoviePlayerMPEG::MoviePlayerMPEG(Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system)
-	: MoviePlayer(screen, textMan, snd, system) {
+MoviePlayerMPEG::MoviePlayerMPEG(SwordEngine *vm, Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system)
+	: MoviePlayer(vm, screen, textMan, snd, system) {
 #ifdef BACKEND_8BIT
 	debug(0, "Creating MPEG cutscene player (8-bit)");
 #else
@@ -547,9 +541,10 @@ bool MoviePlayerMPEG::initOverlays(uint32 id) {
 						_logoOvls[fcnt][cnt] = _logoOvls[fcnt - 1][cnt];
 		}
 		uint8 *pal = ovlFile.fetchFile(12);
-		_introPal = (OverlayColor*)malloc(256 * sizeof(OverlayColor));
+		_introPal = (OverlayColor *)malloc(256 * sizeof(OverlayColor));
+		Graphics::PixelFormat format = _system->getOverlayFormat();
 		for (uint16 cnt = 0; cnt < 256; cnt++)
-			_introPal[cnt] = _system->RGBToColor(pal[cnt * 3 + 0], pal[cnt * 3 + 1], pal[cnt * 3 + 2]);
+			_introPal[cnt] = format.RGBToColor(pal[cnt * 3 + 0], pal[cnt * 3 + 1], pal[cnt * 3 + 2]);
 	}
 
 	return true;
@@ -625,7 +620,7 @@ Audio::AudioStream *AnimationState::createAudioStream(const char *name, void *ar
 // Factory function for creating the appropriate cutscene player
 ///////////////////////////////////////////////////////////////////////////////
 
-MoviePlayer *makeMoviePlayer(uint32 id, Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system) {
+MoviePlayer *makeMoviePlayer(uint32 id, SwordEngine *vm, Screen *screen, Text *textMan, Audio::Mixer *snd, OSystem *system) {
 #if defined(USE_ZLIB) || defined(USE_MPEG2)
 	char filename[20];
 #endif
@@ -634,7 +629,7 @@ MoviePlayer *makeMoviePlayer(uint32 id, Screen *screen, Text *textMan, Audio::Mi
 	snprintf(filename, sizeof(filename), "%s.dxa", sequenceList[id]);
 
 	if (Common::File::exists(filename)) {
-		return new MoviePlayerDXA(screen, textMan, snd, system);
+		return new MoviePlayerDXA(vm, screen, textMan, snd, system);
 	}
 #endif
 
@@ -642,7 +637,7 @@ MoviePlayer *makeMoviePlayer(uint32 id, Screen *screen, Text *textMan, Audio::Mi
 	snprintf(filename, sizeof(filename), "%s.mp2", sequenceList[id]);
 
 	if (Common::File::exists(filename)) {
-		return new MoviePlayerMPEG(screen, textMan, snd, system);
+		return new MoviePlayerMPEG(vm, screen, textMan, snd, system);
 	}
 #endif
 

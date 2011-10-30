@@ -32,7 +32,10 @@
 
 namespace Parallaction {
 
-GfxObj::GfxObj(uint objType, Frames *frames, const char* name) : _frames(frames), _keep(true), x(0), y(0), z(0), _flags(kGfxObjNormal), type(objType), frame(0), layer(3), scale(100)  {
+GfxObj::GfxObj(uint objType, Frames *frames, const char* name) :
+	_frames(frames), _keep(true), x(0), y(0), z(0), _flags(kGfxObjNormal),
+	type(objType), frame(0), layer(3), scale(100), _hasMask(false), _hasPath(false)  {
+
 	if (name) {
 		_name = strdup(name);
 	} else {
@@ -95,10 +98,16 @@ GfxObj* Gfx::loadAnim(const char *name) {
 	// animation Z is not set here, but controlled by game scripts and user interaction.
 	// it is always >=0 and <screen height
 	obj->transparentKey = 0;
-	_gfxobjList.push_back(obj);
+	_sceneObjects.push_back(obj);
 	return obj;
 }
 
+GfxObj* Gfx::loadCharacterAnim(const char *name) {
+	GfxObj *obj = loadAnim(name);
+	obj->setFlags(kGfxObjCharacter);
+	obj->clearFlags(kGfxObjNormal);
+	return obj;
+}
 
 GfxObj* Gfx::loadGet(const char *name) {
 	GfxObj *obj = _disk->loadStatic(name);
@@ -107,7 +116,7 @@ GfxObj* Gfx::loadGet(const char *name) {
 	obj->z = kGfxObjGetZ;	// this preset Z value ensures that get zones are drawn after doors but before animations
 	obj->type = kGfxObjTypeGet;
 	obj->transparentKey = 0;
-	_gfxobjList.push_back(obj);
+	_sceneObjects.push_back(obj);
 	return obj;
 }
 
@@ -120,23 +129,55 @@ GfxObj* Gfx::loadDoor(const char *name) {
 
 	obj->z = kGfxObjDoorZ;	// this preset Z value ensures that doors are drawn first
 	obj->transparentKey = 0;
-	_gfxobjList.push_back(obj);
+	_sceneObjects.push_back(obj);
 	return obj;
 }
 
 void Gfx::clearGfxObjects(uint filter) {
 
-	GfxObjList::iterator b = _gfxobjList.begin();
-	GfxObjList::iterator e = _gfxobjList.end();
-
-	for ( ; b != e; ) {
-		if (((*b)->_flags & filter) != 0) {
-			b = _gfxobjList.erase(b);
+	for (uint i = 0; i < _sceneObjects.size() ; ) {
+		if ((_sceneObjects[i]->_flags & filter) != 0) {
+			_sceneObjects.remove_at(i);
 		} else {
-			b++;
+			i++;
 		}
 	}
 
+}
+
+void Gfx::freeLocationObjects() {
+	freeDialogueObjects();
+	clearGfxObjects(kGfxObjNormal);
+	freeLabels();
+}
+
+void Gfx::freeCharacterObjects() {
+	freeDialogueObjects();
+	clearGfxObjects(kGfxObjCharacter);
+}
+
+void BackgroundInfo::loadGfxObjMask(const char *name, GfxObj *obj) {
+	Common::Rect rect;
+	obj->getRect(0, rect);
+
+	MaskBuffer *buf = new MaskBuffer;
+	buf->create(rect.width(), rect.height());
+	_vm->_disk->loadMask(name, *buf);
+
+	obj->_maskId = addMaskPatch(buf);
+	obj->_hasMask = true;
+}
+
+void BackgroundInfo::loadGfxObjPath(const char *name, GfxObj *obj) {
+	Common::Rect rect;
+	obj->getRect(0, rect);
+
+	PathBuffer *buf = new PathBuffer;
+	buf->create(rect.width(), rect.height());
+	_vm->_disk->loadPath(name, *buf);
+
+	obj->_pathId = addPathPatch(buf);
+	obj->_hasPath = true;
 }
 
 void Gfx::showGfxObj(GfxObj* obj, bool visible) {
@@ -149,6 +190,13 @@ void Gfx::showGfxObj(GfxObj* obj, bool visible) {
 	} else {
 		obj->clearFlags(kGfxObjVisible);
 	}
+
+	if (obj->_hasMask) {
+		_backgroundInfo->toggleMaskPatch(obj->_maskId, obj->x, obj->y, visible);
+	}
+	if (obj->_hasPath) {
+		_backgroundInfo->togglePathPatch(obj->_pathId, obj->x, obj->y, visible);
+	}
 }
 
 
@@ -157,15 +205,15 @@ bool compareZ(const GfxObj* a1, const GfxObj* a2) {
 	return a1->z < a2->z;
 }
 
-void Gfx::sortAnimations() {
-	GfxObjList::iterator first = _gfxobjList.begin();
-	GfxObjList::iterator last = _gfxobjList.end();
+void Gfx::sortScene() {
+	GfxObjArray::iterator first = _sceneObjects.begin();
+	GfxObjArray::iterator last = _sceneObjects.end();
 
 	Common::sort(first, last, compareZ);
 }
 
 
-void Gfx::drawGfxObject(GfxObj *obj, Graphics::Surface &surf, bool scene) {
+void Gfx::drawGfxObject(GfxObj *obj, Graphics::Surface &surf) {
 	if (!obj->isVisible()) {
 		return;
 	}
@@ -173,10 +221,13 @@ void Gfx::drawGfxObject(GfxObj *obj, Graphics::Surface &surf, bool scene) {
 	Common::Rect rect;
 	byte *data;
 
-	uint scrollX = (scene) ? -_varScrollX : 0;
-
 	obj->getRect(obj->frame, rect);
-	rect.translate(obj->x + scrollX, obj->y);
+
+	int x = obj->x;
+	if (_overlayMode) {
+		x += _scrollPos;
+	}
+	rect.translate(x, obj->y);
 	data = obj->getData(obj->frame);
 
 	if (obj->getSize(obj->frame) == obj->getRawSize(obj->frame)) {
@@ -186,21 +237,6 @@ void Gfx::drawGfxObject(GfxObj *obj, Graphics::Surface &surf, bool scene) {
 	}
 
 }
-
-
-void Gfx::drawGfxObjects(Graphics::Surface &surf) {
-
-	sortAnimations();
-	// TODO: some zones don't appear because of wrong masking (3 or 0?)
-
-	GfxObjList::iterator b = _gfxobjList.begin();
-	GfxObjList::iterator e = _gfxobjList.end();
-
-	for (; b != e; b++) {
-		drawGfxObject(*b, surf, true);
-	}
-}
-
 
 
 void Gfx::drawText(Font *font, Graphics::Surface* surf, uint16 x, uint16 y, const char *text, byte color) {
@@ -311,7 +347,7 @@ void Gfx::bltMaskScale(const Common::Rect& r, byte *data, Graphics::Surface *sur
 			}
 
 			if (*s != transparentColor) {
-				byte v = _backgroundInfo->mask.getValue(dp.x + col, dp.y + line);
+				byte v = _backgroundInfo->_mask->getValue(dp.x + col, dp.y + line);
 				if (z >= v) *d2 = *s;
 			}
 
@@ -328,7 +364,7 @@ void Gfx::bltMaskScale(const Common::Rect& r, byte *data, Graphics::Surface *sur
 }
 
 void Gfx::bltMaskNoScale(const Common::Rect& r, byte *data, Graphics::Surface *surf, uint16 z, byte transparentColor) {
-	if (!_backgroundInfo->mask.data || (z == LAYER_FOREGROUND)) {
+	if (!_backgroundInfo->hasMask() || (z == LAYER_FOREGROUND)) {
 		// use optimized path
 		bltNoMaskNoScale(r, data, surf, transparentColor);
 		return;
@@ -357,7 +393,7 @@ void Gfx::bltMaskNoScale(const Common::Rect& r, byte *data, Graphics::Surface *s
 
 		for (uint16 j = 0; j < q.width(); j++) {
 			if (*s != transparentColor) {
-				byte v = _backgroundInfo->mask.getValue(dp.x + j, dp.y + i);
+				byte v = _backgroundInfo->_mask->getValue(dp.x + j, dp.y + i);
 				if (z >= v) *d = *s;
 			}
 
@@ -407,53 +443,7 @@ void Gfx::bltNoMaskNoScale(const Common::Rect& r, byte *data, Graphics::Surface 
 
 
 void Gfx::blt(const Common::Rect& r, byte *data, Graphics::Surface *surf, uint16 z, uint scale, byte transparentColor) {
-
-	Common::Point dp;
-	Common::Rect q(r);
-
-	Common::Rect clipper(surf->w, surf->h);
-
-	q.clip(clipper);
-	if (!q.isValidRect()) return;
-
-	dp.x = q.left;
-	dp.y = q.top;
-
-	q.translate(-r.left, -r.top);
-
-	byte *s = data + q.left + q.top * r.width();
-	byte *d = (byte*)surf->getBasePtr(dp.x, dp.y);
-
-	uint sPitch = r.width() - q.width();
-	uint dPitch = surf->w - q.width();
-
-
-	if (_varRenderMode == 2) {
-
-		for (uint16 i = 0; i < q.height(); i++) {
-
-			for (uint16 j = 0; j < q.width(); j++) {
-				if (*s != transparentColor) {
-					if (_backgroundInfo->mask.data && (z < LAYER_FOREGROUND)) {
-						byte v = _backgroundInfo->mask.getValue(dp.x + j, dp.y + i);
-						if (z >= v) *d = 5;
-					} else {
-						*d = 5;
-					}
-				}
-
-				s++;
-				d++;
-			}
-
-			s += sPitch;
-			d += dPitch;
-		}
-
-    } else {
-    	bltMaskScale(r, data, surf, z, scale, transparentColor);
-	}
-
+	bltMaskScale(r, data, surf, z, scale, transparentColor);
 }
 
 

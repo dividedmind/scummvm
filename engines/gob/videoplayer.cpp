@@ -38,7 +38,7 @@
 
 namespace Gob {
 
-const char *VideoPlayer::_extensions[] = { "IMD", "VMD" };
+const char *VideoPlayer::_extensions[] = { "IMD", "VMD", "RMD" };
 
 VideoPlayer::Video::Video(GobEngine *vm) : _vm(vm), _fileName(0), _stream(0), _video(0) {
 }
@@ -62,7 +62,9 @@ bool VideoPlayer::Video::open(const char *fileName, Type which) {
 	if (which == kVideoTypeIMD) {
 		_video = new Imd();
 	} else if (which == kVideoTypeVMD) {
-		_video = new Vmd();
+		_video = new Vmd(_vm->_video->_palLUT);
+	} else if (which == kVideoTypeRMD) {
+		_video = new Vmd(_vm->_video->_palLUT);
 	} else {
 		warning("Couldn't open video \"%s\": Invalid video Type", fileName);
 		close();
@@ -122,6 +124,20 @@ int16 VideoPlayer::Video::getDefaultX() const {
 
 int16 VideoPlayer::Video::getDefaultY() const {
 	return _defaultY;
+}
+
+bool VideoPlayer::Video::hasExtraData(const char *fileName) const {
+	if (!_video)
+		return false;
+
+	return _video->hasExtraData(fileName);
+}
+
+Common::MemoryReadStream *VideoPlayer::Video::getExtraData(const char *fileName) {
+	if (!_video)
+		return 0;
+
+	return _video->getExtraData(fileName);
 }
 
 CoktelVideo::State VideoPlayer::Video::nextFrame() {
@@ -233,10 +249,25 @@ bool VideoPlayer::primaryOpen(const char *videoFile, int16 x, int16 y,
 		}
 
 		if (!(flags & kFlagNoVideo)) {
-			_backSurf = ((flags & kFlagFrontSurface) == 0);
-			SurfaceDesc::Ptr surf = _vm->_draw->_spritesArray[_backSurf ? 21 : 20];
+			SurfaceDesc::Ptr surf;
+
+			if (flags & kFlagOtherSurface) {
+				_backSurf = false;
+
+				surf = _vm->_video->initSurfDesc(_vm->_global->_videoMode,
+						_primaryVideo->getVideo()->getWidth(),
+						_primaryVideo->getVideo()->getHeight(), 0);
+				_vm->_draw->_spritesArray[x] = surf;
+
+				x = 0;
+			} else {
+				_backSurf = ((flags & kFlagFrontSurface) == 0);
+				surf = _vm->_draw->_spritesArray[_backSurf ? 21 : 20];
+			}
+
 			_primaryVideo->getVideo()->setVideoMemory(surf->getVidMem(),
 					surf->getWidth(), surf->getHeight());
+
 		} else
 			_primaryVideo->getVideo()->setVideoMemory();
 
@@ -257,7 +288,7 @@ bool VideoPlayer::primaryOpen(const char *videoFile, int16 x, int16 y,
 
 void VideoPlayer::primaryPlay(int16 startFrame, int16 lastFrame, int16 breakKey,
 		uint16 palCmd, int16 palStart, int16 palEnd,
-		int16 palFrame, int16 endFrame, bool fade, int16 reverseTo) {
+		int16 palFrame, int16 endFrame, bool fade, int16 reverseTo, bool forceSeek) {
 
 	if (!_primaryVideo->isOpen())
 		return;
@@ -276,7 +307,7 @@ void VideoPlayer::primaryPlay(int16 startFrame, int16 lastFrame, int16 breakKey,
 	palCmd &= 0x3F;
 
 	if (video.getCurrentFrame() != startFrame) {
-		if (video.getFeatures() & CoktelVideo::kFeaturesSound)
+		if (!forceSeek && (video.getFeatures() & CoktelVideo::kFeaturesSound))
 			startFrame = video.getCurrentFrame();
 		else
 			video.seekFrame(startFrame);
@@ -367,7 +398,7 @@ int VideoPlayer::getNextFreeSlot() {
 
 	if (slot == _videoSlots.size())
 		_videoSlots.push_back(0);
-	
+
 	return slot;
 }
 
@@ -445,6 +476,16 @@ const VideoPlayer::Video *VideoPlayer::getVideoBySlot(int slot) const {
 	return 0;
 }
 
+VideoPlayer::Video *VideoPlayer::getVideoBySlot(int slot) {
+	if (slot < 0) {
+		if (_primaryVideo->isOpen())
+			return _primaryVideo;
+	} else if (((uint) slot) < _videoSlots.size() && _videoSlots[slot])
+		return _videoSlots[slot];
+
+	return 0;
+}
+
 uint16 VideoPlayer::getFlags(int slot) const {
 	const Video *video = getVideoBySlot(slot);
 
@@ -508,6 +549,24 @@ int16 VideoPlayer::getDefaultY(int slot) const {
 	return 0;
 }
 
+bool VideoPlayer::hasExtraData(const char *fileName, int slot) const {
+	const Video *video = getVideoBySlot(slot);
+
+	if (video)
+		return video->hasExtraData(fileName);
+
+	return false;
+}
+
+Common::MemoryReadStream *VideoPlayer::getExtraData(const char *fileName, int slot) {
+	Video *video = getVideoBySlot(slot);
+
+	if (video)
+		return video->getExtraData(fileName);
+
+	return 0;
+}
+
 bool VideoPlayer::doPlay(int16 frame, int16 breakKey,
 		uint16 palCmd, int16 palStart, int16 palEnd,
 		int16 palFrame, int16 endFrame) {
@@ -541,6 +600,7 @@ bool VideoPlayer::doPlay(int16 frame, int16 breakKey,
 			_vm->_draw->forceBlit();
 		_vm->_palAnim->fade(_vm->_global->_pPaletteDesc, -2, 0);
 		_vm->_draw->_noInvalidated = true;
+		_vm->_video->dirtyRectsAll();
 	}
 
 	if ((state.flags & CoktelVideo::kStatePalette) && (palCmd > 1)) {
@@ -559,7 +619,8 @@ bool VideoPlayer::doPlay(int16 frame, int16 breakKey,
 	if (_backSurf) {
 		_vm->_draw->invalidateRect(state.left, state.top, state.right, state.bottom);
 		_vm->_draw->blitInvalidated();
-	}
+	} else
+		_vm->_video->dirtyRectsAdd(state.left, state.top, state.right, state.bottom);
 	_vm->_video->retrace();
 
 
@@ -569,7 +630,7 @@ bool VideoPlayer::doPlay(int16 frame, int16 breakKey,
 
 	_vm->_util->processInput();
 
-	if (_vm->quit()) {
+	if (_vm->shouldQuit()) {
 		_primaryVideo->getVideo()->disableSound();
 		return true;
 	}
@@ -589,6 +650,9 @@ bool VideoPlayer::doPlay(int16 frame, int16 breakKey,
 }
 
 void VideoPlayer::copyPalette(CoktelVideo &video, int16 palStart, int16 palEnd) {
+	if (!(video.getFeatures() & CoktelVideo::kFeaturesPalette))
+		return;
+
 	if (palStart < 0)
 		palStart = 0;
 	if (palEnd < 0)

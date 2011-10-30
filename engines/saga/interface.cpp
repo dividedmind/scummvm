@@ -42,7 +42,7 @@
 #include "saga/script.h"
 #include "saga/sound.h"
 #include "saga/sprite.h"
-#include "saga/rscfile.h"
+#include "saga/resource.h"
 
 #include "saga/interface.h"
 
@@ -52,38 +52,16 @@
 
 namespace Saga {
 
-static int verbTypeToTextStringsIdLUT[2][kVerbTypeIdsMax] = {
-	{-1,
-	kTextPickUp,
-	kTextLookAt,
-	kTextWalkTo,
-	kTextTalkTo,
-	kTextOpen,
-	kTextClose,
-	kTextGive,
-	kTextUse,
-	-1,
-	-1,
-	-1,
-	-1,
-	-1,
-	-1},
-	{-1,
-	kVerbIHNMWalk,
-	kVerbIHNMLookAt,
-	kVerbIHNMTake,
-	kVerbIHNMUse,
-	kVerbIHNMTalkTo,
-	kVerbIHNMSwallow,
-	kVerbIHNMGive,
-	kVerbIHNMPush}
+static const int verbToTextIdITE[] = {
+	kTextWalkTo,	kTextLookAt,	kTextPickUp,	kTextTalkTo,
+	kTextOpen,		kTextClose,		kTextUse,		kTextGive
 };
 
 // This maps the internally used string ITE IDs to the LUT strings loaded in IHNM
 // i.e. id 12 (quit game button) maps to string 14 (Quit game)
 // The comments are what the actual IHNM string is
 // For the text string IDs, refer to saga.h, enum TextStringIds
-static int IHNMTextStringIdsLUT[56] = {
+static const int IHNMTextStringIdsLUT[56] = {
 	-1,	// (Empty)
 	-1,	// (Empty)
 	4,	// Take
@@ -161,6 +139,11 @@ Interface::Interface(SagaEngine *vm) : _vm(vm) {
 		_verbTypeToPanelButton[i] = NULL;
 	}
 
+	// Do nothing for SAGA2 games for now
+	if (_vm->isSaga2()) {
+		return;
+	}
+
 	for (i = 0; i < _mainPanel.buttonsCount; i++) {
 		if (_mainPanel.buttons[i].type == kPanelButtonVerb) {
 			_verbTypeToPanelButton[_mainPanel.buttons[i].id] = &_mainPanel.buttons[i];
@@ -183,16 +166,23 @@ Interface::Interface(SagaEngine *vm) : _vm(vm) {
 	free(resource);
 
 	// Option panel
-	_optionPanel.buttons = _vm->getDisplayInfo().optionPanelButtons;
-	_optionPanel.buttonsCount = _vm->getDisplayInfo().optionPanelButtonsCount;
+	if (!(_vm->getFeatures() & GF_NON_INTERACTIVE)) {
+		_optionPanel.buttons = _vm->getDisplayInfo().optionPanelButtons;
+		_optionPanel.buttonsCount = _vm->getDisplayInfo().optionPanelButtonsCount;
 
-	_vm->_resource->loadResource(_interfaceContext, _vm->getResourceDescription()->optionPanelResourceId, resource, resourceLength);
-	_vm->decodeBGImage(resource, resourceLength, &_optionPanel.image,
-		&_optionPanel.imageLength, &_optionPanel.imageWidth, &_optionPanel.imageHeight);
-	free(resource);
+		_vm->_resource->loadResource(_interfaceContext, _vm->getResourceDescription()->optionPanelResourceId, resource, resourceLength);
+		_vm->decodeBGImage(resource, resourceLength, &_optionPanel.image,
+			&_optionPanel.imageLength, &_optionPanel.imageWidth, &_optionPanel.imageHeight);
+		free(resource);
+	} else {
+		_optionPanel.buttons = NULL;
+		_optionPanel.buttonsCount = 0;
+		_optionPanel.sprites.spriteCount = 0;
+	}
 
+#ifdef ENABLE_IHNM
 	// Quit panel
-	if (_vm->getGameType() == GType_IHNM) {
+	if (_vm->getGameId() == GID_IHNM) {
 		_quitPanel.buttons = _vm->getDisplayInfo().quitPanelButtons;
 		_quitPanel.buttonsCount = _vm->getDisplayInfo().quitPanelButtonsCount;
 
@@ -203,7 +193,7 @@ Interface::Interface(SagaEngine *vm) : _vm(vm) {
 	}
 
 	// Save panel
-	if (_vm->getGameType() == GType_IHNM) {
+	if (_vm->getGameId() == GID_IHNM) {
 		_savePanel.buttons = _vm->getDisplayInfo().savePanelButtons;
 		_savePanel.buttonsCount = _vm->getDisplayInfo().savePanelButtonsCount;
 
@@ -214,7 +204,7 @@ Interface::Interface(SagaEngine *vm) : _vm(vm) {
 	}
 
 	// Load panel
-	if (_vm->getGameType() == GType_IHNM) {
+	if (_vm->getGameId() == GID_IHNM) {
 		_loadPanel.buttons = _vm->getDisplayInfo().loadPanelButtons;
 		_loadPanel.buttonsCount = _vm->getDisplayInfo().loadPanelButtonsCount;
 
@@ -223,19 +213,22 @@ Interface::Interface(SagaEngine *vm) : _vm(vm) {
 			&_loadPanel.imageLength, &_loadPanel.imageWidth, &_loadPanel.imageHeight);
 		free(resource);
 	}
+#endif
 
 	// Main panel sprites
 	_vm->_sprite->loadList(_vm->getResourceDescription()->mainPanelSpritesResourceId, _mainPanel.sprites);
-	// Option panel sprites
-	_vm->_sprite->loadList(_vm->getResourceDescription()->optionPanelSpritesResourceId, _optionPanel.sprites);
-	// Save panel sprites
-	_vm->_sprite->loadList(_vm->getResourceDescription()->warningPanelSpritesResourceId, _savePanel.sprites);
-	// Load panel sprites
-	_vm->_sprite->loadList(_vm->getResourceDescription()->warningPanelSpritesResourceId, _loadPanel.sprites);
-	// Quit panel sprites
-	_vm->_sprite->loadList(_vm->getResourceDescription()->warningPanelSpritesResourceId, _quitPanel.sprites);
+	if (!(_vm->getFeatures() & GF_NON_INTERACTIVE)) {
+		// Option panel sprites
+		_vm->_sprite->loadList(_vm->getResourceDescription()->optionPanelSpritesResourceId, _optionPanel.sprites);
+		// Save panel sprites
+		_vm->_sprite->loadList(_vm->getResourceDescription()->warningPanelSpritesResourceId, _savePanel.sprites);
+		// Load panel sprites
+		_vm->_sprite->loadList(_vm->getResourceDescription()->warningPanelSpritesResourceId, _loadPanel.sprites);
+		// Quit panel sprites
+		_vm->_sprite->loadList(_vm->getResourceDescription()->warningPanelSpritesResourceId, _quitPanel.sprites);
+	}
 
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		_vm->_sprite->loadList(_vm->getResourceDescription()->defaultPortraitsResourceId, _defPortraits);
 	}
 
@@ -328,7 +321,7 @@ Interface::Interface(SagaEngine *vm) : _vm(vm) {
 	_disableAbortSpeeches = false;
 
 	// set save game reminder alarm
-	_vm->_timer->installTimerProc(&saveReminderCallback, TIMETOSAVE, this);
+	_vm->getTimerManager()->installTimerProc(&saveReminderCallback, TIMETOSAVE, this);
 }
 
 Interface::~Interface(void) {
@@ -358,15 +351,12 @@ void Interface::saveReminderCallback(void *refCon) {
 }
 
 void Interface::updateSaveReminder() {
-	// TODO: finish this
-	/*
 	if (_active && _panelMode == kPanelMain) {
-		_vm->_timer->removeTimerProc(&saveReminderCallback);
-		_saveReminderState = (_saveReminderState == 0) ? 1 : 0;
+		_saveReminderState = _saveReminderState % _vm->getDisplayInfo().saveReminderNumSprites + 1;
 		drawStatusBar();
-		_vm->_timer->installTimerProc(&saveReminderCallback, TIMETOSAVE, this);
+		_vm->getTimerManager()->removeTimerProc(&saveReminderCallback);
+		_vm->getTimerManager()->installTimerProc(&saveReminderCallback, ((_vm->getGameId() == GID_ITE) ? TIMETOBLINK_ITE : TIMETOBLINK_IHNM), this);
 	}
-	*/
 }
 
 int Interface::activate() {
@@ -377,11 +367,12 @@ int Interface::activate() {
 		unlockMode();
 		if (_panelMode == kPanelMain || _panelMode == kPanelChapterSelection) {
 			_saveReminderState = 1;
-		} else if (_panelMode == kPanelNull && _vm->getGameId() == GID_IHNM_DEMO) {
+		} else if (_panelMode == kPanelNull && _vm->getFeatures() & GF_IHNM_DEMO) {
 			_saveReminderState = 1;
 		}
 		_vm->_gfx->showCursor(true);
 		draw();
+		_vm->_render->setFullRefresh(true);
 	}
 
 	return SUCCESS;
@@ -423,11 +414,11 @@ void Interface::setMode(int mode) {
 
 	if (mode == kPanelMain) {
 		_inMainMode = true;
-		_saveReminderState = 1; //TODO: blinking timeout
+		_saveReminderState = 1;
 	} else if (mode == kPanelChapterSelection) {
 		_saveReminderState = 1;
 	} else if (mode == kPanelNull) {
-		if (_vm->getGameId() == GID_IHNM_DEMO) {
+		if (_vm->getFeatures() & GF_IHNM_DEMO) {
 			_inMainMode = true;
 			_saveReminderState = 1;
 		}
@@ -489,7 +480,7 @@ void Interface::setMode(int mode) {
 		_vm->_render->setFlag(RF_DEMO_SUBST);
 		break;
 	case kPanelProtect:
-		if (_vm->getGameType() == GType_ITE) {
+		if (_vm->getGameId() == GID_ITE) {
 			// This is used as the copy protection panel in ITE
 			_protectPanel.currentButton = NULL;
 			_textInputMaxWidth = _protectEdit->width - 10;
@@ -505,6 +496,7 @@ void Interface::setMode(int mode) {
 	}
 
 	draw();
+	_vm->_render->setFullRefresh(true);
 }
 
 bool Interface::processAscii(Common::KeyState keystate) {
@@ -650,7 +642,7 @@ bool Interface::processAscii(Common::KeyState keystate) {
 		switch (ascii) {
 		case 'x':
 			setMode(kPanelMain);
-			if (_vm->_puzzle->isActive())
+			if (_vm->_scene->isITEPuzzleScene())
 				_vm->_puzzle->exitPuzzle();
 			break;
 
@@ -666,15 +658,12 @@ bool Interface::processAscii(Common::KeyState keystate) {
 		case '2':
 		case '3':
 		case '4':
-			converseSetPos(ascii);
-			break;
 		case '5':
 		case '6':
 		case '7':
 		case '8':
 		case '9':
-			if (_vm->getGameType() == GType_IHNM)
-				converseSetPos(ascii);
+			converseSetPos(ascii);
 			break;
 		}
 		break;
@@ -696,7 +685,7 @@ bool Interface::processAscii(Common::KeyState keystate) {
 		keyBossExit();
 		break;
 	case kPanelProtect:
-		if (_vm->getGameType() == GType_ITE) {
+		if (_vm->getGameId() == GID_ITE) {
 			if (_textInput && processTextInput(keystate)) {
 				return true;
 			}
@@ -716,9 +705,10 @@ bool Interface::processAscii(Common::KeyState keystate) {
 		}
 		break;
 	case kPanelPlacard:
-		if (_vm->getGameType() == GType_IHNM) {
+#ifdef ENABLE_IHNM
+		if (_vm->getGameId() == GID_IHNM) {
 			// Any keypress here returns the user back to the game
-			if (_vm->getGameId() != GID_IHNM_DEMO) {
+			if (!(_vm->getFeatures() & GF_IHNM_DEMO)) {
 				_vm->_scene->clearPsychicProfile();
 			} else {
 				setMode(kPanelConverse);
@@ -726,20 +716,19 @@ bool Interface::processAscii(Common::KeyState keystate) {
 				_vm->_script->wakeUpThreads(kWaitTypeDelay);
 			}
 		}
+#endif
 		break;
 	}
 	return false;
 }
 
 void Interface::setStatusText(const char *text, int statusColor) {
-
-	// Disable the status text in IHNM when the chapter is 8
-	if (_vm->getGameType() == GType_IHNM && _vm->_scene->currentChapterNumber() == 8)
-		return;
-
-	// Disable the status text in the introduction of the IHNM demo
-	if (_vm->getGameId() == GID_IHNM_DEMO && _vm->_scene->currentSceneNumber() == 0)
-		return;
+	if (_vm->getGameId() == GID_IHNM) {
+		// Don't show the status text for the IHNM chapter selection screens (chapter 8), or
+		// scene 0 (IHNM demo introduction)
+		if (_vm->_scene->currentChapterNumber() == 8 || _vm->_scene->currentSceneNumber() == 0)
+			return;
+	}
 
 	assert(text != NULL);
 	assert(strlen(text) < STATUS_TEXT_LEN);
@@ -758,7 +747,7 @@ void Interface::loadScenePortraits(int resourceId) {
 	_vm->_sprite->loadList(resourceId, _scenePortraits);
 }
 
-void Interface::drawVerbPanel(Surface *backBuffer, PanelButton* panelButton) {
+void Interface::drawVerbPanel(PanelButton* panelButton) {
 	PanelButton * rightButtonVerbPanelButton;
 	PanelButton * currentVerbPanelButton;
 	KnownColor textColor;
@@ -784,20 +773,15 @@ void Interface::drawVerbPanel(Surface *backBuffer, PanelButton* panelButton) {
 	point.x = _mainPanel.x + panelButton->xOffset;
 	point.y = _mainPanel.y + panelButton->yOffset;
 
-	_vm->_sprite->draw(backBuffer, _vm->getDisplayClip(), _mainPanel.sprites, spriteNumber, point, 256);
+	_vm->_sprite->draw(_mainPanel.sprites, spriteNumber, point, 256);
 
-	drawVerbPanelText(backBuffer, panelButton, textColor, kKnownColorVerbTextShadow);
+	drawVerbPanelText(panelButton, textColor, kKnownColorVerbTextShadow);
 }
 
 void Interface::draw() {
-	Surface *backBuffer;
-	int i;
-
 	Point leftPortraitPoint;
 	Point rightPortraitPoint;
 	Rect rect;
-
-	backBuffer = _vm->_gfx->getBackBuffer();
 
 	if (_vm->_scene->isInIntro() || _fadeMode == kFadeOut)
 		return;
@@ -805,27 +789,27 @@ void Interface::draw() {
 	drawStatusBar();
 
 	if (_panelMode == kPanelMain || _panelMode == kPanelMap ||
-		(_panelMode == kPanelNull && _vm->getGameId() == GID_IHNM_DEMO)) {
+		(_panelMode == kPanelNull && _vm->getFeatures() & GF_IHNM_DEMO)) {
 		_mainPanel.getRect(rect);
-		backBuffer->blit(rect, _mainPanel.image);
+		_vm->_gfx->drawRegion(rect, _mainPanel.image);
 
-		for (i = 0; i < kVerbTypeIdsMax; i++) {
+		for (int i = 0; i < kVerbTypeIdsMax; i++) {
 			if (_verbTypeToPanelButton[i] != NULL) {
-				drawVerbPanel(backBuffer, _verbTypeToPanelButton[i]);
+				drawVerbPanel(_verbTypeToPanelButton[i]);
 			}
 		}
 	} else if (_panelMode == kPanelConverse) {
 		_conversePanel.getRect(rect);
-		backBuffer->blit(rect, _conversePanel.image);
-		converseDisplayTextLines(backBuffer);
+		_vm->_gfx->drawRegion(rect, _conversePanel.image);
+		converseDisplayTextLines();
 	}
 
 	if (_panelMode == kPanelMain || _panelMode == kPanelConverse ||
 		_lockedMode == kPanelMain || _lockedMode == kPanelConverse ||
-		(_panelMode == kPanelNull && _vm->getGameId() == GID_IHNM_DEMO)) {
+		(_panelMode == kPanelNull && _vm->getFeatures() & GF_IHNM_DEMO)) {
 		leftPortraitPoint.x = _mainPanel.x + _vm->getDisplayInfo().leftPortraitXOffset;
 		leftPortraitPoint.y = _mainPanel.y + _vm->getDisplayInfo().leftPortraitYOffset;
-		_vm->_sprite->draw(backBuffer, _vm->getDisplayClip(), _defPortraits, _leftPortrait, leftPortraitPoint, 256);
+		_vm->_sprite->draw(_defPortraits, _leftPortrait, leftPortraitPoint, 256);
 	}
 
 	if (!_inMainMode && _vm->getDisplayInfo().rightPortraitXOffset >= 0) { //FIXME: should we change !_inMainMode to _panelMode == kPanelConverse ?
@@ -840,10 +824,10 @@ void Interface::draw() {
 		if (_rightPortrait >= _scenePortraits.spriteCount)
 			_rightPortrait = 0;
 
-		_vm->_sprite->draw(backBuffer, _vm->getDisplayClip(), _scenePortraits, _rightPortrait, rightPortraitPoint, 256);
+		_vm->_sprite->draw(_scenePortraits, _rightPortrait, rightPortraitPoint, 256);
 	}
 
-	drawInventory(backBuffer);
+	drawInventory();
 }
 
 void Interface::calcOptionSaveSlider() {
@@ -857,7 +841,7 @@ void Interface::calcOptionSaveSlider() {
 		totalFiles = visibleFiles;
 	}
 
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		// ITE's save file list slider has a dynamically computed height, depending on
 		// the number of save games
 		sliderHeight = visibleFiles * height / totalFiles;
@@ -886,7 +870,7 @@ void Interface::calcOptionSaveSlider() {
 	_optionSaveRectBottom.right--;
 }
 
-void Interface::drawPanelText(Surface *ds, InterfacePanel *panel, PanelButton *panelButton) {
+void Interface::drawPanelText(InterfacePanel *panel, PanelButton *panelButton) {
 	const char *text;
 	int textWidth;
 	Rect rect;
@@ -895,12 +879,12 @@ void Interface::drawPanelText(Surface *ds, InterfacePanel *panel, PanelButton *p
 	KnownFont textFont = kKnownFontMedium;
 
 	// Button differs for CD version
-	if (panelButton->id == kTextReadingSpeed && _vm->getFeatures() & GF_CD_FX)
+	if (panelButton->id == kTextReadingSpeed && _vm->getGameId() == GID_ITE && !(_vm->getFeatures() & GF_ITE_FLOPPY))
 		return;
-	if (panelButton->id == kTextShowDialog && !(_vm->getFeatures() & GF_CD_FX))
+	if (panelButton->id == kTextShowDialog && _vm->getFeatures() & GF_ITE_FLOPPY)
 		return;
 
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		text = _vm->getTextString(panelButton->id);
 		textFont = kKnownFontMedium;
 		textShadowKnownColor = kKnownColorVerbTextShadow;
@@ -922,7 +906,7 @@ void Interface::drawPanelText(Surface *ds, InterfacePanel *panel, PanelButton *p
 
 	panel->calcPanelButtonRect(panelButton, rect);
 	if (panelButton->xOffset < 0) {
-		if (_vm->getGameType() == GType_ITE)
+		if (_vm->getGameId() == GID_ITE)
 			textWidth = _vm->_font->getStringWidth(kKnownFontMedium, text, 0, kFontNormal);
 		else
 			textWidth = _vm->_font->getStringWidth(kKnownFontVerb, text, 0, kFontNormal);
@@ -932,15 +916,14 @@ void Interface::drawPanelText(Surface *ds, InterfacePanel *panel, PanelButton *p
 	textPoint.x = rect.left;
 	textPoint.y = rect.top + 1;
 
-	_vm->_font->textDraw(textFont, ds, text, textPoint, _vm->KnownColor2ColorId(kKnownColorVerbText), _vm->KnownColor2ColorId(textShadowKnownColor), kFontShadow);
+	_vm->_font->textDraw(textFont, text, textPoint,
+						_vm->KnownColor2ColorId(kKnownColorVerbText), _vm->KnownColor2ColorId(textShadowKnownColor), kFontShadow);
 }
 
 void Interface::drawOption() {
 	const char *text;
-	Surface *backBuffer;
-	int i;
 	int fontHeight;
-	uint j, idx;
+	uint idx;
 	int fgColor;
 	int bgColor;
 	Rect rect;
@@ -951,52 +934,50 @@ void Interface::drawOption() {
 	Point sliderPoint;
 	int spritenum = 0;
 
-	backBuffer = _vm->_gfx->getBackBuffer();
-
 	_optionPanel.getRect(rect);
-	backBuffer->blit(rect, _optionPanel.image);
+	_vm->_gfx->drawRegion(rect, _optionPanel.image);
 
-	for (i = 0; i < _optionPanel.buttonsCount; i++) {
+	for (int i = 0; i < _optionPanel.buttonsCount; i++) {
 		panelButton = &_optionPanel.buttons[i];
 
 		if (panelButton->type == kPanelButtonOption) {
-			if (_vm->getGameType() == GType_ITE) {
-				drawPanelButtonText(backBuffer, &_optionPanel, panelButton);
+			if (_vm->getGameId() == GID_ITE) {
+				drawPanelButtonText(&_optionPanel, panelButton);
 			} else {
-				drawPanelButtonText(backBuffer, &_optionPanel, panelButton, spritenum);
+				drawPanelButtonText(&_optionPanel, panelButton, spritenum);
 				spritenum += 2; // 2 sprites per button (lit and unlit)
 			}
 		}
 		if (panelButton->type == kPanelButtonOptionText) {
-			drawPanelText(backBuffer, &_optionPanel, panelButton);
+			drawPanelText(&_optionPanel, panelButton);
 		}
 	}
 
 	if (_optionSaveRectTop.height() > 0) {
-		if (_vm->getGameType() == GType_ITE)
-			backBuffer->drawRect(_optionSaveRectTop, kITEColorDarkGrey);
+		if (_vm->getGameId() == GID_ITE)
+			_vm->_gfx->drawRect(_optionSaveRectTop, kITEColorDarkGrey);
 	}
 
-	if (_vm->getGameType() == GType_ITE) {
-		drawButtonBox(backBuffer, _optionSaveRectSlider, kSlider, _optionSaveFileSlider->state > 0);
+	if (_vm->getGameId() == GID_ITE) {
+		drawButtonBox(_optionSaveRectSlider, kSlider, _optionSaveFileSlider->state > 0);
 	} else {
 		panelButton = &_optionPanel.buttons[0];
 		sliderPoint.x = _optionPanel.x + panelButton->xOffset;
 		sliderPoint.y = _optionSaveRectSlider.top;
-		_vm->_sprite->draw(backBuffer, _vm->getDisplayClip(), _optionPanel.sprites, 0 + _optionSaveFileSlider->state, sliderPoint, 256);
+		_vm->_sprite->draw(_optionPanel.sprites, 0 + _optionSaveFileSlider->state, sliderPoint, 256);
 
 	}
 
 	if (_optionSaveRectBottom.height() > 0) {
-		backBuffer->drawRect(_optionSaveRectBottom, kITEColorDarkGrey);
+		_vm->_gfx->drawRect(_optionSaveRectBottom, kITEColorDarkGrey);
 	}
 
 	_optionPanel.calcPanelButtonRect(_optionSaveFilePanel, rect);
 	rect.top++;
 	rect2 = rect;
 	fontHeight = _vm->_font->getHeight(kKnownFontSmall);
-	for (j = 0; j < _vm->getDisplayInfo().optionSaveFileVisible; j++) {
-		if (_vm->getGameType() == GType_ITE)
+	for (uint j = 0; j < _vm->getDisplayInfo().optionSaveFileVisible; j++) {
+		if (_vm->getGameId() == GID_ITE)
 			bgColor = kITEColorDarkGrey0C;
 		else
 			bgColor = _vm->KnownColor2ColorId(kKnownColorBlack);
@@ -1009,40 +990,37 @@ void Interface::drawOption() {
 		if (idx < _vm->getSaveFilesCount()) {
 			rect2.top = rect.top + j * (fontHeight + 1);
 			rect2.bottom = rect2.top + fontHeight;
-			backBuffer->fillRect(rect2, bgColor);
+			_vm->_gfx->fillRect(rect2, bgColor);
 			text = _vm->getSaveFile(idx)->name;
 			textPoint.x = rect.left + 1;
 			textPoint.y = rect2.top;
-			if (_vm->getGameType() == GType_ITE)
-				_vm->_font->textDraw(kKnownFontSmall, backBuffer, text, textPoint, fgColor, 0, kFontNormal);
+			if (_vm->getGameId() == GID_ITE)
+				_vm->_font->textDraw(kKnownFontSmall, text, textPoint, fgColor, 0, kFontNormal);
 			else
-				_vm->_font->textDraw(kKnownFontVerb, backBuffer, text, textPoint, fgColor, 0, kFontNormal);
+				_vm->_font->textDraw(kKnownFontVerb, text, textPoint, fgColor, 0, kFontNormal);
 		}
 	}
 
 }
 
 void Interface::drawQuit() {
-	Surface *backBuffer;
 	Rect rect;
 	int i;
 	PanelButton *panelButton;
 
-	backBuffer = _vm->_gfx->getBackBuffer();
-
 	_quitPanel.getRect(rect);
-	if (_vm->getGameType() == GType_ITE)
-		drawButtonBox(backBuffer, rect, kButton, false);
+	if (_vm->getGameId() == GID_ITE)
+		drawButtonBox(rect, kButton, false);
 	else
-		backBuffer->blit(rect, _quitPanel.image);
+		_vm->_gfx->drawRegion(rect, _quitPanel.image);
 
 	for (i = 0; i < _quitPanel.buttonsCount; i++) {
 		panelButton = &_quitPanel.buttons[i];
 		if (panelButton->type == kPanelButtonQuit) {
-			drawPanelButtonText(backBuffer, &_quitPanel, panelButton);
+			drawPanelButtonText(&_quitPanel, panelButton);
 		}
 		if (panelButton->type == kPanelButtonQuitText) {
-			drawPanelText(backBuffer, &_quitPanel, panelButton);
+			drawPanelText(&_quitPanel, panelButton);
 		}
 	}
 }
@@ -1081,35 +1059,34 @@ void Interface::setQuit(PanelButton *panelButton) {
 			setMode(kPanelOption);
 			break;
 		case kTextQuit:
-			if (_vm->getGameId() == GID_IHNM_DEMO)
+#ifdef ENABLE_IHNM
+			if (_vm->getFeatures() & GF_IHNM_DEMO)
 				_vm->_scene->creditsScene();	// display sales info for IHNM demo
 			else
+#endif
 				_vm->quitGame();
 			break;
 	}
 }
 
 void Interface::drawLoad() {
-	Surface *backBuffer;
 	Rect rect;
 	int i;
 	PanelButton *panelButton;
 
-	backBuffer = _vm->_gfx->getBackBuffer();
-
 	_loadPanel.getRect(rect);
-	if (_vm->getGameType() == GType_ITE)
-		drawButtonBox(backBuffer, rect, kButton, false);
+	if (_vm->getGameId() == GID_ITE)
+		drawButtonBox(rect, kButton, false);
 	else
-		backBuffer->blit(rect, _loadPanel.image);
+		_vm->_gfx->drawRegion(rect, _loadPanel.image);
 
 	for (i = 0; i < _loadPanel.buttonsCount; i++) {
 		panelButton = &_loadPanel.buttons[i];
 		if (panelButton->type == kPanelButtonLoad) {
-			drawPanelButtonText(backBuffer, &_loadPanel, panelButton);
+			drawPanelButtonText(&_loadPanel, panelButton);
 		}
 		if (panelButton->type == kPanelButtonLoadText) {
-			drawPanelText(backBuffer, &_loadPanel, panelButton);
+			drawPanelText(&_loadPanel, panelButton);
 		}
 	}
 }
@@ -1145,7 +1122,7 @@ void Interface::setLoad(PanelButton *panelButton) {
 	_loadPanel.currentButton = NULL;
 	switch (panelButton->id) {
 		case kTextOK:
-			if (_vm->getGameType() == GType_ITE) {
+			if (_vm->getGameId() == GID_ITE) {
 				setMode(kPanelMain);
 			} else {
 				if (_vm->getSaveFilesCount() > 0) {
@@ -1204,7 +1181,7 @@ bool Interface::processTextInput(Common::KeyState keystate) {
 	ch[1] = 0;
 	// IHNM has a smaller save title size than ITE. We only limit the save title size during text input
 	// in IHNM, to preserve backwards compatibility with older save games
-	uint save_title_size = _vm->getGameType() == GType_ITE ? SAVE_TITLE_SIZE : IHNM_SAVE_TITLE_SIZE;
+	uint save_title_size = _vm->getGameId() == GID_ITE ? SAVE_TITLE_SIZE : IHNM_SAVE_TITLE_SIZE;
 
 	switch (keystate.keycode) {
 	case Common::KEYCODE_RETURN:
@@ -1246,7 +1223,7 @@ bool Interface::processTextInput(Common::KeyState keystate) {
 		_textInputPos = _textInputStringLength + 1;
 		break;
 	default:
-		if (keystate.ascii <= 255 && isalnum(keystate.ascii) || (keystate.ascii == ' ') ||
+		if (((keystate.ascii <= 255) && (isalnum(keystate.ascii))) || (keystate.ascii == ' ') ||
 		    (keystate.ascii == '-') || (keystate.ascii == '_')) {
 			if (_textInputStringLength < save_title_size - 1) {
 				ch[0] = keystate.ascii;
@@ -1276,7 +1253,7 @@ bool Interface::processTextInput(Common::KeyState keystate) {
 	return true;
 }
 
-void Interface::drawTextInput(Surface *ds, InterfacePanel *panel, PanelButton *panelButton) {
+void Interface::drawTextInput(InterfacePanel *panel, PanelButton *panelButton) {
 	Point textPoint;
 	Rect rect;
 	char ch[2];
@@ -1285,7 +1262,7 @@ void Interface::drawTextInput(Surface *ds, InterfacePanel *panel, PanelButton *p
 
 	ch[1] = 0;
 	panel->calcPanelButtonRect(panelButton, rect);
-	drawButtonBox(ds, rect, kEdit, _textInput);
+	drawButtonBox(rect, kEdit, _textInput);
 	rect.left += 4;
 	rect.top += 4;
 	rect.setHeight(_vm->_font->getHeight(kKnownFontSmall));
@@ -1295,68 +1272,62 @@ void Interface::drawTextInput(Surface *ds, InterfacePanel *panel, PanelButton *p
 		rect.setWidth(_vm->_font->getStringWidth(kKnownFontSmall, ch, 0, kFontNormal));
 		if ((i == _textInputPos) && _textInput) {
 			fgColor = _vm->KnownColor2ColorId(kKnownColorBlack);
-			ds->fillRect(rect, _vm->KnownColor2ColorId(kKnownColorWhite));
+			_vm->_gfx->fillRect(rect, _vm->KnownColor2ColorId(kKnownColorWhite));
 		} else {
 			fgColor = _vm->KnownColor2ColorId(kKnownColorWhite);
 		}
 		textPoint.x = rect.left;
 		textPoint.y = rect.top + 1;
 
-		_vm->_font->textDraw(kKnownFontSmall, ds, ch, textPoint, fgColor, 0, kFontNormal);
+		_vm->_font->textDraw(kKnownFontSmall, ch, textPoint, fgColor, 0, kFontNormal);
 		rect.left += rect.width();
 	}
 	if (_textInput && (_textInputPos >= i)) {
 		ch[0] = ' ';
 		rect.setWidth(_vm->_font->getStringWidth(kKnownFontSmall, ch, 0, kFontNormal));
-		ds->fillRect(rect, _vm->KnownColor2ColorId(kKnownColorWhite));
+		_vm->_gfx->fillRect(rect, _vm->KnownColor2ColorId(kKnownColorWhite));
 	}
 }
 
 void Interface::drawSave() {
-	Surface *backBuffer;
 	Rect rect;
 	int i;
 	PanelButton *panelButton;
 
-	backBuffer = _vm->_gfx->getBackBuffer();
-
 	_savePanel.getRect(rect);
-	if (_vm->getGameType() == GType_ITE)
-		drawButtonBox(backBuffer, rect, kButton, false);
+	if (_vm->getGameId() == GID_ITE)
+		drawButtonBox(rect, kButton, false);
 	else
-		backBuffer->blit(rect, _savePanel.image);
+		_vm->_gfx->drawRegion(rect, _savePanel.image);
 
 	for (i = 0; i < _savePanel.buttonsCount; i++) {
 		panelButton = &_savePanel.buttons[i];
 		if (panelButton->type == kPanelButtonSave) {
-			drawPanelButtonText(backBuffer, &_savePanel, panelButton);
+			drawPanelButtonText(&_savePanel, panelButton);
 		}
 		if (panelButton->type == kPanelButtonSaveText) {
-			drawPanelText(backBuffer, &_savePanel, panelButton);
+			drawPanelText(&_savePanel, panelButton);
 		}
 	}
 
-	drawTextInput(backBuffer, &_savePanel, _saveEdit);
+	drawTextInput(&_savePanel, _saveEdit);
 }
 
 void Interface::drawProtect() {
-	Surface *backBuffer;
 	Rect rect;
 	int i;
 	PanelButton *panelButton;
 
-	backBuffer = _vm->_gfx->getBackBuffer();
-
 	_protectPanel.getRect(rect);
-	drawButtonBox(backBuffer, rect, kButton, false);
+	drawButtonBox(rect, kButton, false);
 
 	for (i = 0; i < _protectPanel.buttonsCount; i++) {
 		panelButton = &_protectPanel.buttons[i];
 		if (panelButton->type == kPanelButtonProtectText) {
-			drawPanelText(backBuffer, &_protectPanel, panelButton);
+			drawPanelText(&_protectPanel, panelButton);
 		}
 	}
-	drawTextInput(backBuffer, &_protectPanel, _protectEdit);
+	drawTextInput(&_protectPanel, _protectEdit);
 }
 
 void Interface::handleSaveUpdate(const Point& mousePoint) {
@@ -1420,6 +1391,10 @@ void Interface::setSave(PanelButton *panelButton) {
 				fileName = _vm->calcSaveFileName(_vm->getSaveFile(_optionSaveFileTitleNumber)->slotNumber);
 				_vm->save(fileName, _textInputString);
 			}
+			_vm->getTimerManager()->removeTimerProc(&saveReminderCallback);
+			_vm->getTimerManager()->installTimerProc(&saveReminderCallback, TIMETOSAVE, this);
+			setSaveReminderState(1);
+
 			_textInput = false;
 			setMode(kPanelOption);
 			break;
@@ -1595,7 +1570,7 @@ void Interface::setOption(PanelButton *panelButton) {
 	switch (panelButton->id) {
 	case kTextContinuePlaying:
 		ConfMan.flushToDisk();
-		if (_vm->getGameType() == GType_ITE) {
+		if (_vm->getGameId() == GID_ITE) {
 			setMode(kPanelMain);
 		} else {
 			if (_vm->_scene->currentChapterNumber() == 8) {
@@ -1611,7 +1586,7 @@ void Interface::setOption(PanelButton *panelButton) {
 		setMode(kPanelQuit);
 		break;
 	case kTextLoad:
-		if (_vm->getGameType() == GType_ITE) {
+		if (_vm->getGameId() == GID_ITE) {
 			if (_vm->getSaveFilesCount() > 0) {
 				if (_vm->isSaveListFull() || (_optionSaveFileTitleNumber > 0)) {
 					debug(1, "Loading save game %d", _vm->getSaveFile(_optionSaveFileTitleNumber)->slotNumber);
@@ -1637,7 +1612,7 @@ void Interface::setOption(PanelButton *panelButton) {
 		setMode(kPanelSave);
 		break;
 	case kTextReadingSpeed:
-		if (_vm->getFeatures() & GF_CD_FX) {
+		if (_vm->getGameId() == GID_ITE && !(_vm->getFeatures() & GF_ITE_FLOPPY)) {
 			_vm->_subtitlesEnabled = !_vm->_subtitlesEnabled;
 			ConfMan.setBool("subtitles", _vm->_subtitlesEnabled);
 		} else {
@@ -1654,7 +1629,7 @@ void Interface::setOption(PanelButton *panelButton) {
 	case kTextSound:
 		_vm->_soundVolume = _vm->_soundVolume + 25;
 		if (_vm->_soundVolume > 255) _vm->_soundVolume = 0;
-		ConfMan.setInt("sound_volume", _vm->_soundVolume);
+		ConfMan.setInt("sfx_volume", _vm->_soundVolume);
 		_vm->_sound->setVolume();
 		break;
 	case kTextVoices:
@@ -1673,7 +1648,7 @@ void Interface::setOption(PanelButton *panelButton) {
 			_vm->_subtitlesEnabled = true;								// Set it to "Text"
 			_vm->_voicesEnabled = false;
 		}
-		
+
 		_vm->_speechVolume = _vm->_speechVolume + 25;
 		if (_vm->_speechVolume > 255) _vm->_speechVolume = 0;
 		ConfMan.setInt("speech_volume", _vm->_speechVolume);
@@ -1694,7 +1669,7 @@ void Interface::update(const Point& mousePoint, int updateFlag) {
 		// When opening the psychic profile, or the options screen in the non-interactive part of the IHNM demo,
 		// the interface is locked (_active is false)
 		// Don't return in those cases, so that mouse actions can be processed
-		if (_vm->getGameType() == GType_ITE) {
+		if (_vm->getGameId() == GID_ITE) {
 			return;
 		} else {
 			if (_panelMode == kPanelPlacard && (updateFlag & UPDATE_MOUSECLICK)) {
@@ -1755,7 +1730,7 @@ void Interface::update(const Point& mousePoint, int updateFlag) {
 				converseChangePos(1);
 			}
 
-			if (_vm->_puzzle->isActive()) {
+			if (_vm->_scene->isITEPuzzleScene()) {
 				_vm->_puzzle->handleClick(mousePoint);
 			}
 		}
@@ -1853,10 +1828,11 @@ void Interface::update(const Point& mousePoint, int updateFlag) {
 		break;
 
 	case kPanelPlacard:
-		if (_vm->getGameType() == GType_IHNM) {
+#ifdef ENABLE_IHNM
+		if (_vm->getGameId() == GID_IHNM) {
 			// Any mouse click here returns the user back to the game
 			if (updateFlag & UPDATE_MOUSECLICK) {
-				if (_vm->getGameId() != GID_IHNM_DEMO) {
+				if (!(_vm->getFeatures() & GF_IHNM_DEMO)) {
 					_vm->_scene->clearPsychicProfile();
 				} else {
 					setMode(kPanelConverse);
@@ -1865,6 +1841,7 @@ void Interface::update(const Point& mousePoint, int updateFlag) {
 				}
 			}
 		}
+#endif
 		break;
 
 	case kPanelNull:
@@ -1877,32 +1854,29 @@ void Interface::update(const Point& mousePoint, int updateFlag) {
 }
 
 void Interface::drawStatusBar() {
-	Surface *backBuffer;
 	Rect rect;
 	Point textPoint;
 	int stringWidth;
 	int color;
 	// The default colors in the Spanish version of IHNM are shifted by one
 	// Fixes bug #1848016 - "IHNM: Wrong Subtitles Color (Spanish)"
-	int offset = (_vm->getGameId() == GID_IHNM_CD_ES) ? 1 : 0;
+	int offset = (_vm->getLanguage() == Common::ES_ESP) ? 1 : 0;
 
 	// Disable the status text in IHNM when the chapter is 8
-	if (_vm->getGameType() == GType_IHNM && _vm->_scene->currentChapterNumber() == 8)
+	if (_vm->getGameId() == GID_IHNM && _vm->_scene->currentChapterNumber() == 8)
 		return;
 
 	// Don't draw the status bar while fading out
 	if (_fadeMode == kFadeOut)
 		return;
 
-	backBuffer = _vm->_gfx->getBackBuffer();
-
 	// Erase background of status bar
 	rect.left = _vm->getDisplayInfo().statusXOffset;
 	rect.top = _vm->getDisplayInfo().statusYOffset;
-	rect.right = rect.left + _vm->getDisplayWidth();
+	rect.right = rect.left + _vm->getDisplayInfo().width;
 	rect.bottom = rect.top + _vm->getDisplayInfo().statusHeight;
 
-	backBuffer->drawRect(rect, _vm->getDisplayInfo().statusBGColor - offset);
+	_vm->_gfx->drawRect(rect, _vm->getDisplayInfo().statusBGColor - offset);
 
 	stringWidth = _vm->_font->getStringWidth(kKnownFontSmall, _statusText, 0, kFontNormal);
 
@@ -1913,10 +1887,10 @@ void Interface::drawStatusBar() {
 
 	textPoint.x = _vm->getDisplayInfo().statusXOffset + (_vm->getDisplayInfo().statusWidth - stringWidth) / 2;
 	textPoint.y = _vm->getDisplayInfo().statusYOffset + _vm->getDisplayInfo().statusTextY;
-	if (_vm->getGameType() == GType_ITE)
-		_vm->_font->textDraw(kKnownFontSmall, backBuffer, _statusText, textPoint, color, 0, kFontNormal);
+	if (_vm->getGameId() == GID_ITE)
+		_vm->_font->textDraw(kKnownFontSmall, _statusText, textPoint, color, 0, kFontNormal);
 	else
-		_vm->_font->textDraw(kKnownFontVerb, backBuffer, _statusText, textPoint, color, 0, kFontNormal);
+		_vm->_font->textDraw(kKnownFontVerb, _statusText, textPoint, color, 0, kFontNormal);
 
 	if (_saveReminderState > 0) {
 		rect.left = _vm->getDisplayInfo().saveReminderXOffset;
@@ -1924,8 +1898,8 @@ void Interface::drawStatusBar() {
 
 		rect.right = rect.left + _vm->getDisplayInfo().saveReminderWidth;
 		rect.bottom = rect.top + _vm->getDisplayInfo().saveReminderHeight;
-		_vm->_sprite->draw(backBuffer, _vm->getDisplayClip(), _vm->_sprite->_saveReminderSprites,
-			_saveReminderState == 1 ? _vm->getDisplayInfo().saveReminderFirstSpriteNumber : _vm->getDisplayInfo().saveReminderSecondSpriteNumber,
+		_vm->_sprite->draw(_vm->_sprite->_saveReminderSprites,
+			_vm->getDisplayInfo().saveReminderFirstSpriteNumber + _saveReminderState - 1,
 			rect, 256);
 
 	}
@@ -2110,36 +2084,35 @@ int Interface::inventoryItemPosition(int objectId) {
 	return -1;
 }
 
-void Interface::drawInventory(Surface *backBuffer) {
+void Interface::drawInventory() {
 	if (!isInMainMode())
 		return;
 
-	int i;
 	Rect rect;
-	int ci;
+	int ci = _inventoryStart;
 	ObjectData *obj;
-	ci = _inventoryStart;
+
 	if (_inventoryStart != 0) {
-		drawPanelButtonArrow(backBuffer, &_mainPanel, _inventoryUpButton);
+		drawPanelButtonArrow(&_mainPanel, _inventoryUpButton);
 	}
 	if (_inventoryStart != _inventoryEnd) {
-		drawPanelButtonArrow(backBuffer, &_mainPanel, _inventoryDownButton);
+		drawPanelButtonArrow(&_mainPanel, _inventoryDownButton);
 	}
 
-	for (i = 0; i < _mainPanel.buttonsCount; i++) {
+	for (int i = 0; i < _mainPanel.buttonsCount; i++) {
 		if (_mainPanel.buttons[i].type != kPanelButtonInventory) {
 			continue;
 		}
 		_mainPanel.calcPanelButtonRect(&_mainPanel.buttons[i], rect);
 
-		if (_vm->getGameType() == GType_ITE)
-			backBuffer->drawRect(rect, kITEColorDarkGrey);
+		if (_vm->getGameId() == GID_ITE)
+			_vm->_gfx->drawRect(rect, kITEColorDarkGrey);
 		else
-			backBuffer->drawRect(rect, _vm->KnownColor2ColorId(kKnownColorBlack));
+			_vm->_gfx->drawRect(rect, _vm->KnownColor2ColorId(kKnownColorBlack));
 
 		if (ci < _inventoryCount) {
 			obj = _vm->_actor->getObj(_inventory[ci]);
-			_vm->_sprite->draw(backBuffer, _vm->getDisplayClip(), _vm->_sprite->_inventorySprites, obj->_spriteListResourceId, rect, 256);
+			_vm->_sprite->draw(_vm->_sprite->_inventorySprites, obj->_spriteListResourceId, rect, 256);
 		}
 
 		ci++;
@@ -2156,7 +2129,7 @@ void Interface::setVerbState(int verb, int state) {
 	draw();
 }
 
-void Interface::drawButtonBox(Surface *ds, const Rect& rect, ButtonKind kind, bool down) {
+void Interface::drawButtonBox(const Rect& rect, ButtonKind kind, bool down) {
 	byte cornerColor;
 	byte frameColor;
 	byte fillColor;
@@ -2175,7 +2148,7 @@ void Interface::drawButtonBox(Surface *ds, const Rect& rect, ButtonKind kind, bo
 			solidColor = down ? kITEColorLightBlue94 : kITEColorLightBlue96;
 			break;
 		case kEdit:
-			if (_vm->getGameType() == GType_ITE) {
+			if (_vm->getGameId() == GID_ITE) {
 				cornerColor = frameColor = fillColor = kITEColorLightBlue96;
 				our = kITEColorDarkBlue8a;
 				odl = kITEColorLightBlue94;
@@ -2209,14 +2182,14 @@ void Interface::drawButtonBox(Surface *ds, const Rect& rect, ButtonKind kind, bo
 	int xe = rect.right - 1;
 	int ye = rect.bottom - 1;
 
-	((byte *)ds->getBasePtr(x, y))[0] = cornerColor;
-	((byte *)ds->getBasePtr(x, ye))[0] = cornerColor;
-	((byte *)ds->getBasePtr(xe, y))[0] = cornerColor;
-	((byte *)ds->getBasePtr(xe, ye))[0] = cornerColor;
-	ds->hLine(x + 1, y, x + w - 2, frameColor);
-	ds->hLine(x + 1, ye, x + w - 2, frameColor);
-	ds->vLine(x, y + 1, y + h - 2, frameColor);
-	ds->vLine(xe, y + 1, y + h - 2, frameColor);
+	_vm->_gfx->setPixelColor(x, y, cornerColor);
+	_vm->_gfx->setPixelColor(x, ye, cornerColor);
+	_vm->_gfx->setPixelColor(xe, y, cornerColor);
+	_vm->_gfx->setPixelColor(xe, ye, cornerColor);
+ 	_vm->_gfx->hLine(x + 1, y, x + w - 2, frameColor);
+ 	_vm->_gfx->hLine(x + 1, ye, x + w - 2, frameColor);
+ 	_vm->_gfx->vLine(x, y + 1, y + h - 2, frameColor);
+ 	_vm->_gfx->vLine(xe, y + 1, y + h - 2, frameColor);
 
 	x++;
 	y++;
@@ -2224,10 +2197,10 @@ void Interface::drawButtonBox(Surface *ds, const Rect& rect, ButtonKind kind, bo
 	ye--;
 	w -= 2;
 	h -= 2;
-	ds->vLine(x, y, y + h - 1, odl);
-	ds->hLine(x, ye, x + w - 1, odl);
-	ds->vLine(xe, y, y + h - 2, our);
-	ds->hLine(x + 1, y, x + 1 + w - 2, our);
+	_vm->_gfx->vLine(x, y, y + h - 1, odl);
+	_vm->_gfx->hLine(x, ye, x + w - 1, odl);
+	_vm->_gfx->vLine(xe, y, y + h - 2, our);
+	_vm->_gfx->hLine(x + 1, y, x + 1 + w - 2, our);
 
 	x++;
 	y++;
@@ -2235,23 +2208,24 @@ void Interface::drawButtonBox(Surface *ds, const Rect& rect, ButtonKind kind, bo
 	ye--;
 	w -= 2;
 	h -= 2;
-	((byte *)ds->getBasePtr(x, y))[0] = fillColor;
-	((byte *)ds->getBasePtr(xe, ye))[0] = fillColor;
-	ds->vLine(x, y + 1, y + 1 + h - 2, idl);
-	ds->hLine(x + 1, ye, x + 1 + w - 2, idl);
-	ds->vLine(xe, y, y + h - 2, iur);
-	ds->hLine(x + 1, y, x + 1 + w - 2, iur);
+	_vm->_gfx->setPixelColor(x, y, fillColor);
+	_vm->_gfx->setPixelColor(xe, ye, fillColor);
+	_vm->_gfx->vLine(x, y + 1, y + 1 + h - 2, idl);
+	_vm->_gfx->hLine(x + 1, ye, x + 1 + w - 2, idl);
+	_vm->_gfx->vLine(xe, y, y + h - 2, iur);
+	_vm->_gfx->hLine(x + 1, y, x + 1 + w - 2, iur);
 
 	x++; y++;
 	w -= 2; h -= 2;
 
 	Common::Rect fill(x, y, x + w, y + h);
-	ds->fillRect(fill, solidColor);
+	_vm->_gfx->fillRect(fill, solidColor);
+	_vm->_render->addDirtyRect(rect);
 }
 
 static const int readingSpeeds[] = { kTextClick, kTextSlow, kTextMid, kTextFast };
 
-void Interface::drawPanelButtonText(Surface *ds, InterfacePanel *panel, PanelButton *panelButton, int spritenum) {
+void Interface::drawPanelButtonText(InterfacePanel *panel, PanelButton *panelButton, int spritenum) {
 	const char *text;
 	int textId;
 	int textWidth;
@@ -2267,7 +2241,7 @@ void Interface::drawPanelButtonText(Surface *ds, InterfacePanel *panel, PanelBut
 	textId = panelButton->id;
 	switch (panelButton->id) {
 	case kTextReadingSpeed:
-		if (_vm->getFeatures() & GF_CD_FX) {
+		if (_vm->getGameId() == GID_ITE && !(_vm->getFeatures() & GF_ITE_FLOPPY)) {
 			if (_vm->_subtitlesEnabled)
 				textId = kTextOn;
 			else
@@ -2297,7 +2271,7 @@ void Interface::drawPanelButtonText(Surface *ds, InterfacePanel *panel, PanelBut
 			textId = kTextAudio;
 		break;
 	}
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		text = _vm->getTextString(textId);
 		textFont = kKnownFontMedium;
 		textShadowKnownColor = kKnownColorVerbTextShadow;
@@ -2329,42 +2303,42 @@ void Interface::drawPanelButtonText(Surface *ds, InterfacePanel *panel, PanelBut
 	}
 
 	panel->calcPanelButtonRect(panelButton, rect);
-	if (_vm->getGameType() == GType_ITE) {
-		drawButtonBox(ds, rect, kButton, panelButton->state > 0);
+	if (_vm->getGameId() == GID_ITE) {
+		drawButtonBox(rect, kButton, panelButton->state > 0);
 	} else {
 		litButton = panelButton->state > 0;
 
 		if (panel == &_optionPanel) {
 			texturePoint.x = _optionPanel.x + panelButton->xOffset - 1;
 			texturePoint.y = _optionPanel.y + panelButton->yOffset - 1;
-			_vm->_sprite->draw(ds, _vm->getDisplayClip(), _optionPanel.sprites, spritenum + 2 + litButton, texturePoint, 256);
+			_vm->_sprite->draw(_optionPanel.sprites, spritenum + 2 + litButton, texturePoint, 256);
 		} else if (panel == &_quitPanel) {
 			texturePoint.x = _quitPanel.x + panelButton->xOffset - 3;
 			texturePoint.y = _quitPanel.y + panelButton->yOffset - 3;
-			_vm->_sprite->draw(ds, _vm->getDisplayClip(), _quitPanel.sprites, litButton, texturePoint, 256);
+			_vm->_sprite->draw(_quitPanel.sprites, litButton, texturePoint, 256);
 		} else if (panel == &_savePanel) {
 			texturePoint.x = _savePanel.x + panelButton->xOffset - 3;
 			texturePoint.y = _savePanel.y + panelButton->yOffset - 3;
-			_vm->_sprite->draw(ds, _vm->getDisplayClip(), _savePanel.sprites, litButton, texturePoint, 256);
+			_vm->_sprite->draw(_savePanel.sprites, litButton, texturePoint, 256);
 			// Input text box sprite
 			texturePoint.x = _savePanel.x + _saveEdit->xOffset - 2;
 			texturePoint.y = _savePanel.y + _saveEdit->yOffset - 2;
-			_vm->_sprite->draw(ds, _vm->getDisplayClip(), _savePanel.sprites, 2, texturePoint, 256);
+			_vm->_sprite->draw(_savePanel.sprites, 2, texturePoint, 256);
 		} else if (panel == &_loadPanel) {
 			texturePoint.x = _loadPanel.x + panelButton->xOffset - 3;
 			texturePoint.y = _loadPanel.y + panelButton->yOffset - 3;
-			_vm->_sprite->draw(ds, _vm->getDisplayClip(), _loadPanel.sprites, litButton, texturePoint, 256);
+			_vm->_sprite->draw(_loadPanel.sprites, litButton, texturePoint, 256);
 		} else {
 			// revert to default behavior
-			drawButtonBox(ds, rect, kButton, panelButton->state > 0);
+			drawButtonBox(rect, kButton, panelButton->state > 0);
 		}
 	}
 
-	_vm->_font->textDraw(textFont, ds, text, point,
+	_vm->_font->textDraw(textFont, text, point,
 		_vm->KnownColor2ColorId(textColor), _vm->KnownColor2ColorId(textShadowKnownColor), kFontShadow);
 }
 
-void Interface::drawPanelButtonArrow(Surface *ds, InterfacePanel *panel, PanelButton *panelButton) {
+void Interface::drawPanelButtonArrow(InterfacePanel *panel, PanelButton *panelButton) {
 	Point point;
 	int spriteNumber;
 
@@ -2381,30 +2355,30 @@ void Interface::drawPanelButtonArrow(Surface *ds, InterfacePanel *panel, PanelBu
 	point.x = panel->x + panelButton->xOffset;
 	point.y = panel->y + panelButton->yOffset;
 
-	if (_vm->getGameType() == GType_ITE)
-		_vm->_sprite->draw(ds, _vm->getDisplayClip(), _vm->_sprite->_mainSprites, spriteNumber, point, 256);
+	if (_vm->getGameId() == GID_ITE)
+		_vm->_sprite->draw(_vm->_sprite->_mainSprites, spriteNumber, point, 256);
 	else
-		_vm->_sprite->draw(ds, _vm->getDisplayClip(), _vm->_sprite->_arrowSprites, spriteNumber, point, 256);
+		_vm->_sprite->draw(_vm->_sprite->_arrowSprites, spriteNumber, point, 256);
 }
 
-void Interface::drawVerbPanelText(Surface *ds, PanelButton *panelButton, KnownColor textKnownColor, KnownColor textShadowKnownColor) {
+void Interface::drawVerbPanelText(PanelButton *panelButton, KnownColor textKnownColor, KnownColor textShadowKnownColor) {
 	const char *text;
 	int textWidth;
 	Point point;
 	int textId;
 
-	if (_vm->getGameType() == GType_ITE) {
-		textId = verbTypeToTextStringsIdLUT[0][panelButton->id];
+	if (_vm->getGameId() == GID_ITE) {
+		textId = verbToTextIdITE[panelButton->id - 1];
 		text = _vm->getTextString(textId);
 	} else {
-		textId = verbTypeToTextStringsIdLUT[1][panelButton->id];
+		textId = panelButton->id;
 		text = _vm->_script->_mainStrings.getString(textId + 1);
 		textShadowKnownColor = kKnownColorTransparent;
 	}
 
 	textWidth = _vm->_font->getStringWidth(kKnownFontVerb, text, 0, kFontNormal);
 
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		point.x = _mainPanel.x + panelButton->xOffset + 1 + (panelButton->width - 1 - textWidth) / 2;
 		point.y = _mainPanel.y + panelButton->yOffset + 1;
 	} else {
@@ -2412,7 +2386,9 @@ void Interface::drawVerbPanelText(Surface *ds, PanelButton *panelButton, KnownCo
 		point.y = _mainPanel.y + panelButton->yOffset + 12;
 	}
 
-	_vm->_font->textDraw(kKnownFontVerb, ds, text, point, _vm->KnownColor2ColorId(textKnownColor),_vm->KnownColor2ColorId(textShadowKnownColor), (textShadowKnownColor != kKnownColorTransparent) ? kFontShadow : kFontNormal);
+	_vm->_font->textDraw(kKnownFontVerb, text, point,
+						_vm->KnownColor2ColorId(textKnownColor), _vm->KnownColor2ColorId(textShadowKnownColor),
+						(textShadowKnownColor != kKnownColorTransparent) ? kFontShadow : kFontNormal);
 }
 
 
@@ -2458,7 +2434,7 @@ bool Interface::converseAddText(const char *text, int strId, int replyId, byte r
 		for (i = len; i >= 0; i--) {
 			c = _converseWorkString[i];
 
-			if (_vm->getGameType() == GType_ITE) {
+			if (_vm->getGameId() == GID_ITE) {
 				if ((c == ' ' || c == '\0') && (_vm->_font->getStringWidth(kKnownFontSmall, _converseWorkString, i, kFontNormal) <= _vm->getDisplayInfo().converseMaxTextWidth))
 					break;
 			} else {
@@ -2524,7 +2500,7 @@ void Interface::converseSetTextLines(int row) {
 	}
 }
 
-void Interface::converseDisplayTextLines(Surface *ds) {
+void Interface::converseDisplayTextLines() {
 	int relPos;
 	byte foregnd;
 	byte backgnd;
@@ -2539,7 +2515,7 @@ void Interface::converseDisplayTextLines(Surface *ds) {
 
 	assert(_conversePanel.buttonsCount >= 6);
 
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		bulletForegnd = kITEColorGreen;
 		bulletBackgnd = kITEColorBlack;
 	} else {
@@ -2551,10 +2527,10 @@ void Interface::converseDisplayTextLines(Surface *ds) {
 	rect.moveTo(_conversePanel.x + _conversePanel.buttons[0].xOffset,
 		_conversePanel.y + _conversePanel.buttons[0].yOffset);
 
-	if (_vm->getGameType() == GType_ITE)
-		ds->drawRect(rect, kITEColorDarkGrey);	//fill bullet place
+	if (_vm->getGameId() == GID_ITE)
+		_vm->_gfx->drawRect(rect, kITEColorDarkGrey);	//fill bullet place
 	else
-		ds->drawRect(rect, _vm->KnownColor2ColorId(kKnownColorBlack));	//fill bullet place
+		_vm->_gfx->drawRect(rect, _vm->KnownColor2ColorId(kKnownColorBlack));	//fill bullet place
 
 	for (int i = 0; i < _vm->getDisplayInfo().converseTextLines; i++) {
 		relPos = _converseStartPos + i;
@@ -2564,7 +2540,7 @@ void Interface::converseDisplayTextLines(Surface *ds) {
 		}
 
 		if (_conversePos >= 0 && _converseText[_conversePos].stringNum == _converseText[relPos].stringNum) {
-			if (_vm->getGameType() == GType_ITE) {
+			if (_vm->getGameId() == GID_ITE) {
 				foregnd = kITEColorBrightWhite;
 				backgnd = (!_vm->leftMouseButtonPressed()) ? kITEColorDarkGrey : kITEColorGrey;
 			} else {
@@ -2572,7 +2548,7 @@ void Interface::converseDisplayTextLines(Surface *ds) {
 				backgnd = _vm->KnownColor2ColorId(kKnownColorVerbTextActive);
 			}
 		} else {
-			if (_vm->getGameType() == GType_ITE) {
+			if (_vm->getGameId() == GID_ITE) {
 				foregnd = kITEColorBlue;
 				backgnd = kITEColorDarkGrey;
 			} else {
@@ -2583,7 +2559,7 @@ void Interface::converseDisplayTextLines(Surface *ds) {
 
 		_conversePanel.calcPanelButtonRect(&_conversePanel.buttons[i], rect);
 		rect.left += 8;
-		ds->drawRect(rect, backgnd);
+		_vm->_gfx->drawRect(rect, backgnd);
 
 		str = _converseText[relPos].text;
 
@@ -2591,25 +2567,25 @@ void Interface::converseDisplayTextLines(Surface *ds) {
 			textPoint.x = rect.left - 6;
 			textPoint.y = rect.top;
 
-			if (_vm->getGameType() == GType_ITE)
-				_vm->_font->textDraw(kKnownFontSmall, ds, bullet, textPoint, bulletForegnd, bulletBackgnd, (FontEffectFlags)(kFontShadow | kFontDontmap));
+			if (_vm->getGameId() == GID_ITE)
+				_vm->_font->textDraw(kKnownFontSmall, bullet, textPoint, bulletForegnd, bulletBackgnd, (FontEffectFlags)(kFontShadow | kFontDontmap));
 			else
-				_vm->_font->textDraw(kKnownFontVerb, ds, bullet, textPoint, bulletForegnd, bulletBackgnd, (FontEffectFlags)(kFontShadow | kFontDontmap));
+				_vm->_font->textDraw(kKnownFontVerb, bullet, textPoint, bulletForegnd, bulletBackgnd, (FontEffectFlags)(kFontShadow | kFontDontmap));
 		}
 		textPoint.x = rect.left + 1;
 		textPoint.y = rect.top;
-		if (_vm->getGameType() == GType_ITE)
-			_vm->_font->textDraw(kKnownFontSmall, ds, str, textPoint, foregnd, kITEColorBlack, kFontShadow);
+		if (_vm->getGameId() == GID_ITE)
+			_vm->_font->textDraw(kKnownFontSmall, str, textPoint, foregnd, kITEColorBlack, kFontShadow);
 		else
-			_vm->_font->textDraw(kKnownFontVerb, ds, str, textPoint, foregnd, _vm->KnownColor2ColorId(kKnownColorBlack), kFontShadow);
+			_vm->_font->textDraw(kKnownFontVerb, str, textPoint, foregnd, _vm->KnownColor2ColorId(kKnownColorBlack), kFontShadow);
 	}
 
 	if (_converseStartPos != 0) {
-		drawPanelButtonArrow(ds, &_conversePanel, _converseUpButton);
+		drawPanelButtonArrow(&_conversePanel, _converseUpButton);
 	}
 
 	if (_converseStartPos != _converseEndPos) {
-		drawPanelButtonArrow(ds, &_conversePanel, _converseDownButton);
+		drawPanelButtonArrow(&_conversePanel, _converseDownButton);
 	}
 }
 
@@ -2637,7 +2613,7 @@ void Interface::converseSetPos(int key) {
 
 	_vm->_script->finishDialog(ct->strId, ct->replyId, ct->replyFlags, ct->replyBit);
 
-	if (_vm->_puzzle->isActive())
+	if (_vm->_scene->isITEPuzzleScene())
 		_vm->_puzzle->handleReply(ct->replyId);
 
 	_conversePos = -1;
@@ -2721,7 +2697,6 @@ void Interface::mapPanelShow() {
 	int i;
 	byte *resource;
 	size_t resourceLength, imageLength;
-	Surface *backBuffer;
 	Rect rect;
 	byte *image;
 	int imageWidth, imageHeight;
@@ -2729,8 +2704,6 @@ void Interface::mapPanelShow() {
 	PalEntry cPal[PAL_ENTRIES];
 
 	_vm->_gfx->showCursor(false);
-
-	backBuffer = _vm->_gfx->getBackBuffer();
 
 	rect.left = rect.top = 0;
 
@@ -2762,7 +2735,7 @@ void Interface::mapPanelShow() {
 	rect.setWidth(imageWidth);
 	rect.setHeight(imageHeight);
 
-	backBuffer->blit(rect, image);
+	_vm->_gfx->drawRegion(rect, image);
 
 	// Evil Evil
 	for (i = 0; i < 6 ; i++) {
@@ -2805,23 +2778,20 @@ void Interface::mapPanelClean() {
 }
 
 void Interface::mapPanelDrawCrossHair() {
-	Surface *backBuffer;
-
-	backBuffer = _vm->_gfx->getBackBuffer();
 	_mapPanelCrossHairState = !_mapPanelCrossHairState;
 
 	Point mapPosition = _vm->_isoMap->getMapPosition();
-	Rect screen(_vm->getDisplayWidth(), _vm->_scene->getHeight());
+	Rect screen(_vm->getDisplayInfo().width, _vm->_scene->getHeight());
 
 	if (screen.contains(mapPosition)) {
-		_vm->_sprite->draw(backBuffer, _vm->getDisplayClip(), _vm->_sprite->_mainSprites,
+		_vm->_sprite->draw(_vm->_sprite->_mainSprites,
 						   _mapPanelCrossHairState? RID_ITE_SPR_CROSSHAIR : RID_ITE_SPR_CROSSHAIR + 1,
 						   mapPosition, 256);
 	}
 }
 
 void Interface::keyBoss() {
-	if (_vm->getGameType() != GType_IHNM)
+	if (_vm->getGameId() == GID_ITE)
 		return;
 
 	if (_bossMode != -1 || _fadeMode != kNoFade)
@@ -2834,7 +2804,6 @@ void Interface::keyBoss() {
 	int i;
 	byte *resource;
 	size_t resourceLength, imageLength;
-	Surface *backBuffer;
 	Rect rect;
 	byte *image;
 	int imageWidth, imageHeight;
@@ -2842,8 +2811,6 @@ void Interface::keyBoss() {
 	PalEntry cPal[PAL_ENTRIES];
 
 	_vm->_gfx->showCursor(false);
-
-	backBuffer = _vm->_gfx->getBackBuffer();
 
 	rect.left = rect.top = 0;
 
@@ -2872,7 +2839,7 @@ void Interface::keyBoss() {
 		cPal[i].blue = 128;
 	}
 
-	backBuffer->blit(rect, image);
+	_vm->_gfx->drawRegion(rect, image);
 
 	_vm->_gfx->setPalette(cPal);
 

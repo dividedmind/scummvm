@@ -75,7 +75,7 @@ void KyraEngine_HoF::seq_playSequences(int startSeq, int endSeq) {
 	_seqEndTime = 0;
 	_menuChoice = 0;
 
-	for (int seqNum = startSeq; seqNum <= endSeq && !((skipFlag() && allowSkip) || quit() || (_abortIntroFlag && allowSkip) || _menuChoice); seqNum++) {
+	for (int seqNum = startSeq; seqNum <= endSeq && !((skipFlag() && allowSkip) || shouldQuit() || (_abortIntroFlag && allowSkip) || _menuChoice); seqNum++) {
 		_screen->clearPage(0);
 		_screen->clearPage(8);
 		memcpy(_screen->getPalette(1), _screen->getPalette(0), 0x300);
@@ -131,7 +131,7 @@ void KyraEngine_HoF::seq_playSequences(int startSeq, int endSeq) {
 
 		seq_sequenceCommand(cseq.startupCommand);
 
-		if (!((skipFlag() && allowSkip) || quit() || (_abortIntroFlag && allowSkip) || _menuChoice)) {
+		if (!((skipFlag() && allowSkip) || shouldQuit() || (_abortIntroFlag && allowSkip) || _menuChoice)) {
 			_screen->copyPage(2, 0);
 			_screen->updateScreen();
 		}
@@ -165,7 +165,7 @@ void KyraEngine_HoF::seq_playSequences(int startSeq, int endSeq) {
 			_seqWsaCurrentFrame = cseq.startFrame;
 
 			bool loop = true;
-			while (loop && !((skipFlag() && allowSkip) || quit() || (_abortIntroFlag && allowSkip) || _menuChoice)) {
+			while (loop && !((skipFlag() && allowSkip) || shouldQuit() || (_abortIntroFlag && allowSkip) || _menuChoice)) {
 				_seqEndTime = _system->getMillis() + _seqFrameDelay * _tickLength;
 
 				if (_seqWsa || !cb)
@@ -189,16 +189,16 @@ void KyraEngine_HoF::seq_playSequences(int startSeq, int endSeq) {
 				seq_processWSAs();
 				seq_processText();
 
-				if ((_seqWsa || !cb) && !((skipFlag() && allowSkip) || quit() || (_abortIntroFlag && allowSkip) || _menuChoice)) {
+				if ((_seqWsa || !cb) && !((skipFlag() && allowSkip) || shouldQuit() || (_abortIntroFlag && allowSkip) || _menuChoice)) {
 					_screen->copyPage(2, 0);
 					_screen->updateScreen();
 				}
 
 				bool loop2 = true;
-				while (loop2 && !((skipFlag() && allowSkip) || quit() || (_abortIntroFlag && allowSkip) || _menuChoice)) {
+				while (loop2 && !((skipFlag() && allowSkip) || shouldQuit() || (_abortIntroFlag && allowSkip) || _menuChoice)) {
 					if (_seqWsa) {
 						seq_processText();
-						if (!((skipFlag() && allowSkip) || quit() || (_abortIntroFlag && allowSkip) || _menuChoice)) {
+						if (!((skipFlag() && allowSkip) || shouldQuit() || (_abortIntroFlag && allowSkip) || _menuChoice)) {
 							_screen->copyPage(2, 0);
 							_screen->updateScreen();
 						}
@@ -230,7 +230,7 @@ void KyraEngine_HoF::seq_playSequences(int startSeq, int endSeq) {
 		} else {
 			_seqFrameDelay = cseq.frameDelay;
 			_seqEndTime = _system->getMillis() + _seqFrameDelay * _tickLength;
-			while (!((skipFlag() && allowSkip) || quit() || (_abortIntroFlag && allowSkip) || _menuChoice)) {
+			while (!((skipFlag() && allowSkip) || shouldQuit() || (_abortIntroFlag && allowSkip) || _menuChoice)) {
 				_seqSubFrameStartTime = _system->getMillis();
 				seq_processWSAs();
 				if (cb)
@@ -262,7 +262,7 @@ void KyraEngine_HoF::seq_playSequences(int startSeq, int endSeq) {
 			dl = ct;
 		_seqEndTime = _system->getMillis() + dl;
 
-		while (!((skipFlag() && allowSkip) || quit() || (_abortIntroFlag && allowSkip) || _menuChoice)) {
+		while (!((skipFlag() && allowSkip) || shouldQuit() || (_abortIntroFlag && allowSkip) || _menuChoice)) {
 			_seqSubFrameStartTime = _system->getMillis();
 			seq_processWSAs();
 
@@ -309,7 +309,7 @@ void KyraEngine_HoF::seq_playSequences(int startSeq, int endSeq) {
 			_eventList.clear();
 
 			if (_menuChoice == 2) {
-				seqNum = kSequenceTitle;				
+				seqNum = kSequenceTitle;
 				_menuChoice = 0;
 			}
 		}
@@ -319,7 +319,7 @@ void KyraEngine_HoF::seq_playSequences(int startSeq, int endSeq) {
 		_eventList.clear();
 		_screen->fadeToBlack();
 	}
-	
+
 	if (!_menuChoice)
 		delay(1200);
 
@@ -1798,7 +1798,7 @@ int KyraEngine_HoF::seq_demoDig(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
 
 int KyraEngine_HoF::seq_lolDemoScene1(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
 	uint8 *tmpPal = _screen->getPalette(2);
-	
+
 	if (!(_seqFrameCounter % 100)) {
 		if (_seqFrameCounter == 0) {
 			_sound->haltTrack();
@@ -1808,12 +1808,12 @@ int KyraEngine_HoF::seq_lolDemoScene1(WSAMovie_v2 *wsaObj, int x, int y, int frm
 		for (int i = 3; i < 0x300; i++) {
 			tmpPal[i] = ((int)tmpPal[i] * 120) / 64;
 			if (tmpPal[i] > 0x3f)
-				tmpPal[i] = 0x3f;			
+				tmpPal[i] = 0x3f;
 		}
 		seq_playTalkText(_rnd.getRandomBit());
 		_screen->setScreenPalette(tmpPal);
 		_screen->updateScreen();
-		delay(8);		
+		delay(8);
 	} else {
 		_screen->setScreenPalette(_screen->getPalette(0));
 		_screen->updateScreen();
@@ -1853,7 +1853,7 @@ int KyraEngine_HoF::seq_lolDemoScene3(WSAMovie_v2 *wsaObj, int x, int y, int frm
 		seq_playTalkText(6);
 	else if (frm == 26)
 		seq_playTalkText(7);
-	
+
 	_seqFrameCounter++;
 	return frm;
 }
@@ -1887,7 +1887,7 @@ int KyraEngine_HoF::seq_lolDemoScene4(WSAMovie_v2 *wsaObj, int x, int y, int frm
 		default:
 			break;
 	}
-	
+
 	_seqFrameCounter++;
 	return frm;
 }
@@ -1929,7 +1929,7 @@ int KyraEngine_HoF::seq_lolDemoText5(WSAMovie_v2 *wsaObj, int x, int y, int frm)
 }
 
 int KyraEngine_HoF::seq_lolDemoScene6(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
-	while (_seqScrollTextCounter < 0x122) {		
+	while (_seqScrollTextCounter < 0x122) {
 		_seqEndTime = _system->getMillis() + 6 * _tickLength;
 		if (!_seqFrameCounter) {
 			_screen->loadBitmap("adtext.cps", 4, 4, 0);
@@ -1947,17 +1947,17 @@ int KyraEngine_HoF::seq_lolDemoScene6(WSAMovie_v2 *wsaObj, int x, int y, int frm
 			for (int i = 3; i < 0x300; i++) {
 				tmpPal[i] = ((int)tmpPal[i] * 120) / 64;
 				if (tmpPal[i] > 0x3f)
-					tmpPal[i] = 0x3f;			
+					tmpPal[i] = 0x3f;
 			}
 			seq_playTalkText(_rnd.getRandomBit());
 			_screen->setScreenPalette(tmpPal);
 			_screen->updateScreen();
 			delay(8);
 		}
-		
+
 		if (_seqFrameCounter == 40 || _seqFrameCounter == 80 || _seqFrameCounter == 150 || _seqFrameCounter == 300)
 			seq_playTalkText(3);
-		
+
 		_screen->copyPage(12, 2);
 		seq_scrollPage(70, 130);
 		_screen->copyPage(2, 0);
@@ -2267,7 +2267,7 @@ void KyraEngine_HoF::seq_loadNestedSequence(int wsaNum, int seqNum) {
 void KyraEngine_HoF::seq_nestedSequenceFrame(int command, int wsaNum) {
 	int xa = 0, ya = 0;
 	command--;
-	if (!_activeWSA[wsaNum].movie || skipFlag() || quit() || _abortIntroFlag)
+	if (!_activeWSA[wsaNum].movie || skipFlag() || shouldQuit() || _abortIntroFlag)
 		return;
 
 	switch (command) {
@@ -2467,7 +2467,7 @@ bool KyraEngine_HoF::seq_processNextSubFrame(int wsaNum) {
 
 void KyraEngine_HoF::seq_printCreditsString(uint16 strIndex, int x, int y, const uint8 *colorMap, uint8 textcolor) {
 	uint8 colormap[16];
-	if (skipFlag() || quit() || _abortIntroFlag || _menuChoice)
+	if (skipFlag() || shouldQuit() || _abortIntroFlag || _menuChoice)
 		return;
 
 	memset(&_screen->getPalette(0)[0x2fa], 0x3f, 6);
@@ -2767,12 +2767,12 @@ void KyraEngine_HoF::seq_scrollPage(int bottom, int top) {
 	if (dstH > 0) {
 		if (_demoAnimData) {
 			for (int i = 0; i < 4; i++) {
-				const ItemAnimData_v1 *def = &_demoAnimData[i];			
+				const ItemAnimData_v1 *def = &_demoAnimData[i];
 				ActiveItemAnim *a = &_activeItemAnim[i];
 
 				_screen->fillRect(12, def->y - 8, 28, def->y + 8, 0, 4);
 				_screen->drawShape(4, getShapePtr(def->itemIndex + def->frames[a->currentFrame]), 12, def->y - 8, 0, 0);
-				if(_seqFrameCounter % 2 == 0)
+				if (_seqFrameCounter % 2 == 0)
 					a->currentFrame = ++a->currentFrame % 20;
 			}
 		}
@@ -2807,7 +2807,7 @@ void KyraEngine_HoF::seq_showStarcraftLogo() {
 		_screen->updateScreen();
 		delay(_seqEndTime - _system->getMillis());
 	}
-	if(!skipFlag()) {
+	if (!skipFlag()) {
 		_seqEndTime = _system->getMillis() + 50;
 		ci->displayFrame(0, 0);
 		_screen->copyPage(2, 0);
@@ -2830,7 +2830,7 @@ void KyraEngine_HoF::seq_init() {
 	_res->unloadAllPakFiles();
 	_res->loadPakFile(StaticResource::staticDataFilename());
 	_res->loadFileList(_sequencePakList, _sequencePakListSize);
-	
+
 	if (_flags.platform == Common::kPlatformPC98)
 		_sound->loadSoundFile("sound.dat");
 
@@ -2851,12 +2851,12 @@ void KyraEngine_HoF::seq_init() {
 			numShp++;
 			addShapeToPool(_screen->getPtrToShape(_animShapeFiledata, numShp), numShp);
 		} while (getShapePtr(numShp));
-	} else {	
+	} else {
 		MainMenu::StaticData data = {
-			{ _sequenceStrings[97], _sequenceStrings[96], _sequenceStrings[95], _sequenceStrings[98] },
-			{ 0x01, 0x04, 0x0C, 0x04, 0x00, 0xd7, 0xd6, 0x00, 0x01, 0x02, 0x03 },
+			{ _sequenceStrings[97], _sequenceStrings[96], _sequenceStrings[95], _sequenceStrings[98], 0 },
+			{ 0x01, 0x04, 0x0C, 0x04, 0x00, 0xd7, 0xd6 },
 			{ 0xd8, 0xda, 0xd9, 0xd8 },
-			0xd7, 0xd6
+			Screen::FID_8_FNT, 240
 		};
 		_menu = new MainMenu(this);
 		_menu->init(data, MainMenu::Animation());
@@ -2957,7 +2957,7 @@ void KyraEngine_HoF::seq_makeBookAppear() {
 
 		++_invWsa.curFrame;
 
-		if (_invWsa.curFrame >= _invWsa.lastFrame && !quit())
+		if (_invWsa.curFrame >= _invWsa.lastFrame && !shouldQuit())
 			break;
 
 		switch (_invWsa.curFrame) {

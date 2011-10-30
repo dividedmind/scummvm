@@ -113,8 +113,6 @@ private:
 
 	uint32 calcChecksum(byte *buffer, uint32 size);
 
-	virtual void pauseEngineIntern(bool pause);
-
 	uint32 _totalStartups;
 	uint32 _totalScreenManagers;
 	uint32 _startRes;
@@ -124,11 +122,20 @@ private:
 
 	StartUp _startList[MAX_starts];
 
+protected:
+	// Engine APIs
+	virtual Common::Error init();
+	virtual Common::Error go();
+	virtual GUI::Debugger *getDebugger();
+	virtual bool hasFeature(EngineFeature f) const;
+	virtual void syncSoundSettings();
+	virtual void pauseEngineIntern(bool pause);
+
 public:
 	Sword2Engine(OSystem *syst);
 	~Sword2Engine();
-	int go();
-	int init();
+
+	void pauseEngine(bool pause);
 
 	int getFramesPerSecond();
 
@@ -212,7 +219,6 @@ public:
 
 	void sleepUntil(uint32 time);
 
-	GUI::Debugger *getDebugger();
 	void initialiseFontResourceFlags();
 	void initialiseFontResourceFlags(uint8 language);
 

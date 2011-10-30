@@ -47,9 +47,8 @@ typedef int HPOLYGON;
 #define	MIDI_FILE		"midi.dat"	// all MIDI sequences
 #define	INDEX_FILENAME		"index"		// name of index file
 
-#define	SCNHANDLE_SHIFT		23		// amount to shift scene handles by
 #define	NO_SCNHANDLES		300		// number of memory handles for scenes
-#define	MASTER_SCNHANDLE	(0 << SCNHANDLE_SHIFT)	// master scene memory handle
+#define	MASTER_SCNHANDLE	0		// master scene memory handle
 
 // the minimum value a integer number can have
 #define	MIN_INT   (1 << (8*sizeof(int) - 1))
@@ -58,20 +57,13 @@ typedef int HPOLYGON;
 // the maximum value a integer number can have
 #define	MAX_INT	(~MIN_INT)
 
-// TODO: v1->v2 scene files
-#ifdef FILE_SPLIT
-// each scene is split into 2 files
-#define	INV_OBJ_SCNHANDLE	(2 << SCNHANDLE_SHIFT)	// inventory object handle (if there are inventory objects)
-#else
-#define	INV_OBJ_SCNHANDLE	(1 << SCNHANDLE_SHIFT)	// inventory object handle (if there are inventory objects)
-#endif
-
+// inventory object handle (if there are inventory objects)
+#define	INV_OBJ_SCNHANDLE (TinselV0 ? (2 << SCNHANDLE_SHIFT) : (1 << SCNHANDLE_SHIFT))
 
 #define FIELD_WORLD	0
 #define FIELD_STATUS	1
 
-
-
+#define ZSHIFT 10
 
 // We don't set the Z position for print and talk text
 // i.e. it gets a Z position of 0
@@ -101,6 +93,7 @@ typedef int HPOLYGON;
 #define MAX_MOVERS	6	// Moving actors using path system
 #define MAX_SAVED_ACTORS 32	// Saved 'Normal' actors
 #define MAX_SAVED_ALIVES 512	// Saves actors'lives
+#define MAX_SAVED_ACTOR_Z 512	// Saves actors' Z-ness
 
 // Legal non-existant entrance number for LoadScene()
 #define NO_ENTRY_NUM	(-3458)	// Magic unlikely number
@@ -110,12 +103,18 @@ typedef int HPOLYGON;
 
 // Language for the resource strings
 enum LANGUAGE {
-	TXT_ENGLISH,
-	TXT_FRENCH,
-	TXT_GERMAN,
-	TXT_ITALIAN,
-	TXT_SPANISH
+	TXT_ENGLISH, TXT_FRENCH, TXT_GERMAN, TXT_ITALIAN, TXT_SPANISH,
+	TXT_HEBREW, TXT_HUNGARIAN, TXT_JAPANESE, TXT_US,
+	NUM_LANGUAGES
 };
+
+#define MAX_READ_RETRIES 5
+
+// Definitions used for error messages
+#define FILE_IS_CORRUPT	"File %s is corrupt"
+#define FILE_READ_ERROR "Error reading file %s"
+#define CANNOT_FIND_FILE "Cannot find file %s"
+#define NO_MEM "Cannot allocate memory for %s!"
 
 } // end of namespace Tinsel
 

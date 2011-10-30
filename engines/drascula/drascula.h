@@ -268,16 +268,16 @@ struct CharInfo {
 #define COMPLETE_PAL	256
 #define HALF_PAL		128
 
+#define KEYBUFSIZE		16
+
 static const int interf_x[] ={ 1, 65, 129, 193, 1, 65, 129 };
 static const int interf_y[] ={ 51, 51, 51, 51, 83, 83, 83 };
 
 class DrasculaEngine : public ::Engine {
-	Common::KeyState _keyPressed;
-
 protected:
-	int init();
-	int go();
-//	void shutdown();
+	// Engine APIs
+	virtual Common::Error init();
+	virtual Common::Error go();
 
 public:
 	DrasculaEngine(OSystem *syst, const DrasculaGameDescription *gameDesc);
@@ -380,7 +380,7 @@ public:
 	int _destX[40], _destY[40], trackCharacter_alkeva[40], roomExits[40];
 	int x1[40], y1[40], x2[40], y2[40];
 	int takeObject, pickedObject;
-	int withVoices;
+	bool _subtitlesDisabled;
 	int menuBar, menuScreen, hasName;
 	char textName[20];
 	int curExcuseLook;
@@ -426,6 +426,10 @@ public:
 	int leftMouseButton;
 	int rightMouseButton;
 
+	Common::KeyState _keyBuffer[KEYBUFSIZE];
+	int _keyBufferHead;
+	int _keyBufferTail;
+
 	bool loadDrasculaDat();
 
 	bool runCurrentChapter();
@@ -448,6 +452,8 @@ public:
 	bool verify1();
 	bool verify2();
 	Common::KeyCode getScan();
+	void addKeyToBuffer(Common::KeyState& key);
+	void flushKeyBuffer();
 	void selectVerb(int);
 	void updateVolume(Audio::Mixer::SoundType soundType, int prevVolume);
 	void volumeControls();
@@ -570,8 +576,7 @@ public:
 	void getStringFromLine(char *buf, int len, char* result);
 
 	void grr();
-	void updateAnim(int y, int destX, int destY, int width, int height, int count, byte* src, int delayVal = 3);
-	void updateAnim2(int y, int px, int py, int width, int height, int count, byte* src);
+	void updateAnim(int y, int destX, int destY, int width, int height, int count, byte* src, int delayVal = 3, bool copyRectangle = false);
 
 	bool room(int rN, int fl);
 	bool room_0(int);

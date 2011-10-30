@@ -28,12 +28,13 @@
 
 #define PATH_LEN 200
 
+#include "common/archive.h"
 #include "common/fs.h"
 #include "common/file.h"
 
 #include "graphics/surface.h"
 
-#include "parallaction/graphics.h"
+
 
 namespace Parallaction {
 
@@ -54,6 +55,8 @@ public:
 	Disk() { }
 	virtual ~Disk() { }
 
+	virtual void init() { }
+
 	virtual Common::String selectArchive(const Common::String &name) = 0;
 	virtual void setLanguage(uint16 language) = 0;
 
@@ -72,55 +75,24 @@ public:
 	virtual Common::SeekableReadStream* loadMusic(const char* name) = 0;
 	virtual Common::ReadStream* loadSound(const char* name) = 0;
 	virtual void loadMask(const char *name, MaskBuffer &buffer) { }
+	virtual void loadPath(const char *name, PathBuffer &buffer) { }
 };
 
-
-
-
-#define MAX_ARCHIVE_ENTRIES			384
-
-class Archive : public Common::SeekableReadStream {
-
-protected:
-	bool			_file;
-	uint32			_fileOffset;
-	uint32			_fileCursor;
-	uint32			_fileEndOffset;
-	Common::String	_archiveName;
-	char			_archiveDir[MAX_ARCHIVE_ENTRIES][32];
-	uint32			_archiveLenghts[MAX_ARCHIVE_ENTRIES];
-	uint32			_archiveOffsets[MAX_ARCHIVE_ENTRIES];
-	Common::File	_archive;
-	uint32			_numFiles;
-
-protected:
-	void resetArchivedFile();
-
-public:
-	Archive();
-
-	void open(const char* file);
-	void close();
-	Common::String name() const;
-	bool openArchivedFile(const char *name);
-	void closeArchivedFile();
-	int32 size() const;
-	int32 pos() const;
-	bool eos() const;
-	bool seek(int32 offs, int whence = SEEK_SET);
-	uint32 read(void *dataPtr, uint32 dataSize);
-};
 
 class Disk_ns : public Disk {
 
 protected:
-	Archive			_resArchive;
-	Archive			_locArchive;
-	char			_languageDir[3];
-	Parallaction	*_vm;
+	Parallaction		*_vm;
 
-protected:
-	void errorFileNotFound(const char *s);
+	Common::SearchSet	_sset;
+
+	Common::String		_resArchiveName;
+	Common::String		_language;
+	Common::SeekableReadStream *openFile(const char *filename);
+	virtual Common::SeekableReadStream *tryOpenFile(const char *filename) { return 0; }
+	void errorFileNotFound(const char *filename);
+
+	void addArchive(const Common::String& name, int priority);
 
 public:
 	Disk_ns(Parallaction *vm);
@@ -135,8 +107,7 @@ class DosDisk_ns : public Disk_ns {
 private:
 	void unpackBackground(Common::ReadStream *stream, byte *screen, byte *mask, byte *path);
 	Cnv* loadExternalCnv(const char *filename);
-	Cnv* loadCnv(const char *filename);
-	Frames* loadExternalStaticCnv(const char *filename);
+	Frames* loadCnv(const char *filename);
 	void loadBackground(BackgroundInfo& info, const char *filename);
 	void loadMaskAndPath(BackgroundInfo& info, const char *name);
 	void parseDepths(BackgroundInfo &info, Common::SeekableReadStream &stream);
@@ -145,10 +116,13 @@ private:
 
 protected:
 	Gfx	 *_gfx;
+	virtual Common::SeekableReadStream *tryOpenFile(const char* name);
 
 public:
 	DosDisk_ns(Parallaction *vm);
 	virtual ~DosDisk_ns();
+
+	void init();
 
 	Script* loadLocation(const char *name);
 	Script* loadScript(const char* name);
@@ -169,20 +143,22 @@ public:
 class AmigaDisk_ns : public Disk_ns {
 
 protected:
-	Cnv* makeCnv(Common::SeekableReadStream &stream);
-	Frames* makeStaticCnv(Common::SeekableReadStream &stream);
+	Cnv* makeCnv(Common::SeekableReadStream *stream, bool disposeStream);
 	void patchFrame(byte *dst, byte *dlta, uint16 bytesPerPlane, uint16 height);
 	void unpackFrame(byte *dst, byte *src, uint16 planeSize);
 	void unpackBitmap(byte *dst, byte *src, uint16 numFrames, uint16 bytesPerPlane, uint16 height);
-	Common::SeekableReadStream *openArchivedFile(const char* name, bool errorOnFileNotFound = false);
+	Common::SeekableReadStream *tryOpenFile(const char* name);
 	Font *createFont(const char *name, Common::SeekableReadStream &stream);
 	void loadMask(BackgroundInfo& info, const char *name);
 	void loadPath(BackgroundInfo& info, const char *name);
 	void loadBackground(BackgroundInfo& info, const char *name);
+	void buildMask(byte* buf);
 
 public:
 	AmigaDisk_ns(Parallaction *vm);
 	virtual ~AmigaDisk_ns();
+
+	void init();
 
 	Script* loadLocation(const char *name);
 	Script* loadScript(const char* name);
@@ -201,31 +177,33 @@ public:
 };
 
 
+class Disk_br : public Disk {
+
+	Common::SeekableReadStream *openFile_internal(bool errorOnNotFound, const Common::String &name, const Common::String &ext);
+
+protected:
+	Parallaction	*_vm;
+	Common::SearchSet	_sset;
+	Common::FSDirectory *_baseDir;
+
+	uint16			_language;
+	Common::String		_currentPart;
+
+	Common::SeekableReadStream *tryOpenFile(const Common::String &name, const Common::String &ext = Common::String::emptyString);
+	Common::SeekableReadStream *openFile(const Common::String &name, const Common::String &ext = Common::String::emptyString);
+	void errorFileNotFound(const Common::String &filename);
+
+public:
+	Disk_br(Parallaction *vm);
+	virtual ~Disk_br();
+};
+
 //	for the moment DosDisk_br subclasses Disk. When Amiga support will
 //  be taken into consideration, it might be useful to add another level
 //  like we did for Nippon Safes.
-class DosDisk_br : public Disk {
+class DosDisk_br : public Disk_br {
 
 protected:
-	uint16			_language;
-
-	Parallaction	*_vm;
-
-	Common::FilesystemNode	_baseDir;
-	Common::FilesystemNode	_partDir;
-
-	Common::FilesystemNode	_aniDir;
-	Common::FilesystemNode	_bkgDir;
-	Common::FilesystemNode	_mscDir;
-	Common::FilesystemNode	_mskDir;
-	Common::FilesystemNode	_pthDir;
-	Common::FilesystemNode	_rasDir;
-	Common::FilesystemNode	_scrDir;
-	Common::FilesystemNode	_sfxDir;
-	Common::FilesystemNode	_talDir;
-
-protected:
-	void errorFileNotFound(const Common::FilesystemNode &dir, const Common::String &filename);
 	Font *createFont(const char *name, Common::ReadStream &stream);
 	Sprites*	createSprites(Common::ReadStream &stream);
 	void loadBitmap(Common::SeekableReadStream &stream, Graphics::Surface &surf, byte *palette);
@@ -233,7 +211,8 @@ protected:
 
 public:
 	DosDisk_br(Parallaction *vm);
-	virtual ~DosDisk_br();
+
+	virtual void init();
 
 	Common::String selectArchive(const Common::String &name);
 	void setLanguage(uint16 language);
@@ -252,39 +231,29 @@ public:
 	Common::SeekableReadStream* loadMusic(const char* name);
 	Common::ReadStream* loadSound(const char* name);
 	void loadMask(const char *name, MaskBuffer &buffer);
+	void loadPath(const char *name, PathBuffer &buffer);
 };
 
-class DosDemo_br : public DosDisk_br {
+class DosDemoDisk_br : public DosDisk_br {
 
 public:
-	DosDemo_br(Parallaction *vm);
-	virtual ~DosDemo_br();
+	DosDemoDisk_br(Parallaction *vm);
+
+	virtual void init();
 
 	Common::String selectArchive(const Common::String& name);
-
 };
 
 class AmigaDisk_br : public DosDisk_br {
 
 protected:
-	BackgroundInfo	_backgroundTemp;
-
 	Sprites*	createSprites(Common::ReadStream &stream);
 	Font *createFont(const char *name, Common::SeekableReadStream &stream);
 	void loadBackground(BackgroundInfo& info, Common::SeekableReadStream &stream);
-
-	Common::FilesystemNode	_baseBkgDir;
-	Common::FilesystemNode	_fntDir;
-	Common::FilesystemNode	_commonAniDir;
-	Common::FilesystemNode	_commonBkgDir;
-	Common::FilesystemNode	_commonMscDir;
-	Common::FilesystemNode	_commonMskDir;
-	Common::FilesystemNode	_commonPthDir;
-	Common::FilesystemNode	_commonTalDir;
-
 public:
 	AmigaDisk_br(Parallaction *vm);
-	virtual ~AmigaDisk_br();
+
+	virtual void init();
 
 	GfxObj* loadTalk(const char *name);
 	Font* loadFont(const char* name);

@@ -89,8 +89,9 @@ maniac	Maniac Mansion
 	40564ec47da48a67787d1f9bd043902a	1988	en	DOS	V2 Demo	V2 Demo	non-interactive	Fingolfin
 
 zak	Zak McKracken and the Alien Mindbenders
-	55d3987641bf229c83bc729210173383	-1	en	C64	V1	-	-	
-	4973bbc3899e3826dbf316e1d7271ec7	-1	de	C64	V1	-	-	
+	55d3987641bf229c83bc729210173383	174848	en	C64	V1	-	-	
+	4973bbc3899e3826dbf316e1d7271ec7	196608	de	C64	V1	-	-	
+	7b60620558b8d6b7d7313b8ac7bb5a98	174848	it	C64	V1	-	-	
 	7020931d5a2be0a49d68e7a1882363e4	1896	en	DOS	V1	V1	-	Fingolfin
 	b23f7cd7c304d7dff08e92a96120d5b4	-1	en	DOS	V1	V1	alt?	Andrea Petrucci
 
@@ -123,6 +124,7 @@ indy3	Indiana Jones and the Last Crusade
 	62b8c16b6db226ba95aaa8be73f9885c	-1	es	Amiga	EGA	EGA	-	
 	157367c3c21e0d03a0cba44361b4cf65	-1	en	Atari	No Adlib	EGA	-	Andreas Bylund
 	0f9c7a76657f0840b8f7ccb5bffeb9f4	-1	fr	Atari	No Adlib	EGA	-	Andreas Bylund
+	aaa7f36a253f277dd29dd1c051b0e4b9	-1	de	Atari	No Adlib	EGA	-	Jimmy Kohl
 	5fbe557049892eb4b709d90916ec97ca	5361	en	DOS	EGA	EGA	v1.0, 7/09/89	Fingolfin
 	6b3ec67da214f558dc5ceaa2acd47453	-1	en	DOS	EGA	EGA	v1.3, 14 Aug 89	tsuteiuQ, Andrea Petrucci, Peter Eckerlein
 	6508fd55530e6915507e1cc37f7f045d	-1	en	DOS	EGA	EGA	v1.3, 8/14/89 (5.25\")	Zer02
@@ -184,6 +186,7 @@ monkey	The Secret of Monkey Island
 	9e5e0fb43bd22f4628719b7501adb717	-1	fr	Atari	No Adlib	EGA	-	Andreas Bylund
 	927a764615c7fcdd72f591355e089d8c	-1	de	Atari	No Adlib	EGA	-	Joachim Eberhard
 	0a41311d462b6639fc45297b9044bf16	-1	es	Atari	No Adlib	EGA	-	
+
 	49210e124e4c2b30f1290a9ef6306301	8357	en	DOS	EGA	EGA	8 disk v1.0, 9/18/90	Fingolfin
 	1dd3c11ea4439adfe681e4e405b624e1	-1	fr	DOS	EGA	EGA	8 disk	Andrea Petrucci
 	fc6b6148e80d67939d9a18697c0f626a	-1	de	DOS	EGA	EGA	8 disk	ghoostkilla
@@ -200,12 +203,14 @@ monkey	The Secret of Monkey Island
 	319a4dde52c7960b5aae8a1ec348d918	-1	de	Amiga	VGA	VGA	V1.2r	ghoostkilla
 	fb66aa42de21675116346213f176a366	-1	it	Amiga	VGA	VGA	-	Andrea Petrucci
 	870d1e3c86bc50846d808d14a36b4e08	-1	es	Amiga	VGA	VGA	-	Andreas Bylund
+
 	c7890e038806df2bb5c0c8c6f1986ea2	-1	en	DOS	VGA	VGA	8 disk	Andrea Petrucci
 	15e03ffbfeddb9c2aebc13dcb2a4a8f4	8357	en	DOS	VGA	VGA	4 disk	
 	08656dd9698ddf1023ba9bf8a195e37b	-1	en	DOS	VGA	VGA	V1.1	crossbow777
 	d0b531227a27c6662018d2bd05aac52a	8357	de	DOS	VGA	VGA	4 disk v1.1, 14.Feb.91	Fingolfin
 	66fd5ff9a810dfeb6d6bdada18221140	-1	it	DOS	VGA	VGA	4 disk	Andrea Petrucci
 	45152f7cf2ba8f43cf8a8ea2e740ae09	8357	es	DOS	VGA	VGA	4 disk	Fingolfin
+	a01fab4a64d47b96e2e58e6b0f825cc7	8347	fr	DOS	VGA	VGA	8 disk v1.0, 6/4/91 II	Sebast26
 
 	8776caed014c321272af407c1502a2df	8955	en	Mac	CD	-	Mac v2.4	Petr Maruska (#1749232)
 
@@ -216,6 +221,7 @@ monkey	The Secret of Monkey Island
 	f049e38c1f8302b5db6170f1872af89a	8955	es	DOS	CD	CD	CD-ROM v2.3	Fingolfin, Andrej Sinicyn, Andrea Petrucci
 	2ccd8891ce4d3f1a334d21bff6a88ca2	9455	en	Mac	CD	-	Mac v2.4	Fingolfin, Lars N&aelig;sbye Christensen
 	b9ba19ce376efc69be78ef3baef8d2b9	-1	en	Mac	CD	-	alt?	Grant Yeager	
+
 	c13225cb1bbd3bc9fe578301696d8021	-1	en	SEGA	SEGA	-	-	
 	057c9b456dedcc4d71b991a3072a20b3	9465	jp	SEGA	SEGA	-	-	GloKidd
 
@@ -422,19 +428,25 @@ BluesABCTime	Blue's ABC Time Activities
 	356fb5f680b68251333016175935d126	4133436	All	All	HE CUP	Preview	-	sev
 
 arttime	Blue's Art Time Activities
-	6269b8fbf51a353e5b501e4ad98cdc67	-1	en	Windows	-	-	-	killiandor
+	6269b8fbf51a353e5b501e4ad98cdc67	-1	en	All	-	-	-	killiandor
 	d00ffc8c32d17e575fd985d435d2eb88	-1	en	All	-	Demo	-	Kirben
 
 BluesBirthday	Blue's Birthday Adventure
-	99128b6a5bdd9831d9682fb8b5cbf8d4	-1	en	All	-	-	-	knifethrower
-	1ff5997c78fbd0a841a75ef15a05d9d5	-1	en	Windows	-	-	-	Mathew
+	99128b6a5bdd9831d9682fb8b5cbf8d4	-1	en	All	-	Yellow	-	knifethrower
+	1ff5997c78fbd0a841a75ef15a05d9d5	-1	en	Windows	-	Red	-	Mathew
 
 	2d4acbdcfd8e374c9da8c2e7303a5cd0	-1	en	All	-	Demo	-	Kirben
+	cc0c4111449054f1692bb3c0c5e04629	-1	en	All	-	Demo	-	George Kormend
 	dbf4d59d70b826733f379f998354d350	-1	en	All	-	Demo	-	Kirben
 	fa30c4a7a806629626269b6dcab59a15	7819264	All	All	HE CUP	Preview	-	sev
 
 readtime	Blue's Reading Time Activities
+	e5c112140ad6574997de033a8e2a2964	-1	en	All	-	-	-	Kirben
 	95818b178d473c989ac753574e8892aa	-1	en	All	-	Demo	-	Kirben
+
+BluesTreasureHunt	Blue's Treasure Hunt
+	822807c3cd3b43a925cab2767ca6b453	-1	en	All	-	Disc 1	-	Kirben
+	82e5e24720cb85a2b662bea6b625cad9	-1	en	Windows	-	Disc 2	-	Kirben
 
 fbear	Fatty Bear's Birthday Surprise
 	13d2a86a7290813a1c386490447d72db	-1	en	3DO	HE 61	-	-	George Kormendi
@@ -586,6 +598,10 @@ jungle	Let's Explore the Jungle with Buzzy
 	659942b9a6b519f123a13cca3c333a13	-1	en	Mac	-	-	-	Joachim Eberhard
 	8801fb4a1200b347f7a38523339526dd	-1	en	Windows	-	-	-	Kirben
 
+moonbase	Moonbase Commander
+	cf400d20769fb70eb21766582f4924f7	-1	en	Windows	-	-	-	Kirben
+	ef71a322b6530ac45b1a070f7c0795f7	-1	en	Windows	Demo	Demo	-	Kirben
+
 pajama	Pajama Sam 1: No Need to Hide When It's Dark Outside
 	672dec94b82f7f0877ebb5b5cf7f4bc1	-1	us	All	-	-	-	khalek
 	1d7a2e1ddcade791e2de0cfceac86725	-1	fr	All	-	-	-	gist974, ThierryFR
@@ -661,6 +677,7 @@ puttrace	Putt-Putt Enters the Race
 	1ed22f601f8b3695804a6583cc3083f1	-1	nl	All	HE 98.5	-	-	daniel9
 	33e989f85da700e2014d00f345cab3d7	-1	fr	Windows	HE 98.5	-	-	gist974
 	b47be81e39a9710f6f595f7b527b60f8	-1	gb	Windows	HE 99	-	-	Reckless
+	5719fc8a13b4638b78d9d8d12f091f94	-1	fr	Windows	HE 99	-	-	thyphoon
 	055ffe4f47753e47594ac67823220c54	-1	de	All	HE 99	-	-	Joachim Eberhard
 	62050da376483d8edcbd98cd26b6cb57	-1	ru	Windows	HE 99	-	-	sev
 

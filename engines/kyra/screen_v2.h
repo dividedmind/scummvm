@@ -45,8 +45,8 @@ public:
 	// palette handling
 	uint8 *generateOverlay(const uint8 *palette, uint8 *buffer, int color, uint16 factor);
 	void applyOverlay(int x, int y, int w, int h, int pageNum, const uint8 *overlay);
-	int findLeastDifferentColor(const uint8 *paletteEntry, const uint8 *palette, uint16 numColors);
-	
+	int findLeastDifferentColor(const uint8 *paletteEntry, const uint8 *palette, uint16 numColors, bool skipSpecialColours = false);
+
 	virtual void getFadeParams(const uint8 *palette, int delay, int &delayInc, int &diff);
 
 	// shape handling
@@ -78,5 +78,5 @@ protected:
 
 } // end of namespace Kyra
 
-#endif 
+#endif
 

@@ -26,7 +26,8 @@
 #include "common/str.h"
 #include "common/system.h"
 #include "gui/message.h"
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
+#include "gui/ThemeEval.h"
 #include "gui/widget.h"
 
 namespace GUI {
@@ -36,6 +37,7 @@ enum {
 	kCancelCmd = 'CNCL'
 };
 
+
 // TODO: The default button should be visibly distinct from the alternate button
 
 MessageDialog::MessageDialog(const Common::String &message, const char *defaultButton, const char *altButton)
@@ -44,15 +46,8 @@ MessageDialog::MessageDialog(const Common::String &message, const char *defaultB
 	const int screenW = g_system->getOverlayWidth();
 	const int screenH = g_system->getOverlayHeight();
 
-	int buttonWidth, buttonHeight;
-
-	if (g_gui.getWidgetSize() == kBigWidgetSize) {
-		buttonWidth = kBigButtonWidth;
-		buttonHeight = kBigButtonHeight;
-	} else {
-		buttonWidth = kButtonWidth;
-		buttonHeight = kButtonHeight;
-	}
+	int buttonWidth = g_gui.xmlEval()->getVar("Globals.Button.Width", 0);
+	int buttonHeight = g_gui.xmlEval()->getVar("Globals.Button.Height", 0);
 
 	// First, determine the size the dialog needs. For this we have to break
 	// down the string into lines, and taking the maximum of their widths.
@@ -83,7 +78,7 @@ MessageDialog::MessageDialog(const Common::String &message, const char *defaultB
 	// Each line is represented by one static text item.
 	for (int i = 0; i < lineCount; i++) {
 		new StaticTextWidget(this, 10, 10 + i * kLineHeight, maxlineWidth, kLineHeight,
-								lines[i], kTextAlignCenter);
+								lines[i], Graphics::kTextAlignCenter);
 	}
 
 	if (defaultButton && altButton) {
@@ -94,10 +89,10 @@ MessageDialog::MessageDialog(const Common::String &message, const char *defaultB
 	}
 
 	if (defaultButton)
-		addButton(this, okButtonPos, _h - buttonHeight - 8, defaultButton, kOkCmd, Common::ASCII_RETURN);	// Confirm dialog
+		new ButtonWidget(this, okButtonPos, _h - buttonHeight - 8, buttonWidth, buttonHeight, defaultButton, kOkCmd, Common::ASCII_RETURN);	// Confirm dialog
 
 	if (altButton)
-		addButton(this, cancelButtonPos, _h - buttonHeight - 8, altButton, kCancelCmd, Common::ASCII_ESCAPE);	// Cancel dialog
+		new ButtonWidget(this, cancelButtonPos, _h - buttonHeight - 8, buttonWidth, buttonHeight, altButton, kCancelCmd, Common::ASCII_ESCAPE);	// Cancel dialog
 }
 
 void MessageDialog::handleCommand(CommandSender *sender, uint32 cmd, uint32 data) {

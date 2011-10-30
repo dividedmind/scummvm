@@ -30,44 +30,33 @@
 #include "base/plugins.h"
 
 #include "common/config-manager.h"
-#include "common/advancedDetector.h"
+#include "engines/advancedDetector.h"
+#include "common/system.h"
+#include "graphics/thumbnail.h"
 
+#include "saga/animation.h"
 #include "saga/displayinfo.h"
-#include "saga/rscfile.h"
+#include "saga/events.h"
+#include "saga/resource.h"
 #include "saga/interface.h"
 #include "saga/scene.h"
 
 namespace Saga {
 struct SAGAGameDescription {
-	Common::ADGameDescription desc;
+	ADGameDescription desc;
 
-	int gameType;
 	int gameId;
 	uint32 features;
 	int startSceneNumber;
 	const GameResourceDescription *resourceDescription;
 	int fontsCount;
 	const GameFontDescription *fontDescriptions;
-	const GameSoundInfo *voiceInfo;
-	const GameSoundInfo *sfxInfo;
-	int patchesCount;
 	const GamePatchDescription *patchDescriptions;
 };
 
-bool SagaEngine::isBigEndian() const { return (_gameDescription->features & GF_BIG_ENDIAN_DATA) != 0; }
+bool SagaEngine::isBigEndian() const { return isMacResources() && getGameId() == GID_ITE; }
 bool SagaEngine::isMacResources() const { return (getPlatform() == Common::kPlatformMacintosh); }
 const GameResourceDescription *SagaEngine::getResourceDescription() { return _gameDescription->resourceDescription; }
-const GameSoundInfo *SagaEngine::getVoiceInfo() const { return _gameDescription->voiceInfo; }
-const GameSoundInfo *SagaEngine::getSfxInfo() const { return _gameDescription->sfxInfo; }
-const GameSoundInfo *SagaEngine::getMusicInfo() const {
-	static GameSoundInfo musicInfo;
-	musicInfo.resourceType = kSoundPCM;
-	musicInfo.sampleBits = 16;
-	musicInfo.isBigEndian = false;
-	musicInfo.isSigned = true;
-
-	return &musicInfo;
-}
 
 const GameFontDescription *SagaEngine::getFontDescription(int index) {
 	assert(index < _gameDescription->fontsCount);
@@ -76,16 +65,12 @@ const GameFontDescription *SagaEngine::getFontDescription(int index) {
 int SagaEngine::getFontsCount() const { return _gameDescription->fontsCount; }
 
 int SagaEngine::getGameId() const { return _gameDescription->gameId; }
-int SagaEngine::getGameType() const { return _gameDescription->gameType; }
 
 uint32 SagaEngine::getFeatures() const {
 	uint32 result = _gameDescription->features;
 
 	if (_gf_wyrmkeep)
 		result |= GF_WYRMKEEP;
-
-	if (_gf_compressed_sounds)
-		result |= GF_COMPRESSED_SOUNDS;
 
 	return result;
 }
@@ -95,9 +80,8 @@ Common::Platform SagaEngine::getPlatform() const { return _gameDescription->desc
 int SagaEngine::getGameNumber() const { return _gameNumber; }
 int SagaEngine::getStartSceneNumber() const { return _gameDescription->startSceneNumber; }
 
-int SagaEngine::getPatchesCount() const { return _gameDescription->patchesCount; }
 const GamePatchDescription *SagaEngine::getPatchDescriptions() const { return _gameDescription->patchDescriptions; }
-const Common::ADGameFileDescription *SagaEngine::getFilesDescriptions() const { return _gameDescription->desc.filesDescriptions; }
+const ADGameFileDescription *SagaEngine::getFilesDescriptions() const { return _gameDescription->desc.filesDescriptions; }
 
 }
 
@@ -105,18 +89,22 @@ static const PlainGameDescriptor sagaGames[] = {
 	{"saga", "SAGA Engine game"},
 	{"ite", "Inherit the Earth: Quest for the Orb"},
 	{"ihnm", "I Have No Mouth and I Must Scream"},
+	{"dino", "Dinotopia"},
+	{"fta2", "Faery Tale Adventure II: Halls of the Dead"},
 	{0, 0}
 };
 
-static const Common::ADObsoleteGameID obsoleteGameIDsTable[] = {
+static const ADObsoleteGameID obsoleteGameIDsTable[] = {
 	{"ite", "saga", Common::kPlatformUnknown},
 	{"ihnm", "saga", Common::kPlatformUnknown},
+	{"dino", "saga", Common::kPlatformUnknown},
+	{"fta2", "saga", Common::kPlatformUnknown},
 	{0, 0, Common::kPlatformUnknown}
 };
 
 #include "saga/detection_tables.h"
 
-static const Common::ADParams detectionParams = {
+static const ADParams detectionParams = {
 	// Pointer to ADGameDescription or its superset structure
 	(const byte *)Saga::gameDescriptions,
 	// Size of that superset structure
@@ -135,12 +123,30 @@ static const Common::ADParams detectionParams = {
 	0
 };
 
-class SagaMetaEngine : public Common::AdvancedMetaEngine {
+class SagaMetaEngine : public AdvancedMetaEngine {
 public:
-	SagaMetaEngine() : Common::AdvancedMetaEngine(detectionParams) {}
+	SagaMetaEngine() : AdvancedMetaEngine(detectionParams) {}
 
 	virtual const char *getName() const {
-		return "Saga engine";
+		return "Saga engine ["
+
+#if defined(ENABLE_IHNM) && defined(ENABLE_SAGA2)
+			"all games"
+#else
+			"ITE"
+
+#if defined(ENABLE_IHNM)
+			", IHNM"
+#endif
+
+#if defined(ENABLE_SAGA2)
+			", SAGA2 games"
+#endif
+
+#endif
+		"]";
+
+;
 	}
 
 	virtual const char *getCopyright() const {
@@ -148,20 +154,31 @@ public:
 	}
 
 	virtual bool hasFeature(MetaEngineFeature f) const;
-	virtual bool createInstance(OSystem *syst, Engine **engine, const Common::ADGameDescription *desc) const;
+	virtual bool createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const;
 	virtual SaveStateList listSaves(const char *target) const;
+	virtual int getMaximumSaveSlot() const;
 	virtual void removeSaveState(const char *target, int slot) const;
+	SaveStateDescriptor querySaveMetaInfos(const char *target, int slot) const;
 };
 
 bool SagaMetaEngine::hasFeature(MetaEngineFeature f) const {
 	return
-		(f == kSupportsRTL) ||
 		(f == kSupportsListSaves) ||
-		(f == kSupportsDirectLoad) ||
-		(f == kSupportsDeleteSave);
+		(f == kSupportsLoadingDuringStartup) ||
+		(f == kSupportsDeleteSave) ||
+		(f == kSavesSupportMetaInfo) ||
+		(f == kSavesSupportThumbnail) ||
+		(f == kSavesSupportCreationDate);
 }
 
-bool SagaMetaEngine::createInstance(OSystem *syst, Engine **engine, const Common::ADGameDescription *desc) const {
+bool Saga::SagaEngine::hasFeature(EngineFeature f) const {
+	return
+		(f == kSupportsRTL) ||
+		(f == kSupportsLoadingDuringRuntime) ||
+		(f == kSupportsSavingDuringRuntime);
+}
+
+bool SagaMetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const {
 	const Saga::SAGAGameDescription *gd = (const Saga::SAGAGameDescription *)desc;
 	if (gd) {
 		*engine = new Saga::SagaEngine(syst, gd);
@@ -180,17 +197,18 @@ SaveStateList SagaMetaEngine::listSaves(const char *target) const {
 	sort(filenames.begin(), filenames.end());	// Sort (hopefully ensuring we are sorted numerically..)
 
 	SaveStateList saveList;
+	int slotNum = 0;
 	for (Common::StringList::const_iterator file = filenames.begin(); file != filenames.end(); ++file) {
 		// Obtain the last 2 digits of the filename, since they correspond to the save slot
-		int slotNum = atoi(file->c_str() + file->size() - 2);
-		
+		slotNum = atoi(file->c_str() + file->size() - 2);
+
 		if (slotNum >= 0 && slotNum <= 99) {
 			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
 			if (in) {
 				for (int i = 0; i < 3; i++)
 					in->readUint32BE();
 				in->read(saveDesc, SAVE_TITLE_SIZE);
-				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc, *file));
+				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc));
 				delete in;
 			}
 		}
@@ -198,6 +216,8 @@ SaveStateList SagaMetaEngine::listSaves(const char *target) const {
 
 	return saveList;
 }
+
+int SagaMetaEngine::getMaximumSaveSlot() const { return 99; }
 
 void SagaMetaEngine::removeSaveState(const char *target, int slot) const {
 	char extension[6];
@@ -209,6 +229,82 @@ void SagaMetaEngine::removeSaveState(const char *target, int slot) const {
 	g_system->getSavefileManager()->removeSavefile(filename.c_str());
 }
 
+SaveStateDescriptor SagaMetaEngine::querySaveMetaInfos(const char *target, int slot) const {
+	static char fileName[MAX_FILE_NAME];
+	sprintf(fileName, "%s.s%02d", target, slot);
+	char title[TITLESIZE];
+
+	Common::InSaveFile *in = g_system->getSavefileManager()->openForLoading(fileName);
+
+	if (in) {
+		uint32 type = in->readUint32BE();
+		in->readUint32LE();		// size
+		uint32 version = in->readUint32LE();
+		char name[SAVE_TITLE_SIZE];
+		in->read(name, sizeof(name));
+
+		SaveStateDescriptor desc(slot, name);
+
+		// Some older saves were not written in an endian safe fashion.
+		// We try to detect this here by checking for extremly high version values.
+		// If found, we retry with the data swapped.
+		if (version > 0xFFFFFF) {
+			warning("This savegame is not endian safe, retrying with the data swapped");
+			version = SWAP_BYTES_32(version);
+		}
+
+		debug(2, "Save version: %x", version);
+
+		if (version < 4)
+			warning("This savegame is not endian-safe. There may be problems");
+
+		if (type != MKID_BE('SAGA')) {
+			error("SagaEngine::load wrong save game format");
+		}
+
+		if (version > 4) {
+			in->read(title, TITLESIZE);
+			debug(0, "Save is for: %s", title);
+		}
+
+		desc.setDeletableFlag(true);
+		desc.setWriteProtectedFlag(false);
+
+		if (version >= 6) {
+			Graphics::Surface *thumbnail = new Graphics::Surface();
+			assert(thumbnail);
+			if (!Graphics::loadThumbnail(*in, *thumbnail)) {
+				delete thumbnail;
+				thumbnail = 0;
+			}
+
+			desc.setThumbnail(thumbnail);
+
+			uint32 saveDate = in->readUint32BE();
+			uint16 saveTime = in->readUint16BE();
+
+			int day = (saveDate >> 24) & 0xFF;
+			int month = (saveDate >> 16) & 0xFF;
+			int year = saveDate & 0xFFFF;
+
+			desc.setSaveDate(year, month, day);
+
+			int hour = (saveTime >> 8) & 0xFF;
+			int minutes = saveTime & 0xFF;
+
+			desc.setSaveTime(hour, minutes);
+
+			// TODO: played time
+		}
+
+		delete in;
+
+		return desc;
+	}
+
+	return SaveStateDescriptor();
+}
+
 #if PLUGIN_ENABLED_DYNAMIC(SAGA)
 	REGISTER_PLUGIN_DYNAMIC(SAGA, PLUGIN_TYPE_ENGINE, SagaMetaEngine);
 #else
@@ -218,24 +314,64 @@ void SagaMetaEngine::removeSaveState(const char *target, int slot) const {
 namespace Saga {
 
 bool SagaEngine::initGame() {
-	_displayClip.right = getDisplayInfo().logicalWidth;
-	_displayClip.bottom = getDisplayInfo().logicalHeight;
+	_displayClip.right = getDisplayInfo().width;
+	_displayClip.bottom = getDisplayInfo().height;
 
 	return _resource->createContexts();
 }
 
 const GameDisplayInfo &SagaEngine::getDisplayInfo() {
-	return _gameDescription->gameType == GType_ITE ? ITE_DisplayInfo : IHNM_DisplayInfo;
+	switch (_gameDescription->gameId) {
+		case GID_ITE:
+			return ITE_DisplayInfo;
+#ifdef ENABLE_IHNM
+		case GID_IHNM:
+			return IHNM_DisplayInfo;
+#endif
+#ifdef ENABLE_SAGA2
+		case GID_DINO:
+			return FTA2_DisplayInfo;	// TODO
+		case GID_FTA2:
+			return FTA2_DisplayInfo;
+#endif
+		default:
+			error("getDisplayInfo: Unknown game ID");
+			return ITE_DisplayInfo;		// unreachable
+	}
 }
 
-int SagaEngine::getDisplayWidth() const {
-	const GameDisplayInfo &di = _gameDescription->gameType == GType_ITE ? ITE_DisplayInfo : IHNM_DisplayInfo;
-	return di.logicalWidth;
+Common::Error SagaEngine::loadGameState(int slot) {
+	// Init the current chapter to 8 (character selection) for IHNM
+	if (getGameId() == GID_IHNM)
+		_scene->changeScene(-2, 0, kTransitionFade, 8);
+
+	// First scene sets up palette
+	_scene->changeScene(getStartSceneNumber(), 0, kTransitionNoFade);
+	_events->handleEvents(0); // Process immediate events
+
+	if (getGameId() == GID_ITE)
+		_interface->setMode(kPanelMain);
+	else
+		_interface->setMode(kPanelChapterSelection);
+
+	load(calcSaveFileName((uint)slot));
+	syncSoundSettings();
+
+	return Common::kNoError;	// TODO: return success/failure
 }
 
-int SagaEngine::getDisplayHeight() const {
-	const GameDisplayInfo &di = _gameDescription->gameType == GType_ITE ? ITE_DisplayInfo : IHNM_DisplayInfo;
-	return di.logicalHeight;
+Common::Error SagaEngine::saveGameState(int slot, const char *desc) {
+	save(calcSaveFileName((uint)slot), desc);
+	return Common::kNoError;	// TODO: return success/failure
+}
+
+bool SagaEngine::canLoadGameStateCurrently() {
+	return !_scene->isInIntro();
+}
+
+bool SagaEngine::canSaveGameStateCurrently() {
+	return !_scene->isInIntro() &&
+		   (_interface->getMode() == kPanelMain || _interface->getMode() == kPanelChapterSelection);
 }
 
 } // End of namespace Saga

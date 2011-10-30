@@ -20,8 +20,14 @@
 
 GLOBAL _hq2x_16
 
-EXTERN _LUT16to32
 EXTERN _RGBtoYUV
+EXTERN _hqx_highbits
+EXTERN _hqx_lowbits
+EXTERN _hqx_low2bits
+EXTERN _hqx_low3bits
+EXTERN _hqx_greenMask
+EXTERN _hqx_redBlueMask
+EXTERN _hqx_green_redBlue_Mask
 
 SECTION .bss
 linesleft resd 1
@@ -47,7 +53,6 @@ const5       dd  0x00050005,0x00000005
 const6       dd  0x00060006,0x00000006
 const14      dd  0x000E000E,0x0000000E
 threshold    dd  0x00300706,0x00000000
-zerolowbits  dd  0xF7DEF7DE
 moduloSrc    dd  0
 moduloDst    dd  0
 
@@ -127,150 +132,211 @@ SECTION .text
 %%fin:
 %endmacro
 
+; interpolate16_3_1
+; Mix two pixels with weight 3 and 1, respectively: (c1*3+c2)/4;
 %macro Interp1 3
     mov edx,%2
     mov ecx,%3
-    cmp edx,ecx
-    je  %%fin
-    and edx,[zerolowbits]
-    and ecx,[zerolowbits]
+    and edx,[_hqx_highbits]
+    and ecx,[_hqx_highbits]
     add ecx,edx
     shr ecx,1
-    add ecx,0x0821
-    and ecx,[zerolowbits]
+    add ecx,[_hqx_lowbits]
+    and ecx,[_hqx_highbits]
     add edx,ecx
     shr edx,1
-%%fin:
     mov %1,dx
 %endmacro
 
+; interpolate16_2_1_1
+; Mix three pixels with weight 2, 1, and 1, respectively: (c1*2+c2+c3)/4;
 %macro Interp2 4
     mov edx,%3
     mov ecx,%4
-    cmp edx,ecx
-    je  %%fin1
-    and edx,[zerolowbits]
-    and ecx,[zerolowbits]
+    and edx,[_hqx_highbits]
+    and ecx,[_hqx_highbits]
     add ecx,edx
     shr ecx,1
-    add ecx,0x0821
-%%fin1:
+    add ecx,[_hqx_lowbits]
     mov edx,%2
-    cmp edx,ecx
-    je  %%fin2
-    and ecx,[zerolowbits]
-    and edx,[zerolowbits]
+    and ecx,[_hqx_highbits]
+    and edx,[_hqx_highbits]
     add edx,ecx
     shr edx,1
-%%fin2:
     mov %1,dx
 %endmacro
 
-%macro Interp5 3
-    mov edx,%2
-    mov ecx,%3
-    cmp edx,ecx
-    je  %%fin
-    and edx,[zerolowbits]
-    and ecx,[zerolowbits]
-    add edx,ecx
-    shr edx,1
-%%fin:
-    mov %1,dx
-%endmacro
-
+; interpolate16_5_2_1
+; Mix three pixels with weight 5, 2, and 1, respectively: (c1*5+c2*2+c3)/8;
 %macro Interp6 3
-    mov        ecx, [_LUT16to32]
-    movd       mm1, [ecx+eax*4]
-    mov        edx, %2
-    movd       mm2, [ecx+edx*4]
-    mov        edx, %3
-    movd       mm3, [ecx+edx*4]
-    punpcklbw  mm1, [reg_blank]
-    punpcklbw  mm2, [reg_blank]
-    punpcklbw  mm3, [reg_blank]
-    pmullw     mm1, [const5]
-    psllw      mm2, 1
-    paddw      mm1, mm3
-    paddw      mm1, mm2
-    psrlw      mm1, 5
-    packuswb   mm1, [reg_blank]
-    movd       edx, mm1
-    shl        dl,  2
-    shr        edx, 1
-    shl        dx,  3
-    shr        edx, 5
-    mov        %1,  dx
+	; Unpack eax to ecx and multiply by 5
+	mov ecx, eax
+	shl ecx, 16
+	or  ecx, eax
+	and ecx, [_hqx_green_redBlue_Mask]
+	; multiply c1 by 5
+	;imul ecx, 5	; imul works, too, but might be slower on older systems?
+	mov edx, ecx
+	shl ecx, 2
+	add ecx, edx
+
+	; unpack c2 to edx
+	mov edx, %2
+	shl edx, 16
+	or  edx, %2
+	and edx, [_hqx_green_redBlue_Mask]
+	
+	; add 2*c2 to c1*5
+	add ecx, edx
+	add ecx, edx
+	
+	; unpack c3 to edx
+	mov edx, %3
+	shl edx, 16
+	or  edx, %3
+	and edx, [_hqx_green_redBlue_Mask]
+	
+	; add c3 and 2*c2+c1*5, divide by 8, mask the result
+	add edx, ecx
+	shr edx, 3
+	and edx, [_hqx_green_redBlue_Mask]
+	
+	; finally, repack the mixed pixel
+	mov ecx, edx
+	shr ecx, 16
+	or  edx, ecx
+
+    mov %1,  dx
 %endmacro
 
+; interpolate16_6_1_1
+; Mix three pixels with weight 6, 1, and 1, respectively: (c1*6+c2+c3)/8;
 %macro Interp7 3
-    mov        ecx, [_LUT16to32]
-    movd       mm1, [ecx+eax*4]
-    mov        edx, %2
-    movd       mm2, [ecx+edx*4]
-    mov        edx, %3
-    movd       mm3, [ecx+edx*4]
-    punpcklbw  mm1, [reg_blank]
-    punpcklbw  mm2, [reg_blank]
-    punpcklbw  mm3, [reg_blank]
-    pmullw     mm1, [const6]
-    paddw      mm2, mm3
-    paddw      mm1, mm2
-    psrlw      mm1, 5
-    packuswb   mm1, [reg_blank]
-    movd       edx, mm1
-    shl        dl,  2
-    shr        edx, 1
-    shl        dx,  3
-    shr        edx, 5
-    mov        %1,  dx
+	; Unpack eax to ecx and multiply by 6
+	mov ecx, eax
+	shl ecx, 16
+	or  ecx, eax
+	and ecx, [_hqx_green_redBlue_Mask]
+	; multiply c1 by 6
+	;imul ecx, 6	; imul works, too, but might be slower on older systems?
+	mov edx, ecx
+	add ecx, ecx
+	add ecx, edx
+	add ecx, ecx
+
+	; unpack c2 to edx
+	mov edx, %2
+	shl edx, 16
+	or  edx, %2
+	and edx, [_hqx_green_redBlue_Mask]
+	
+	; add c2 to c1*3
+	add ecx, edx
+	
+	; unpack c3 to edx
+	mov edx, %3
+	shl edx, 16
+	or  edx, %3
+	and edx, [_hqx_green_redBlue_Mask]
+	
+	; add c3 and c2+c1*3, divide by 8, mask the result
+	add edx, ecx
+	shr edx, 3
+	and edx, [_hqx_green_redBlue_Mask]
+	
+	; finally, repack the mixed pixel
+	mov ecx, edx
+	shr ecx, 16
+	or  edx, ecx
+
+    mov %1,  dx
 %endmacro
 
+; interpolate16_2_3_3
+; Mix three pixels with weight 2, 3, and 3, respectively: (c1*2+(c2+c3)*3)/8;
 %macro Interp9 3
-    mov        ecx, [_LUT16to32]
-    movd       mm1, [ecx+eax*4]
-    mov        edx, %2
-    movd       mm2, [ecx+edx*4]
-    mov        edx, %3
-    movd       mm3, [ecx+edx*4]
-    punpcklbw  mm1, [reg_blank]
-    punpcklbw  mm2, [reg_blank]
-    punpcklbw  mm3, [reg_blank]
-    psllw      mm1, 1
-    paddw      mm2, mm3
-    pmullw     mm2, [const3]
-    paddw      mm1, mm2
-    psrlw      mm1, 5
-    packuswb   mm1, [reg_blank]
-    movd       edx, mm1
-    shl        dl,  2
-    shr        edx, 1
-    shl        dx,  3
-    shr        edx, 5
-    mov        %1,  dx
+	; unpack c2
+	mov edx, %2
+	shl edx, 16
+	or  edx, %2
+	and edx, [_hqx_green_redBlue_Mask]
+	
+	; unpack c3
+	mov ecx, %3
+	shl ecx, 16
+	or  ecx, %3
+	and ecx, [_hqx_green_redBlue_Mask]
+	
+	; sum c2 and c3
+	add edx, ecx
+
+	; multiply (c2+c3) by 3
+	;imul edx, 3	; imul works, too, but might be slower on older systems?
+	mov ecx, edx
+	add edx, edx
+	add edx, ecx
+	
+	; unpack eax and multiply by 2
+	mov ecx, eax
+	shl ecx, 16
+	or  ecx, eax
+	and ecx, [_hqx_green_redBlue_Mask]
+	add ecx, ecx	; multiply by 2
+	
+	; sum 2*eax + 3*(c2+c3), divide by 8, mask the result
+	add edx, ecx
+	shr edx, 3
+	and edx, [_hqx_green_redBlue_Mask]
+	
+	; finally, repack the mixed pixel
+	mov ecx, edx
+	shr ecx, 16
+	or  edx, ecx
+
+    mov %1,  dx
 %endmacro
 
+; interpolate16_14_1_1
+; Mix three pixels with weight 14, 1, and 1, respectively: (c1*14+c2+c3)/16;
 %macro Interp10 3
-    mov        ecx, [_LUT16to32]
-    movd       mm1, [ecx+eax*4]
-    mov        edx, %2
-    movd       mm2, [ecx+edx*4]
-    mov        edx, %3
-    movd       mm3, [ecx+edx*4]
-    punpcklbw  mm1, [reg_blank]
-    punpcklbw  mm2, [reg_blank]
-    punpcklbw  mm3, [reg_blank]
-    pmullw     mm1, [const14]
-    paddw      mm2, mm3
-    paddw      mm1, mm2
-    psrlw      mm1, 6
-    packuswb   mm1, [reg_blank]
-    movd       edx, mm1
-    shl        dl,  2
-    shr        edx, 1
-    shl        dx,  3
-    shr        edx, 5
-    mov        %1,  dx
+	; Unpack eax to ecx and multiply by 14
+	mov ecx, eax
+	shl ecx, 16
+	or  ecx, eax
+	and ecx, [_hqx_green_redBlue_Mask]
+	; multiply c1 by 14
+	;imul ecx, 14	; imul works, too, but might be slower on older systems?
+	mov edx, ecx
+	shl ecx, 3
+	sub ecx, edx
+	add ecx, ecx
+
+	; unpack c2 to edx
+	mov edx, %2
+	shl edx, 16
+	or  edx, %2
+	and edx, [_hqx_green_redBlue_Mask]
+	
+	; add c2 to c1*14
+	add ecx, edx
+	
+	; unpack c3 to edx
+	mov edx, %3
+	shl edx, 16
+	or  edx, %3
+	and edx, [_hqx_green_redBlue_Mask]
+	
+	; add c3 and c2+c1*14, divide by 16, mask the result
+	add edx, ecx
+	shr edx, 4
+	and edx, [_hqx_green_redBlue_Mask]
+	
+	; finally, repack the mixed pixel
+	mov ecx, edx
+	shr ecx, 16
+	or  edx, ecx
+
+    mov %1,  dx
 %endmacro
 
 %macro PIXEL00_0 0
@@ -1712,12 +1778,12 @@ _hq2x_16:
     shl     eax,16
     or      eax,edx
     mov     ecx,[w2]
-    and     edx,[zerolowbits]
-    and     ecx,[zerolowbits]
+    and     edx,[_hqx_highbits]
+    and     ecx,[_hqx_highbits]
     add     ecx,edx
     shr     ecx,1
-    add     ecx,0x0821
-    and     ecx,[zerolowbits]
+    add     ecx,[_hqx_lowbits]
+    and     ecx,[_hqx_highbits]
     add     edx,ecx
     shr     edx,1
     mov     ecx,edx
@@ -1729,12 +1795,12 @@ _hq2x_16:
 ..@cross2:
     shl     eax,16
     mov     ecx,[w4]
-    and     edx,[zerolowbits]
-    and     ecx,[zerolowbits]
+    and     edx,[_hqx_highbits]
+    and     ecx,[_hqx_highbits]
     add     ecx,edx
     shr     ecx,1
-    add     ecx,0x0821
-    and     ecx,[zerolowbits]
+    add     ecx,[_hqx_lowbits]
+    and     ecx,[_hqx_highbits]
     add     edx,ecx
     shr     edx,1
     or      eax,edx
@@ -1743,12 +1809,12 @@ _hq2x_16:
     jmp     .loopx_end
 ..@cross4:
     mov     ecx,[w6]
-    and     edx,[zerolowbits]
-    and     ecx,[zerolowbits]
+    and     edx,[_hqx_highbits]
+    and     ecx,[_hqx_highbits]
     add     ecx,edx
     shr     ecx,1
-    add     ecx,0x0821
-    and     ecx,[zerolowbits]
+    add     ecx,[_hqx_lowbits]
+    and     ecx,[_hqx_highbits]
     add     edx,ecx
     shr     edx,1
     shl     edx,16
@@ -1761,12 +1827,12 @@ _hq2x_16:
     shl     eax,16
     or      eax,edx
     mov     ecx,[w8]
-    and     edx,[zerolowbits]
-    and     ecx,[zerolowbits]
+    and     edx,[_hqx_highbits]
+    and     ecx,[_hqx_highbits]
     add     ecx,edx
     shr     ecx,1
-    add     ecx,0x0821
-    and     ecx,[zerolowbits]
+    add     ecx,[_hqx_lowbits]
+    and     ecx,[_hqx_highbits]
     add     edx,ecx
     shr     edx,1
     mov     ecx,edx

@@ -23,6 +23,7 @@
  *
  */
 
+#include "common/debug.h"
 #include "common/system.h"
 
 #include "gui/debugger.h"
@@ -406,16 +407,18 @@ bool Debugger::Cmd_Help(int argc, const char **argv) {
 }
 
 bool Debugger::Cmd_DebugFlagsList(int argc, const char **argv) {
-	const Common::DebugLevelContainer &debugLevels = Common::listSpecialDebugLevels();
+	const Common::DebugChannelList &debugLevels = Common::listDebugChannels();
 
 	DebugPrintf("Engine debug levels:\n");
 	DebugPrintf("--------------------\n");
-	if (!debugLevels.size()) {
+	if (debugLevels.empty()) {
 		DebugPrintf("No engine debug levels\n");
 		return true;
 	}
-	for (Common::DebugLevelContainer::const_iterator i = debugLevels.begin(); i != debugLevels.end(); ++i) {
-		DebugPrintf("'%s' - Description: %s\n", i->option.c_str(), i->description.c_str());
+	for (Common::DebugChannelList::const_iterator i = debugLevels.begin(); i != debugLevels.end(); ++i) {
+		DebugPrintf("%c%s - %s (%s)\n", i->enabled ? '+' : ' ',
+				i->name.c_str(), i->description.c_str(),
+				i->enabled ? "enabled" : "disabled");
 	}
 	DebugPrintf("\n");
 	return true;
@@ -425,7 +428,7 @@ bool Debugger::Cmd_DebugFlagEnable(int argc, const char **argv) {
 	if (argc < 2) {
 		DebugPrintf("debugflag_enable <flag>\n");
 	} else {
-		if (Common::enableSpecialDebugLevel(argv[1])) {
+		if (Common::enableDebugChannel(argv[1])) {
 			DebugPrintf("Enabled debug flag '%s'\n", argv[1]);
 		} else {
 			DebugPrintf("Failed to enable debug flag '%s'\n", argv[1]);
@@ -438,7 +441,7 @@ bool Debugger::Cmd_DebugFlagDisable(int argc, const char **argv) {
 	if (argc < 2) {
 		DebugPrintf("debugflag_disable <flag>\n");
 	} else {
-		if (Common::disableSpecialDebugLevel(argv[1])) {
+		if (Common::disableDebugChannel(argv[1])) {
 			DebugPrintf("Disabled debug flag '%s'\n", argv[1]);
 		} else {
 			DebugPrintf("Failed to disable debug flag '%s'\n", argv[1]);

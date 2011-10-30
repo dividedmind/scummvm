@@ -11,7 +11,7 @@ VPATH = $(srcdir)
 CC      = sh-elf-gcc -ml -m4-single-only
 CXX     = sh-elf-g++ -ml -m4-single-only
 CXXFLAGS= -O3 -Wno-multichar -funroll-loops -fschedule-insns2 -fomit-frame-pointer -fdelete-null-pointer-checks -fno-exceptions
-DEFINES = -D__DC__ -DNONSTANDARD_PORT -DUSE_MAD -DUSE_ZLIB -DDISABLE_DEFAULT_SAVEFILEMANAGER
+DEFINES = -D__DC__ -DNONSTANDARD_PORT -DUSE_MAD -DUSE_ZLIB -DDISABLE_DEFAULT_SAVEFILEMANAGER -DDISABLE_TEXT_CONSOLE -DDISABLE_COMMAND_LINE
 LDFLAGS = -Wl,-Ttext,0x8c010000 -nostartfiles $(ronindir)/lib/crt0.o
 INCLUDES= -I./ -I$(srcdir) -I$(ronindir)/include/ -I$(srcdir)/engines
 LIBS	= -L$(ronindir)/lib -lmad -lronin -lz -lm
@@ -47,7 +47,9 @@ ENABLE_CINE = $(ENABLED)
 ENABLE_CRUISE = $(ENABLED)
 ENABLE_DRASCULA = $(ENABLED)
 ENABLE_GOB = $(ENABLED)
+ENABLE_GROOVIE = $(ENABLED)
 ENABLE_IGOR = $(ENABLED)
+ENABLE_IHNM = $(ENABLED)
 ENABLE_KYRA = $(ENABLED)
 ENABLE_LURE = $(ENABLED)
 ENABLE_M4 = $(ENABLED)
@@ -59,6 +61,7 @@ ENABLE_SKY = $(ENABLED)
 ENABLE_SWORD1 = $(ENABLED)
 ENABLE_SWORD2 = $(ENABLED)
 ENABLE_TOUCHE = $(ENABLED)
+ENABLE_TUCKER = $(ENABLED)
 
 OBJS :=	dcmain.o time.o display.o audio.o input.o selector.o icon.o \
 	label.o vmsave.o softkbd.o dcloader.o cache.o dc-fs.o

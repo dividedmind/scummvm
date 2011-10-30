@@ -57,7 +57,6 @@ public:
 		}
 
 		if (_fadeSteps == 0) {
-			_vm->freeBackground();
 			return _helper->getState(_nextState);
 		}
 
@@ -113,8 +112,8 @@ class MainMenuInputState_BR : public MenuInputState {
 		// one is in normal color, the other is inverted.
 		// the two 'frames' are used to display selected/unselected menu items
 
-		Graphics::Surface *surf = new Graphics::Surface;
-		surf->create(MENUITEM_WIDTH, MENUITEM_HEIGHT*2, 1);
+		byte *data = new byte[MENUITEM_WIDTH * MENUITEM_HEIGHT * 2];
+		memset(data, 0, MENUITEM_WIDTH * MENUITEM_HEIGHT * 2);
 
 		// build first frame to be displayed when item is not selected
 		if (_vm->getPlatform() == Common::kPlatformPC) {
@@ -122,17 +121,20 @@ class MainMenuInputState_BR : public MenuInputState {
 		} else {
 			_vm->_menuFont->setColor(7);
 		}
-		_vm->_menuFont->drawString((byte*)surf->getBasePtr(5, 2), MENUITEM_WIDTH, text);
+		byte *dst = data + 5 + 2 * MENUITEM_WIDTH;
+		_vm->_menuFont->drawString(dst, MENUITEM_WIDTH, text);
 
 		// build second frame to be displayed when item is selected
-		_vm->_menuFont->drawString((byte*)surf->getBasePtr(5, 2 + MENUITEM_HEIGHT), MENUITEM_WIDTH, text);
-		byte *s = (byte*)surf->getBasePtr(0, MENUITEM_HEIGHT);
-		for (int i = 0; i < surf->w * MENUITEM_HEIGHT; i++) {
-			*s++ ^= 0xD;
+		dst = dst + MENUITEM_WIDTH * MENUITEM_HEIGHT;
+		_vm->_menuFont->drawString(dst, MENUITEM_WIDTH, text);
+
+		dst = data + MENUITEM_WIDTH * MENUITEM_HEIGHT;
+		for (int i = 0; i < MENUITEM_WIDTH * MENUITEM_HEIGHT; i++) {
+			*dst++ ^= 0xD;
 		}
 
 		// wrap the surface into the suitable Frames adapter
-		return new SurfaceToMultiFrames(2, MENUITEM_WIDTH, MENUITEM_HEIGHT, surf);
+		return new Cnv(2, MENUITEM_WIDTH, MENUITEM_HEIGHT, data, true);
 	}
 
 	enum MenuOptions {
@@ -158,7 +160,7 @@ class MainMenuInputState_BR : public MenuInputState {
 
 	void cleanup() {
 		_vm->_system->showMouse(false);
-		_vm->hideDialogueStuff();
+		_vm->_gfx->freeDialogueObjects();
 
 		for (int i = 0; i < _availItems; i++) {
 			delete _lines[i];
@@ -168,7 +170,6 @@ class MainMenuInputState_BR : public MenuInputState {
 	void performChoice(int selectedItem) {
 		switch (selectedItem) {
 		case kMenuQuit: {
-			_vm->_quit = true;
 			_vm->quitGame();
 			break;
 		}
@@ -232,8 +233,7 @@ public:
 		// TODO: keep track of and destroy menu item frames/surfaces
 		for (i = 0; i < _availItems; i++) {
 			_lines[i] = new GfxObj(0, renderMenuItem(_menuStrings[i]), "MenuItem");
-			uint id = _vm->_gfx->setItem(_lines[i], MENUITEMS_X, MENUITEMS_Y + MENUITEM_HEIGHT * i, 0xFF);
-			_vm->_gfx->setItemFrame(id, 0);
+			_vm->_gfx->setItem(_lines[i], MENUITEMS_X, MENUITEMS_Y + MENUITEM_HEIGHT * i, 0xFF);
 		}
 		_selection = -1;
 		_vm->_input->setArrowCursor();

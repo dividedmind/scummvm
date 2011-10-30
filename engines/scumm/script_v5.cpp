@@ -624,12 +624,13 @@ void ScummEngine_v5::o5_chainScript() {
 	// WORKAROUND bug #743314: Work around a bug in script 33 in Indy3 VGA.
 	// That script is used for the fist fights in the Zeppelin. It uses
 	// Local[5], even though that is never set to any value. But script 33 is
-	// called via chainScript by script 32, and in there Local[5] is defined
-	// to the  actor ID of the opposing soldier. So, we copy that value over
-	// to the Local[5] variable of script 33.
+	// called via chainScript by script 32, and in there Local[5] is set to
+	// the actor ID of the opposing soldier. So, we copy that value over to
+	// the Local[5] variable of script 33.
 	// FIXME: This workaround is meant for Indy3 VGA, but we make no checks
-	// to exclude the EGA/Mac/FM-TOWNS versions. Maybe we should check those
-	// (by looking for GF_OLD256 && !platform=FM-TOWNS
+	// to exclude the EGA/Mac/FM-TOWNS versions. We need to check whether
+	// those need the same workaround; if they don't, or if they need it in
+	// modified form, adjust this workaround accordingly.
 	if (_game.id == GID_INDY3 && vm.slot[cur].number == 32 && script == 33) {
 		vars[5] = vm.localvar[cur][5];
 	}
@@ -1256,17 +1257,18 @@ void ScummEngine_v5::o5_saveLoadGame() {
 			result = 2; // failed to save
 		break;
 	case 0xC0: // test if save exists
+		{
 		Common::InSaveFile *file;
 		bool avail_saves[100];
-		char filename[256];
 
 		listSavegames(avail_saves, ARRAYSIZE(avail_saves));
-		makeSavegameName(filename, slot, false);
-		if (avail_saves[slot] && (file = _saveFileMan->openForLoading(filename))) {
+		Common::String filename = makeSavegameName(slot, false);
+		if (avail_saves[slot] && (file = _saveFileMan->openForLoading(filename.c_str()))) {
 			result = 6; // save file exists
 			delete file;
 		} else
 			result = 7; // save file does not exist
+		}
 		break;
 	default:
 		error("o5_saveLoadGame: unknown subopcode %d", _opcode);
@@ -2062,7 +2064,8 @@ void ScummEngine_v5::o5_roomOps() {
 
 			a = getVarOrDirectByte(PARAM_1);
 			s = filename;
-			while ((*s++ = fetchScriptByte()));
+			while ((*s++ = fetchScriptByte()))
+				;
 
 			file = _saveFileMan->openForSaving(filename);
 			if (file != NULL) {
@@ -2081,7 +2084,8 @@ void ScummEngine_v5::o5_roomOps() {
 
 			a = getVarOrDirectByte(PARAM_1);
 			s = filename;
-			while ((*s++ = fetchScriptByte()));
+			while ((*s++ = fetchScriptByte()))
+				;
 
 			file = _saveFileMan->openForLoading(filename);
 			if (file != NULL) {

@@ -37,9 +37,9 @@ namespace DS {
  * Implementation of the ScummVM file system API.
  * This class is used when a Flash cart is in use.
  *
- * Parts of this class are documented in the base interface class, AbstractFilesystemNode.
+ * Parts of this class are documented in the base interface class, AbstractFSNode.
  */
-class DSFileSystemNode : public AbstractFilesystemNode {
+class DSFileSystemNode : public AbstractFSNode {
 protected:
 	static ZipFile* _zipFile;
 
@@ -85,13 +85,13 @@ public:
 	/**
 	 * Returns a copy of this node.
 	 */
-	virtual AbstractFilesystemNode *clone() const { return new DSFileSystemNode(this); }
-	virtual AbstractFilesystemNode *getChild(const Common::String& name) const;
+	virtual AbstractFSNode *clone() const { return new DSFileSystemNode(this); }
+	virtual AbstractFSNode *getChild(const Common::String& name) const;
 	virtual bool getChildren(AbstractFSList &list, ListMode mode, bool hidden) const;
-	virtual AbstractFilesystemNode *getParent() const;
+	virtual AbstractFSNode *getParent() const;
 
-	virtual Common::SeekableReadStream *openForReading();
-	virtual Common::WriteStream *openForWriting();
+	virtual Common::SeekableReadStream *createReadStream();
+	virtual Common::WriteStream *createWriteStream();
 
 	/**
 	 * Returns the zip file this node points to.
@@ -104,9 +104,9 @@ public:
  * Implementation of the ScummVM file system API.
  * This class is used when the GBAMP (GBA Movie Player) is used with a CompactFlash card.
  *
- * Parts of this class are documented in the base interface class, AbstractFilesystemNode.
+ * Parts of this class are documented in the base interface class, AbstractFSNode.
  */
-class GBAMPFileSystemNode : public AbstractFilesystemNode {
+class GBAMPFileSystemNode : public AbstractFSNode {
 protected:
 	Common::String _displayName;
 	Common::String _path;
@@ -150,13 +150,13 @@ public:
 	/**
 	 * Returns a copy of this node.
 	 */
-	virtual AbstractFilesystemNode *clone() const { return new GBAMPFileSystemNode(this); }
-	virtual AbstractFilesystemNode *getChild(const Common::String& name) const;
+	virtual AbstractFSNode *clone() const { return new GBAMPFileSystemNode(this); }
+	virtual AbstractFSNode *getChild(const Common::String& name) const;
 	virtual bool getChildren(AbstractFSList &list, ListMode mode, bool hidden) const;
-	virtual AbstractFilesystemNode *getParent() const;
+	virtual AbstractFSNode *getParent() const;
 
-	virtual Common::SeekableReadStream *openForReading();
-	virtual Common::WriteStream *openForWriting();
+	virtual Common::SeekableReadStream *createReadStream();
+	virtual Common::WriteStream *createWriteStream();
 };
 
 struct fileHandle {

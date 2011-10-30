@@ -434,13 +434,8 @@ HotspotData::HotspotData(HotspotResource *rec) {
 	talkGate = 0;
 	scriptHotspotId = 0;
 
-	// Set up NPC schedule if any
-	uint16 npcScheduleId = READ_LE_UINT16(&rec->npcSchedule);
-	if (npcScheduleId != 0) {
-		Resources &res = Resources::getReference();
-		CharacterScheduleEntry *entry = res.charSchedules().getEntry(npcScheduleId);
-		npcSchedule.addFront(DISPATCH_ACTION, entry, roomNumber);
-	}
+	// Get the NPC schedule, if any
+	npcScheduleId = READ_LE_UINT16(&rec->npcSchedule);
 }
 
 void HotspotData::saveToStream(WriteStream *stream) {
@@ -790,7 +785,7 @@ void SequenceDelayList::add(uint16 delay, uint16 seqOffset, bool canClear) {
 void SequenceDelayList::tick() {
 	SequenceDelayList::iterator i;
 
-	debugC(ERROR_DETAILED, kLureDebugScripts, "Delay List check start at time %d", 
+	debugC(ERROR_DETAILED, kLureDebugScripts, "Delay List check start at time %d",
 		g_system->getMillis());
 
 	for (i = begin(); i != end(); i++) {
@@ -1178,11 +1173,9 @@ int PausedCharacterList::check(uint16 charId, int numImpinging, uint16 *impingin
 			hotspot->setPauseCtr(IDLE_COUNTDOWN_SIZE);
 		}
 
+		if (result == 0)
+			charHotspot->setRandomDest();
 		result = 2;
-		if (charHotspot->currentActions().isEmpty())
-			charHotspot->currentActions().addFront(START_WALKING, charHotspot->roomNumber());
-		else
-			charHotspot->currentActions().top().setAction(START_WALKING);
 	}
 
 	return result;
@@ -1226,7 +1219,7 @@ void BarmanLists::loadFromStream(Common::ReadStream *stream) {
 	reset();
 	for (int index = 0; index < numEntries; ++index) {
 		int16 value = stream->readUint16LE();
-		_barList[index].currentCustomer = ((value < 1) || (value > NUM_SERVE_CUSTOMERS)) ? NULL : 
+		_barList[index].currentCustomer = ((value < 1) || (value > NUM_SERVE_CUSTOMERS)) ? NULL :
 			&_barList[index].customers[value - 1];
 
 		for (int ctr = 0; ctr < NUM_SERVE_CUSTOMERS; ++ctr) {
@@ -1434,6 +1427,7 @@ CurrentActionEntry *CurrentActionEntry::loadFromStream(ReadStream *stream) {
 
 			result->_supportData->setDetails2(action, numParams, paramList);
 			delete paramList;
+			result->_dynamicSupportData = true;
 		} else {
 			// Load action entry with an NPC schedule entry
 			uint16 entryId = stream->readUint16LE();

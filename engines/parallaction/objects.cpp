@@ -57,32 +57,36 @@ Animation::~Animation() {
 	gfxobj->release();
 }
 
-uint16 Animation::width() const {
-	if (!gfxobj) return 0;
-	Common::Rect r;
+void Animation::getFrameRect(Common::Rect &r) const {
+	r.setWidth(0); r.setHeight(0);
+	if (!gfxobj) {
+		return;
+	}
 	gfxobj->getRect(_frame, r);
-	return r.width();
+	r.translate(_left, _top);
 }
 
-uint16 Animation::height() const {
-	if (!gfxobj) return 0;
+bool Animation::hitFrameRect(int x, int y) const {
+	if (!gfxobj) {
+		return false;
+	}
 	Common::Rect r;
-	gfxobj->getRect(_frame, r);
-	return r.height();
+	getFrameRect(r);
+	return r.contains(x, y);
 }
 
-int16 Animation::getFrameX() const {
-	if (!gfxobj) return _left;
-	Common::Rect r;
-	gfxobj->getRect(_frame, r);
-	return r.left + _left;
+int16 Animation::getBottom() const {
+	int bottom = _top;
+	if (gfxobj) {
+		Common::Rect r;
+		getFrameRect(r);
+		bottom = r.bottom;
+	}
+	return bottom;
 }
 
-int16 Animation::getFrameY() const {
-	if (!gfxobj) return _top;
-	Common::Rect r;
-	gfxobj->getRect(_frame, r);
-	return r.top + _top;
+void Animation::resetZ() {
+	setZ(getBottom());
 }
 
 uint16 Animation::getFrameNum() const {
@@ -90,17 +94,17 @@ uint16 Animation::getFrameNum() const {
 	return gfxobj->getNum();
 }
 
-byte* Animation::getFrameData(uint32 index) const {
+byte* Animation::getFrameData() const {
 	if (!gfxobj) return NULL;
-	return gfxobj->getData(index);
+	return gfxobj->getData(_frame);
 }
 
-void Animation::validateScriptVars() {
-	// this is used to clip values of _frame, _left and _top
-	// which can be screwed up by buggy scripts.
-
-	_frame = CLIP(_frame, (int16)0, (int16)(getFrameNum() - 1));
+void Animation::setF(int16 value) {
+	int16 min = MIN(0, getFrameNum() - 1);
+	int16 max = MAX(0, getFrameNum() - 1);
+	_frame = CLIP(value, min, max);
 }
+
 
 #define NUM_LOCALS	10
 char	_localNames[NUM_LOCALS][10];
@@ -158,8 +162,8 @@ Zone::Zone() {
 	_left = _top = _right = _bottom = 0;
 
 	_type = 0;
-	_flags = 0;
 
+	_flags = kFlagsNoName;
 	_label = 0;
 
 	// BRA specific
@@ -173,7 +177,7 @@ Zone::~Zone() {
 	switch (_type & 0xFFFF) {
 	case kZoneExamine:
 		free(u.examine->_filename);
-		free(u.examine->_description);
+		u.examine->_description.clear();
 		delete u.examine->_cnv;
 		delete u.examine;
 		break;
@@ -202,6 +206,10 @@ Zone::~Zone() {
 		delete u.merge;
 		break;
 
+	case kZonePath:
+		delete u.path;
+		break;
+
 	default:
 		break;
 	}
@@ -217,12 +225,13 @@ void Zone::translate(int16 x, int16 y) {
 	_bottom += y;
 }
 
-uint16 Zone::width() const {
-	return _right - _left;
-}
-
-uint16 Zone::height() const {
-	return _bottom - _top;
+bool Zone::hitRect(int x, int y) const {
+	// The scripts of Nippon Safes are full of invalid rectangles, used to
+	// provide 'special' features.
+	if (_right < _left || _bottom < _top) {
+		return false;
+	}
+	return Common::Rect(_left, _top, _right, _bottom).contains(x, y);
 }
 
 Dialogue::Dialogue() {
@@ -236,19 +245,14 @@ Dialogue::~Dialogue() {
 }
 
 Answer::Answer() {
-	_text = NULL;
 	_mood = 0;
-	_following._question =  NULL;
+	_followingQuestion =  NULL;
 	_noFlags = 0;
 	_yesFlags = 0;
-}
-
-Answer::~Answer() {
-	free(_text);
+	_hasCounterCondition = false;
 }
 
 Question::Question() {
-	_text = NULL;
 	_mood = 0;
 
 	for (uint32 i = 0; i < NUM_ANSWERS; i++)
@@ -257,12 +261,9 @@ Question::Question() {
 }
 
 Question::~Question() {
-
 	for (uint32 i = 0; i < NUM_ANSWERS; i++) {
 		delete _answers[i];
 	}
-
-	free(_text);
 }
 
 Instruction::Instruction() {

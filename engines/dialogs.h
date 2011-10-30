@@ -28,21 +28,16 @@
 #include "common/str.h"
 #include "gui/dialog.h"
 #include "gui/options.h"
-#include "gui/widget.h"
 
-#include "engines/engine.h"
+class Engine;
 
+namespace GUI {
+	class ButtonWidget;
+	class GraphicsWidget;
+	class SaveLoadChooser;
+}
 
-class GlobalDialog : public GUI::Dialog {
-public:
-	GlobalDialog(Common::String name);
-
-protected:
-	typedef Common::String String;
-};
-
-
-class MainMenuDialog : public GlobalDialog {
+class MainMenuDialog : public GUI::Dialog {
 public:
 	MainMenuDialog(Engine *engine);
 	~MainMenuDialog();
@@ -56,9 +51,12 @@ protected:
 
 	GUI::GraphicsWidget *_logo;
 	GUI::ButtonWidget	*_rtlButton;
+	GUI::ButtonWidget	*_loadButton;
+	GUI::ButtonWidget	*_saveButton;
 	GUI::Dialog		*_aboutDialog;
 	GUI::Dialog		*_optionsDialog;
-
+	GUI::SaveLoadChooser	*_loadDialog;
+	GUI::SaveLoadChooser	*_saveDialog;
 };
 
 class ConfigDialog : public GUI::OptionsDialog {
@@ -68,7 +66,7 @@ protected:
 #endif
 
 public:
-	ConfigDialog();
+	ConfigDialog(bool subtitleControls);
 	~ConfigDialog();
 
 	virtual void handleCommand(GUI::CommandSender *sender, uint32 cmd, uint32 data);

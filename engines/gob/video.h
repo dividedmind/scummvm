@@ -26,7 +26,14 @@
 #ifndef GOB_VIDEO_H
 #define GOB_VIDEO_H
 
+#include "common/list.h"
+#include "common/rect.h"
+
 #include "gob/gob.h"
+
+namespace Graphics {
+	class PaletteLUT;
+}
 
 namespace Gob {
 
@@ -64,13 +71,17 @@ public:
 		byte *dataPtr;
 		int8 itemWidth;
 		int8 itemHeight;
-		int8 startItem;
-		int8 endItem;
+		uint8 startItem;
+		uint8 endItem;
 		int8 itemSize;
 		int8 bitWidth;
 		byte *extraData;
 		FontDesc() : dataPtr(0), itemWidth(0), itemHeight(0), startItem(0),
-			               endItem(0), itemSize(0), bitWidth(0) {}
+		             endItem(0), itemSize(0), bitWidth(0) {}
+		~FontDesc() {
+			if (dataPtr)
+				delete[] (dataPtr - 4);
+		}
 	};
 
 #define GDR_VERSION	4
@@ -113,6 +124,8 @@ public:
 	int16 _screenDeltaX;
 	int16 _screenDeltaY;
 
+	Graphics::PaletteLUT *_palLUT;
+
 	void freeDriver();
 	void initPrimary(int16 mode);
 	SurfaceDesc *initSurfDesc(int16 vidMode, int16 width,
@@ -126,7 +139,7 @@ public:
 	void sparseRetrace(int max);
 
 	void putPixel(int16 x, int16 y, int16 color, SurfaceDesc *dest);
-	void fillRect(SurfaceDesc *dest, int16 left, int16 top,
+	virtual void fillRect(SurfaceDesc *dest, int16 left, int16 top,
 			int16 right, int16 bottom, int16 color);
 	void drawLine(SurfaceDesc *dest, int16 x0, int16 y0, int16 x1, int16 y1,
 				  int16 color);
@@ -158,15 +171,25 @@ public:
 	void setFullPalette(PalDesc *palDesc);
 	void setPalette(Color *palette);
 
+	void dirtyRectsClear();
+	void dirtyRectsAll();
+	void dirtyRectsAdd(int16 left, int16 top, int16 right, int16 bottom);
+	void dirtyRectsApply(int left, int top, int width, int height, int x, int y);
+
 	virtual char spriteUncompressor(byte *sprBuf, int16 srcWidth,
 			int16 srcHeight, int16 x, int16 y, int16 transp,
 			SurfaceDesc *destDesc) = 0;
 
+	virtual void init(const char *target = "") { }
+
 	Video(class GobEngine *vm);
-	virtual ~Video() {}
+	virtual ~Video();
 
 protected:
 	class VideoDriver *_videoDriver;
+
+	bool _dirtyAll;
+	Common::List<Common::Rect> _dirtyRects;
 
 	int _curSparse;
 	uint32 _lastSparse;
@@ -174,6 +197,9 @@ protected:
 	GobEngine *_vm;
 
 	char initDriver(int16 vidMode);
+
+	void initOSD();
+	void drawOSDText(const char *text);
 };
 
 class Video_v1 : public Video {
@@ -199,8 +225,30 @@ public:
 	virtual char spriteUncompressor(byte *sprBuf, int16 srcWidth, int16 srcHeight,
 			int16 x, int16 y, int16 transp, SurfaceDesc *destDesc);
 
+	virtual void fillRect(SurfaceDesc *dest, int16 left, int16 top,
+			int16 right, int16 bottom, int16 color);
+
+	virtual void init(const char *target = "");
+
 	Video_v6(GobEngine *vm);
 	virtual ~Video_v6() {}
+
+private:
+	static const byte _ditherPalette[768];
+
+	bool loadPalLUT(const char *target);
+	bool savePalLUT(const char *target);
+	void buildPalLUT();
+
+	void shadeRect(SurfaceDesc *dest,
+			int16 left, int16 top, int16 right, int16 bottom, byte color, byte strength);
+
+	void drawPacked(const byte *sprBuf, int16 x, int16 y, SurfaceDesc *surfDesc);
+	void drawYUVData(const byte *srcData, SurfaceDesc *destDesc,
+			int16 width, int16 height, int16 x, int16 y);
+	void drawYUV(SurfaceDesc *destDesc, int16 x, int16 y,
+			int16 dataWidth, int16 dataHeight, int16 width, int16 height,
+			const byte *dataY, const byte *dataU, const byte *dataV);
 };
 
 class VideoDriver {

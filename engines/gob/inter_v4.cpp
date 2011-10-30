@@ -202,8 +202,8 @@ void Inter_v4::setupOpcodes() {
 		/* 40 */
 		OPCODE(o2_totSub),
 		OPCODE(o2_switchTotSub),
-		OPCODE(o2_copyVars),
-		OPCODE(o2_pasteVars),
+		OPCODE(o2_pushVars),
+		OPCODE(o2_popVars),
 		/* 44 */
 		{NULL, ""},
 		{NULL, ""},
@@ -490,7 +490,7 @@ void Inter_v4::setupOpcodes() {
 		/* 24 */
 		OPCODE(o1_putPixel),
 		OPCODE(o2_goblinFunc),
-		OPCODE(o2_createSprite),
+		OPCODE(o1_createSprite),
 		OPCODE(o1_freeSprite),
 		/* 28 */
 		{NULL, ""},
@@ -834,6 +834,7 @@ void Inter_v4::o4_playVmdOrMusic() {
 	close = false;
 	if (lastFrame == -1) {
 		close = true;
+	} else if (lastFrame == -2) {
 	} else if (lastFrame == -3) {
 
 		_vm->_mult->_objects[startFrame].pAnimData->animation = -startFrame - 1;
@@ -870,7 +871,7 @@ void Inter_v4::o4_playVmdOrMusic() {
 	} else if (lastFrame == -9) {
 		_vm->_sound->bgStop();
 		_vm->_sound->bgSetPlayMode(BackgroundAtmosphere::kPlayModeRandom);
-		_vm->_sound->bgPlay(fileName, palStart);
+		_vm->_sound->bgPlay(fileName, "SND", SOUND_SND, palStart);
 		return;
 	} else if (lastFrame < 0) {
 		warning("Unknown Video/Music command: %d, %s", lastFrame, fileName);
@@ -878,7 +879,8 @@ void Inter_v4::o4_playVmdOrMusic() {
 	}
 
 	if (startFrame == -2) {
-		startFrame = lastFrame = 0;
+		startFrame = 0;
+		lastFrame = -1;
 		close = false;
 	}
 

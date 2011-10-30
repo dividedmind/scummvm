@@ -158,7 +158,7 @@ struct WindowBlock {
 	int16 textColumn, textRow;
 	int16 scrollY;
 	uint16 textColumnOffset, textLength, textMaxLength;
-	uint8 fill_color, text_color;
+	uint8 fillColor, textColor;
 	IconBlock *iconPtr;
 	WindowBlock() { memset(this, 0, sizeof(*this)); }
 	~WindowBlock() { free (iconPtr); }
@@ -258,14 +258,11 @@ enum GameIds {
 	GID_ELVIRA2,
 	GID_WAXWORKS,
 
+	GID_SIMON1,
 	GID_SIMON1DOS,
-	GID_SIMON1ACORN,
-	GID_SIMON1AMIGA,
 	GID_SIMON1CD32,
-	GID_SIMON1TALKIE,
 
-	GID_SIMON2DOS,
-	GID_SIMON2TALKIE,
+	GID_SIMON2,
 
 	GID_FEEBLEFILES,
 

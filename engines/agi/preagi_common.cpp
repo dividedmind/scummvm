@@ -30,6 +30,8 @@
 
 #include "agi/preagi_common.h"
 
+#include "common/events.h"
+
 namespace Agi {
 
 // Screen functions
@@ -120,7 +122,7 @@ void PreAgiEngine::printStrXOR(char *szMsg) {
 int PreAgiEngine::getSelection(SelectionTypes type) {
 	Common::Event event;
 
-	while (!quit()) {
+	while (!shouldQuit()) {
 		while (_eventMan->pollEvent(event)) {
 			switch(event.type) {
 			case Common::EVENT_RTL:
@@ -191,7 +193,17 @@ int PreAgiEngine::getSelection(SelectionTypes type) {
 
 void PreAgiEngine::playNote(int16 frequency, int32 length) {
 	_speakerStream->play(Audio::PCSpeaker::kWaveFormSquare, frequency, length);
-	_system->delayMillis(length);
+	waitForTimer(length);
+}
+
+void PreAgiEngine::waitForTimer(int msec_delay) {
+	uint32 start_time = _system->getMillis();
+
+	while (_system->getMillis() < start_time + msec_delay) {
+		_gfx->doUpdate();
+		_system->updateScreen();
+		_system->delayMillis(10);
+	}
 }
 
 }

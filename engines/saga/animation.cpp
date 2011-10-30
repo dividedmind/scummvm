@@ -32,7 +32,7 @@
 #include "saga/events.h"
 #include "saga/interface.h"
 #include "saga/render.h"
-#include "saga/rscfile.h"
+#include "saga/resource.h"
 #include "saga/scene.h"
 
 #include "saga/animation.h"
@@ -55,8 +55,12 @@ Anim::Anim(SagaEngine *vm) : _vm(vm) {
 
 Anim::~Anim(void) {
 	reset();
+#ifdef ENABLE_IHNM
 	freeCutawayList();
+#endif
 }
+
+#ifdef ENABLE_IHNM
 
 void Anim::loadCutawayList(const byte *resourcePointer, size_t resourceLength) {
 	free(_cutawayList);
@@ -320,7 +324,7 @@ void Anim::clearCutaway(void) {
 		_vm->_interface->restoreMode();
 		_vm->_gfx->showCursor(true);
 
-		if (_vm->getGameId() == GID_IHNM_DEMO) {
+		if (_vm->getFeatures() & GF_IHNM_DEMO) {
 			// Enable the save reminder state after each cutaway for the IHNM demo
 			_vm->_interface->setSaveReminderState(true);
 		}
@@ -348,9 +352,9 @@ void Anim::showCutawayBg(int bg) {
 
 	const byte *palPointer = _vm->getImagePal(resourceData, resourceDataLength);
 	memcpy(pal, palPointer, sizeof(pal));
-	Surface *bgSurface = _vm->_render->getBackGroundSurface();
 	const Rect rect(width, height);
-	bgSurface->blit(rect, buf);
+	_vm->_render->getBackGroundSurface()->blit(rect, buf);
+	_vm->_render->setFullRefresh(true);
 	_vm->_frameCount++;
 
 	if (_cutAwayFade) {
@@ -390,6 +394,8 @@ void Anim::returnFromVideo(void) {
 
 	returnFromCutaway();
 }
+
+#endif
 
 void Anim::load(uint16 animId, const byte *animResourceData, size_t animResourceLength) {
 	AnimationData *anim;
@@ -462,11 +468,7 @@ void Anim::link(int16 animId1, int16 animId2) {
 }
 
 void Anim::setCycles(uint16 animId, int cycles) {
-	AnimationData *anim;
-
-	anim = getAnimation(animId);
-
-	anim->cycles = cycles;
+	getAnimation(animId)->cycles = cycles;
 }
 
 int Anim::getCycles(uint16 animId) {
@@ -478,8 +480,6 @@ int Anim::getCycles(uint16 animId) {
 
 void Anim::play(uint16 animId, int vectorTime, bool playing) {
 	Event event;
-	Surface *backGroundSurface;
-
 	byte *displayBuffer;
 
 	uint16 frame;
@@ -512,9 +512,7 @@ void Anim::play(uint16 animId, int vectorTime, bool playing) {
 	}
 
 	anim = getAnimation(animId);
-
-	backGroundSurface = _vm->_render->getBackGroundSurface();
-	displayBuffer = (byte*)backGroundSurface->pixels;
+	displayBuffer = (byte*)_vm->_render->getBackGroundSurface()->pixels;
 
 	if (playing) {
 		anim->state = ANIM_PLAYING;
@@ -548,7 +546,8 @@ void Anim::play(uint16 animId, int vectorTime, bool playing) {
 		frame = anim->currentFrame;
 
 		// FIXME: if start > 0, then this works incorrectly
-		decodeFrame(anim, anim->frameOffsets[frame], displayBuffer, _vm->getDisplayWidth() * _vm->getDisplayHeight());
+		decodeFrame(anim, anim->frameOffsets[frame], displayBuffer, _vm->getDisplayInfo().width * _vm->getDisplayInfo().height);
+		_vm->_render->addDirtyRect(Common::Rect(0, 0, _vm->getDisplayInfo().width, _vm->getDisplayInfo().height));
 		_vm->_frameCount++;
 		anim->currentFrame++;
 		if (anim->completed != 65535) {
@@ -579,6 +578,9 @@ void Anim::play(uint16 animId, int vectorTime, bool playing) {
 				_vm->_events->queue(&event);
 			}
 			return;
+		} else {
+			anim->currentFrame = 0;
+			anim->completed = 0;
 		}
 	}
 
@@ -603,27 +605,15 @@ void Anim::play(uint16 animId, int vectorTime, bool playing) {
 }
 
 void Anim::stop(uint16 animId) {
-	AnimationData *anim;
-
-	anim = getAnimation(animId);
-
-	anim->state = ANIM_PAUSE;
+	getAnimation(animId)->state = ANIM_PAUSE;
 }
 
 void Anim::finish(uint16 animId) {
-	AnimationData *anim;
-
-	anim = getAnimation(animId);
-
-	anim->state = ANIM_STOPPING;
+	getAnimation(animId)->state = ANIM_STOPPING;
 }
 
 void Anim::resume(uint16 animId, int cycles) {
-	AnimationData *anim;
-
-	anim = getAnimation(animId);
-
-	anim->cycles += cycles;
+	getAnimation(animId)->cycles += cycles;
 	play(animId, 0, true);
 }
 
@@ -646,51 +636,27 @@ void Anim::reset() {
 }
 
 void Anim::setFlag(uint16 animId, uint16 flag) {
-	AnimationData *anim;
-
-	anim = getAnimation(animId);
-
-	anim->flags |= flag;
+	getAnimation(animId)->flags |= flag;
 }
 
 void Anim::clearFlag(uint16 animId, uint16 flag) {
-	AnimationData *anim;
-
-	anim = getAnimation(animId);
-
-	anim->flags &= ~flag;
+	getAnimation(animId)->flags &= ~flag;
 }
 
 void Anim::setFrameTime(uint16 animId, int time) {
-	AnimationData *anim;
-
-	anim = getAnimation(animId);
-
-	anim->frameTime = time;
+	getAnimation(animId)->frameTime = time;
 }
 
 int Anim::getFrameTime(uint16 animId) {
-	AnimationData *anim;
-
-	anim = getAnimation(animId);
-
-	return anim->frameTime;
+	return getAnimation(animId)->frameTime;
 }
 
 bool Anim::isPlaying(uint16 animId) {
-	AnimationData *anim;
-
-	anim = getAnimation(animId);
-
-	return (anim->state == ANIM_PLAYING);
+	return (getAnimation(animId)->state == ANIM_PLAYING);
 }
 
 int16 Anim::getCurrentFrame(uint16 animId) {
-	AnimationData *anim;
-
-	anim = getAnimation(animId);
-
-	return anim->currentFrame;
+	return getAnimation(animId)->currentFrame;
 }
 
 void Anim::decodeFrame(AnimationData *anim, size_t frameOffset, byte *buf, size_t bufLength) {
@@ -975,6 +941,7 @@ void Anim::animInfo() {
 	}
 }
 
+#ifdef ENABLE_IHNM
 void Anim::cutawayInfo() {
 	uint16 i;
 
@@ -986,6 +953,7 @@ void Anim::cutawayInfo() {
 			_cutawayList[i].cycles, _cutawayList[i].frameRate);
 	}
 }
+#endif
 
 void Anim::resumeAll() {
 	// Restore the animations

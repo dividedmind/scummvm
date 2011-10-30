@@ -34,6 +34,7 @@
 #include "sound/wave.h"
 #include "graphics/cursorman.h"
 
+#include "common/archive.h"
 #include "common/stream.h"
 #include "common/system.h"
 
@@ -159,33 +160,32 @@ int Win32ResExtractor::extractResource_(const char *resType, char *resName, byte
 
 	/* initiate stuff */
 	fi.memory = NULL;
-	fi.file = new Common::File;
+	fi.file = NULL;
 
 	if (_fileName.empty()) { // We are running for the first time
 		_fileName = _vm->generateFilename(-3);
 	}
 
-
 	/* get file size */
-	fi.file->open(_fileName);
-	if (!fi.file->isOpen()) {
+	fi.file = SearchMan.createReadStreamForMember(_fileName);
+	if (!fi.file) {
 		error("Cannot open file %s", _fileName.c_str());
 	}
 
 	fi.total_size = fi.file->size();
 	if (fi.total_size == -1) {
-		error("Cannot get size of file %s", fi.file->name());
+		error("Cannot get size of file %s", _fileName.c_str());
 		goto cleanup;
 	}
 	if (fi.total_size == 0) {
-		error("%s: file has a size of 0", fi.file->name());
+		error("%s: file has a size of 0", _fileName.c_str());
 		goto cleanup;
 	}
 
 	/* read all of file */
 	fi.memory = (byte *)malloc(fi.total_size);
 	if (fi.file->read(fi.memory, fi.total_size) == 0) {
-		error("Cannot read from file %s", fi.file->name());
+		error("Cannot read from file %s", _fileName.c_str());
 		goto cleanup;
 	}
 
@@ -200,10 +200,8 @@ int Win32ResExtractor::extractResource_(const char *resType, char *resName, byte
 
 	/* free stuff and close file */
 	cleanup:
-	if (fi.file != NULL)
-		fi.file->close();
-	if (fi.memory != NULL)
-		free(fi.memory);
+	delete fi.file;
+	free(fi.memory);
 
 	return ressize;
 }
@@ -371,19 +369,19 @@ byte *Win32ResExtractor::extract_group_icon_cursor_resource(WinLibrary *fi, WinR
 		fwr = find_resource(fi, (is_icon ? "-3" : "-1"), name, lang, &level);
 		if (fwr == NULL) {
 			error("%s: could not find `%s' in `%s' resource.",
-					fi->file->name(), &name[1], (is_icon ? "group_icon" : "group_cursor"));
+					_fileName.c_str(), &name[1], (is_icon ? "group_icon" : "group_cursor"));
 			return NULL;
 		}
 
 		if (get_resource_entry(fi, fwr, &iconsize) != NULL) {
 		    if (iconsize == 0) {
-				debugC(DEBUG_RESOURCE, "%s: icon resource `%s' is empty, skipping", fi->file->name(), name);
+				debugC(DEBUG_RESOURCE, "%s: icon resource `%s' is empty, skipping", _fileName.c_str(), name);
 				skipped++;
 				continue;
 		    }
 		    if ((uint32)iconsize != FROM_LE_32(icondir->entries[c].bytes_in_res)) {
 				debugC(DEBUG_RESOURCE, "%s: mismatch of size in icon resource `%s' and group (%d != %d)",
-					fi->file->name(), name, iconsize, FROM_LE_32(icondir->entries[c].bytes_in_res));
+					_fileName.c_str(), name, iconsize, FROM_LE_32(icondir->entries[c].bytes_in_res));
 		    }
 		    size += iconsize; /* size += FROM_LE_32(icondir->entries[c].bytes_in_res); */
 
@@ -419,7 +417,7 @@ byte *Win32ResExtractor::extract_group_icon_cursor_resource(WinLibrary *fi, WinR
 		fwr = find_resource(fi, (is_icon ? "-3" : "-1"), name, lang, &level);
 		if (fwr == NULL) {
 			error("%s: could not find `%s' in `%s' resource.",
-				fi->file->name(), &name[1], (is_icon ? "group_icon" : "group_cursor"));
+				_fileName.c_str(), &name[1], (is_icon ? "group_icon" : "group_cursor"));
 			return NULL;
 		}
 
@@ -528,7 +526,7 @@ int Win32ResExtractor::do_resources_recurs(WinLibrary *fi, WinResource *base,
 		else
 			return 0;
 	}
-	
+
 	/* process each resource listed */
 	for (c = 0 ; c < rescnt ; c++) {
 		/* (over)write the corresponding WinResource holder with the current */
@@ -675,7 +673,7 @@ bool Win32ResExtractor::read_library(WinLibrary *fi) {
 		LE32(mz_header->lfanew);
 
 		if (mz_header->lfanew < sizeof(DOSImageHeader)) {
-			error("%s: not a Windows library", fi->file->name());
+			error("%s: not a Windows library", _fileName.c_str());
 			return false;
 		}
 	}
@@ -724,7 +722,7 @@ bool Win32ResExtractor::read_library(WinLibrary *fi) {
 		RETURN_IF_BAD_POINTER(false, pe_header->optional_header.data_directory[IMAGE_DIRECTORY_ENTRY_RESOURCE]);
 		Win32ImageDataDirectory *dir = pe_header->optional_header.data_directory + IMAGE_DIRECTORY_ENTRY_RESOURCE;
 		if (dir->size == 0) {
-			error("%s: file contains no resources", fi->file->name());
+			error("%s: file contains no resources", _fileName.c_str());
 			return false;
 		}
 
@@ -735,7 +733,7 @@ bool Win32ResExtractor::read_library(WinLibrary *fi) {
 	}
 
 	/* other (unknown) header signature was found */
-	error("%s: not a Windows library", fi->file->name());
+	error("%s: not a Windows library", _fileName.c_str());
 	return false;
 }
 
@@ -1667,118 +1665,6 @@ int ScummEngine_v72he::getSoundResourceSize(int id) {
 	return size;
 }
 
-void ScummEngine_v80he::createSound(int snd1id, int snd2id) {
-	byte *snd1Ptr, *snd2Ptr;
-	byte *sbng1Ptr, *sbng2Ptr;
-	byte *sdat1Ptr, *sdat2Ptr;
-	byte *src, *dst, *tmp;
-	int len, offs, size;
-	int sdat1size, sdat2size;
-
-	if (snd2id == -1) {
-		_sndPtrOffs = 0;
-		_sndTmrOffs = 0;
-		return;
-	}
-
-	if (snd1id != _curSndId) {
-		_curSndId = snd1id;
-		_sndPtrOffs = 0;
-		_sndTmrOffs = 0;
-	}
-
-	snd1Ptr = getResourceAddress(rtSound, snd1id);
-	assert(snd1Ptr);
-	snd2Ptr = getResourceAddress(rtSound, snd2id);
-	assert(snd2Ptr);
-
-	int i;
-	int chan = -1;
-	for (i = 0; i < ARRAYSIZE(((SoundHE *)_sound)->_heChannel); i++) {
-		if (((SoundHE *)_sound)->_heChannel[i].sound == snd1id)
-			chan =  i;
-	}
-
-	sbng1Ptr = heFindResource(MKID_BE('SBNG'), snd1Ptr);
-	sbng2Ptr = heFindResource(MKID_BE('SBNG'), snd2Ptr);
-
-	if (sbng1Ptr != NULL && sbng2Ptr != NULL) {
-		if (chan != -1 && ((SoundHE *)_sound)->_heChannel[chan].codeOffs > 0) {
-			int curOffs = ((SoundHE *)_sound)->_heChannel[chan].codeOffs;
-
-			src = snd1Ptr + curOffs;
-			dst = sbng1Ptr + 8;
-			size = READ_BE_UINT32(sbng1Ptr + 4);
-			len = sbng1Ptr - snd1Ptr + size - curOffs;
-
-			byte *data = (byte *)malloc(len);
-			memcpy(data, src, len);
-			memcpy(dst, data, len);
-			free(data);
-
-			dst = sbng1Ptr + 8;
-			while ((size = READ_LE_UINT16(dst)) != 0)
-				dst += size;
-		} else {
-			dst = sbng1Ptr + 8;
-		}
-
-		((SoundHE *)_sound)->_heChannel[chan].codeOffs = sbng1Ptr - snd1Ptr + 8;
-
-		tmp = sbng2Ptr + 8;
-		while ((offs = READ_LE_UINT16(tmp)) != 0) {
-			tmp += offs;
-		}
-
-		src = sbng2Ptr + 8;
-		len = tmp - sbng2Ptr - 6;
-		memcpy(dst, src, len);
-
-		int32 time;
-		while ((size = READ_LE_UINT16(dst)) != 0) {
-			time = READ_LE_UINT32(dst + 2);
-			time += _sndTmrOffs;
-			WRITE_LE_UINT32(dst + 2, time);
-			dst += size;
-		}
-	}
-
-	sdat1Ptr = heFindResource(MKID_BE('SDAT'), snd1Ptr);
-	assert(sdat1Ptr);
-	sdat2Ptr = heFindResource(MKID_BE('SDAT'), snd2Ptr);
-	assert(sdat2Ptr);
-
-	sdat1size = READ_BE_UINT32(sdat1Ptr + 4) - 8 - _sndPtrOffs;
-	sdat2size = READ_BE_UINT32(sdat2Ptr + 4) - 8;
-
-	if (sdat2size < sdat1size) {
-		src = sdat2Ptr + 8;
-		dst = sdat1Ptr + 8 + _sndPtrOffs;
-		len = sdat2size;
-
-		memcpy(dst, src, len);
-
-		_sndPtrOffs += sdat2size;
-		_sndTmrOffs += sdat2size;
-	} else {
-		src = sdat2Ptr + 8;
-		dst = sdat1Ptr + 8 + _sndPtrOffs;
-		len = sdat1size;
-
-		memcpy(dst, src, len);
-
-		if (sdat2size != sdat1size) {
-			src = sdat2Ptr + 8 + sdat1size;
-			dst = sdat1Ptr + 8;
-			len = sdat2size - sdat1size;
-
-			memcpy(dst, src, len);
-		}
-
-		_sndPtrOffs = sdat2size - sdat1size;
-		_sndTmrOffs += sdat2size;
-	}
-}
 #endif
 
 } // End of namespace Scumm

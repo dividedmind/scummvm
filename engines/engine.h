@@ -25,9 +25,9 @@
 #ifndef ENGINES_ENGINE_H
 #define ENGINES_ENGINE_H
 
-#include "common/events.h"
-#include "common/fs.h"
 #include "common/scummsys.h"
+#include "common/error.h"
+#include "common/fs.h"
 #include "common/str.h"
 
 class OSystem;
@@ -45,31 +45,46 @@ namespace GUI {
 	class Dialog;
 }
 
-using GUI::Dialog;
+/**
+ * Setup the backend's graphics mode.
+ */
+void initCommonGFX(bool defaultTo1XScaler);
+
+/**
+ * Setup the backend's screen size and graphics mode.
+ *
+ * Shows an various warnings on certain backend graphics
+ * transaction failures (aspect switch, fullscreen switch, etc.).
+ *
+ * Errors out when backend is not able to switch to the specified
+ * mode.
+ */
+void initGraphics(int width, int height, bool defaultTo1xScaler);
+
+/**
+ * Initializes graphics and shows error message.
+ */
+void GUIErrorMessage(const Common::String msg);
+
 
 class Engine {
 public:
 	OSystem *_system;
 	Audio::Mixer *_mixer;
-	Common::TimerManager * _timer;
 
 protected:
+	Common::TimerManager *_timer;
 	Common::EventManager *_eventMan;
 	Common::SaveFileManager *_saveFileMan;
-	
-	Dialog *_mainMenuDialog;
-	virtual int runDialog(Dialog &dialog);
+
+	GUI::Dialog *_mainMenuDialog;
+	virtual int runDialog(GUI::Dialog &dialog);
 
 	const Common::String _targetName; // target name for saves
-	
-	const Common::FilesystemNode _gameDataDir;
+
+	const Common::FSNode _gameDataDir;	// FIXME: Get rid of this
 
 private:
-	/**
-	 * The autosave interval, given in second. Used by shouldPerformAutoSave.
-	 */
-	int _autosavePeriod;
-
 	/**
 	 * The pause level, 0 means 'running', a positive value indicates
 	 * how often the engine has been paused (and hence how often it has
@@ -79,31 +94,144 @@ private:
 	int _pauseLevel;
 
 public:
+
+
+	/**
+	 * A feature in this context means an ability of the engine which can be
+	 * either available or not.
+	 * @see Engine::hasFeature()
+	 */
+	enum EngineFeature {
+		/**
+		 * Enables the subtitle speed and toggle items in the Options section
+		 * of the global main menu.
+		 */
+		kSupportsSubtitleOptions,
+
+		/**
+		 * 'Return to launcher' feature is supported, i.e., EVENT_RTL is handled
+		 * either directly, or indirectly (that is, the engine calls and honors
+		 * the result of the Engine::shouldQuit() method appropriately).
+		 */
+		kSupportsRTL,
+
+		/**
+		 * Loading savestates during runtime is supported, that is, this engine
+		 * implements loadGameState() and canLoadGameStateCurrently().
+		 * If this feature is supported, then the corresponding MetaEngine *must*
+		 * support the kSupportsListSaves feature.
+		 */
+		kSupportsLoadingDuringRuntime,
+
+		/**
+		 * Loading savestates during runtime is supported, that is, this engine
+		 * implements saveGameState() and canSaveGameStateCurrently().
+		 * If this feature is supported, then the corresponding MetaEngine *must*
+		 * support the kSupportsListSaves feature.
+		 */
+		kSupportsSavingDuringRuntime
+	};
+
+
+
+	/** @name Overloadable methods
+	 *
+	 *  All Engine subclasses should consider overloading some or all of the following methods.
+	 */
+	//@{
+
 	Engine(OSystem *syst);
 	virtual ~Engine();
 
 	/**
 	 * Init the engine.
-	 * @return 0 for success, else an error code.
+	 * @return returns kNoError on success, else an error code.
 	 */
-	virtual int init() = 0;
+	virtual Common::Error init() = 0;
 
 	/**
 	 * Start the main engine loop.
 	 * The return value is not yet used, but could indicate whether the user
 	 * wants to return to the launch or to fully quit ScummVM.
-	 * @return 0 for success, else an error code.
+	 * @return returns kNoError on success, else an error code.
 	 */
-	virtual int go() = 0;
+	virtual Common::Error go() = 0;
 
-	/** Specific for each engine: prepare error string. */
-	virtual void errorString(const char *buf_input, char *buf_output);
+	/**
+	 * Prepare an error string, which is printed by the error() function.
+	 */
+	virtual void errorString(const char *buf_input, char *buf_output, int buf_output_size);
 
 	/**
 	 * Return the engine's debugger instance, if any. Used by error() to
 	 * invoke the debugger when a severe error is reported.
 	 */
 	virtual GUI::Debugger *getDebugger() { return 0; }
+
+	/**
+	 * Determine whether the engine supports the specified feature.
+	 */
+	virtual bool hasFeature(EngineFeature f) const { return false; }
+
+//	virtual EnginePlugin *getMetaEnginePlugin() const;
+
+	/**
+	 * Notify the engine that the sound settings in the config manager may have
+	 * changed and that it hence should adjust any internal volume etc. values
+	 * accordingly.
+	 * @todo find a better name for this
+	 */
+	virtual void syncSoundSettings();
+
+	/**
+	 * Load a game state.
+	 * @param slot	the slot from which a savestate should be loaded
+	 * @return returns kNoError on success, else an error code.
+	 */
+	virtual Common::Error loadGameState(int slot);
+
+	/**
+	 * Indicates whether a game state can be loaded.
+	 */
+	virtual bool canLoadGameStateCurrently();
+
+	/**
+	 * Save a game state.
+	 * @param slot	the slot into which the savestate should be stored
+	 * @param desc	a description for the savestate, entered by the user
+	 * @return returns kNoError on success, else an error code.
+	 */
+	virtual Common::Error saveGameState(int slot, const char *desc);
+
+	/**
+	 * Indicates whether a game state can be saved.
+	 */
+	virtual bool canSaveGameStateCurrently();
+
+protected:
+
+	/**
+	 * Actual implementation of pauseEngine by subclasses. See there
+	 * for details.
+	 */
+	virtual void pauseEngineIntern(bool pause);
+
+	//@}
+
+
+public:
+
+	/**
+	 * Request the engine to quit. Sends a EVENT_QUIT event to the Event
+	 * Manager.
+	 */
+	static void quitGame();
+
+	/**
+	 * Return whether the ENGINE should quit respectively should return to the
+	 * launcher.
+	 */
+	static bool shouldQuit();
 
 	/**
 	 * Pause or resume the engine. This should stop/resume any audio playback
@@ -119,51 +247,31 @@ public:
 	void pauseEngine(bool pause);
 
 	/**
-	 * Quit the engine, sends a Quit event to the Event Manager
-	 */
-	void quitGame();
-
-	/**
 	 * Return whether the engine is currently paused or not.
 	 */
 	bool isPaused() const { return _pauseLevel != 0; }
 
 	/**
-	 * Return whether or not the ENGINE should quit
+	 * Run the Global Main Menu Dialog
 	 */
-	bool quit() const { return (_eventMan->shouldQuit() || _eventMan->shouldRTL()); }
+	void openMainMenuDialog();
 
-	/** Run the Global Main Menu Dialog
-	 */
-	virtual void mainMenuDialog();
-
-	/** Sync the engine's sound settings with the config manager
-	 */
-	virtual void syncSoundSettings();
-
-	/** Determine whether the engine supports the specified MetaEngine feature
-	 */
-	virtual bool hasFeature(int f);
+	inline Common::TimerManager *getTimerManager() { return _timer; }
+	inline Common::EventManager *getEventManager() { return _eventMan; }
+	inline Common::SaveFileManager *getSaveFileManager() { return _saveFileMan; }
 
 public:
-
-	/** Setup the backend's graphics mode. */
-	void initCommonGFX(bool defaultTo1XScaler);
 
 	/** On some systems, check if the game appears to be run from CD. */
 	void checkCD();
 
-	/** Indicate whether an autosave should be performed. */
-	bool shouldPerformAutoSave(int lastSaveTime);
-
-	/** Initialized graphics and shows error message. */
-	void GUIErrorMessage(const Common::String msg);
+protected:
 
 	/**
-	 * Actual implementation of pauseEngine by subclasses. See there
-	 * for details.
+	 * Indicate whether an autosave should be performed.
 	 */
-	virtual void pauseEngineIntern(bool pause);
+	bool shouldPerformAutoSave(int lastSaveTime);
+
 };
 
 extern Engine *g_engine;

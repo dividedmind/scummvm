@@ -28,8 +28,8 @@
 #ifndef SWORD2_ANIMATION_H
 #define SWORD2_ANIMATION_H
 
-#include "graphics/dxa_player.h"
-#include "graphics/mpeg_player.h"
+#include "graphics/video/dxa_player.h"
+#include "graphics/video/mpeg_player.h"
 #include "sound/mixer.h"
 
 #include "sword2/screen.h"
@@ -82,6 +82,9 @@ protected:
 
 	uint32 _ticks;
 
+	uint32 _pauseStartTick;
+	uint32 _pauseTicks;
+
 	uint _currentFrame;
 	byte *_frameBuffer;
 	int _frameWidth, _frameHeight;
@@ -99,6 +102,8 @@ protected:
 	static const MovieInfo _movies[];
 
 	uint32 _currentText;
+
+	uint32 getTick();
 
 	void savePalette();
 	void restorePalette();
@@ -125,6 +130,7 @@ public:
 	virtual bool load();
 	bool userInterrupt();
 	void play(SequenceTextInfo *textList, uint32 numLines, int32 leadIn, int32 leadOut);
+	void pauseMovie(bool pause);
 };
 
 class MoviePlayerDummy : public MoviePlayer {

@@ -37,9 +37,9 @@
 /**
  * Implementation of the ScummVM file system API based on POSIX.
  *
- * Parts of this class are documented in the base interface class, AbstractFilesystemNode.
+ * Parts of this class are documented in the base interface class, AbstractFSNode.
  */
-class SymbianFilesystemNode : public AbstractFilesystemNode {
+class SymbianFilesystemNode : public AbstractFSNode {
 protected:
 	Common::String _displayName;
 	Common::String _path;
@@ -75,12 +75,12 @@ public:
 	virtual bool isReadable() const { return access(_path.c_str(), R_OK) == 0; }	//FIXME: this is just a stub
 	virtual bool isWritable() const { return access(_path.c_str(), W_OK) == 0; }	//FIXME: this is just a stub
 
-	virtual AbstractFilesystemNode *getChild(const Common::String &n) const;
+	virtual AbstractFSNode *getChild(const Common::String &n) const;
 	virtual bool getChildren(AbstractFSList &list, ListMode mode, bool hidden) const;
-	virtual AbstractFilesystemNode *getParent() const;
+	virtual AbstractFSNode *getParent() const;
 
-	virtual Common::SeekableReadStream *openForReading();
-	virtual Common::WriteStream *openForWriting();
+	virtual Common::SeekableReadStream *createReadStream();
+	virtual Common::WriteStream *createWriteStream();
 };
 
 /**
@@ -133,14 +133,14 @@ SymbianFilesystemNode::SymbianFilesystemNode(const Common::String &path) {
 	}
 }
 
-AbstractFilesystemNode *SymbianFilesystemNode::getChild(const Common::String &n) const {
+AbstractFSNode *SymbianFilesystemNode::getChild(const Common::String &n) const {
 	assert(_isDirectory);
 	Common::String newPath(_path);
 
 	if (_path.lastChar() != '\\')
 		newPath += '\\';
 
-	newPath += n;	
+	newPath += n;
 
 	return new SymbianFilesystemNode(newPath);
 }
@@ -196,7 +196,7 @@ bool SymbianFilesystemNode::getChildren(AbstractFSList &myList, ListMode mode, b
 
 		if (_path.lastChar() != '\\')
 			fname.Append('\\');
-		
+
 		if (static_cast<OSystem_SDL_Symbian*>(g_system)->FsSession().GetDir(fname, KEntryAttNormal|KEntryAttDir, 0, dirPtr) == KErrNone) {
 			CleanupStack::PushL(dirPtr);
 			TInt cnt=dirPtr->Count();
@@ -216,10 +216,10 @@ bool SymbianFilesystemNode::getChildren(AbstractFSList &myList, ListMode mode, b
 				entry._isDirectory = fileentry.IsDir();
 
 				// Honor the chosen mode
-				if ((mode == Common::FilesystemNode::kListFilesOnly && entry._isDirectory) ||
-					(mode == Common::FilesystemNode::kListDirectoriesOnly && !entry._isDirectory))
+				if ((mode == Common::FSNode::kListFilesOnly && entry._isDirectory) ||
+					(mode == Common::FSNode::kListDirectoriesOnly && !entry._isDirectory))
 					continue;
-			
+
 				myList.push_back(new SymbianFilesystemNode(entry));
 			}
 			CleanupStack::PopAndDestroy(dirPtr);
@@ -229,7 +229,7 @@ bool SymbianFilesystemNode::getChildren(AbstractFSList &myList, ListMode mode, b
 	return true;
 }
 
-AbstractFilesystemNode *SymbianFilesystemNode::getParent() const {
+AbstractFSNode *SymbianFilesystemNode::getParent() const {
 	SymbianFilesystemNode *p =NULL;
 
 	// Root node is its own parent. Still we can't just return this
@@ -252,11 +252,11 @@ AbstractFilesystemNode *SymbianFilesystemNode::getParent() const {
 	return p;
 }
 
-Common::SeekableReadStream *SymbianFilesystemNode::openForReading() {
+Common::SeekableReadStream *SymbianFilesystemNode::createReadStream() {
 	return SymbianStdioStream::makeFromPath(getPath().c_str(), false);
 }
 
-Common::WriteStream *SymbianFilesystemNode::openForWriting() {
+Common::WriteStream *SymbianFilesystemNode::createWriteStream() {
 	return SymbianStdioStream::makeFromPath(getPath().c_str(), true);
 }
 #endif //#if defined (__SYMBIAN32__)

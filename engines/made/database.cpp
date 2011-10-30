@@ -122,10 +122,10 @@ int ObjectV2::load(Common::SeekableReadStream &source) {
 		delete[] _objData;
 
 	_freeData = true;
-	
+
 	byte header[4];
 	source.read(header, 4);
-	
+
 	uint16 type = READ_LE_UINT16(header);
 	if (type == 0x7FFF) {
 		_objSize = READ_LE_UINT16(header + 2);
@@ -177,6 +177,13 @@ byte ObjectV2::getCount2() {
 
 byte *ObjectV2::getData() {
 	return _objData + 4;
+}
+
+int ObjectV1::load(Common::SeekableReadStream &source) {
+	ObjectV2::load(source);
+	// Manhole EGA has the two property counts reversed
+	SWAP(_objData[2], _objData[3]);
+	return _objSize;
 }
 
 int ObjectV3::load(Common::SeekableReadStream &source) {
@@ -254,6 +261,9 @@ GameDatabase::~GameDatabase() {
 
 void GameDatabase::open(const char *filename) {
 	debug(1, "GameDatabase::open() Loading from %s", filename);
+	_isRedSource = false;
+	_filename = filename;
+	_redFilename = "";
 	Common::File fd;
 	if (!fd.open(filename))
 		error("GameDatabase::open() Could not open %s", filename);
@@ -263,11 +273,29 @@ void GameDatabase::open(const char *filename) {
 
 void GameDatabase::openFromRed(const char *redFilename, const char *filename) {
 	debug(1, "GameDatabase::openFromRed() Loading from %s->%s", redFilename, filename);
+	_isRedSource = true;
+	_filename = filename;
+	_redFilename = redFilename;
 	Common::MemoryReadStream *fileS = RedReader::loadFromRed(redFilename, filename);
 	if (!fileS)
 		error("GameDatabase::openFromRed() Could not load %s from %s", filename, redFilename);
 	load(*fileS);
 	delete fileS;
+}
+
+void GameDatabase::reload() {
+	if (!_isRedSource) {
+		Common::File fd;
+		if (!fd.open(_filename.c_str()))
+			error("GameDatabase::reload() Could not open %s", _filename.c_str());
+		reloadFromStream(fd);
+	} else {
+		Common::MemoryReadStream *fileS = RedReader::loadFromRed(_redFilename.c_str(), _filename.c_str());
+		if (!fileS)
+			error("GameDatabase::openFromRed() Could not load %s from %s", _filename.c_str(), _redFilename.c_str());
+		reloadFromStream(*fileS);
+		delete fileS;
+	}
 }
 
 int16 GameDatabase::getVar(int16 index) {
@@ -349,24 +377,49 @@ GameDatabaseV2::~GameDatabaseV2() {
 }
 
 void GameDatabaseV2::load(Common::SeekableReadStream &sourceS) {
-	
-	// TODO: Read/verifiy header
-	
-	sourceS.seek(0x1C);
-	
-	uint32 textOffs = sourceS.readUint16LE() * 512;
-	uint16 objectCount = sourceS.readUint16LE();
-	uint16 varObjectCount = sourceS.readUint16LE();
-	_gameStateSize = sourceS.readUint16LE() * 2;
-	sourceS.readUint16LE(); // unknown
-	uint32 objectsOffs = sourceS.readUint16LE() * 512;
-	sourceS.readUint16LE(); // unknown
-	_mainCodeObjectIndex = sourceS.readUint16LE();
-	sourceS.readUint16LE(); // unknown
-	uint32 objectsSize = sourceS.readUint32LE() * 2;
-	uint32 textSize = objectsOffs - textOffs;
+	int16 version = sourceS.readUint16LE();
 
-	debug(2, "textOffs = %08X; textSize = %08X; objectCount = %d; varObjectCount = %d; gameStateSize = %d; objectsOffs = %08X; objectsSize = %d\n", textOffs, textSize, objectCount, varObjectCount, _gameStateSize, objectsOffs, objectsSize);
+	// Manhole:NE, Rodney's Funscreen and LGOP2 are version 54
+	// The earlier EGA version of Manhole is version 40
+	if (version != 54 && version != 40)
+		warning("Unknown database version, known versions are 54 and 40");
+
+	char header[6];
+	sourceS.read(header, 6);
+	if (strncmp(header, "ADVSYS", 6))
+		warning ("Unexpected database header, expected ADVSYS");
+
+	uint32 textOffs = 0, objectsOffs = 0, objectsSize = 0, textSize;
+	uint16 objectCount = 0, varObjectCount = 0;
+
+	sourceS.readUint16LE(); // skip sub-version
+	sourceS.skip(18); // skip program name
+
+	if (version == 40) {
+		sourceS.readUint16LE(); // skip unused
+		objectCount = sourceS.readUint16LE();
+		_gameStateSize = sourceS.readUint16LE() * 2;
+		objectsOffs = sourceS.readUint16LE() * 512;
+		textOffs = sourceS.readUint16LE() * 512;
+		_mainCodeObjectIndex = sourceS.readUint16LE();
+		varObjectCount = 0; // unused in V1
+		objectsSize = 0; // unused in V1
+	} else if (version == 54) {
+		textOffs = sourceS.readUint16LE() * 512;
+		objectCount = sourceS.readUint16LE();
+		varObjectCount = sourceS.readUint16LE();
+		_gameStateSize = sourceS.readUint16LE() * 2;
+		sourceS.readUint16LE(); // unknown
+		objectsOffs = sourceS.readUint16LE() * 512;
+		sourceS.readUint16LE(); // unknown
+		_mainCodeObjectIndex = sourceS.readUint16LE();
+		sourceS.readUint16LE(); // unknown
+		objectsSize = sourceS.readUint32LE() * 2;
+	}
+
+	textSize = objectsOffs - textOffs;
+
+	debug(0, "textOffs = %08X; textSize = %08X; objectCount = %d; varObjectCount = %d; gameStateSize = %d; objectsOffs = %08X; objectsSize = %d; _mainCodeObjectIndex = %04X\n", textOffs, textSize, objectCount, varObjectCount, _gameStateSize, objectsOffs, objectsSize, _mainCodeObjectIndex);
 
 	_gameState = new byte[_gameStateSize + 2];
 	memset(_gameState, 0, _gameStateSize + 2);
@@ -378,20 +431,44 @@ void GameDatabaseV2::load(Common::SeekableReadStream &sourceS) {
 	// "Decrypt" the text data
 	for (uint32 i = 0; i < textSize; i++)
 		_gameText[i] += 0x1E;
-
+		
 	sourceS.seek(objectsOffs);
 
-	for (uint32 i = 0; i < objectCount; i++) {
-		Object *obj = new ObjectV2();
-		int objSize = obj->load(sourceS);
-		// objects are aligned on 2-byte-boundaries, skip unused bytes
-		sourceS.skip(objSize % 2);
-		_objects.push_back(obj);
+	if (version == 40) {
+		// Initialize the object array
+		for (uint32 i = 0; i < objectCount; i++)
+			_objects.push_back(NULL);
+		// Read two "sections" of objects
+		// It seems the first section is data while the second one is code.
+		// The interpreter however doesn't care which section the objects come from.
+		for (int section = 0; section < 2; section++) {
+			while (!sourceS.eos()) {
+				int16 objIndex = sourceS.readUint16LE();
+				debug("objIndex = %04X; section = %d", objIndex, section);
+				if (objIndex == 0)
+					break;
+				Object *obj = new ObjectV1();
+				obj->load(sourceS);
+				_objects[objIndex - 1] = obj;
+			}
+		}
+	} else if (version == 54) {
+		for (uint32 i = 0; i < objectCount; i++) {
+			Object *obj = new ObjectV2();
+			int objSize = obj->load(sourceS);
+			// Objects are aligned on 2-byte-boundaries, skip unused bytes
+			sourceS.skip(objSize % 2);
+			_objects.push_back(obj);
+		}
 	}
-	
+
 }
 
-bool GameDatabaseV2::getSavegameDescription(const char *filename, Common::String &description) {
+void GameDatabaseV2::reloadFromStream(Common::SeekableReadStream &sourceS) {
+	// Not used in version 2 games
+}
+
+bool GameDatabaseV2::getSavegameDescription(const char *filename, Common::String &description, int16 version) {
 	// Not used in version 2 games
 	return false;
 }
@@ -428,7 +505,11 @@ int16 GameDatabaseV2::loadgame(const char *filename, int16 version) {
 }
 
 int16 *GameDatabaseV2::findObjectProperty(int16 objectIndex, int16 propertyId, int16 &propertyFlag) {
+
 	Object *obj = getObject(objectIndex);
+	if (obj->getClass() >= 0x7FFE) {
+		error("GameDatabaseV2::findObjectProperty(%04X, %04X) Not an object", objectIndex, propertyId);
+	}
 
 	int16 *prop = (int16*)obj->getData();
 	byte count1 = obj->getCount1();
@@ -502,23 +583,27 @@ GameDatabaseV3::GameDatabaseV3(MadeEngine *vm) : GameDatabase(vm) {
 }
 
 void GameDatabaseV3::load(Common::SeekableReadStream &sourceS) {
+	char header[6];
+	sourceS.read(header, 6);
+	if (strncmp(header, "ADVSYS", 6))
+		warning ("Unexpected database header, expected ADVSYS");
 
-	// TODO: Read/verifiy header
+	/*uint32 unk = */sourceS.readUint32LE();
 
-	sourceS.seek(0x1E);
+	sourceS.skip(20);
 
 	uint32 objectIndexOffs = sourceS.readUint32LE();
 	uint16 objectCount = sourceS.readUint16LE();
-	uint32 gameStateOffs = sourceS.readUint32LE();
+	_gameStateOffs = sourceS.readUint32LE();
 	_gameStateSize = sourceS.readUint32LE();
 	uint32 objectsOffs = sourceS.readUint32LE();
 	uint32 objectsSize = sourceS.readUint32LE();
 	_mainCodeObjectIndex = sourceS.readUint16LE();
 
-	debug(2, "objectIndexOffs = %08X; objectCount = %d; gameStateOffs = %08X; gameStateSize = %d; objectsOffs = %08X; objectsSize = %d\n", objectIndexOffs, objectCount, gameStateOffs, _gameStateSize, objectsOffs, objectsSize);
+	debug(2, "objectIndexOffs = %08X; objectCount = %d; gameStateOffs = %08X; gameStateSize = %d; objectsOffs = %08X; objectsSize = %d\n", objectIndexOffs, objectCount, _gameStateOffs, _gameStateSize, objectsOffs, objectsSize);
 
 	_gameState = new byte[_gameStateSize];
-	sourceS.seek(gameStateOffs);
+	sourceS.seek(_gameStateOffs);
 	sourceS.read(_gameState, _gameStateSize);
 
 	Common::Array<uint32> objectOffsets;
@@ -528,11 +613,9 @@ void GameDatabaseV3::load(Common::SeekableReadStream &sourceS) {
 
 	for (uint32 i = 0; i < objectCount; i++) {
 		Object *obj = new ObjectV3();
-
 		// The LSB indicates if it's a constant or variable object.
 		// Constant objects are loaded from disk, while variable objects exist
 		// in the _gameState buffer.
-
 		if (objectOffsets[i] & 1) {
 			sourceS.seek(objectsOffs + objectOffsets[i] - 1);
 			obj->load(sourceS);
@@ -544,17 +627,43 @@ void GameDatabaseV3::load(Common::SeekableReadStream &sourceS) {
 
 }
 
-bool GameDatabaseV3::getSavegameDescription(const char *filename, Common::String &description) {
+void GameDatabaseV3::reloadFromStream(Common::SeekableReadStream &sourceS) {
+	sourceS.seek(_gameStateOffs);
+	sourceS.read(_gameState, _gameStateSize);
+}
+
+bool GameDatabaseV3::getSavegameDescription(const char *filename, Common::String &description, int16 version) {
 	Common::InSaveFile *in;
 	char desc[64];
+
 	if (!(in = g_system->getSavefileManager()->openForLoading(filename))) {
 		return false;
 	}
-	in->skip(4); // TODO: Verify marker 'SGAM'
-	in->skip(4); // TODO: Verify size
-	in->skip(2); // TODO: Verify version
+
+	uint32 header = in->readUint32BE();
+	if (header != MKID_BE('SGAM')) {
+		warning("Save game header missing");
+		delete in;
+		return false;
+	}
+
+	int32 size = in->readUint32LE();
+	if (size != in->size() - 64) {
+		warning("Unexpected save game size. Expected %d, size is %d (file size - 64)", size, in->size() - 64);
+		delete in;
+		return false;
+	}
+
+	int16 saveVersion = in->readUint16LE();
+	if (saveVersion != version) {
+		warning("Save game %s was saved with a different version of the game. Game version is %d, save version is %d", filename, version, saveVersion);
+		delete in;
+		return false;
+	}
+
 	in->read(desc, 64);
 	description = desc;
+
 	delete in;
 	return true;
 }
@@ -580,23 +689,45 @@ int16 GameDatabaseV3::savegame(const char *filename, const char *description, in
 
 int16 GameDatabaseV3::loadgame(const char *filename, int16 version) {
 	Common::InSaveFile *in;
-	int16 result = 0;
-	//uint32 expectedSize = 4 + 4 + 2 + _gameStateSize;
+	uint32 expectedSize = 4 + 4 + 2 + _gameStateSize;
+
 	if (!(in = g_system->getSavefileManager()->openForLoading(filename))) {
 		warning("Can't open file '%s', game not loaded", filename);
 		return 1;
 	}
-	in->skip(4); // TODO: Verify marker 'SGAM'
-	in->skip(4); // TODO: Verify size
-	in->skip(2); // TODO: Verify version
+
+	uint32 header = in->readUint32BE();
+	if (header != MKID_BE('SGAM')) {
+		warning("Save game header missing");
+		delete in;
+		return 1;
+	}
+
+	uint32 size = in->readUint32LE();
+	if (size != expectedSize) {
+		warning("Unexpected save game size. Expected %d, size is %d", expectedSize, size);
+		delete in;
+		return 1;
+	}
+
+	int16 saveVersion = in->readUint16LE();
+	if (saveVersion != version) {
+		warning("Save game %s was saved with a different version of the game. Game version is %d, save version is %d", filename, version, saveVersion);
+		delete in;
+		return 1;
+	}
+
 	in->skip(64); // skip savegame description
 	in->read(_gameState, _gameStateSize);
 	delete in;
-	return result;
+	return 0;
 }
 
 int16 *GameDatabaseV3::findObjectProperty(int16 objectIndex, int16 propertyId, int16 &propertyFlag) {
 	Object *obj = getObject(objectIndex);
+	if (obj->getClass() >= 0x7FFE) {
+		error("GameDatabaseV2::findObjectProperty(%04X, %04X) Not an object", objectIndex, propertyId);
+	}
 
 	int16 *prop = (int16*)obj->getData();
 	byte count1 = obj->getCount1();
@@ -670,7 +801,7 @@ int16 *GameDatabaseV3::findObjectProperty(int16 objectIndex, int16 propertyId, i
 	}
 
 	return NULL;
-	
+
 }
 
 const char *GameDatabaseV3::getString(uint16 offset) {

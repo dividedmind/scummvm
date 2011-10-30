@@ -26,7 +26,6 @@
 #define ENGINES_METAENGINE_H
 
 #include "common/scummsys.h"
-#include "common/str.h"
 #include "common/error.h"
 
 #include "engines/game.h"
@@ -37,6 +36,7 @@ class OSystem;
 
 namespace Common {
 	class FSList;
+	class String;
 }
 
 /**
@@ -75,9 +75,9 @@ public:
 	 * @param syst	Pointer to the global OSystem object
 	 * @param engine	Pointer to a pointer which the MetaEngine sets to
 	 *					the newly create Engine, or 0 in case of an error
-	 * @return		a PluginError describing the error which occurred, or kNoError
+	 * @return		a Common::Error describing the error which occurred, or kNoError
 	 */
-	virtual PluginError createInstance(OSystem *syst, Engine **engine) const = 0;
+	virtual Common::Error createInstance(OSystem *syst, Engine **engine) const = 0;
 
 	/**
 	 * Return a list of all save states associated with the given target.
@@ -88,6 +88,9 @@ public:
 	 *
 	 * The default implementation returns an empty list.
 	 *
+	 * @note MetaEngines must indicate that this function has been implemented
+	 *       via the kSupportsListSaves feature flag.
+	 *
 	 * @param target	name of a config manager target
 	 * @return			a list of save state descriptors
 	 */
@@ -96,10 +99,27 @@ public:
 	}
 
 	/**
-	 * Remove the specified save state. 
+	 * Return the maximum save slot that the engine supports.
 	 *
-	 * For most engines this just amounts to calling _saveFileMan->removeSaveFile().  
+	 * @note MetaEngines must indicate that this function has been implemented
+	 *       via the kSupportsListSaves feature flag.
+	 *
+	 * The default implementation limits the save slots to zero (0).
+	 *
+	 * @return			maximum save slot number supported
+	 */
+	virtual int getMaximumSaveSlot() const {
+		return 0;
+	}
+
+	/**
+	 * Remove the specified save state.
+	 *
+	 * For most engines this just amounts to calling _saveFileMan->removeSaveFile().
 	 * Engines which keep an index file will also update it accordingly.
+	 *
+	 * @note MetaEngines must indicate that this function has been implemented
+	 *       via the kSupportsDeleteSave feature flag.
 	 *
 	 * @param target	name of a config manager target
 	 * @param slot		slot number of the save state to be removed
@@ -115,69 +135,83 @@ public:
 	 * @param target	name of a config manager target
 	 * @param slot		slot number of the save state
 	 */
-	virtual SaveStateDescriptor querySaveMetaInfos(const char *target, int slot) const { return SaveStateDescriptor(); }
+	virtual SaveStateDescriptor querySaveMetaInfos(const char *target, int slot) const {
+		return SaveStateDescriptor();
+	}
 
 	/** @name MetaEngineFeature flags */
 	//@{
-	
+
 	/**
 	 * A feature in this context means an ability of the engine which can be
 	 * either available or not.
 	 */
 	enum MetaEngineFeature {
-		/** 'Return to launcher' feature (i.e. EVENT_RTL is handled) */
-		kSupportsRTL            = 0,
+		/**
+		 * Listing all Save States for a given target is supported, i.e.,
+		 * the listSaves() and getMaximumSaveSlot methods are implemented.
+		 * Used for --list-saves support, as well as the GMM load dialog.
+		 */
+		kSupportsListSaves,
 
 		/**
-		 * Listing Save States (i.e. implements the listSaves() method;
-		 * used for --list-saves support)
+		 * Loading from the Launcher / command line (-x)
 		 */
-		kSupportsListSaves      = 1,
-		
-		/** Loading from the Launcher / command line (-x) */
-		kSupportsDirectLoad     = 2,
+		kSupportsLoadingDuringStartup,
 
 		/**
 		 * Deleting Saves from the Launcher (i.e. implements the
 		 * removeSaveState() method)
 		 */
-		kSupportsDeleteSave     = 3,
+		kSupportsDeleteSave,
 
 		/**
 		 * Features meta infos for savestates (i.e. implements the
-		 * querySaveMetaInfos method properly)
+		 * querySaveMetaInfos method properly).
+		 *
+		 * Engines implementing meta infos always have to provide
+		 * the following entries in the save state descriptor queried
+		 * by querySaveMetaInfos:
+		 * - 'is_deletable', which indicates if a given save is
+		 *                   safe for deletion
+		 * - 'is_write_protected', which indicates if a given save
+		 *                         can be overwritten by the user.
+		 *                         (note: of course you do not have to
+		 *                         set this, since it defaults to 'false')
 		 */
-		kSupportsMetaInfos		= 4,
+		kSavesSupportMetaInfo,
 
 		/**
 		 * Features a thumbnail in savegames (i.e. includes a thumbnail
 		 * in savestates returned via querySaveMetaInfo).
-		 * This flag may only be set when 'kSupportsMetaInfos' is set.
+		 * This flag may only be set when 'kSavesSupportMetaInfo' is set.
 		 */
-		kSupportsThumbnails		= 5,
+		kSavesSupportThumbnail,
 
 		/**
-		 * Features 'save_date' and 'save_time' entries in the 
+		 * Features 'save_date' and 'save_time' entries in the
 		 * savestate returned by querySaveMetaInfo. Those values
 		 * indicate the date/time the savegame was created.
-		 * This flag may only be set when 'kSupportsMetaInfos' is set.
+		 * This flag may only be set when 'kSavesSupportMetaInfo' is set.
 		 */
-		kSupportsSaveDate		= 6,
+		kSavesSupportCreationDate,
 
 		/**
 		 * Features 'play_time' entry in the savestate returned by
 		 * querySaveMetaInfo. It indicates how long the user played
 		 * the game till the save.
-		 * This flag may only be set when 'kSupportsMetaInfos' is set.
+		 * This flag may only be set when 'kSavesSupportMetaInfo' is set.
 		 */
-		kSupportsSavePlayTime	= 7
-	};	
+		kSavesSupportPlayTime
+	};
 
 	/**
 	 * Determine whether the engine supports the specified MetaEngine feature.
 	 * Used by e.g. the launcher to determine whether to enable the "Load" button.
-	 */	
-	virtual bool hasFeature(MetaEngineFeature f) const { return false; };
+	 */
+	virtual bool hasFeature(MetaEngineFeature f) const {
+		return false;
+	}
 
 	//@}
 };

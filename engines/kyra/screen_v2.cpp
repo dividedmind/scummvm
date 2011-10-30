@@ -57,7 +57,7 @@ uint8 *Screen_v2::generateOverlay(const uint8 *palette, uint8 *buffer, int start
 		uint8 processedPalette[3];
 		const uint8 *src = palette + i*3;
 		byte col;
-		
+
 		col = *src++;
 		col -= ((((col - col1) * factor) << 1) >> 8) & 0xFF;
 		processedPalette[0] = col;
@@ -90,11 +90,14 @@ void Screen_v2::applyOverlay(int x, int y, int w, int h, int pageNum, const uint
 	}
 }
 
-int Screen_v2::findLeastDifferentColor(const uint8 *paletteEntry, const uint8 *palette, uint16 numColors) {
+int Screen_v2::findLeastDifferentColor(const uint8 *paletteEntry, const uint8 *palette, uint16 numColors, bool skipSpecialColours) {
 	int m = 0x7fff;
 	int r = 0x101;
 
 	for (int i = 0; i < numColors; i++) {
+		if (skipSpecialColours && i >= 0xc0 && i <= 0xc3)
+			continue;
+
 		int v = paletteEntry[0] - *palette++;
 		int c = v * v;
 		v = paletteEntry[1] - *palette++;
@@ -487,13 +490,13 @@ bool Screen_v2::calcBounds(int w0, int h0, int &x1, int &y1, int &w1, int &h1, i
 
 void Screen_v2::checkedPageUpdate(int srcPage, int dstPage) {
 	debugC(9, kDebugLevelScreen, "Screen_v2::checkedPageUpdate(%d, %d)", srcPage, dstPage);
-	
+
 	const uint32 *src = (const uint32 *)getPagePtr(srcPage);
 	uint32 *dst = (uint32 *)getPagePtr(dstPage);
 	uint32 *page0 = (uint32 *)getPagePtr(0);
-	
+
 	bool updated = false;
-	
+
 	for (int y = 0; y < 200; ++y) {
 		for (int x = 0; x < 80; ++x, ++src, ++dst, ++page0) {
 			if (*src != *dst) {

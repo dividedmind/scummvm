@@ -26,6 +26,10 @@
 #ifndef GRAPHICS_COLORMASKS_H
 #define GRAPHICS_COLORMASKS_H
 
+#include "graphics/pixelformat.h"
+
+namespace Graphics {
+
 template<int bitFormat>
 struct ColorMasks {
 };
@@ -52,7 +56,7 @@ The meaning of these is masks is the following:
  appropriate data).
 
 
- The highBits / lowBits / qhighBits / qlowBits are special values that are
+ The kHighBitsMask / kLowBitsMask / qhighBits / qlowBits are special values that are
  used in the super-optimized interpolation functions in scaler/intern.h
  and scaler/aspect.cpp. Currently they are only available in 555 and 565 mode.
  To be specific: They pack the masks for two 16 bit pixels at once. The pixels
@@ -66,8 +70,8 @@ The meaning of these is masks is the following:
 template<>
 struct ColorMasks<565> {
 	enum {
-		highBits    = 0xF7DEF7DE,
-		lowBits     = 0x08210821,
+		kHighBitsMask    = 0xF7DEF7DE,
+		kLowBitsMask     = 0x08210821,
 		qhighBits   = 0xE79CE79C,
 		qlowBits    = 0x18631863,
 
@@ -79,26 +83,29 @@ struct ColorMasks<565> {
 		kGreenBits  = 6,
 		kBlueBits   = 5,
 
-		kAlphaShift = kRedBits+kGreenBits+kBlueBits,
+		kAlphaShift = 0,
 		kRedShift   = kGreenBits+kBlueBits,
 		kGreenShift = kBlueBits,
 		kBlueShift  = 0,
 
-		kAlphaMask = ((1 << kAlphaBits) - 1) << kAlphaShift,
-		kRedMask   = ((1 << kRedBits) - 1) << kRedShift,
-		kGreenMask = ((1 << kGreenBits) - 1) << kGreenShift,
-		kBlueMask  = ((1 << kBlueBits) - 1) << kBlueShift,
+		kAlphaMask  = ((1 << kAlphaBits) - 1) << kAlphaShift,
+		kRedMask    = ((1 << kRedBits) - 1) << kRedShift,
+		kGreenMask  = ((1 << kGreenBits) - 1) << kGreenShift,
+		kBlueMask   = ((1 << kBlueBits) - 1) << kBlueShift,
 
-		kRedBlueMask = kRedMask | kBlueMask
+		kRedBlueMask = kRedMask | kBlueMask,
 
+		kLowBits    = (1 << kRedShift) | (1 << kGreenShift) | (1 << kBlueShift),
+		kLow2Bits   = (3 << kRedShift) | (3 << kGreenShift) | (3 << kBlueShift),
+		kLow3Bits   = (7 << kRedShift) | (7 << kGreenShift) | (7 << kBlueShift)
 	};
 };
 
 template<>
 struct ColorMasks<555> {
 	enum {
-		highBits    = 0x7BDE7BDE,
-		lowBits     = 0x04210421,
+		kHighBitsMask    = 0x7BDE7BDE,
+		kLowBitsMask     = 0x04210421,
 		qhighBits   = 0x739C739C,
 		qlowBits    = 0x0C630C63,
 
@@ -110,7 +117,7 @@ struct ColorMasks<555> {
 		kGreenBits  = 5,
 		kBlueBits   = 5,
 
-		kAlphaShift = kRedBits+kGreenBits+kBlueBits,
+		kAlphaShift = 0,
 		kRedShift   = kGreenBits+kBlueBits,
 		kGreenShift = kBlueBits,
 		kBlueShift  = 0,
@@ -120,7 +127,11 @@ struct ColorMasks<555> {
 		kGreenMask = ((1 << kGreenBits) - 1) << kGreenShift,
 		kBlueMask  = ((1 << kBlueBits) - 1) << kBlueShift,
 
-		kRedBlueMask = kRedMask | kBlueMask
+		kRedBlueMask = kRedMask | kBlueMask,
+
+		kLowBits    = (1 << kRedShift) | (1 << kGreenShift) | (1 << kBlueShift),
+		kLow2Bits   = (3 << kRedShift) | (3 << kGreenShift) | (3 << kBlueShift),
+		kLow3Bits   = (7 << kRedShift) | (7 << kGreenShift) | (7 << kBlueShift)
 	};
 };
 
@@ -182,7 +193,7 @@ struct ColorMasks<888> {
 		kGreenBits  = 8,
 		kBlueBits   = 8,
 
-		kAlphaShift = kRedBits+kGreenBits+kBlueBits,
+		kAlphaShift = 0,
 		kRedShift   = kGreenBits+kBlueBits,
 		kGreenShift = kBlueBits,
 		kBlueShift  = 0,
@@ -250,5 +261,33 @@ void colorToARGB(uint32 color, uint8 &a, uint8 &r, uint8 &g, uint8 &b) {
 	g = ((color & T::kGreenMask) >> T::kGreenShift) << (8 - T::kGreenBits);
 	b = ((color & T::kBlueMask) >> T::kBlueShift) << (8 - T::kBlueBits);
 }
+
+
+
+/**
+ * Convert a 'bitFormat' as defined by one of the ColorMasks
+ * into a PixelFormat.
+ */
+template<int bitFormat>
+PixelFormat createPixelFormat() {
+	PixelFormat format;
+
+	format.bytesPerPixel = ColorMasks<bitFormat>::kBytesPerPixel;
+
+	format.rLoss = 8 - ColorMasks<bitFormat>::kRedBits;
+	format.gLoss = 8 - ColorMasks<bitFormat>::kGreenBits;
+	format.bLoss = 8 - ColorMasks<bitFormat>::kBlueBits;
+	format.aLoss = 8 - ColorMasks<bitFormat>::kAlphaBits;
+
+	format.rShift = ColorMasks<bitFormat>::kRedShift;
+	format.gShift = ColorMasks<bitFormat>::kGreenShift;
+	format.bShift = ColorMasks<bitFormat>::kBlueShift;
+	format.aShift = ColorMasks<bitFormat>::kAlphaShift;
+
+	return format;
+}
+
+
+} // end of namespace Graphics
 
 #endif

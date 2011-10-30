@@ -26,7 +26,7 @@
 #ifndef SCUMM_DETECTION_TABLES_H
 #define SCUMM_DETECTION_TABLES_H
 
-#include "common/advancedDetector.h"
+#include "engines/advancedDetector.h"
 #include "common/rect.h"
 #include "common/util.h"
 
@@ -92,6 +92,7 @@ static const PlainGameDescriptor gameDescriptions[] = {
 	{ "Blues123Time", "Blue's 123 Time Activities" },
 	{ "BluesABCTime", "Blue's ABC Time Activities" },
 	{ "BluesBirthday", "Blue's Birthday Adventure" },
+	{ "BluesTreasureHunt", "Blue's Treasure Hunt" },
 	{ "catalog", "Humongous Interactive Catalog" },
 	{ "chase", "SPY Fox in Cheese Chase" },
 	{ "dog", "Putt-Putt and Pep's Dog on a Stick" },
@@ -107,6 +108,7 @@ static const PlainGameDescriptor gameDescriptions[] = {
 	{ "jungle", "Let's Explore the Jungle with Buzzy" },
 	{ "lost", "Pajama Sam's Lost & Found" },
 	{ "maze", "Freddi Fish and Luther's Maze Madness" },
+	{ "moonbase", "Moonbase Commander" },
 	{ "mustard", "SPY Fox in Hold the Mustard" },
 	{ "pajama", "Pajama Sam 1: No Need to Hide When It's Dark Outside" },
 	{ "pajama2", "Pajama Sam 2: Thunder and Lightning Aren't so Frightening" },
@@ -137,7 +139,7 @@ static const PlainGameDescriptor gameDescriptions[] = {
  * Conversion table mapping old obsolete game IDs to the
  * corresponding new game ID and platform combination.
  */
-static const Common::ADObsoleteGameID obsoleteGameIDsTable[] = {
+static const ADObsoleteGameID obsoleteGameIDsTable[] = {
 	{"bluesabctimedemo", "bluesabctime", UNK},
 	{"BluesBirthdayDemo", "BluesBirthday", UNK},
 	{"comidemo", "comi", UNK},
@@ -210,7 +212,7 @@ static const GameSettings gameVariantsTable[] = {
 
 	{"loom", "EGA",      "ega", GID_LOOM, 3, 0, MDT_PCSPK | MDT_ADLIB | MDT_MIDI, 0, UNK},
 	{"loom", "No Adlib", "ega", GID_LOOM, 3, 0, MDT_PCSPK,                        0, UNK},
-	{"loom", "PC-Engine",    0, GID_LOOM, 3, 0, MDT_NONE,                        GF_AUDIOTRACKS, Common::kPlatformPCEngine},
+	{"loom", "PC-Engine",    0, GID_LOOM, 3, 0, MDT_NONE,                         GF_AUDIOTRACKS, Common::kPlatformPCEngine},
 	{"loom", "FM-TOWNS",     0, GID_LOOM, 3, 0, MDT_TOWNS,                        GF_AUDIOTRACKS | GF_OLD256, Common::kPlatformFMTowns},
 	{"loom", "VGA",      "vga", GID_LOOM, 4, 0, MDT_NONE,                         GF_AUDIOTRACKS,             Common::kPlatformPC},
 
@@ -249,7 +251,8 @@ static const GameSettings gameVariantsTable[] = {
 	{"fbear", "HE 61", 0, GID_FBEAR, 6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK},
 	{"fbear", "HE 70", 0, GID_FBEAR, 6, 70, MDT_NONE,             GF_USE_KEY, Common::kPlatformWindows},
 
-	{"puttmoon", "", 0, GID_HEGAME,  6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK},
+	{"puttmoon", "", 0, GID_PUTTMOON, 6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK},
+	{"puttmoon", "HE 70", 0, GID_PUTTMOON, 6, 70, MDT_NONE,             GF_USE_KEY, Common::kPlatformWindows},
 
 	{"puttputt", "HE 61", 0, GID_HEGAME,   6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK},
 	{"puttputt", "HE 60", 0, GID_HEGAME,   6, 60, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, Common::kPlatformPC},
@@ -315,7 +318,7 @@ static const GameSettings gameVariantsTable[] = {
 	{"puttrace", "HE 99",   0, GID_PUTTRACE, 6, 99, MDT_NONE, GF_USE_KEY, UNK},
 
 	{"bluesabctime", "", 0, GID_HEGAME, 6, 98, MDT_NONE, GF_USE_KEY, UNK},
-	{"BluesBirthday", 0, 0, GID_HEGAME, 6, 98, MDT_NONE, GF_USE_KEY, UNK},
+	{"BluesBirthday", 0, 0, GID_BIRTHDAY, 6, 98, MDT_NONE, GF_USE_KEY, UNK},
 	{"soccer", "", 0, GID_SOCCER, 6, 98, MDT_NONE, GF_USE_KEY, UNK},
 
 	// Global scripts increased to 2048
@@ -347,16 +350,20 @@ static const GameSettings gameVariantsTable[] = {
 	// Restructured the Scumm engine
 	{"pjgames", 0, 0, GID_HEGAME, 6, 100, MDT_NONE, GF_USE_KEY | GF_HE_NOSUBTITLES | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK},
 
+	// Uses smacker in external files, for testing only
+	{"arttime", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK},
+	{"readtime", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK},
+	{"BluesTreasureHunt", 0, 0, GID_TREASUREHUNT, 6, 99, MDT_NONE, GF_HE_LOCALIZED | GF_USE_KEY, UNK},
+
 	// Uses bink in external files for logos
 	{"Baseball2003", 0, 0, GID_HEGAME, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK},
 	{"basketball", 0, 0, GID_HEGAME, 6, 100, MDT_NONE, GF_USE_KEY| GF_16BIT_COLOR, UNK},
+	{"football2002", 0, 0, GID_FOOTBALL, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK},
 	{"Soccer2004", 0, 0, GID_SOCCER, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK},
 
-	// Uses smacker in external files, for testing only
-	{"arttime", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK},
-	{"readtime", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK},
-	{"football2002", 0, 0, GID_FOOTBALL, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK},
-
+	// U32 code required, for testing only
+	{"moonbase", 0, 0, GID_MOONBASE, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK},
+	{"moonbase", "Demo", 0, GID_MOONBASE, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR | GF_DEMO, UNK},
 
 	// The following are meant to be generic HE game variants and as such do
 	// not specify a game ID. Make sure that these are last in the table, else
@@ -492,6 +499,7 @@ static const GameFilenamePattern gameFilenamesTable[] = {
 	{ "airport", "The AirPort", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
 
 	{ "arttime", "arttime", kGenHEPC, UNK_LANG, UNK, 0 },
+	{ "arttime", "Blues-ArtTime", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
 	{ "arttime", "artdemo", kGenHEPC, UNK_LANG, UNK, 0 },
 	{ "arttime", "Blues-ArtTime Demo", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
 
@@ -531,6 +539,11 @@ static const GameFilenamePattern gameFilenamesTable[] = {
 	{ "BluesBirthday", "BluesBirthdayDemo", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
 	{ "BluesBirthday", "bda-slideshow.cup", kGenUnchanged, UNK_LANG, UNK, 0 },
 	{ "BluesBirthday", "BluesBirthdaySlideshow.cup", kGenUnchanged, UNK_LANG, UNK, 0 },
+
+	{ "BluesTreasureHunt", "Blue'sTreasureHunt-Disc1", kGenHEPC, UNK_LANG, UNK, 0 },
+	{ "BluesTreasureHunt", "Blue'sTreasureHunt-Disc1", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
+	{ "BluesTreasureHunt", "Blue'sTreasureHunt-Disc2", kGenHEPC, UNK_LANG, UNK, 0 },
+	{ "BluesTreasureHunt", "Blue'sTreasureHunt-Disc2", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
 
 	{ "catalog", "catalog", kGenHEPC, UNK_LANG, UNK, 0 },
 	{ "catalog", "catalog2", kGenHEPC, UNK_LANG, UNK, 0 },
@@ -640,6 +653,9 @@ static const GameFilenamePattern gameFilenamesTable[] = {
 	{ "maze", "Doolhof", kGenHEMac, Common::NL_NLD, Common::kPlatformMacintosh, 0 },
 	{ "maze", "Maze Madness", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
 
+	{ "moonbase", "moonbase", kGenHEPC, UNK_LANG, UNK, 0 },
+	{ "moonbase", "moondemo", kGenHEPC, UNK_LANG, UNK, 0 },
+
 	{ "mustard", "mustard", kGenHEPC, UNK_LANG, UNK, 0 },
 	{ "mustard", "Mustard", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
 
@@ -713,6 +729,7 @@ static const GameFilenamePattern gameFilenamesTable[] = {
 	{ "puttrace", "racedemo", kGenHEPC, UNK_LANG, UNK, 0 },
 	{ "puttrace", "RaceDemo", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
 	{ "puttrace", "Rennen", kGenHEPC, Common::DE_DEU, UNK, 0 },
+	{ "puttrace", "PouceCourse", kGenHEPC, Common::FR_FRA, UNK, 0 },
 	{ "puttrace", "Putt500", kGenHEPC, Common::NL_NLD, UNK, 0 },
 	{ "puttrace", "Putt500", kGenHEMac, Common::NL_NLD, Common::kPlatformMacintosh, 0 },
 	{ "puttrace", "Putt500 demo", kGenHEMac, Common::NL_NLD, Common::kPlatformMacintosh, 0 },
@@ -759,6 +776,7 @@ static const GameFilenamePattern gameFilenamesTable[] = {
 	{ "puttzoo", "Zoo Demo", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
 
 	{ "readtime", "Blue's Reading Time", kGenHEPC, UNK_LANG, UNK, 0 },
+	{ "readtime", "Blues-ReadingTime", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
 	{ "readtime", "readDemo", kGenHEPC, UNK_LANG, UNK, 0 },
 	{ "readtime", "Blues-ReadingTime Demo", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
 

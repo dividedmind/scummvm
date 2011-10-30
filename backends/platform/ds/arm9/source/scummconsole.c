@@ -440,7 +440,7 @@ void printF(int w, float f)
 	*/
 }
 
-void consolePrintf(const char* s, ...)
+int consolePrintf(const char* s, ...)
 {
 	int w = 1, z = 0;
 
@@ -498,7 +498,12 @@ void consolePrintf(const char* s, ...)
 				break;
 			case 'f':
 			case 'F':
-				printF(w,va_arg(argp, double));
+/* Need to undo our 'all doubles are floats' definition */
+#define TEMP_DEF double
+#undef double
+			        printF(w,va_arg(argp, double));
+#define double TEMP_DEF
+#undef TEMP_DEF
 				s++;
 				break;
 			case 's':
@@ -518,6 +523,8 @@ void consolePrintf(const char* s, ...)
 		s++;
 	}
 	va_end(argp);
+	
+	return 0;
 }
 
 void consolePutString(int x, int y, char* s)

@@ -22,12 +22,11 @@
  * $Id$
  */
 
-#ifndef LAUNCHER_DIALOG_H
-#define LAUNCHER_DIALOG_H
+#ifndef GUI_LAUNCHER_DIALOG_H
+#define GUI_LAUNCHER_DIALOG_H
 
 #include "gui/dialog.h"
 #include "engines/game.h"
-#include "common/str.h"
 
 namespace GUI {
 
@@ -75,7 +74,7 @@ protected:
 	void removeGame(int item);
 	void editGame(int item);
 	void loadGame(int item);
-	
+
 	void selectGame(const String &name);
 };
 

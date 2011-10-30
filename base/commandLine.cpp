@@ -34,9 +34,13 @@
 
 #include "sound/mididrv.h"
 
+#include "gui/ThemeEngine.h"
+
 #define DETECTOR_TESTING_HACK
 
 namespace Base {
+
+#ifndef DISABLE_COMMAND_LINE
 
 static const char USAGE_STRING[] =
 	"%s: %s\n"
@@ -66,8 +70,9 @@ static const char HELP_STRING[] =
 	"  -g, --gfx-mode=MODE      Select graphics scaler (1x,2x,3x,2xsai,super2xsai,\n"
 	"                           supereagle,advmame2x,advmame3x,hq2x,hq3x,tv2x,\n"
 	"                           dotmatrix)\n"
-	"  --gui-theme=THEME        Select GUI theme (default, modern, classic)\n"
+	"  --gui-theme=THEME        Select GUI theme\n"
 	"  --themepath=PATH         Path to where GUI themes are stored\n"
+	"  --list-themes            Display list of all usable GUI themes\n"
 	"  -e, --music-driver=MODE  Select music driver (see README for details)\n"
 	"  -q, --language=LANG      Select language (en,de,fr,it,pt,es,jp,zh,kr,se,gb,\n"
 	"                           hb,ru,cz)\n"
@@ -89,8 +94,8 @@ static const char HELP_STRING[] =
 	"  --joystick[=NUM]         Enable input with joystick (default: 0 = first\n"
 	"                           joystick)\n"
 	"  --platform=WORD          Specify platform of game (allowed values: 2gs, 3do,\n"
-	"                           acorn, amiga, atari, c64, fmtowns, nes, mac, pc,\n"
-	"                           pce, segacd, windows)\n"
+	"                           acorn, amiga, atari, c64, fmtowns, nes, mac, pc, pc98,\n"
+	"                           pce, segacd, wii, windows)\n"
 	"  --savepath=PATH          Path to where savegames are stored\n"
 	"  --extrapath=PATH         Extra path to additional game data\n"
 	"  --soundfont=FILE         Select the SoundFont for MIDI playback (only\n"
@@ -110,8 +115,10 @@ static const char HELP_STRING[] =
 	"  --copy-protection        Enable copy protection in SCUMM games, when\n"
 	"                           ScummVM disables it by default.\n"
 	"  --talkspeed=NUM          Set talk speed for games (default: 60)\n"
+#if defined(ENABLE_SCUMM) || defined(ENABLE_GROOVIE)
+	"  --demo-mode              Start demo mode of Maniac Mansion or The 7th Guest\n"
+#endif
 #ifdef ENABLE_SCUMM
-	"  --demo-mode              Start demo mode of Maniac Mansion\n"
 	"  --tempo=NUM              Set music tempo (in percent, 50-200) for SCUMM games\n"
 	"                           (default: 100)\n"
 #endif
@@ -138,6 +145,9 @@ static void usage(const char *s, ...) {
 #endif
 	exit(1);
 }
+
+#endif // DISABLE_COMMAND_LINE
+
 
 void registerDefaults() {
 
@@ -181,8 +191,10 @@ void registerDefaults() {
 	ConfMan.registerDefault("copy_protection", false);
 	ConfMan.registerDefault("talkspeed", 60);
 
-#ifdef ENABLE_SCUMM
+#if defined(ENABLE_SCUMM) || defined(ENABLE_GROOVIE)
 	ConfMan.registerDefault("demo_mode", false);
+#endif
+#ifdef ENABLE_SCUMM
 	ConfMan.registerDefault("tempo", 0);
 #endif
 
@@ -204,6 +216,8 @@ void registerDefaults() {
 //
 // Various macros used by the command line parser.
 //
+
+#ifndef DISABLE_COMMAND_LINE
 
 // Use this for options which have an *optional* value
 #define DO_OPTION_OPT(shortCmd, longCmd, defaultVal) \
@@ -365,7 +379,7 @@ Common::String parseCommandLine(Common::StringMap &settings, int argc, char **ar
 			END_OPTION
 
 			DO_OPTION('p', "path")
-				Common::FilesystemNode path(option);
+				Common::FSNode path(option);
 				if (!path.exists()) {
 					usage("Non-existent game path '%s'", option);
 				} else if (!path.isReadable()) {
@@ -408,7 +422,7 @@ Common::String parseCommandLine(Common::StringMap &settings, int argc, char **ar
 			END_OPTION
 
 			DO_LONG_OPTION("soundfont")
-				Common::FilesystemNode path(option);
+				Common::FSNode path(option);
 				if (!path.exists()) {
 					usage("Non-existent soundfont path '%s'", option);
 				} else if (!path.isReadable()) {
@@ -438,7 +452,7 @@ Common::String parseCommandLine(Common::StringMap &settings, int argc, char **ar
 			END_OPTION
 
 			DO_LONG_OPTION("savepath")
-				Common::FilesystemNode path(option);
+				Common::FSNode path(option);
 				if (!path.exists()) {
 					usage("Non-existent savegames path '%s'", option);
 				} else if (!path.isWritable()) {
@@ -447,7 +461,7 @@ Common::String parseCommandLine(Common::StringMap &settings, int argc, char **ar
 			END_OPTION
 
 			DO_LONG_OPTION("extrapath")
-				Common::FilesystemNode path(option);
+				Common::FSNode path(option);
 				if (!path.exists()) {
 					usage("Non-existent extra path '%s'", option);
 				} else if (!path.isReadable()) {
@@ -465,12 +479,15 @@ Common::String parseCommandLine(Common::StringMap &settings, int argc, char **ar
 			END_OPTION
 
 			DO_LONG_OPTION("themepath")
-				Common::FilesystemNode path(option);
+				Common::FSNode path(option);
 				if (!path.exists()) {
 					usage("Non-existent theme path '%s'", option);
 				} else if (!path.isReadable()) {
 					usage("Non-readable theme path '%s'", option);
 				}
+			END_OPTION
+
+			DO_LONG_COMMAND("list-themes")
 			END_OPTION
 
 			DO_LONG_OPTION("target-md5")
@@ -479,7 +496,8 @@ Common::String parseCommandLine(Common::StringMap &settings, int argc, char **ar
 #ifdef ENABLE_SCUMM
 			DO_LONG_OPTION_INT("tempo")
 			END_OPTION
-
+#endif
+#if defined(ENABLE_SCUMM) || defined(ENABLE_GROOVIE)
 			DO_LONG_OPTION_BOOL("demo-mode")
 			END_OPTION
 #endif
@@ -513,8 +531,7 @@ unknownOption:
 		}
 	}
 
-
-	return Common::String::emptyString;
+	return Common::String();
 }
 
 /** List all supported game IDs, i.e. all games which any loaded plugin supports. */
@@ -567,6 +584,11 @@ static void listSaves(const char *target) {
 	// Grab the "target" domain, if any
 	const Common::ConfigManager::Domain *domain = ConfMan.getDomain(target);
 
+	// Set up the game domain as newly active domain, so
+	// target specific savepath will be checked
+	Common::String oldDomain = ConfMan.getActiveDomainName();
+	ConfMan.setActiveDomain(target);
+
 	// Grab the gameid from the domain resp. use the target as gameid
 	Common::String gameid;
 	if (domain)
@@ -596,6 +618,22 @@ static void listSaves(const char *target) {
 		printf("  %-4s %s\n", x->save_slot().c_str(), x->description().c_str());
 		// TODO: Could also iterate over the full hashmap, printing all key-value pairs
 	}
+
+	// Revert to the old active domain
+	ConfMan.setActiveDomain(oldDomain);
+}
+
+/** Lists all usable themes */
+static void listThemes() {
+	typedef Common::List<GUI::ThemeEngine::ThemeDescriptor> ThList;
+	ThList thList;
+	GUI::ThemeEngine::listUsableThemes(thList);
+
+	printf("Theme          Description\n");
+	printf("-------------- ------------------------------------------------\n");
+
+	for (ThList::const_iterator i = thList.begin(); i != thList.end(); ++i)
+		printf("%-14s %s\n", i->id.c_str(), i->name.c_str());
 }
 
 
@@ -623,9 +661,9 @@ static void runDetectorTest() {
 			gameid = name;
 		}
 
-		Common::FilesystemNode dir(path);
+		Common::FSNode dir(path);
 		Common::FSList files;
-		if (!dir.getChildren(files, Common::FilesystemNode::kListAll)) {
+		if (!dir.getChildren(files, Common::FSNode::kListAll)) {
 			printf(" ... invalid path, skipping\n");
 			continue;
 		}
@@ -669,7 +707,20 @@ static void runDetectorTest() {
 }
 #endif
 
+#else // DISABLE_COMMAND_LINE
+
+
+Common::String parseCommandLine(Common::StringMap &settings, int argc, char **argv) {
+	return Common::String();
+}
+
+
+#endif // DISABLE_COMMAND_LINE
+
+
 bool processSettings(Common::String &command, Common::StringMap &settings) {
+
+#ifndef DISABLE_COMMAND_LINE
 
 	// Handle commands passed via the command line (like --list-targets and
 	// --list-games). This must be done after the config file and the plugins
@@ -682,6 +733,9 @@ bool processSettings(Common::String &command, Common::StringMap &settings) {
 		return false;
 	} else if (command == "list-saves") {
 		listSaves(settings["list-saves"].c_str());
+		return false;
+	} else if (command == "list-themes") {
+		listThemes();
 		return false;
 	} else if (command == "version") {
 		printf("%s\n", gScummVMFullVersion);
@@ -697,6 +751,8 @@ bool processSettings(Common::String &command, Common::StringMap &settings) {
 		return false;
 	}
 #endif
+
+#endif // DISABLE_COMMAND_LINE
 
 
 	// If a target was specified, check whether there is either a game
@@ -723,7 +779,9 @@ bool processSettings(Common::String &command, Common::StringMap &settings) {
 				ConfMan.set("id_came_from_command_line", "1");
 
 		} else {
+#ifndef DISABLE_COMMAND_LINE
 			usage("Unrecognized game target '%s'", command.c_str());
+#endif // DISABLE_COMMAND_LINE
 		}
 	}
 
@@ -736,7 +794,7 @@ bool processSettings(Common::String &command, Common::StringMap &settings) {
 	if (!settings.contains("savepath")) {
 		const char *dir = getenv("SCUMMVM_SAVEPATH");
 		if (dir && *dir && strlen(dir) < MAXPATHLEN) {
-			Common::FilesystemNode saveDir(dir);
+			Common::FSNode saveDir(dir);
 			if (!saveDir.exists()) {
 				warning("Non-existent SCUMMVM_SAVEPATH save path. It will be ignored.");
 			} else if (!saveDir.isWritable()) {

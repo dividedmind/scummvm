@@ -23,7 +23,6 @@
  *
  */
 
-
 #include "scumm/scumm.h"
 #include "scumm/actor.h"
 #include "scumm/bomp.h"
@@ -109,6 +108,13 @@ void ScummEngine::setOwnerOf(int obj, int owner) {
 
 	int arg = (_game.version >= 6) ? obj : 0;
 
+	// WORKAROUND for bug #1917981: Game crash when finishing Indy3 demo.
+	// Script 94 tries to empty the inventory but does so in a bogus way.
+	// This causes it to try to remove object 0 from the inventory.
+	if (_game.id == GID_PASS && obj == 0 && vm.slot[_currentScript].number == 94)
+		return;
+	assert(obj > 0);
+
 	if (owner == 0) {
 		clearOwnerOf(obj);
 
@@ -138,14 +144,14 @@ void ScummEngine::setOwnerOf(int obj, int owner) {
 		ss = &vm.slot[_currentScript];
 		if (ss->where == WIO_INVENTORY) {
 			if (ss->number < _numInventory && _inventory[ss->number] == obj) {
-				warning("Odd setOwnerOf case #1: Please report to Fingolfin where you encountered this");
+				error("Odd setOwnerOf case #1: Please report to Fingolfin where you encountered this");
 				putOwner(obj, 0);
 				runInventoryScript(arg);
 				stopObjectCode();
 				return;
 			}
 			if (ss->number == obj)
-				warning("Odd setOwnerOf case #2: Please report to Fingolfin where you encountered this");
+				error("Odd setOwnerOf case #2: Please report to Fingolfin where you encountered this");
 		}
 	}
 

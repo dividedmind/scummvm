@@ -23,24 +23,61 @@
  *
  */
 
-#ifndef COMMON_ARCHIVES_H
-#define COMMON_ARCHIVES_H
+#ifndef COMMON_ARCHIVE_H
+#define COMMON_ARCHIVE_H
 
-#include "common/fs.h"
+//#include "common/fs.h"
 #include "common/str.h"
 #include "common/hash-str.h"
 #include "common/list.h"
 #include "common/ptr.h"
 #include "common/singleton.h"
-#include "common/stream.h"
 
 namespace Common {
 
+class FSNode;
+class SeekableReadStream;
+
+
 /**
- * FilePtr is a convenient way to keep track of a SeekableReadStream without
- * having to worry about releasing its memory.
+ * ArchiveMember is an abstract interface to represent elements inside
+ * implementations of Archive.
+ *
+ * Archive subclasses must provide their own implementation of ArchiveMember,
+ * and use it when serving calls to listMembers() and listMatchingMembers().
+ * Alternatively, the GenericArchiveMember below can be used.
  */
-typedef SharedPtr<SeekableReadStream> FilePtr;
+class ArchiveMember {
+public:
+	virtual ~ArchiveMember() { }
+	virtual SeekableReadStream *createReadStream() const = 0;
+	virtual String getName() const = 0;
+	virtual String getDisplayName() const { return getName(); }
+};
+
+typedef SharedPtr<ArchiveMember> ArchiveMemberPtr;
+typedef List<ArchiveMemberPtr> ArchiveMemberList;
+
+class Archive;
+
+/**
+ * Simple ArchiveMember implementation which allows
+ * creation of ArchiveMember compatible objects via
+ * a simple Archive and name pair.
+ *
+ * Note that GenericArchiveMember objects will not
+ * be working anymore after the 'parent' object
+ * is destroyed.
+ */
+class GenericArchiveMember : public ArchiveMember {
+	Archive *_parent;
+	String _name;
+public:
+	GenericArchiveMember(String name, Archive *parent);
+	String getName() const;
+	SeekableReadStream *createReadStream() const;
+};
+
 
 /**
  * Archive allows searches of (file)names into an arbitrary container.
@@ -58,89 +95,32 @@ public:
 
 	/**
 	 * Add all the names present in the Archive which match pattern to
-	 * list. Returned names can be used as parameters to openFile.
+	 * list. Returned names can be used as parameters to createReadStreamForMember.
 	 * Must not remove elements from the list.
 	 *
 	 * @return the number of names added to list
 	 */
-	virtual int matchPattern(StringList &list, const String &pattern);
+	virtual int listMatchingMembers(ArchiveMemberList &list, const String &pattern);
 
 	/**
 	 * Add all the names present in the Archive to list. Returned
-	 * names can be used as parameters to openFile.
+	 * names can be used as parameters to createReadStreamForMember.
 	 * Must not remove elements from the list.
 	 *
 	 * @return the number of names added to list
 	 */
-	virtual int getAllNames(StringList &list) = 0;
+	virtual int listMembers(ArchiveMemberList &list) = 0;
+
+	/**
+	 * Returns a ArchiveMember representation of the given file.
+	 */
+	virtual ArchiveMemberPtr getMember(const String &name) = 0;
 
 	/**
 	 * Create a stream bound to a file in the archive.
 	 * @return the newly created input stream
 	 */
-	virtual SeekableReadStream *openFile(const String &name) = 0;
-};
-
-
-typedef SharedPtr<Archive> ArchivePtr;
-
-
-/**
- * FSDirectory models a directory tree from the filesystem and allows users
- * to access it through the Archive interface. FSDirectory can represent a
- * single directory, or a tree with specified depth, rooted in a 'base'
- * directory.
- * Searching is case-insensitive, as the main intended goal is supporting
- * retrieval of game data. First case-insensitive match is returned when
- * searching, thus making FSDirectory heavily dependant on the underlying
- * FilesystemNode implementation.
- */
-class FSDirectory : public Archive {
-	FilesystemNode	_node;
-
-	// Caches are case insensitive, clashes are dealt with when creating
-	// Key is stored in lowercase.
-	typedef HashMap<String, FilesystemNode, IgnoreCase_Hash, IgnoreCase_EqualTo> NodeCache;
-	NodeCache	_fileCache, _subDirCache;
-
-	// look for a match
-	FilesystemNode lookupCache(NodeCache &cache, const String &name);
-
-	// cache management
-	void cacheDirectoryRecursive(FilesystemNode node, int depth, const String& prefix);
-	bool _cached;
-	int	_depth;
-
-public:
-	/**
-	 * Create a FSDirectory representing a tree with the specified depth. Will result in an
-	 * unbound FSDirectory if name is not found on the filesystem or is not a directory.
-	 */
-	FSDirectory(const String &name, int depth = 1);
-
-	/**
-	 * Create a FSDirectory representing a tree with the specified depth. Will result in an
-	 * unbound FSDirectory if node does not exist or is not a directory.
-	 */
-	FSDirectory(const FilesystemNode &node, int depth = 1);
-
-	virtual ~FSDirectory();
-
-	/**
-	 * This return the underlying FSNode of the FSDirectory.
-	 */
-	FilesystemNode getFSNode() const;
-
-	/**
-	 * Create a new FSDirectory pointing to a sub directory of the instance.
-	 * @return a new FSDirectory instance
-	 */
-	FSDirectory *getSubDirectory(const String &name);
-
-	virtual bool hasFile(const String &name);
-	virtual int matchPattern(StringList &list, const String &pattern);
-	virtual int getAllNames(StringList &list);
-	virtual SeekableReadStream *openFile(const String &name);
+	virtual SeekableReadStream *createReadStreamForMember(const String &name) const = 0;
 };
 
 
@@ -153,23 +133,39 @@ public:
  */
 class SearchSet : public Archive {
 	struct Node {
-		uint		_priority;
-		String		_name;
-		ArchivePtr	_arc;
+		int		_priority;
+		String	_name;
+		Archive	*_arc;
+		bool	_autoFree;
+		Node(int priority, const String &name, Archive *arc, bool autoFree)
+			: _priority(priority), _name(name), _arc(arc), _autoFree(autoFree) {
+		}
 	};
-	typedef List<Node> ArchiveList;
-	ArchiveList _list;
+	typedef List<Node> ArchiveNodeList;
+	ArchiveNodeList _list;
 
-	ArchiveList::iterator find(const String &name) const;
+	ArchiveNodeList::iterator find(const String &name) const;
 
 	// Add an archive keeping the list sorted by ascending priorities.
 	void insert(const Node& node);
 
 public:
+	virtual ~SearchSet() { clear(); }
+
 	/**
 	 * Add a new archive to the searchable set.
 	 */
-	void add(const String& name, ArchivePtr archive, uint priority = 0);
+	void add(const String& name, Archive *arch, int priority = 0, bool autoFree = true);
+
+	/**
+	 * Create and add a FSDirectory by name
+	 */
+	void addDirectory(const String &name, const String &directory, int priority = 0, int depth = 1);
+
+	/**
+	 * Create and add a FSDirectory by FSNode
+	 */
+	void addDirectory(const String &name, const FSNode &directory, int priority = 0, int depth = 1);
 
 	/**
 	 * Remove an archive from the searchable set.
@@ -182,45 +178,41 @@ public:
 	bool hasArchive(const String &name) const;
 
 	/**
-     * Empties the searchable set.
-     */
-	void clear();
+	 * Empties the searchable set.
+	 */
+	virtual void clear();
 
 	/**
-     * Change the order of searches.
-     */
-	void setPriority(const String& name, uint priority);
+	 * Change the order of searches.
+	 */
+	void setPriority(const String& name, int priority);
 
 	virtual bool hasFile(const String &name);
-	virtual int matchPattern(StringList &list, const String &pattern);
-	virtual int getAllNames(StringList &list);
+	virtual int listMatchingMembers(ArchiveMemberList &list, const String &pattern);
+	virtual int listMembers(ArchiveMemberList &list);
+
+	virtual ArchiveMemberPtr getMember(const String &name);
 
 	/**
-	 * Implements openFile from Archive base class. The current policy is
+	 * Implements createReadStreamForMember from Archive base class. The current policy is
 	 * opening the first file encountered that matches the name.
 	 */
-	virtual SeekableReadStream *openFile(const String &name);
+	virtual SeekableReadStream *createReadStreamForMember(const String &name) const;
 };
 
 
 class SearchManager : public Singleton<SearchManager>, public SearchSet {
 public:
-	/**
-	 * Add an existing Archive. This is meant to support searching in system-specific
-	 * archives, namely the MACOSX/IPHONE bundles.
-	 */
-	void addArchive(const String &name, ArchivePtr archive);
 
 	/**
-	 * Create and add a FSDirectory by name
+	 * Resets the search manager to the default list of search paths (system
+	 * specific dirs + current dir).
 	 */
-	void addDirectory(const String &name, const String &directory);
+	virtual void clear();
 
-	/**
-	 * Create and add a FSDirectory and its subdirectories by name
-	 */
-	void addDirectoryRecursive(const String &name, const String &directory, int depth = 4);
-
+private:
+	friend class Common::Singleton<SingletonBaseType>;
+	SearchManager();
 };
 
 /** Shortcut for accessing the search manager. */

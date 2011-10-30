@@ -30,7 +30,7 @@
 
 #include "osys_psp.h"
 
-#include "backends/saves/default/default-saves.h"
+#include "backends/saves/psp/psp-saves.h"
 #include "backends/timer/default/default-timer.h"
 #include "graphics/surface.h"
 #include "graphics/scaler.h"
@@ -98,20 +98,8 @@ OSystem_PSP::~OSystem_PSP() {
 
 
 void OSystem_PSP::initBackend() {
-	_savefile = new DefaultSaveFileManager("ms0:/scummvm_savegames");
-	
-	const char *savePath = _savefile->getSavePath().c_str();
+	_savefile = new PSPSaveFileManager;
 
-	//check if the save directory exists
-	SceUID fd = sceIoDopen(savePath);
-	if (fd < 0) {
-		//No? then let's create it.
-		sceIoMkdir(savePath, 0777);
-	} else {
-		//it exists, so close it again.
-		sceIoDclose(fd);
-	}
-	
 	_timer = new DefaultTimerManager();
 	setTimerCallback(&timer_handler, 10);
 
@@ -365,32 +353,6 @@ int16 OSystem_PSP::getOverlayHeight() {
 	return _overlayHeight;
 }
 
-OverlayColor OSystem_PSP::RGBToColor(uint8 r, uint8 g, uint8 b) {
-	return (((r >> 3) & 0x1F) | (((g >> 3) & 0x1F) << 5) | (((b >> 3) & 0x1F) << 10 ) ) | 0x8000;
-}
-
-void OSystem_PSP::colorToRGB(OverlayColor color, uint8 &r, uint8 &g, uint8 &b) {
-		r = ((color & 0x1F) << 3);
-		g = (((color >> 5) & 0x1F) << 3);
-		b = (((color >> 10) & 0x1F) << 3);
-}
-
-OverlayColor OSystem_PSP::ARGBToColor(uint8 a, uint8 r, uint8 g, uint8 b) {
-	OverlayColor color = RGBToColor(r, g, b);
-
-	if (a == 255)
-		color |= 0x8000;
-
-	return color;
-}
-
-void OSystem_PSP::colorToARGB(OverlayColor color, uint8 &a, uint8 &r, uint8 &g, uint8 &b) {
-		colorToRGB(color, r, g, b);
-		if (color & 0x8000)
-			a = 255;
-		else
-			a = 0;
-}
 
 void OSystem_PSP::grabPalette(byte *colors, uint start, uint num) {
 	uint i;
@@ -452,11 +414,9 @@ bool OSystem_PSP::pollEvent(Common::Event &event) {
 	if (buttonsChanged & (PSP_CTRL_CROSS | PSP_CTRL_CIRCLE | PSP_CTRL_LTRIGGER | PSP_CTRL_RTRIGGER | PSP_CTRL_START | PSP_CTRL_SELECT | PSP_CTRL_SQUARE)) {
 		if (buttonsChanged & PSP_CTRL_CROSS) {
 			event.type = (pad.Buttons & PSP_CTRL_CROSS) ? Common::EVENT_LBUTTONDOWN : Common::EVENT_LBUTTONUP;
-		}
-		else if (buttonsChanged & PSP_CTRL_CIRCLE) {
+		} else if (buttonsChanged & PSP_CTRL_CIRCLE) {
 			event.type = (pad.Buttons & PSP_CTRL_CIRCLE) ? Common::EVENT_RBUTTONDOWN : Common::EVENT_RBUTTONUP;
-		}
-		else {
+		} else {
 			//any of the other buttons.
 			event.type = buttonsChanged & pad.Buttons ? Common::EVENT_KEYDOWN : Common::EVENT_KEYUP;
 			event.kbd.flags = 0;
@@ -494,23 +454,23 @@ bool OSystem_PSP::pollEvent(Common::Event &event) {
 
 		if (pad.Lx < 100) {
 			analogStepAmountX = pad.Lx - 100;
-		}
-		else if (pad.Lx > 155) {
+		} else if (pad.Lx > 155) {
 			analogStepAmountX = pad.Lx - 155;
 		}
 
 		if (pad.Ly < 100) {
 			analogStepAmountY = pad.Ly - 100;
-		}
-		else if (pad.Ly > 155) {
+		} else if (pad.Ly > 155) {
 			analogStepAmountY = pad.Ly - 155;
 		}
 
 		if (pad.Buttons & PAD_DIR_MASK ||
 		    analogStepAmountX != 0 || analogStepAmountY != 0) {
 			if (_prevButtons & PAD_DIR_MASK) {
-				if (_padAccel < 16) _padAccel++;
-			} else _padAccel = 0;
+				if (_padAccel < 16)
+					_padAccel++;
+			} else
+				_padAccel = 0;
 
 			_prevButtons = pad.Buttons;
 
@@ -526,34 +486,38 @@ bool OSystem_PSP::pollEvent(Common::Event &event) {
 			// If no movement then this has no effect
 			if (pad.Buttons & PSP_CTRL_TRIANGLE) {
 				// Fine control mode for analog
-					if (analogStepAmountX != 0)
+					if (analogStepAmountX != 0) {
 						if (analogStepAmountX > 0)
 							newX += analogStepAmountX - (analogStepAmountX - 1);
 						else
 							newX -= -analogStepAmountX - (-analogStepAmountX - 1);
+					}
 
-					if (analogStepAmountY != 0)
+					if (analogStepAmountY != 0) {
 						if (analogStepAmountY > 0)
 							newY += analogStepAmountY - (analogStepAmountY - 1);
 						else
 							newY -= -analogStepAmountY - (-analogStepAmountY - 1);
-			}
-			else {
+					}
+			} else {
 				newX += analogStepAmountX >> ((_screenWidth == 640) ? 2 : 3);
 				newY += analogStepAmountY >> ((_screenWidth == 640) ? 2 : 3);
 			}
 
-			if (newX < 0) newX = 0;
-			if (newY < 0) newY = 0;
-			if (_overlayVisible)
-			{
-				if (newX >= _overlayWidth) newX = _overlayWidth - 1;
-				if (newY >= _overlayHeight) newY = _overlayHeight - 1;
-			}
-			else
-			{
-				if (newX >= _screenWidth) newX = _screenWidth - 1;
-				if (newY >= _screenHeight) newY = _screenHeight - 1;
+			if (newX < 0)
+				newX = 0;
+			if (newY < 0)
+				newY = 0;
+			if (_overlayVisible) {
+				if (newX >= _overlayWidth)
+					newX = _overlayWidth - 1;
+				if (newY >= _overlayHeight)
+					newY = _overlayHeight - 1;
+			} else {
+				if (newX >= _screenWidth)
+					newX = _screenWidth - 1;
+				if (newY >= _screenHeight)
+					newY = _screenHeight - 1;
 			}
 
 			if ((_mouseX != newX) || (_mouseY != newY)) {
@@ -650,7 +614,7 @@ void OSystem_PSP::setupMixer(void) {
 		// least on some platforms SDL will lie and claim it did get the rate
 		// even if it didn't. Probably only happens for "weird" rates, though.
 		_samplesPerSec = obtained.freq;
-		
+
 		// Tell the mixer that we are ready and start the sound processing
 		_mixer->setOutputRate(_samplesPerSec);
 		_mixer->setReady(true);
@@ -677,3 +641,14 @@ void OSystem_PSP::setWindowCaption(const char *caption) {
 void OSystem_PSP::displayMessageOnOSD(const char *msg) {
 }
 
+#define PSP_CONFIG_FILE "ms0:/scummvm.ini"
+
+Common::SeekableReadStream *OSystem_PSP::createConfigReadStream() {
+	Common::FSNode file(PSP_CONFIG_FILE);
+	return file.createReadStream();
+}
+
+Common::WriteStream *OSystem_PSP::createConfigWriteStream() {
+	Common::FSNode file(PSP_CONFIG_FILE);
+	return file.createWriteStream();
+}

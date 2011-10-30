@@ -14,6 +14,7 @@ chdir("../../../");
 	"mmp/scummvm_cruise.mmp", 
 	"mmp/scummvm_drascula.mmp", 
 	"mmp/scummvm_gob.mmp", 
+	"mmp/scummvm_groovie.mmp", 
 	"mmp/scummvm_igor.mmp", 
 	"mmp/scummvm_kyra.mmp", 
 	"mmp/scummvm_lure.mmp", 
@@ -25,17 +26,19 @@ chdir("../../../");
 	"mmp/scummvm_scumm.mmp", 
 	"mmp/scummvm_sky.mmp", 
 	"mmp/scummvm_sword1.mmp", 
-	"mmp/scummvm_sword2.mmp", 
+	"mmp/scummvm_sword2.mmp",
 	"mmp/scummvm_touche.mmp", 
 	"mmp/scummvm_tinsel.mmp", 
-
+	"mmp/scummvm_tucker.mmp", 
 	# Target Platform Project Files
 	"S60/ScummVM_S60.mmp",  
 	"S60v3/ScummVM_S60v3.mmp", 
+	"S60v3/ScummVM_A0000658_S60v3.mmp", 
 	"S80/ScummVM_S80.mmp", 
 	"S90/ScummVM_S90.mmp",
 	"UIQ2/ScummVM_UIQ2.mmp", 
-	"UIQ3/ScummVM_UIQ3.mmp" 
+	"UIQ3/ScummVM_UIQ3.mmp",
+	"UIQ3/ScummVM_A0000658_UIQ3.mmp" 
 
 );
 
@@ -63,6 +66,7 @@ Preparing to update all the Symbian MMP project files with objects from module.m
 # some modules.mk files have #ifndef ENABLE_XXXX blocks:
 my @section_empty = (""); # section standard: no #ifdef's in module.mk files
 my @sections_scumm = ("", "ENABLE_SCUMM_7_8", "ENABLE_HE"); # special sections for engine SCUMM
+my @sections_saga = ("", "ENABLE_IHNM", "ENABLE_SAGA2"); # special sections for engine SAGA
 
 
 # files excluded from build, case insensitive, will be matched in filename string only
@@ -108,7 +112,7 @@ ParseModule("_queen",	"queen",	\@section_empty);
 ParseModule("_agos",	"agos",		\@section_empty);
 ParseModule("_sky",	"sky",		\@section_empty);
 ParseModule("_gob",	"gob",		\@section_empty);
-ParseModule("_saga",	"saga",		\@section_empty);
+ParseModule("_saga",	"saga",		\@sections_saga);
 ParseModule("_kyra",	"kyra",		\@section_empty);
 ParseModule("_sword1",	"sword1",	\@section_empty);
 ParseModule("_sword2",	"sword2",	\@section_empty);
@@ -123,6 +127,8 @@ ParseModule("_igor",	"igor",		\@section_empty);
 ParseModule("_made",	"made",		\@section_empty);
 ParseModule("_m4",	"m4",		\@section_empty);
 ParseModule("_tinsel",	"tinsel",	\@section_empty);
+ParseModule("_groovie",	"groovie",	\@section_empty);
+ParseModule("_tucker",	"tucker",	\@section_empty);
 print "
 =======================================================================================
 Done. Enjoy :P

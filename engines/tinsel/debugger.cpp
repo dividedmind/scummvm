@@ -25,7 +25,7 @@
 
 #include "tinsel/tinsel.h"
 #include "tinsel/debugger.h"
-#include "tinsel/inventory.h"
+#include "tinsel/dialogs.h"
 #include "tinsel/pcode.h"
 #include "tinsel/scene.h"
 #include "tinsel/sound.h"
@@ -46,7 +46,7 @@ extern SCNHANDLE GetSceneHandle(void);
 
 //----------------- SUPPORT FUNCTIONS ---------------------
 
-//static 
+//static
 int strToInt(const char *s) {
 	if (!*s)
 		// No string at all
@@ -136,10 +136,14 @@ bool Console::cmd_sound(int argc, const char **argv) {
 	}
 
 	int id = strToInt(argv[1]);
-	if (_vm->_sound->sampleExists(id))
-		_vm->_sound->playSample(id, Audio::Mixer::kSpeechSoundType);
-	else
+	if (_vm->_sound->sampleExists(id)) {
+		if (!TinselV2)
+			_vm->_sound->playSample(id, Audio::Mixer::kSpeechSoundType);
+		else
+			_vm->_sound->playSample(id, 0, false, 0, 0, PRIORITY_TALK, Audio::Mixer::kSpeechSoundType);
+	} else {
 		DebugPrintf("Sample %d does not exist!\n", id);
+	}
 
 	return true;
 }

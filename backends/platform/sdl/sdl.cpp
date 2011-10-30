@@ -25,19 +25,22 @@
 
 #if defined(WIN32)
 #include <windows.h>
-#if defined(ARRAYSIZE)
 // winnt.h defines ARRAYSIZE, but we want our own one... - this is needed before including util.h
 #undef ARRAYSIZE
-#endif
 #endif
 
 #include "backends/platform/sdl/sdl.h"
 #include "common/archive.h"
 #include "common/config-manager.h"
+#include "common/debug.h"
 #include "common/events.h"
 #include "common/util.h"
 
-#include "backends/saves/default/default-saves.h"
+#ifdef UNIX
+  #include "backends/saves/posix/posix-saves.h"
+#else
+  #include "backends/saves/default/default-saves.h"
+#endif
 #include "backends/timer/default/default-timer.h"
 #include "sound/mixer_intern.h"
 
@@ -112,25 +115,29 @@ void OSystem_SDL::initBackend() {
 	// Enable unicode support if possible
 	SDL_EnableUNICODE(1);
 
+	memset(&_oldVideoMode, 0, sizeof(_oldVideoMode));
+	memset(&_videoMode, 0, sizeof(_videoMode));
+	memset(&_transactionDetails, 0, sizeof(_transactionDetails));
+
 	_cksumValid = false;
 #if !defined(_WIN32_WCE) && !defined(__SYMBIAN32__) && !defined(DISABLE_SCALERS)
-	_mode = GFX_DOUBLESIZE;
-	_scaleFactor = 2;
+	_videoMode.mode = GFX_DOUBLESIZE;
+	_videoMode.scaleFactor = 2;
+	_videoMode.aspectRatio = ConfMan.getBool("aspect_ratio");
 	_scalerProc = Normal2x;
-	_adjustAspectRatio = ConfMan.getBool("aspect_ratio");
 #else // for small screen platforms
-	_mode = GFX_NORMAL;
-	_scaleFactor = 1;
+	_videoMode.mode = GFX_NORMAL;
+	_videoMode.scaleFactor = 1;
+	_videoMode.aspectRatio = false;
 	_scalerProc = Normal1x;
-	_adjustAspectRatio = false;
 #endif
 	_scalerType = 0;
 	_modeFlags = 0;
 
 #if !defined(_WIN32_WCE) && !defined(__SYMBIAN32__)
-	_fullscreen = ConfMan.getBool("fullscreen");
+	_videoMode.fullscreen = ConfMan.getBool("fullscreen");
 #else
-	_fullscreen = true;
+	_videoMode.fullscreen = true;
 #endif
 
 #if !defined(MACOSX) && !defined(__SYMBIAN32__)
@@ -150,7 +157,11 @@ void OSystem_SDL::initBackend() {
 	// Create the savefile manager, if none exists yet (we check for this to
 	// allow subclasses to provide their own).
 	if (_savefile == 0) {
-		_savefile = new DefaultSaveFileManager();
+#ifdef UNIX
+	_savefile = new POSIXSaveFileManager();
+#else
+	_savefile = new DefaultSaveFileManager();
+#endif
 	}
 
 	// Create and hook up the mixer, if none exists yet (we check for this to
@@ -158,6 +169,11 @@ void OSystem_SDL::initBackend() {
 	if (_mixer == 0) {
 		setupMixer();
 	}
+
+	// Setup the keymapper with backend's set of keys
+	// NOTE: must be done before creating TimerManager 
+	// to avoid race conditions in creating EventManager
+	setupKeymapper();
 
 	// Create and hook up the timer manager, if none exists yet (we check for
 	// this to allow subclasses to provide their own).
@@ -184,8 +200,7 @@ OSystem_SDL::OSystem_SDL()
 #ifdef USE_OSD
 	_osdSurface(0), _osdAlpha(SDL_ALPHA_TRANSPARENT), _osdFadeStartTime(0),
 #endif
-	_hwscreen(0), _screen(0), _screenWidth(0), _screenHeight(0),
-	_tmpscreen(0), _overlayWidth(0), _overlayHeight(0),
+	_hwscreen(0), _screen(0), _tmpscreen(0),
 	_overlayVisible(false),
 	_overlayscreen(0), _tmpscreen2(0),
 	_samplesPerSec(0),
@@ -275,15 +290,14 @@ FilesystemFactory *OSystem_SDL::getFilesystemFactory() {
 	return _fsFactory;
 }
 
-void OSystem_SDL::addSysArchivesToSearchSet(Common::SearchSet &s, uint priority) {
+void OSystem_SDL::addSysArchivesToSearchSet(Common::SearchSet &s, int priority) {
 
 #ifdef DATA_PATH
 	// Add the global DATA_PATH to the directory search list
 	// FIXME: We use depth = 4 for now, to match the old code. May want to change that
-	Common::FilesystemNode dataNode(DATA_PATH);
+	Common::FSNode dataNode(DATA_PATH);
 	if (dataNode.exists() && dataNode.isDirectory()) {
-		Common::ArchivePtr dataArchive(new Common::FSDirectory(dataNode, 4));
-		s.add(DATA_PATH, dataArchive, priority);
+		s.add(DATA_PATH, new Common::FSDirectory(dataNode, 4), priority);
 	}
 #endif
 
@@ -296,8 +310,7 @@ void OSystem_SDL::addSysArchivesToSearchSet(Common::SearchSet &s, uint priority)
 		if (CFURLGetFileSystemRepresentation(fileUrl, true, buf, sizeof(buf))) {
 			// Success: Add it to the search path
 			Common::String bundlePath((const char *)buf);
-			Common::ArchivePtr bundleArchive(new Common::FSDirectory(bundlePath));
-			s.add("__OSX_BUNDLE__", bundleArchive, priority);
+			s.add("__OSX_BUNDLE__", new Common::FSDirectory(bundlePath), priority);
 		}
 		CFRelease(fileUrl);
 	}
@@ -372,14 +385,14 @@ static Common::String getDefaultConfigFileName() {
 	return configFile;
 }
 
-Common::SeekableReadStream *OSystem_SDL::openConfigFileForReading() {
-	Common::FilesystemNode file(getDefaultConfigFileName());
-	return file.openForReading();
+Common::SeekableReadStream *OSystem_SDL::createConfigReadStream() {
+	Common::FSNode file(getDefaultConfigFileName());
+	return file.createReadStream();
 }
 
-Common::WriteStream *OSystem_SDL::openConfigFileForWriting() {
-	Common::FilesystemNode file(getDefaultConfigFileName());
-	return file.openForWriting();
+Common::WriteStream *OSystem_SDL::createConfigWriteStream() {
+	Common::FSNode file(getDefaultConfigFileName());
+	return file.createWriteStream();
 }
 
 void OSystem_SDL::setWindowCaption(const char *caption) {
@@ -423,9 +436,9 @@ bool OSystem_SDL::getFeatureState(Feature f) {
 
 	switch (f) {
 	case kFeatureFullscreenMode:
-		return _fullscreen;
+		return _videoMode.fullscreen;
 	case kFeatureAspectRatioCorrection:
-		return _adjustAspectRatio;
+		return _videoMode.aspectRatio;
 	case kFeatureAutoComputeDirtyRects:
 		return _modeFlags & DF_WANT_RECT_OPTIM;
 	default:
@@ -770,7 +783,7 @@ bool OSystem_SDL::pollCD() {
 	if (!_cdrom)
 		return false;
 
-	return (_cdNumLoops != 0 && (SDL_GetTicks() < _cdEndTime || SDL_CDStatus(_cdrom) != CD_STOPPED));
+	return (_cdNumLoops != 0 && (SDL_GetTicks() < _cdEndTime || SDL_CDStatus(_cdrom) == CD_PLAYING));
 }
 
 void OSystem_SDL::updateCD() {

@@ -31,20 +31,22 @@
 
 namespace Audio {
 
-// TODO: Switch from a SeekableReadStream to a plain ReadStream. This requires
-// some internal refactoring but is definitely possible and will increase the
-// flexibility of this code.
 class ADPCMInputStream : public AudioStream {
 private:
 	Common::SeekableReadStream *_stream;
 	bool _disposeAfterUse;
+	int32 _startpos;
 	int32 _endpos;
 	int _channels;
 	typesADPCM _type;
 	uint32 _blockAlign;
 	uint32 _blockPos;
+	uint8 _chunkPos;
+	uint16 _chunkData;
 	int _blockLen;
 	int _rate;
+	uint _numLoops;
+	uint _curLoop;
 
 	struct ADPCMChannelStatus {
 		byte predictor;
@@ -56,31 +58,45 @@ private:
 	};
 
 	struct adpcmStatus {
-		// IMA
-		int32 last;
-		int32 stepIndex;
+		// OKI/IMA
+		struct {
+			int32 last;
+			int32 stepIndex;
+		} ima_ch[2];
 
 		// MS ADPCM
 		ADPCMChannelStatus ch[2];
+
+		// Tinsel
+		double predictor;
+		double K0, K1;
+		double d0, d1;
 	} _status;
 
+	void reset();
 	int16 stepAdjust(byte);
 	int16 decodeOKI(byte);
-	int16 decodeMSIMA(byte);
+	int16 decodeIMA(byte code, int channel = 0); // Default to using the left channel/using one channel
 	int16 decodeMS(ADPCMChannelStatus *c, byte);
+	int16 decodeTinsel(int16, double);
 
 public:
-	ADPCMInputStream(Common::SeekableReadStream *stream, bool disposeAfterUse, uint32 size, typesADPCM type, int rate, int channels = 2, uint32 blockAlign = 0);
+	ADPCMInputStream(Common::SeekableReadStream *stream, bool disposeAfterUse, uint32 size, typesADPCM type, int rate, int channels = 2, uint32 blockAlign = 0, uint numLoops = 1);
 	~ADPCMInputStream();
 
 	int readBuffer(int16 *buffer, const int numSamples);
 	int readBufferOKI(int16 *buffer, const int numSamples);
+	int readBufferIMA(int16 *buffer, const int numSamples);
 	int readBufferMSIMA1(int16 *buffer, const int numSamples);
 	int readBufferMSIMA2(int16 *buffer, const int numSamples);
 	int readBufferMS(int channels, int16 *buffer, const int numSamples);
+	void readBufferTinselHeader();
+	int readBufferTinsel4(int channels, int16 *buffer, const int numSamples);
+	int readBufferTinsel6(int channels, int16 *buffer, const int numSamples);
+	int readBufferTinsel8(int channels, int16 *buffer, const int numSamples);
 
 	bool endOfData() const { return (_stream->eos() || _stream->pos() >= _endpos); }
-	bool isStereo() const	{ return false; }
+	bool isStereo() const	{ return _channels == 2; }
 	int getRate() const	{ return _rate; }
 };
 
@@ -88,23 +104,39 @@ public:
 // Dialogic or Oki ADPCM coding format aka VOX.
 // See also <http://www.comptek.ru/telephony/tnotes/tt1-13.html>
 //
+// IMA ADPCM support is based on
+//   <http://wiki.multimedia.cx/index.php?title=IMA_ADPCM>
+//
 // In addition, also MS IMA ADPCM is supported. See
 //   <http://wiki.multimedia.cx/index.php?title=Microsoft_IMA_ADPCM>.
 
-ADPCMInputStream::ADPCMInputStream(Common::SeekableReadStream *stream, bool disposeAfterUse, uint32 size, typesADPCM type, int rate, int channels, uint32 blockAlign)
-	: _stream(stream), _disposeAfterUse(disposeAfterUse), _channels(channels), _type(type), _blockAlign(blockAlign), _rate(rate) {
-
-	_status.last = 0;
-	_status.stepIndex = 0;
-	memset(_status.ch, 0, sizeof(_status.ch));
-	_endpos = stream->pos() + size;
-	_blockLen = 0;
-	_blockPos = _blockAlign; // To make sure first header is read
-
+ADPCMInputStream::ADPCMInputStream(Common::SeekableReadStream *stream, bool disposeAfterUse, uint32 size, typesADPCM type, int rate, int channels, uint32 blockAlign, uint numLoops)
+	: _stream(stream), _disposeAfterUse(disposeAfterUse), _channels(channels), _type(type), _blockAlign(blockAlign), _rate(rate), _numLoops(numLoops) {
+	
 	if (type == kADPCMMSIma && blockAlign == 0)
-		error("ADPCMInputStream(): blockAlign isn't specifiled for MS IMA ADPCM");
+		error("ADPCMInputStream(): blockAlign isn't specified for MS IMA ADPCM");
 	if (type == kADPCMMS && blockAlign == 0)
-		error("ADPCMInputStream(): blockAlign isn't specifiled for MS ADPCM");
+		error("ADPCMInputStream(): blockAlign isn't specified for MS ADPCM");
+	
+	if (type == kADPCMTinsel4 && blockAlign == 0)
+		error("ADPCMInputStream(): blockAlign isn't specified for Tinsel 4-bit ADPCM");
+	if (type == kADPCMTinsel6 && blockAlign == 0)
+		error("ADPCMInputStream(): blockAlign isn't specified for Tinsel 6-bit ADPCM");
+	if (type == kADPCMTinsel8 && blockAlign == 0)
+		error("ADPCMInputStream(): blockAlign isn't specified for Tinsel 8-bit ADPCM");
+
+	if (type == kADPCMTinsel4 && channels != 1)
+		error("ADPCMInputStream(): Tinsel 4-bit ADPCM only supports mono");
+	if (type == kADPCMTinsel6 && channels != 1)
+		error("ADPCMInputStream(): Tinsel 6-bit ADPCM only supports mono");
+	if (type == kADPCMTinsel8 && channels != 1)
+		error("ADPCMInputStream(): Tinsel 8-bit ADPCM only supports mono");
+	
+	_startpos = stream->pos();
+	_endpos = _startpos + size;
+	_curLoop = 0;
+	_blockPos = 0;
+	reset();
 }
 
 ADPCMInputStream::~ADPCMInputStream() {
@@ -112,22 +144,56 @@ ADPCMInputStream::~ADPCMInputStream() {
 		delete _stream;
 }
 
+void ADPCMInputStream::reset() {
+	memset(&_status, 0, sizeof(_status));
+	_blockLen = 0;
+	_blockPos = _blockAlign; // To make sure first header is read
+	_chunkPos = 0;
+}
+
 int ADPCMInputStream::readBuffer(int16 *buffer, const int numSamples) {
+	int samplesDecoded = 0;
 	switch (_type) {
 	case kADPCMOki:
-		return readBufferOKI(buffer, numSamples);
+		samplesDecoded = readBufferOKI(buffer, numSamples);
+		break;
 	case kADPCMMSIma:
 		if (_channels == 1)
-			return readBufferMSIMA1(buffer, numSamples);
+			samplesDecoded = readBufferMSIMA1(buffer, numSamples);
 		else
-			return readBufferMSIMA2(buffer, numSamples);
+			samplesDecoded = readBufferMSIMA2(buffer, numSamples);
+		break;
 	case kADPCMMS:
-		return readBufferMS(_channels, buffer, numSamples);
+		samplesDecoded = readBufferMS(_channels, buffer, numSamples);
+		break;
+	case kADPCMTinsel4:
+		samplesDecoded = readBufferTinsel4(_channels, buffer, numSamples);
+		break;
+	case kADPCMTinsel6:
+		samplesDecoded = readBufferTinsel6(_channels, buffer, numSamples);
+		break;
+	case kADPCMTinsel8:
+		samplesDecoded = readBufferTinsel8(_channels, buffer, numSamples);
+		break;
+	case kADPCMIma:
+		samplesDecoded = readBufferIMA(buffer, numSamples);
+		break;
 	default:
 		error("Unsupported ADPCM encoding");
 		break;
 	}
-	return 0;
+	
+	// Loop if necessary
+	if (samplesDecoded < numSamples || _stream->pos() == _endpos) {
+		_curLoop++;
+		if (_numLoops == 0 || _curLoop < _numLoops) {
+			reset();
+			_stream->seek(_startpos);
+			return samplesDecoded + readBuffer(buffer + samplesDecoded, numSamples - samplesDecoded);
+		}
+	}
+	
+	return samplesDecoded;
 }
 
 int ADPCMInputStream::readBufferOKI(int16 *buffer, const int numSamples) {
@@ -144,6 +210,19 @@ int ADPCMInputStream::readBufferOKI(int16 *buffer, const int numSamples) {
 	return samples;
 }
 
+int ADPCMInputStream::readBufferIMA(int16 *buffer, const int numSamples) {
+	int samples;
+	byte data;
+
+	assert(numSamples % 2 == 0);
+
+	for (samples = 0; samples < numSamples && !_stream->eos() && _stream->pos() < _endpos; samples += 2) {
+		data = _stream->readByte();
+		buffer[samples] = TO_LE_16(decodeIMA((data >> 4) & 0x0f));
+		buffer[samples + 1] = TO_LE_16(decodeIMA(data & 0x0f, _channels == 2 ? 1 : 0));
+	}
+	return samples;
+}
 
 int ADPCMInputStream::readBufferMSIMA1(int16 *buffer, const int numSamples) {
 	int samples = 0;
@@ -154,16 +233,16 @@ int ADPCMInputStream::readBufferMSIMA1(int16 *buffer, const int numSamples) {
 	while (samples < numSamples && !_stream->eos() && _stream->pos() < _endpos) {
 		if (_blockPos == _blockAlign) {
 			// read block header
-			_status.last = _stream->readSint16LE();
-			_status.stepIndex = _stream->readSint16LE();
+			_status.ima_ch[0].last = _stream->readSint16LE();
+			_status.ima_ch[0].stepIndex = _stream->readSint16LE();
 			_blockPos = 4;
 		}
 
 		for (; samples < numSamples && _blockPos < _blockAlign && !_stream->eos() && _stream->pos() < _endpos; samples += 2) {
 			data = _stream->readByte();
 			_blockPos++;
-			buffer[samples] = TO_LE_16(decodeMSIMA(data & 0x0f));
-			buffer[samples + 1] = TO_LE_16(decodeMSIMA((data >> 4) & 0x0f));
+			buffer[samples] = TO_LE_16(decodeIMA(data & 0x0f));
+			buffer[samples + 1] = TO_LE_16(decodeIMA((data >> 4) & 0x0f));
 		}
 	}
 	return samples;
@@ -184,7 +263,7 @@ int ADPCMInputStream::readBufferMSIMA2(int16 *buffer, const int numSamples) {
 
 			for (nibble = 0; nibble < 8; nibble++) {
 				k = ((data & 0xf0000000) >> 28);
-				buffer[samples + channel + nibble * 2] = TO_LE_16(decodeMSIMA(k));
+				buffer[samples + channel + nibble * 2] = TO_LE_16(decodeIMA(k));
 				data <<= 4;
 			}
 		}
@@ -243,6 +322,129 @@ int ADPCMInputStream::readBufferMS(int channels, int16 *buffer, const int numSam
 	return samples;
 }
 
+static const double TinselFilterTable[4][2] = {
+	{0, 0 },
+	{0.9375, 0},
+	{1.796875, -0.8125},
+	{1.53125, -0.859375}
+};
+
+void ADPCMInputStream::readBufferTinselHeader() {
+	uint8 start = _stream->readByte();
+	uint8 filterVal = (start & 0xC0) >> 6;
+
+	if ((start & 0x20) != 0) {
+		//Lower 6 bit are negative
+
+		// Negate
+		start = ~(start | 0xC0) + 1;
+
+		_status.predictor = 1 << start;
+	} else {
+		// Lower 6 bit are positive
+
+		// Truncate
+		start &= 0x1F;
+
+		_status.predictor = ((double) 1.0) / (1 << start);
+	}
+
+	_status.K0 = TinselFilterTable[filterVal][0];
+	_status.K1 = TinselFilterTable[filterVal][1];
+}
+
+int ADPCMInputStream::readBufferTinsel4(int channels, int16 *buffer, const int numSamples) {
+	int samples;
+	uint16 data;
+	const double eVal = 1.142822265;
+
+	samples = 0;
+
+	assert(numSamples % 2 == 0);
+
+	while (samples < numSamples && !_stream->eos() && _stream->pos() < _endpos) {
+		if (_blockPos == _blockAlign) {
+			readBufferTinselHeader();
+			_blockPos = 0;
+		}
+
+		for (; samples < numSamples && _blockPos < _blockAlign && !_stream->eos() && _stream->pos() < _endpos; samples += 2, _blockPos++) {
+			// Read 1 byte = 8 bits = two 4 bit blocks
+			data = _stream->readByte();
+			buffer[samples] = decodeTinsel((data << 8) & 0xF000, eVal);
+			buffer[samples+1] = decodeTinsel((data << 12) & 0xF000, eVal);
+		}
+	}
+
+	return samples;
+}
+
+int ADPCMInputStream::readBufferTinsel6(int channels, int16 *buffer, const int numSamples) {
+	int samples;
+	const double eVal = 1.032226562;
+
+	samples = 0;
+
+	while (samples < numSamples && !_stream->eos() && _stream->pos() < _endpos) {
+		if (_blockPos == _blockAlign) {
+			readBufferTinselHeader();
+			_blockPos = 0;
+			_chunkPos = 0;
+		}
+
+		for (; samples < numSamples && _blockPos < _blockAlign && !_stream->eos() && _stream->pos() < _endpos; samples++, _chunkPos = (_chunkPos + 1) % 4) {
+
+			switch (_chunkPos) {
+			case 0:
+				_chunkData = _stream->readByte();
+				buffer[samples] = decodeTinsel((_chunkData << 8) & 0xFC00, eVal);
+				break;
+			case 1:
+				_chunkData = (_chunkData << 8) | (_stream->readByte());
+				buffer[samples] = decodeTinsel((_chunkData << 6) & 0xFC00, eVal);
+				_blockPos++;
+				break;
+			case 2:
+				_chunkData = (_chunkData << 8) | (_stream->readByte());
+				buffer[samples] = decodeTinsel((_chunkData << 4) & 0xFC00, eVal);
+				_blockPos++;
+				break;
+			case 3:
+				_chunkData = (_chunkData << 8);
+				buffer[samples] = decodeTinsel((_chunkData << 2) & 0xFC00, eVal);
+				_blockPos++;
+				break;
+			}
+
+		}
+
+	}
+
+	return samples;
+}
+
+int ADPCMInputStream::readBufferTinsel8(int channels, int16 *buffer, const int numSamples) {
+	int samples;
+	byte data;
+	const double eVal = 1.007843258;
+
+	samples = 0;
+
+	while (samples < numSamples && !_stream->eos() && _stream->pos() < _endpos) {
+		if (_blockPos == _blockAlign) {
+			readBufferTinselHeader();
+			_blockPos = 0;
+		}
+
+		for (; samples < numSamples && _blockPos < _blockAlign && !_stream->eos() && _stream->pos() < _endpos; samples++, _blockPos++) {
+			// Read 1 byte = 8 bits = one 8 bit block
+			data = _stream->readByte();
+			buffer[samples] = decodeTinsel(data << 8, eVal);
+		}
+	}
+
+	return samples;
+}
 
 static const int MSADPCMAdaptationTable[] = {
 	230, 230, 230, 230, 307, 409, 512, 614,
@@ -276,42 +478,41 @@ int16 ADPCMInputStream::stepAdjust(byte code) {
 }
 
 static const int16 okiStepSize[49] = {
-	  16,   17,   19,   21,   23,   25,   28,   31,
-	  34,   37,   41,   45,   50,   55,   60,   66,
-	  73,   80,   88,   97,  107,  118,  130,  143,
-	 157,  173,  190,  209,  230,  253,  279,  307,
-	 337,  371,  408,  449,  494,  544,  598,  658,
-	 724,  796,  876,  963, 1060, 1166, 1282, 1411,
-	1552
+	   16,   17,   19,   21,   23,   25,   28,   31,
+	   34,   37,   41,   45,   50,   55,   60,   66,
+	   73,   80,   88,   97,  107,  118,  130,  143,
+	  157,  173,  190,  209,  230,  253,  279,  307,
+	  337,  371,  408,  449,  494,  544,  598,  658,
+	  724,  796,  876,  963, 1060, 1166, 1282, 1411,
+	 1552
 };
 
 // Decode Linear to ADPCM
 int16 ADPCMInputStream::decodeOKI(byte code) {
 	int16 diff, E, samp;
 
-	E = (2 * (code & 0x7) + 1) * okiStepSize[_status.stepIndex] / 8;
+	E = (2 * (code & 0x7) + 1) * okiStepSize[_status.ima_ch[0].stepIndex] / 8;
 	diff = (code & 0x08) ? -E : E;
-	samp = _status.last + diff;
+	samp = _status.ima_ch[0].last + diff;
 	// Clip the values to +/- 2^11 (supposed to be 12 bits)
 	samp = CLIP<int16>(samp, -2048, 2047);
 
-	_status.last = samp;
-	_status.stepIndex += stepAdjust(code);
-	_status.stepIndex = CLIP<int32>(_status.stepIndex, 0, ARRAYSIZE(okiStepSize) - 1);
+	_status.ima_ch[0].last = samp;
+	_status.ima_ch[0].stepIndex += stepAdjust(code);
+	_status.ima_ch[0].stepIndex = CLIP<int32>(_status.ima_ch[0].stepIndex, 0, ARRAYSIZE(okiStepSize) - 1);
 
 	// * 16 effectively converts 12-bit input to 16-bit output
 	return samp * 16;
 }
 
-
 static const uint16 imaStepTable[89] = {
-		7,	  8,	9,	 10,   11,	 12,   13,	 14,
-	   16,	 17,   19,	 21,   23,	 25,   28,	 31,
-	   34,	 37,   41,	 45,   50,	 55,   60,	 66,
-	   73,	 80,   88,	 97,  107,	118,  130,	143,
-	  157,	173,  190,	209,  230,	253,  279,	307,
-	  337,	371,  408,	449,  494,	544,  598,	658,
-	  724,	796,  876,	963, 1060, 1166, 1282, 1411,
+		7,    8,    9,   10,   11,   12,   13,   14,
+	   16,   17,   19,   21,   23,   25,   28,   31,
+	   34,   37,   41,   45,   50,   55,   60,   66,
+	   73,   80,   88,   97,  107,  118,  130,  143,
+	  157,  173,  190,  209,  230,  253,  279,  307,
+	  337,  371,  408,  449,  494,  544,  598,  658,
+	  724,  796,  876,  963, 1060, 1166, 1282, 1411,
 	 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024,
 	 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484,
 	 7132, 7845, 8630, 9493,10442,11487,12635,13899,
@@ -319,20 +520,33 @@ static const uint16 imaStepTable[89] = {
 	32767
 };
 
-int16 ADPCMInputStream::decodeMSIMA(byte code) {
-	int32 E = (2 * (code & 0x7) + 1) * imaStepTable[_status.stepIndex] / 8;
+int16 ADPCMInputStream::decodeIMA(byte code, int channel) {
+	int32 E = (2 * (code & 0x7) + 1) * imaStepTable[_status.ima_ch[channel].stepIndex] / 8;
 	int32 diff = (code & 0x08) ? -E : E;
-	int32 samp = CLIP<int32>(_status.last + diff, -32768, 32767);
+	int32 samp = CLIP<int32>(_status.ima_ch[channel].last + diff, -32768, 32767);
 
-	_status.last = samp;
-	_status.stepIndex += stepAdjust(code);
-	_status.stepIndex = CLIP<int32>(_status.stepIndex, 0, ARRAYSIZE(imaStepTable) - 1);
+	_status.ima_ch[channel].last = samp;
+	_status.ima_ch[channel].stepIndex += stepAdjust(code);
+	_status.ima_ch[channel].stepIndex = CLIP<int32>(_status.ima_ch[channel].stepIndex, 0, ARRAYSIZE(imaStepTable) - 1);
 
 	return samp;
 }
 
-AudioStream *makeADPCMStream(Common::SeekableReadStream *stream, bool disposeAfterUse, uint32 size, typesADPCM type, int rate, int channels, uint32 blockAlign) {
-	return new ADPCMInputStream(stream, disposeAfterUse, size, type, rate, channels, blockAlign);
+int16 ADPCMInputStream::decodeTinsel(int16 code, double eVal) {
+	double sample;
+
+	sample = (double) code;
+	sample *= eVal * _status.predictor;
+	sample += (_status.d0 * _status.K0) + (_status.d1 * _status.K1);
+
+	_status.d1 = _status.d0;
+	_status.d0 = sample;
+
+	return (int16) CLIP<double>(sample, -32768.0, 32767.0);
+}
+
+AudioStream *makeADPCMStream(Common::SeekableReadStream *stream, bool disposeAfterUse, uint32 size, typesADPCM type, int rate, int channels, uint32 blockAlign, uint numLoops) {
+	return new ADPCMInputStream(stream, disposeAfterUse, size, type, rate, channels, blockAlign, numLoops);
 }
 
 } // End of namespace Audio

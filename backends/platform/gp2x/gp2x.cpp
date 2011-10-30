@@ -32,6 +32,7 @@
 #include "backends/platform/gp2x/gp2x-hw.h"
 #include "backends/platform/gp2x/gp2x-mem.h"
 #include "common/config-manager.h"
+#include "common/debug.h"
 #include "common/file.h"
 #include "common/util.h"
 #include "base/main.h"
@@ -145,6 +146,7 @@ void OSystem_GP2X::initBackend() {
 			if (mkdir(enginedataPath, 0755) != 0)
 				warning("mkdir for '%s' failed!", enginedataPath);
 
+	//FIXME: Do not use File::addDefaultDirectory, rather implement OSystem::addSysArchivesToSearchSet() !
 	Common::File::addDefaultDirectory(enginedataPath);
 
 	// Note: Review and clean this, it's OTT at the moment.

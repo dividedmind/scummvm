@@ -46,9 +46,6 @@ protected:
 	int _tabWidth;
 	int _tabHeight;
 
-	int _tabOffset;
-	int _tabSpacing;
-	int _tabPadding;
 	int _titleVPad;
 
 	int _butRP, _butTP, _butW, _butH;
@@ -85,6 +82,11 @@ public:
 	 * Widgets are always added to the active tab.
 	 */
 	void setActiveTab(int tabID);
+
+	void setTabTitle(int tabID, const String &title) {
+		assert(0 <= tabID && tabID < (int)_tabs.size());
+		_tabs[tabID].title = title;
+	}
 
 	virtual void handleMouseDown(int x, int y, int button, int clickCount);
 	virtual bool handleKeyDown(Common::KeyState state);

@@ -31,7 +31,7 @@
 #include "saga/events.h"
 #include "saga/isomap.h"
 #include "saga/objectmap.h"
-#include "saga/rscfile.h"
+#include "saga/resource.h"
 #include "saga/script.h"
 #include "saga/sndres.h"
 #include "saga/sound.h"
@@ -51,6 +51,7 @@ static int commonObjectCompare(const CommonObjectDataPointer& obj1, const Common
 	return 1;
 }
 
+#ifdef ENABLE_IHNM
 static int commonObjectCompareIHNM(const CommonObjectDataPointer& obj1, const CommonObjectDataPointer& obj2) {
 	int p1 = obj1->_location.y;
 	int p2 = obj2->_location.y;
@@ -60,6 +61,7 @@ static int commonObjectCompareIHNM(const CommonObjectDataPointer& obj1, const Co
 		return -1;
 	return 1;
 }
+#endif
 
 static int tileCommonObjectCompare(const CommonObjectDataPointer& obj1, const CommonObjectDataPointer& obj2) {
 	int p1 = -obj1->_location.u() - obj1->_location.v() - obj1->_location.z;
@@ -110,14 +112,14 @@ Actor::Actor(SagaEngine *vm) : _vm(vm) {
 	_lastTickMsec = 0;
 
 	_yCellCount = _vm->_scene->getHeight();
-	_xCellCount = _vm->getDisplayWidth();
+	_xCellCount = _vm->getDisplayInfo().width;
 
 	_pathCell = (int8 *)malloc(_yCellCount * _xCellCount * sizeof(*_pathCell));
 
 	_pathRect.left = 0;
-	_pathRect.right = _vm->getDisplayWidth();
+	_pathRect.right = _vm->getDisplayInfo().width;
 	_pathRect.top = _vm->getDisplayInfo().pathStartY;
-	_pathRect.bottom = _vm->_scene->getHeight();
+	_pathRect.bottom = _vm->getDisplayInfo().height;
 
 	// Get actor resource file context
 	_actorContext = _vm->_resource->getContext(GAME_RESOURCEFILE);
@@ -128,7 +130,7 @@ Actor::Actor(SagaEngine *vm) : _vm(vm) {
 	// Load ITE actor strings. (IHNM actor strings are loaded by
 	// loadGlobalResources() instead.)
 
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 
 		_vm->_resource->loadResource(_actorContext, _vm->getResourceDescription()->actorsStringsResourceId, stringsPointer, stringsLength);
 
@@ -136,7 +138,7 @@ Actor::Actor(SagaEngine *vm) : _vm(vm) {
 		free(stringsPointer);
 	}
 
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		_actorsCount = ITE_ACTORCOUNT;
 		_actors = (ActorData **)malloc(_actorsCount * sizeof(*_actors));
 		for (i = 0; i < _actorsCount; i++) {
@@ -182,6 +184,7 @@ Actor::Actor(SagaEngine *vm) : _vm(vm) {
 			obj->_location.z = ITE_ObjectTable[i].z;
 		}
 	} else {
+#ifdef ENABLE_IHNM
 		// TODO. This is causing problems for SYMBIAN os as it doesn't like a static class here
 		ActorData dummyActor;
 
@@ -189,6 +192,7 @@ Actor::Actor(SagaEngine *vm) : _vm(vm) {
 		dummyActor._walkStepsPoints = NULL;
 
 		_protagonist = &dummyActor;
+#endif
 	}
 
 	_dragonHunt = true;
@@ -244,7 +248,7 @@ void Actor::loadFrameList(int frameListResourceId, ActorFrameSequence *&framesPo
 		for (int orient = 0; orient < ACTOR_DIRECTIONS_COUNT; orient++) {
 			// Load all four orientations
 			framesPointer[i].directions[orient].frameIndex = readS.readUint16();
-			if (_vm->getGameType() == GType_ITE) {
+			if (_vm->getGameId() == GID_ITE) {
 				framesPointer[i].directions[orient].frameCount = readS.readSint16();
 			} else {
 				framesPointer[i].directions[orient].frameCount = readS.readByte();
@@ -272,7 +276,7 @@ bool Actor::loadActorResources(ActorData *actor) {
 		// It's normal for some actors to have no frames
 		//warning("Frame List ID = 0 for actor index %d", actor->_index);
 
-		//if (_vm->getGameType() == GType_ITE)
+		//if (_vm->getGameId() == GID_ITE)
 		return true;
 	}
 
@@ -313,7 +317,7 @@ void Actor::loadActorSpriteList(ActorData *actor) {
 
 	_vm->_sprite->loadList(resourceId, actor->_spriteList);
 
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		if (actor->_flags & kExtended) {
 			while ((lastFrame >= actor->_spriteList.spriteCount)) {
 				resourceId++;
@@ -612,7 +616,8 @@ ActorData *Actor::getActor(uint16 actorId) {
 void Actor::setProtagState(int state) {
 	_protagState = state;
 
-	if (_vm->getGameType() == GType_IHNM) {
+#ifdef ENABLE_IHNM
+	if (_vm->getGameId() == GID_IHNM) {
 		if (!_protagonist->_shareFrames)
 			free(_protagonist->_frames);
 
@@ -620,11 +625,13 @@ void Actor::setProtagState(int state) {
 		_protagonist->_framesCount = _protagStates[state]._framesCount;
 		_protagonist->_shareFrames = true;
 	}
+#endif
+
 }
 
 int Actor::getFrameType(ActorFrameTypes frameType) {
 
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		switch (frameType) {
 		case kFrameStand:
 			return kFrameITEStand;
@@ -643,8 +650,8 @@ int Actor::getFrameType(ActorFrameTypes frameType) {
 		case kFrameLook:
 			return kFrameITELook;
 		}
-	}
-	else {
+#ifdef ENABLE_IHNM
+	} else if (_vm->getGameId() == GID_IHNM) {
 		switch (frameType) {
 		case kFrameStand:
 			return kFrameIHNMStand;
@@ -662,6 +669,7 @@ int Actor::getFrameType(ActorFrameTypes frameType) {
 			error("Actor::getFrameType() unknown frame type %d", frameType);
 			return kFrameIHNMStand;
 		}
+#endif
 	}
 	error("Actor::getFrameType() unknown frame type %d", frameType);
 }
@@ -678,18 +686,19 @@ ActorFrameRange *Actor::getActorFrameRange(uint16 actorId, int frameType) {
 	if ((actor->_facingDirection < kDirUp) || (actor->_facingDirection > kDirUpLeft))
 		error("Actor::getActorFrameRange Wrong direction 0x%X actorId 0x%X", actor->_facingDirection, actorId);
 
-	if (_vm->getGameType() == GType_ITE) {
+	if (_vm->getGameId() == GID_ITE) {
 		if (frameType >= actor->_framesCount) {
 			warning("Actor::getActorFrameRange Wrong frameType 0x%X (%d) actorId 0x%X", frameType, actor->_framesCount, actorId);
 			return &def;
 		}
 
 
-		fourDirection = actorDirectectionsLUT[actor->_facingDirection];
+		fourDirection = actorDirectionsLUT[actor->_facingDirection];
 		return &actor->_frames[frameType].directions[fourDirection];
 	}
 
-	if (_vm->getGameType() == GType_IHNM) {
+#ifdef ENABLE_IHNM
+	if (_vm->getGameId() == GID_IHNM) {
 		// It is normal for some actors to have no frames for a given frameType
 		// These are mainly actors with no frames at all (e.g. narrators or immovable actors)
 		// Examples are AM and the boy when he is talking to Benny via the computer screen.
@@ -700,9 +709,11 @@ ActorFrameRange *Actor::getActorFrameRange(uint16 actorId, int frameType) {
 			return &def;
 		}
 		frameType = CLIP(frameType, 0, actor->_framesCount - 1);
-		fourDirection = actorDirectectionsLUT[actor->_facingDirection];
+		fourDirection = actorDirectionsLUT[actor->_facingDirection];
 		return &actor->_frames[frameType].directions[fourDirection];
 	}
+#endif
+
 	return NULL;
 }
 
@@ -819,14 +830,14 @@ void Actor::handleSpeech(int msec) {
 			width = _activeSpeech.speechBox.width();
 			height = _vm->_font->getHeight(kKnownFontScript, _activeSpeech.strings[0], width - 2, _activeSpeech.getFontFlags(0)) + 1;
 
-			if (_vm->getGameType() == GType_IHNM) {
-				if (height > _vm->_scene->getHeight(true) / 2 && width < _vm->getDisplayWidth() - 20) {
-					width = _vm->getDisplayWidth() - 20;
+			if (_vm->getGameId() == GID_IHNM) {
+				if (height > _vm->_scene->getHeight(true) / 2 && width < _vm->getDisplayInfo().width - 20) {
+					width = _vm->getDisplayInfo().width - 20;
 					height = _vm->_font->getHeight(kKnownFontScript, _activeSpeech.strings[0], width - 2, _activeSpeech.getFontFlags(0)) + 1;
 				}
-			} else if (_vm->getGameType() == GType_ITE) {
-				if (height > 40 && width < _vm->getDisplayWidth() - 100) {
-					width = _vm->getDisplayWidth() - 100;
+			} else if (_vm->getGameId() == GID_ITE) {
+				if (height > 40 && width < _vm->getDisplayInfo().width - 100) {
+					width = _vm->getDisplayInfo().width - 100;
 					height = _vm->_font->getHeight(kKnownFontScript, _activeSpeech.strings[0], width - 2, _activeSpeech.getFontFlags(0)) + 1;
 				}
 			}
@@ -837,8 +848,8 @@ void Actor::handleSpeech(int msec) {
 				actor = getActor(_activeSpeech.actorIds[0]);
 				_activeSpeech.speechBox.setHeight(height);
 
-				if (_activeSpeech.speechBox.right > _vm->getDisplayWidth() - 10) {
-					_activeSpeech.drawRect.left = _vm->getDisplayWidth() - 10 - width;
+				if (_activeSpeech.speechBox.right > _vm->getDisplayInfo().width - 10) {
+					_activeSpeech.drawRect.left = _vm->getDisplayInfo().width - 10 - width;
 				} else {
 					_activeSpeech.drawRect.left = _activeSpeech.speechBox.left;
 				}
@@ -875,10 +886,12 @@ bool Actor::calcScreenPosition(CommonObjectData *commonObjectData) {
 
 		if (middle <= beginSlope) {
 			commonObjectData->_screenScale = 256;
-		} else if (_vm->getGameType() == GType_IHNM && (objectTypeId(commonObjectData->_id) & kGameObjectObject)) {
+#ifdef ENABLE_IHNM
+		} else if (_vm->getGameId() == GID_IHNM && (objectTypeId(commonObjectData->_id) & kGameObjectObject)) {
 			commonObjectData->_screenScale = 256;
-		} else if (_vm->getGameType() == GType_IHNM && (commonObjectData->_flags & kNoScale)) {
+		} else if (_vm->getGameId() == GID_IHNM && (commonObjectData->_flags & kNoScale)) {
 			commonObjectData->_screenScale = 256;
+#endif
 		} else if (middle >= endSlope) {
 			commonObjectData->_screenScale = 1;
 		} else {
@@ -891,7 +904,7 @@ bool Actor::calcScreenPosition(CommonObjectData *commonObjectData) {
 	}
 
 	result = commonObjectData->_screenPosition.x > -64 &&
-			commonObjectData->_screenPosition.x < _vm->getDisplayWidth() + 64 &&
+			commonObjectData->_screenPosition.x < _vm->getDisplayInfo().width + 64 &&
 			commonObjectData->_screenPosition.y > -64 &&
 			commonObjectData->_screenPosition.y < _vm->_scene->getHeight() + 64;
 
@@ -925,8 +938,8 @@ uint16 Actor::hitTest(const Point &testPoint, bool skipProtagonist) {
 
 	CommonObjectOrderList::iterator drawOrderIterator;
 	CommonObjectDataPointer drawObject;
-	int frameNumber;
-	SpriteList *spriteList;
+	int frameNumber = 0;
+	SpriteList *spriteList = NULL;
 
 	createDrawOrderList();
 
@@ -940,7 +953,7 @@ uint16 Actor::hitTest(const Point &testPoint, bool skipProtagonist) {
 		}
 		if (_vm->_sprite->hitTest(*spriteList, frameNumber, drawObject->_screenPosition, drawObject->_screenScale, testPoint)) {
 			result = drawObject->_id;
-			if (_vm->getGameType() == GType_ITE)
+			if (_vm->getGameId() == GID_ITE)
 				return result;		// in ITE, return the first result found (read above)
 		}
 	}
@@ -951,15 +964,17 @@ void Actor::createDrawOrderList() {
 	int i;
 	ActorData *actor;
 	ObjectData *obj;
-	CommonObjectOrderList::CompareFunction compareFunction;
+	CommonObjectOrderList::CompareFunction compareFunction = 0;
 
 	if (_vm->_scene->getFlags() & kSceneFlagISO) {
 		compareFunction = &tileCommonObjectCompare;
 	} else {
-		if (_vm->getGameType() == GType_ITE)
+		if (_vm->getGameId() == GID_ITE)
 			compareFunction = &commonObjectCompare;
-		else
+#ifdef ENABLE_IHNM
+		else if (_vm->getGameId() == GID_IHNM)
 			compareFunction = &commonObjectCompareIHNM;
+#endif
 	}
 
 	_drawOrderList.clear();
@@ -1029,6 +1044,11 @@ bool Actor::getSpriteParams(CommonObjectData *commonObjectData, int &frameNumber
 }
 
 void Actor::drawActors() {
+	// Do nothing for SAGA2 games for now
+	if (_vm->isSaga2()) {
+		return;
+	}
+
 	if (_vm->_anim->hasCutaway()) {
 		drawSpeech();
 		return;
@@ -1044,12 +1064,8 @@ void Actor::drawActors() {
 
 	CommonObjectOrderList::iterator drawOrderIterator;
 	CommonObjectDataPointer drawObject;
-	int frameNumber;
-	SpriteList *spriteList;
-
-	Surface *backBuffer;
-
-	backBuffer = _vm->_gfx->getBackBuffer();
+	int frameNumber = 0;
+	SpriteList *spriteList = NULL;
 
 	createDrawOrderList();
 
@@ -1061,9 +1077,9 @@ void Actor::drawActors() {
 		}
 
 		if (_vm->_scene->getFlags() & kSceneFlagISO) {
-			_vm->_isoMap->drawSprite(backBuffer, *spriteList, frameNumber, drawObject->_location, drawObject->_screenPosition, drawObject->_screenScale);
+			_vm->_isoMap->drawSprite(*spriteList, frameNumber, drawObject->_location, drawObject->_screenPosition, drawObject->_screenScale);
 		} else {
-			_vm->_sprite->drawOccluded(backBuffer, _vm->_scene->getSceneClip(),*spriteList, frameNumber, drawObject->_screenPosition, drawObject->_screenScale, drawObject->_screenDepth);
+			_vm->_sprite->drawOccluded(*spriteList, frameNumber, drawObject->_screenPosition, drawObject->_screenScale, drawObject->_screenDepth);
 		}
 	}
 
@@ -1072,21 +1088,15 @@ void Actor::drawActors() {
 
 void Actor::drawSpeech(void) {
 	if (!isSpeaking() || !_activeSpeech.playing || _vm->_script->_skipSpeeches
-		|| (!_vm->_subtitlesEnabled && (_vm->getFeatures() & GF_CD_FX))
-		|| (!_vm->_subtitlesEnabled && (_vm->getGameType() == GType_IHNM)))
+		|| (!_vm->_subtitlesEnabled && _vm->getGameId() == GID_ITE && !(_vm->getFeatures() & GF_ITE_FLOPPY))
+		|| (!_vm->_subtitlesEnabled && (_vm->getGameId() == GID_IHNM)))
 		return;
 
-	int i;
 	Point textPoint;
 	ActorData *actor;
 	int width, height;
-	int stringLength;
-	Surface *backBuffer;
-	char *outputString;
-
-	backBuffer = _vm->_gfx->getBackBuffer();
-	stringLength = strlen(_activeSpeech.strings[0]);
-	outputString = (char*)calloc(stringLength + 1, 1);
+	int stringLength = strlen(_activeSpeech.strings[0]);
+	char *outputString = (char*)calloc(stringLength + 1, 1);
 
 	if (_activeSpeech.speechFlags & kSpeakSlow)
 		strncpy(outputString, _activeSpeech.strings[0], _activeSpeech.slowModeCharIndex + 1);
@@ -1097,22 +1107,22 @@ void Actor::drawSpeech(void) {
 		height = _vm->_font->getHeight(kKnownFontScript);
 		width = _vm->_font->getStringWidth(kKnownFontScript, _activeSpeech.strings[0], 0, kFontNormal);
 
-		for (i = 0; i < _activeSpeech.actorsCount; i++) {
+		for (int i = 0; i < _activeSpeech.actorsCount; i++) {
 			actor = getActor(_activeSpeech.actorIds[i]);
 			calcScreenPosition(actor);
 
-			textPoint.x = CLIP(actor->_screenPosition.x - width / 2, 10, _vm->getDisplayWidth() - 10 - width);
+			textPoint.x = CLIP(actor->_screenPosition.x - width / 2, 10, _vm->getDisplayInfo().width - 10 - width);
 
-			if (_vm->getGameType() == GType_ITE)
+			if (_vm->getGameId() == GID_ITE)
 				textPoint.y = CLIP(actor->_screenPosition.y - 58, 10, _vm->_scene->getHeight(true) - 10 - height);
-			else if (_vm->getGameType() == GType_IHNM)
+			else if (_vm->getGameId() == GID_IHNM)
 				textPoint.y = 10; // CLIP(actor->_screenPosition.y - 160, 10, _vm->_scene->getHeight(true) - 10 - height);
 
-			_vm->_font->textDraw(kKnownFontScript, backBuffer, outputString, textPoint,
+			_vm->_font->textDraw(kKnownFontScript, outputString, textPoint,
 				_activeSpeech.speechColor[i], _activeSpeech.outlineColor[i], _activeSpeech.getFontFlags(i));
 		}
 	} else {
-		_vm->_font->textDrawRect(kKnownFontScript, backBuffer, outputString, _activeSpeech.drawRect, _activeSpeech.speechColor[0],
+		_vm->_font->textDrawRect(kKnownFontScript, outputString, _activeSpeech.drawRect, _activeSpeech.speechColor[0],
 			_activeSpeech.outlineColor[0], _activeSpeech.getFontFlags(0));
 	}
 
@@ -1140,9 +1150,9 @@ void Actor::actorSpeech(uint16 actorId, const char **strings, int stringsCount, 
 	_activeSpeech.playing = false;
 	_activeSpeech.slowModeCharIndex = 0;
 
-	dist = MIN(actor->_screenPosition.x - 10, _vm->getDisplayWidth() - 10 - actor->_screenPosition.x);
+	dist = MIN(actor->_screenPosition.x - 10, _vm->getDisplayInfo().width - 10 - actor->_screenPosition.x);
 
-	if (_vm->getGameType() == GType_ITE)
+	if (_vm->getGameId() == GID_ITE)
 		dist = CLIP<int16>(dist, 60, 150);
 	else
 		dist = CLIP<int16>(dist, 120, 300);
@@ -1154,9 +1164,9 @@ void Actor::actorSpeech(uint16 actorId, const char **strings, int stringsCount, 
 		_activeSpeech.speechBox.right += 10 - _activeSpeech.speechBox.left;
 		_activeSpeech.speechBox.left = 10;
 	}
-	if (_activeSpeech.speechBox.right > _vm->getDisplayWidth() - 10) {
-		_activeSpeech.speechBox.left -= _activeSpeech.speechBox.right - _vm->getDisplayWidth() - 10;
-		_activeSpeech.speechBox.right = _vm->getDisplayWidth() - 10;
+	if (_activeSpeech.speechBox.right > _vm->getDisplayInfo().width - 10) {
+		_activeSpeech.speechBox.left -= _activeSpeech.speechBox.right - _vm->getDisplayInfo().width - 10;
+		_activeSpeech.speechBox.right = _vm->getDisplayInfo().width - 10;
 	}
 
 	// HACK for the compact disk in Ellen's chapter
@@ -1164,7 +1174,7 @@ void Actor::actorSpeech(uint16 actorId, const char **strings, int stringsCount, 
 	// scene. After speaking with AM, the compact disk is visible. She always says this line
 	// when entering room 59, after speaking with AM, if the compact disk is not picked up yet
 	// Check Script::sfDropObject for the other part of this hack
-	if (_vm->getGameType() == GType_IHNM && _vm->_scene->currentChapterNumber() == 3 &&
+	if (_vm->getGameId() == GID_IHNM && _vm->_scene->currentChapterNumber() == 3 &&
 		_vm->_scene->currentSceneNumber() == 59 && _activeSpeech.sampleResourceId == 286) {
 		for (i = 0; i < _objsCount; i++) {
 			if (_objs[i]->_id == 16385) {	// the compact disk
@@ -1188,7 +1198,7 @@ void Actor::nonActorSpeech(const Common::Rect &box, const char **strings, int st
 	_activeSpeech.speechFlags = speechFlags;
 	_activeSpeech.actorsCount = 1;
 	_activeSpeech.actorIds[0] = 0;
-	if (!(_vm->getFeatures() & GF_CD_FX))
+	if (_vm->getFeatures() & GF_ITE_FLOPPY)
 		_activeSpeech.sampleResourceId = -1;
 	else
 		_activeSpeech.sampleResourceId = sampleResourceId;
@@ -1222,7 +1232,7 @@ void Actor::simulSpeech(const char *string, uint16 *actorIds, int actorIdsCount,
 void Actor::abortAllSpeeches() {
 	// WORKAROUND: Don't abort speeches in scene 31 (tree with beehive). This prevents the
 	// making fire animation from breaking
-	if (_vm->getGameType() == GType_ITE && _vm->_scene->currentSceneNumber() == 31)
+	if (_vm->getGameId() == GID_ITE && _vm->_scene->currentSceneNumber() == 31)
 		return;
 
 	abortSpeech();

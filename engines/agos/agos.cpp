@@ -23,8 +23,6 @@
  *
  */
 
-#include <time.h>	// for AGOSEngine::getTime()
-
 #include "common/config-manager.h"
 #include "common/file.h"
 #include "common/system.h"
@@ -65,6 +63,14 @@ static const GameSpecificSettings puzzlepack_settings = {
 
 AGOSEngine_PuzzlePack::AGOSEngine_PuzzlePack(OSystem *system)
 	: AGOSEngine_Feeble(system) {
+
+	_iconToggleCount = 0;
+	_voiceCount = 0;
+
+	_lastTickCount = 0;
+	_thisTickCount = 0;
+	_startSecondCount = 0;
+	_tSecondCount = 0;
 }
 
 AGOSEngine_Feeble::AGOSEngine_Feeble(OSystem *system)
@@ -94,7 +100,7 @@ AGOSEngine_Elvira1::AGOSEngine_Elvira1(OSystem *system)
 AGOSEngine::AGOSEngine(OSystem *syst)
 	: Engine(syst) {
 	_vcPtr = 0;
-	_vc_get_out_of_code = 0;
+	_vcGetOutOfCode = 0;
 	_gameOffsetsPtr = 0;
 
 	_debugger = 0;
@@ -130,7 +136,7 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	_textSize = 0;
 	_stringTabNum = 0;
 	_stringTabPos = 0;
-	_stringtab_numalloc = 0;
+	_stringTabSize = 0;
 	_stringTabPtr = 0;
 
 	_itemArrayPtr = 0;
@@ -168,7 +174,6 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	_subroutineListOrg = 0;
 
 	_subroutineList = 0;
-	_subroutine = 0;
 
 	_dxSurfacePitch = 0;
 
@@ -194,10 +199,10 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	_backFlag = 0;
 
 	_debugMode = 0;
-	_startMainScript = false;
-	_continousMainScript = false;
-	_startVgaScript = false;
-	_continousVgaScript = false;
+	_dumpScripts = false;
+	_dumpOpcodes = false;
+	_dumpVgaScripts = false;
+	_dumpVgaOpcodes = false;
 	_dumpImages = false;
 
 	_copyProtection = false;
@@ -244,8 +249,8 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	_objectItem = 0;
 	_currentPlayer = 0;
 
-	_iOverflow = 0;
-	_nameLocked = 0;
+	_iOverflow = false;
+	_nameLocked = false;
 	_hitAreaObjectItem = 0;
 	_lastHitArea = 0;
 	_lastNameOn = 0;
@@ -260,11 +265,11 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	_defaultVerb = 0;
 	_mouseHideCount = 0;
 
-	_dragAccept = 0;
-	_dragFlag = 0;
+	_dragAccept = false;
+	_dragEnd = false;
+	_dragFlag = false;
 	_dragMode = 0;
 	_dragCount = 0;
-	_dragEnd = 0;
 	_lastClickRem = 0;
 
 	_windowNum = 0;
@@ -310,7 +315,7 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	_fastFadeOutFlag = 0;
 	_exitCutscene = 0;
 	_paletteFlag = 0;
-	_bottomPalette = 0;
+	_bottomPalette = false;
 	_picture8600 = 0;
 
 	_soundFileId = 0;
@@ -338,14 +343,6 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	_curSfxFile = 0;
 
 	_syncCount = 0;
-
-	_iconToggleCount = 0;
-	_voiceCount = 0;
-
-	_lastTickCount = 0;
-	_thisTickCount = 0;
-	_startSecondCount = 0;
-	_tSecondCount = 0;
 
 	_frameCount = 0;
 
@@ -391,8 +388,8 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	_superRoomNumber = 0;
 	_wallOn = 0;
 
+	_boxCR = false;
 	_boxLineCount = 0;
-	_boxCR = 0;
 	memset(_boxBuffer, 0, sizeof(_boxBuffer));
 	_boxBufferPtr = _boxBuffer;
 
@@ -427,6 +424,16 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	memset(_fcsData1, 0, sizeof(_fcsData1));
 	memset(_fcsData2, 0, sizeof(_fcsData2));
 
+	_awaitTwoByteToken = 0;
+	_byteTokens = 0;
+	_byteTokenStrings = 0;
+	_twoByteTokens = 0;
+	_twoByteTokenStrings = 0;
+	_secondTwoByteTokenStrings = 0;
+	_thirdTwoByteTokenStrings = 0;
+	memset(_textBuffer, 0, sizeof(_textBuffer));
+	_textCount = 0;
+
 	_freeStringSlot = 0;
 
 	memset(_stringReturnBuffer, 0, sizeof(_stringReturnBuffer));
@@ -459,7 +466,7 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 
 	_vgaTickCounter = 0;
 
-	_moviePlay = 0;
+	_moviePlayer = 0;
 	_sound = 0;
 
 	_effectsPaused = false;
@@ -528,7 +535,7 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	syst->getEventManager()->registerRandomSource(_rnd, "agos");
 }
 
-int AGOSEngine::init() {
+Common::Error AGOSEngine::init() {
 	if (getGameId() == GID_DIMP) {
 		_screenWidth = 496;
 		_screenHeight = 400;
@@ -540,15 +547,7 @@ int AGOSEngine::init() {
 		_screenHeight = 200;
 	}
 
-	_system->beginGFXTransaction();
-		initCommonGFX(getGameType() == GType_FF || getGameType() == GType_PP);
-		_system->initSize(_screenWidth, _screenHeight);
-	_system->endGFXTransaction();
-
-	// Setup mixer
-	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));
-	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, ConfMan.getInt("music_volume"));
-	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, ConfMan.getInt("speech_volume"));
+	initGraphics(_screenWidth, _screenHeight, getGameType() == GType_FF || getGameType() == GType_PP);
 
 	if ((getGameType() == GType_SIMON2 && getPlatform() == Common::kPlatformWindows) ||
 		(getGameType() == GType_SIMON1 && getPlatform() == Common::kPlatformWindows) ||
@@ -558,7 +557,7 @@ int AGOSEngine::init() {
 		// Setup midi driver
 		int midiDriver = MidiDriver::detectMusicDriver(MDT_ADLIB | MDT_MIDI);
 		_nativeMT32 = ((midiDriver == MD_MT32) || ConfMan.getBool("native_mt32"));
-		
+
 		_driver = MidiDriver::createMidi(midiDriver);
 
 		if (_nativeMT32) {
@@ -580,6 +579,9 @@ int AGOSEngine::init() {
 	} else {
 		_driver = NULL;
 	}
+
+	// Setup mixer
+	syncSoundSettings();
 
 	// allocate buffers
 	_backGroundBuf = (byte *)calloc(_screenWidth * _screenHeight, 1);
@@ -608,8 +610,6 @@ int AGOSEngine::init() {
 
 	_debugger = new Debugger(this);
 	_sound = new Sound(this, gss, _mixer);
-
-	_moviePlay = new MoviePlayer(this, _mixer);
 
 	if (ConfMan.hasKey("music_mute") && ConfMan.getBool("music_mute") == 1) {
 		_musicPaused = true;
@@ -653,17 +653,18 @@ int AGOSEngine::init() {
 		_subtitles = true;
 	}
 
+	// TODO: Use special debug levels instead of the following hack.
 	_debugMode = (gDebugLevel >= 0);
 	if (gDebugLevel == 2)
-		_continousMainScript = true;
+		_dumpOpcodes = true;
 	if (gDebugLevel == 3)
-		_continousVgaScript = true;
+		_dumpVgaOpcodes = true;
 	if (gDebugLevel == 4)
-		_startMainScript = true;
+		_dumpScripts = true;
 	if (gDebugLevel == 5)
-		_startVgaScript = true;
+		_dumpVgaScripts = true;
 
-	return 0;
+	return Common::kNoError;
 }
 
 static const uint16 initialVideoWindows_Simon[20] = {
@@ -749,7 +750,7 @@ void AGOSEngine_Simon2::setupGame() {
 
 	_numMusic = 93;
 	_numSFX = 222;
-	_numSpeech = 3632;
+	_numSpeech = 11997;
 
 	AGOSEngine::setupGame();
 }
@@ -775,7 +776,7 @@ void AGOSEngine_Simon1::setupGame() {
 
 	_numMusic = 34;
 	_numSFX = 127;
-	_numSpeech = 1996;
+	_numSpeech = 3623;
 
 	AGOSEngine::setupGame();
 }
@@ -876,7 +877,6 @@ void AGOSEngine::setupGame() {
 }
 
 AGOSEngine::~AGOSEngine() {
-	// Sync with AGOSEngine::shutdown()
 	// In Simon 2, this gets deleted along with _sound further down
 	if (getGameType() != GType_SIMON2)
 		delete _gameFile;
@@ -895,7 +895,7 @@ AGOSEngine::~AGOSEngine() {
 	free(_tablesHeapPtr - _tablesHeapCurPos);
 
 	free(_mouseData);
-	
+
 	free(_gameOffsetsPtr);
 	free(_iconFilePtr);
 	free(_itemArrayPtr);
@@ -923,7 +923,7 @@ AGOSEngine::~AGOSEngine() {
 	delete[] _windowList;
 
 	delete _debugger;
-	delete _moviePlay;
+	delete _moviePlayer;
 	delete _sound;
 }
 
@@ -951,14 +951,14 @@ void AGOSEngine::pauseEngineIntern(bool pauseIt) {
 void AGOSEngine::pause() {
 	pauseEngine(true);
 
-	while (_pause && !quit()) {
+	while (_pause && !shouldQuit()) {
 		delay(1);
 		if (_keyPressed.keycode == Common::KEYCODE_p)
 			pauseEngine(false);
 	}
 }
 
-int AGOSEngine::go() {
+Common::Error AGOSEngine::go() {
 	loadGamePcFile();
 
 	addTimeEvent(0, 1);
@@ -986,22 +986,10 @@ int AGOSEngine::go() {
 
 	if (getGameType() == GType_ELVIRA1 && getPlatform() == Common::kPlatformAtariST &&
 		(getFeatures() & GF_DEMO)) {
-		int i;
+		setWindowImage(3, 9900);
+		while (!shouldQuit())
+			delay(0);
 
-		while (!quit()) {
-			for (i = 0; i < 4; i++) {
-				setWindowImage(3, 9902 + i);
-				debug(0, "Displaying image %d", 9902 + i);
-				delay(3000);
-
-			}
-
-			for (i = 4; i < 16; i++) {
-				setWindowImage(4, 9902 + i);
-				debug(0, "Displaying image %d", 9902 + i);
-				delay(3000);
-			}
-		}
 	}
 
 	if (getGameType() == GType_ELVIRA1 && getFeatures() & GF_DEMO) {
@@ -1010,77 +998,31 @@ int AGOSEngine::go() {
 
 	if ((getPlatform() == Common::kPlatformAmiga || getPlatform() == Common::kPlatformMacintosh) &&
 		getGameType() == GType_FF) {
-		_moviePlay->load((const char *)"epic.dxa");
-		_moviePlay->play();
+		_moviePlayer = makeMoviePlayer(this, (const char *)"epic.dxa");
+		assert(_moviePlayer);
+
+		_moviePlayer->load();
+		_moviePlayer->play();
+
+		delete _moviePlayer;
+		_moviePlayer = NULL;
 	}
 
 	runSubroutine101();
 	permitInput();
 
-	while (!quit()) {
+	while (!shouldQuit()) {
 		waitForInput();
 		handleVerbClicked(_verbHitArea);
 		delay(100);
 	}
 
-	return 0;
+	return Common::kNoError;
 }
 
-
-/*  I do not think that this will be used
- *  
-void AGOSEngine::shutdown() {
-	// Sync with AGOSEngine::~AGOSEngine()
-	// In Simon 2, this gets deleted along with _sound further down
-	if (getGameType() != GType_SIMON2)
-		delete _gameFile;
-
-	_midi.close();
-	delete _driver;
-
-	for (uint i = 0; i < _itemHeap.size(); i++) {
-		delete[] _itemHeap[i];
-	}
-	_itemHeap.clear();
-
-	free(_tablesHeapPtr - _tablesHeapCurPos);
-
-	free(_gameOffsetsPtr);
-	free(_iconFilePtr);
-	free(_itemArrayPtr);
-	free(_stringTabPtr);
-	free(_strippedTxtMem);
-	free(_tblList);
-	free(_textMem);
-
-	free(_backGroundBuf);
-	free(_backBuf);
-	free(_scaleBuf);
-
-	free(_window4BackScn);
-	free(_window6BackScn);
-
-	free(_variableArray);
-	free(_variableArray2);
-
-	delete _dummyItem1;
-	delete _dummyItem2;
-	delete _dummyItem3;
-
-	delete _dummyWindow;
-	delete[] _windowList;
-
-	delete _debugger;
-	delete _moviePlay;
-	delete _sound;
-
-	_system->quit();
-}
-*/
 
 uint32 AGOSEngine::getTime() const {
-	// FIXME: calling time() is not portable, use OSystem::getMillis instead
-	return (uint32)time(NULL);
+	return _system->getMillis() / 1000;
 }
 
 
@@ -1088,7 +1030,9 @@ void AGOSEngine::syncSoundSettings() {
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));
 	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, ConfMan.getInt("music_volume"));
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, ConfMan.getInt("speech_volume"));
-	_midi.setVolume(ConfMan.getInt("music_volume"), ConfMan.getInt("sfx_volume"));
+
+	if (_midiEnabled)
+		_midi.setVolume(ConfMan.getInt("music_volume"), ConfMan.getInt("sfx_volume"));
 }
 
 } // End of namespace AGOS

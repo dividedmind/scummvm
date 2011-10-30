@@ -23,17 +23,8 @@
  *
  */
 
-
-
-#include "base/plugins.h"
-
 #include "common/config-manager.h"
-#include "common/file.h"
-#include "common/fs.h"
-#include "common/events.h"
-#include "common/savefile.h"
 #include "common/system.h"
-#include "common/timer.h"
 
 #include "sky/control.h"
 #include "sky/debug.h"
@@ -55,8 +46,6 @@
 
 #include "sound/mididrv.h"
 #include "sound/mixer.h"
-
-#include "engines/metaengine.h"
 
 #ifdef _WIN32_WCE
 
@@ -80,186 +69,6 @@ extern bool draw_keyboard;
 
  With apologies to the CD32 SteelSky file.
 */
-
-static const PlainGameDescriptor skySetting =
-	{"sky", "Beneath a Steel Sky" };
-
-struct SkyVersion {
-	int dinnerTableEntries;
-	int dataDiskSize;
-	const char *extraDesc;
-	int version;
-};
-
-// TODO: Would be nice if Disk::determineGameVersion() used this table, too.
-static const SkyVersion skyVersions[] = {
-	{  243, -1, "pc gamer demo", 109 },
-	{  247, -1, "floppy demo", 267 },
-	{ 1404, -1, "floppy", 288 },
-	{ 1413, -1, "floppy", 303 },
-	{ 1445, 8830435, "floppy", 348 },
-	{ 1445, -1, "floppy", 331 },
-	{ 1711, -1, "cd demo", 365 },
-	{ 5099, -1, "cd", 368 },
-	{ 5097, -1, "cd", 372 },
-	{ 0, 0, 0, 0 }
-};
-
-class SkyMetaEngine : public MetaEngine {
-public:
-	virtual const char *getName() const;
-	virtual const char *getCopyright() const;
-
-	virtual bool hasFeature(MetaEngineFeature f) const;
-	virtual GameList getSupportedGames() const;
-	virtual GameDescriptor findGame(const char *gameid) const;
-	virtual GameList detectGames(const Common::FSList &fslist) const;	
-
-	virtual PluginError createInstance(OSystem *syst, Engine **engine) const;
-
-	virtual SaveStateList listSaves(const char *target) const;
-};
-
-const char *SkyMetaEngine::getName() const {
-	return "Beneath a Steel Sky";
-}
-
-const char *SkyMetaEngine::getCopyright() const {
-	return "Beneath a Steel Sky (C) Revolution";
-}
-
-bool SkyMetaEngine::hasFeature(MetaEngineFeature f) const {
-	return
-		(f == kSupportsRTL) ||
-		(f == kSupportsListSaves) ||
-		(f == kSupportsDirectLoad);
-}
-
-GameList SkyMetaEngine::getSupportedGames() const {
-	GameList games;
-	games.push_back(skySetting);
-	return games;
-}
-
-GameDescriptor SkyMetaEngine::findGame(const char *gameid) const {
-	if (0 == scumm_stricmp(gameid, skySetting.gameid))
-		return skySetting;
-	return GameDescriptor();
-}
-
-GameList SkyMetaEngine::detectGames(const Common::FSList &fslist) const {
-	GameList detectedGames;
-	bool hasSkyDsk = false;
-	bool hasSkyDnr = false;
-	int dinnerTableEntries = -1;
-	int dataDiskSize = -1;
-
-	// Iterate over all files in the given directory
-	for (Common::FSList::const_iterator file = fslist.begin(); file != fslist.end(); ++file) {
-		if (!file->isDirectory()) {
-			const char *fileName = file->getName().c_str();
-
-			if (0 == scumm_stricmp("sky.dsk", fileName)) {
-				Common::File dataDisk;
-				if (dataDisk.open(file->getPath())) {
-					hasSkyDsk = true;
-					dataDiskSize = dataDisk.size();
-				}
-			}
-
-			if (0 == scumm_stricmp("sky.dnr", fileName)) {
-				Common::File dinner;
-				if (dinner.open(file->getPath())) {
-					hasSkyDnr = true;
-					dinnerTableEntries = dinner.readUint32LE();
-				}
-			}
-		}
-	}
-
-	if (hasSkyDsk && hasSkyDnr) {
-		// Match found, add to list of candidates, then abort inner loop.
-		// The game detector uses US English by default. We want British
-		// English to match the recorded voices better.
-		GameDescriptor dg(skySetting.gameid, skySetting.description, Common::UNK_LANG, Common::kPlatformUnknown);
-		const SkyVersion *sv = skyVersions;
-		while (sv->dinnerTableEntries) {
-			if (dinnerTableEntries == sv->dinnerTableEntries &&
-				(sv->dataDiskSize == dataDiskSize || sv->dataDiskSize == -1)) {
-				char buf[32];
-				snprintf(buf, sizeof(buf), "v0.0%d %s", sv->version, sv->extraDesc);
-				dg.updateDesc(buf);
-				break;
-			}
-			++sv;
-		}
-		detectedGames.push_back(dg);
-	}
-
-	return detectedGames;
-}
-
-PluginError SkyMetaEngine::createInstance(OSystem *syst, Engine **engine) const {
-	assert(engine);
-	*engine = new Sky::SkyEngine(syst);
-	return kNoError;
-}
-
-SaveStateList SkyMetaEngine::listSaves(const char *target) const {
-	Common::SaveFileManager *saveFileMan = g_system->getSavefileManager();
-	SaveStateList saveList;
-
-	// Load the descriptions
-	Common::StringList savenames;
-	savenames.resize(MAX_SAVE_GAMES+1);
-
-	Common::InSaveFile *inf;
-	inf = saveFileMan->openForLoading("SKY-VM.SAV");
-	if (inf != NULL) {
-		char *tmpBuf =  new char[MAX_SAVE_GAMES * MAX_TEXT_LEN];
-		char *tmpPtr = tmpBuf;
-		inf->read(tmpBuf, MAX_SAVE_GAMES * MAX_TEXT_LEN);
-		for (int i = 0; i < MAX_SAVE_GAMES; ++i) {
-			savenames[i] = tmpPtr;
-			tmpPtr += savenames[i].size() + 1;
-		}
-		delete inf;
-		delete[] tmpBuf;
-	}
-
-	// Find all saves
-	Common::StringList filenames;
-	filenames = saveFileMan->listSavefiles("SKY-VM.???");
-	sort(filenames.begin(), filenames.end());	// Sort (hopefully ensuring we are sorted numerically..)
-
-	// Slot 0 is the autosave, if it exists.
-	// TODO: Check for the existence of the autosave -- but this require us
-	// to know which SKY variant we are looking at.
-	saveList.insert_at(0, SaveStateDescriptor(0, "*AUTOSAVE*", ""));
-
-	// Prepare the list of savestates by looping over all matching savefiles
-	for (Common::StringList::const_iterator file = filenames.begin(); file != filenames.end(); file++) {
-		// Extract the extension
-		Common::String ext = file->c_str() + file->size() - 3;
-		ext.toUppercase();
-		if (isdigit(ext[0]) && isdigit(ext[1]) && isdigit(ext[2])){
-			int slotNum = atoi(ext.c_str());
-			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
-			if (in) {
-				saveList.push_back(SaveStateDescriptor(slotNum+1, savenames[slotNum], *file));
-				delete in;
-			}
-		}
-	}
-
-	return saveList;
-}
-
-#if PLUGIN_ENABLED_DYNAMIC(SKY)
-	REGISTER_PLUGIN_DYNAMIC(SKY, PLUGIN_TYPE_ENGINE, SkyMetaEngine);
-#else
-	REGISTER_PLUGIN_STATIC(SKY, PLUGIN_TYPE_ENGINE, SkyMetaEngine);
-#endif
 
 namespace Sky {
 
@@ -285,8 +94,6 @@ SkyEngine::~SkyEngine() {
 	delete _skyDisk;
 	delete _skyControl;
 	delete _skyCompact;
-	if (_skyIntro)
-		delete _skyIntro;
 
 	for (int i = 0; i < 300; i++)
 		if (_itemList[i])
@@ -347,7 +154,7 @@ void SkyEngine::handleKey(void) {
 	_keyPressed.reset();
 }
 
-int SkyEngine::go() {
+Common::Error SkyEngine::go() {
 
 	_keyPressed.reset();
 
@@ -361,11 +168,13 @@ int SkyEngine::go() {
 	if (result != GAME_RESTORED) {
 		bool introSkipped = false;
 		if (_systemVars.gameVersion > 267) { // don't do intro for floppydemos
-			_skyIntro = new Intro(_skyDisk, _skyScreen, _skyMusic, _skySound, _skyText, _mixer, _system);
-			introSkipped = !_skyIntro->doIntro(_floppyIntro);
+			Intro *skyIntro = new Intro(_skyDisk, _skyScreen, _skyMusic, _skySound, _skyText, _mixer, _system);
+			bool floppyIntro = ConfMan.getBool("alt_intro");
+			introSkipped = !skyIntro->doIntro(floppyIntro);
+			delete skyIntro;
 		}
 
-		if (!quit()) {
+		if (!shouldQuit()) {
 			_skyLogic->initScreen0();
 			if (introSkipped)
 				_skyControl->restartGame();
@@ -375,7 +184,7 @@ int SkyEngine::go() {
 	_lastSaveTime = _system->getMillis();
 
 	uint32 delayCount = _system->getMillis();
-	while (!quit()) {
+	while (!shouldQuit()) {
 		if (_debugger->isAttached())
 			_debugger->onFrame();
 
@@ -426,14 +235,11 @@ int SkyEngine::go() {
 	_skyMusic->stopMusic();
 	ConfMan.flushToDisk();
 	delay(1500);
-	return 0;
+	return Common::kNoError;
 }
 
-int SkyEngine::init() {
-	_system->beginGFXTransaction();
-		initCommonGFX(false);
-		_system->initSize(320, 200);
-	_system->endGFXTransaction();
+Common::Error SkyEngine::init() {
+	initGraphics(320, 200, false);
 
 	if (ConfMan.getBool("sfx_mute")) {
 		SkyEngine::_systemVars.systemFlags |= SF_FX_OFF;
@@ -444,7 +250,6 @@ int SkyEngine::init() {
 	 _mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));
 	 _mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, ConfMan.getInt("speech_volume"));
 	 _mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, ConfMan.getInt("music_volume"));
-	_floppyIntro = ConfMan.getBool("alt_intro");
 
 	_skyDisk = new Disk();
 	_skySound = new Sound(_mixer, _skyDisk, Audio::Mixer::kMaxChannelVolume);
@@ -482,7 +287,6 @@ int SkyEngine::init() {
 	_systemVars.systemFlags |= SF_PLAY_VOCS;
 	_systemVars.gameSpeed = 50;
 
-	_skyIntro = 0;
 	_skyCompact = new SkyCompact();
 	_skyText = new Text(_skyDisk, _skyCompact);
 	_skyMouse = new Mouse(_system, _skyDisk, _skyCompact);
@@ -547,7 +351,7 @@ int SkyEngine::init() {
 	_skyMusic->setVolume(ConfMan.getInt("music_volume") >> 1);
 
 	_debugger = new Debugger(_skyLogic, _skyMouse, _skyScreen, _skyCompact);
-	return 0;
+	return Common::kNoError;
 }
 
 void SkyEngine::initItemList() {

@@ -27,7 +27,7 @@
 
 #include "graphics/surface.h"
 #include "iphone_common.h"
-#include "common/system.h"
+#include "backends/base-backend.h"
 #include "common/events.h"
 #include "sound/mixer_intern.h"
 #include "backends/fs/posix/posix-fs-factory.h"
@@ -52,7 +52,7 @@ typedef struct AQCallbackStruct {
     AudioStreamBasicDescription dataFormat;
 } AQCallbackStruct;
 
-class OSystem_IPHONE : public OSystem {
+class OSystem_IPHONE : public BaseBackend {
 protected:
 
 	static const OSystem::GraphicsMode s_supportedGraphicsModes[];
@@ -143,6 +143,7 @@ public:
 	virtual void copyRectToOverlay(const OverlayColor *buf, int pitch, int x, int y, int w, int h);
 	virtual int16 getOverlayHeight();
 	virtual int16 getOverlayWidth();
+	virtual Graphics::PixelFormat getOverlayFormat() const { return Graphics::createPixelFormat<565>(); }
 
 	virtual bool showMouse(bool visible);
 
@@ -177,7 +178,8 @@ public:
 	void startSoundsystem();
 	void stopSoundsystem();
 
-	static const char* getConfigPath();
+	virtual Common::SeekableReadStream *createConfigReadStream();
+	virtual Common::WriteStream *createConfigWriteStream();
 
 protected:
 	inline void addDirtyRect(int16 x1, int16 y1, int16 w, int16 h);
@@ -188,17 +190,17 @@ protected:
 	void suspendLoop();
 	static void AQBufferCallback(void *in, AudioQueueRef inQ, AudioQueueBufferRef outQB);
 	static int timerHandler(int t);
-	
+
 	bool handleEvent_swipe(Common::Event &event, int direction);
 	void handleEvent_keyPressed(Common::Event &event, int keyPressed);
 	void handleEvent_orientationChanged(int orientation);
 
 	bool handleEvent_mouseDown(Common::Event &event, int x, int y);
 	bool handleEvent_mouseUp(Common::Event &event, int x, int y);
-	
+
 	bool handleEvent_secondMouseDown(Common::Event &event, int x, int y);
 	bool handleEvent_secondMouseUp(Common::Event &event, int x, int y);
-	
+
 	bool handleEvent_mouseDragged(Common::Event &event, int x, int y);
 };
 

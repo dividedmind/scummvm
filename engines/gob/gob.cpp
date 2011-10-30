@@ -24,6 +24,7 @@
  */
 
 #include "common/endian.h"
+#include "common/events.h"
 
 #include "base/plugins.h"
 #include "common/config-manager.h"
@@ -84,17 +85,17 @@ GobEngine::GobEngine(OSystem *syst) : Engine(syst) {
 
 	_copyProtection = ConfMan.getBool("copy_protection");
 
-	Common::addSpecialDebugLevel(kDebugFuncOp, "FuncOpcodes", "Script FuncOpcodes debug level");
-	Common::addSpecialDebugLevel(kDebugDrawOp, "DrawOpcodes", "Script DrawOpcodes debug level");
-	Common::addSpecialDebugLevel(kDebugGobOp, "GoblinOpcodes", "Script GoblinOpcodes debug level");
-	Common::addSpecialDebugLevel(kDebugSound, "Sound", "Sound output debug level");
-	Common::addSpecialDebugLevel(kDebugParser, "Parser", "Parser debug level");
-	Common::addSpecialDebugLevel(kDebugGameFlow, "Gameflow", "Gameflow debug level");
-	Common::addSpecialDebugLevel(kDebugFileIO, "FileIO", "File Input/Output debug level");
-	Common::addSpecialDebugLevel(kDebugSaveLoad, "SaveLoad", "Saving/Loading debug level");
-	Common::addSpecialDebugLevel(kDebugGraphics, "Graphics", "Graphics debug level");
-	Common::addSpecialDebugLevel(kDebugVideo, "Video", "IMD/VMD video debug level");
-	Common::addSpecialDebugLevel(kDebugCollisions, "Collisions", "Collisions debug level");
+	Common::addDebugChannel(kDebugFuncOp, "FuncOpcodes", "Script FuncOpcodes debug level");
+	Common::addDebugChannel(kDebugDrawOp, "DrawOpcodes", "Script DrawOpcodes debug level");
+	Common::addDebugChannel(kDebugGobOp, "GoblinOpcodes", "Script GoblinOpcodes debug level");
+	Common::addDebugChannel(kDebugSound, "Sound", "Sound output debug level");
+	Common::addDebugChannel(kDebugParser, "Parser", "Parser debug level");
+	Common::addDebugChannel(kDebugGameFlow, "Gameflow", "Gameflow debug level");
+	Common::addDebugChannel(kDebugFileIO, "FileIO", "File Input/Output debug level");
+	Common::addDebugChannel(kDebugSaveLoad, "SaveLoad", "Saving/Loading debug level");
+	Common::addDebugChannel(kDebugGraphics, "Graphics", "Graphics debug level");
+	Common::addDebugChannel(kDebugVideo, "Video", "IMD/VMD video debug level");
+	Common::addDebugChannel(kDebugCollisions, "Collisions", "Collisions debug level");
 
 	syst->getEventManager()->registerRandomSource(_rnd, "gob");
 }
@@ -109,10 +110,10 @@ GobEngine::~GobEngine() {
 	delete[] _startTot0;
 }
 
-int GobEngine::go() {
+Common::Error GobEngine::go() {
 	_init->initGame(0);
 
-	return 0;
+	return Common::kNoError;
 }
 
 const char *GobEngine::getLangDesc(int16 language) const {
@@ -176,13 +177,14 @@ bool GobEngine::hasAdlib() const {
 	return (_features & kFeaturesAdlib) != 0;
 }
 
-int GobEngine::init() {
+Common::Error GobEngine::init() {
 	if (!initGameParts()) {
 		GUIErrorMessage("GobEngine::init(): Unknown version of game engine");
-		return -1;
+		return Common::kUnknownError;
 	}
 
 	_video->setSize(is640());
+	_video->init(_targetName.c_str());
 
 	// On some systems it's not safe to run CD audio games from the CD.
 	if (isCD())
@@ -253,12 +255,7 @@ int GobEngine::init() {
 	}
 	_global->_languageWanted = _global->_language;
 
-	// FIXME: This is the ugly way of reducing redraw overhead. It works
-	//        well for 320x200 but it's unclear how well it will work for
-	//        640x480.
-
-	g_system->setFeatureState(OSystem::kFeatureAutoComputeDirtyRects, true);
-	return 0;
+	return Common::kNoError;
 }
 
 void GobEngine::pauseEngineIntern(bool pause) {
@@ -410,11 +407,11 @@ bool GobEngine::initGameParts() {
 			_parse = new Parse_v2(this);
 			_mult = new Mult_v2(this);
 			_draw = new Draw_v2(this);
-			_game = new Game_v2(this);
+			_game = new Game_v6(this);
 			_map = new Map_v4(this);
 			_goblin = new Goblin_v4(this);
 			_scenery = new Scenery_v2(this);
-			_saveLoad = new SaveLoad_v4(this, _targetName.c_str());
+			_saveLoad = new SaveLoad_v6(this, _targetName.c_str());
 			break;
 
 		default:

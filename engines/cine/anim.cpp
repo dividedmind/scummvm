@@ -208,7 +208,7 @@ AnimData::AnimData(const AnimData &src) : _width(src._width),
 		memcpy(_data, src._data, _size*sizeof(byte));
 	}
 
-	if(src._mask) {
+	if (src._mask) {
 		_mask = new byte[_size];
 		assert(_mask);
 		memcpy(_mask, src._mask, _size*sizeof(byte));
@@ -585,7 +585,7 @@ int loadAni(const char *resourceName, int16 idx) {
 
 	transparentColor = getAnimTransparentColor(resourceName);
 
-	// TODO: Merge this special case hack into getAnimTransparentColor somehow.	
+	// TODO: Merge this special case hack into getAnimTransparentColor somehow.
 	// HACK: Versions of TITRE.ANI with height 37 use color 0xF for transparency.
 	//       Versions of TITRE.ANI with height 57 use color 0x0 for transparency.
 	//       Fixes bug #2057619: FW: Glitches in title display of demo (regression).
@@ -774,77 +774,6 @@ int loadResource(const char *resourceName, int16 idx) {
 	}
 
 	return result;
-}
-
-/*! \brief Load animDataTable from save
- * \param fHandle Savefile open for reading
- * \param saveGameFormat The used savegame format
- * \todo Add Operation Stealth savefile support
- *
- * Unlike the old code, this one actually rebuilds the table one frame
- * at a time.
- */
-void loadResourcesFromSave(Common::SeekableReadStream &fHandle, enum CineSaveGameFormat saveGameFormat) {
-	int16 currentAnim, foundFileIdx, frame;
-	char *animName, part[256], name[10];
-	uint16 width, height, bpp, var1;
-
-	strcpy(part, currentPartName);
-
-	// We only support these variations of the savegame format at the moment.
-	assert(saveGameFormat == ANIMSIZE_23 || saveGameFormat == ANIMSIZE_30_PTRS_INTACT);
-
-	const int entrySize = ((saveGameFormat == ANIMSIZE_23) ? 23 : 30);
-	const int fileStartPos = fHandle.pos();
-	currentAnim = 0;
-	while (currentAnim < NUM_MAX_ANIMDATA) {
-		// Seek to the start of the current animation's entry
-		fHandle.seek(fileStartPos + currentAnim * entrySize);
-		// Read in the current animation entry
-		width = fHandle.readUint16BE();
-		var1 = fHandle.readUint16BE();
-		bpp = fHandle.readUint16BE();
-		height = fHandle.readUint16BE();
-
-		bool validPtr = false;
-		// Handle variables only present in animation entries of size 30
-		if (entrySize == 30) {
-			validPtr = (fHandle.readUint32BE() != 0); // Read data pointer
-			fHandle.readUint32BE(); // Discard mask pointer
-		}
-
-		foundFileIdx = fHandle.readSint16BE();
-		frame = fHandle.readSint16BE();
-		fHandle.read(name, 10);
-
-		// Handle variables only present in animation entries of size 23
-		if (entrySize == 23) {
-			validPtr = (fHandle.readByte() != 0);
-		}
-
-		// Don't try to load invalid entries.
-		if (foundFileIdx < 0 || !validPtr) {
-			currentAnim++; // Jump over the invalid entry
-			continue;
-		}
-
-		// Alright, the animation entry looks to be valid so let's start handling it...
-		if (strcmp(currentPartName, name)) {
-			closePart();
-			loadPart(name);
-		}
-
-		animName = partBuffer[foundFileIdx].partName;
-		loadRelatedPalette(animName); // Is this for Future Wars only?
-		const int16 prevAnim = currentAnim;
-		currentAnim = loadResource(animName, currentAnim);
-		assert(currentAnim > prevAnim); // Make sure we advance forward
-	}
-
-	loadPart(part);
-
-	// Make sure we jump over all the animation entries
-	fHandle.seek(fileStartPos + NUM_MAX_ANIMDATA * entrySize);
 }
 
 } // End of namespace Cine

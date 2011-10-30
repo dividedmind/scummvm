@@ -41,13 +41,15 @@ public:
 		kFlagNone = 0,
 		kFlagUseBackSurfaceContent = 0x40,
 		kFlagFrontSurface = 0x80,
-		kFlagNoVideo = 0x100
+		kFlagNoVideo = 0x100,
+		kFlagOtherSurface = 0x800
 	};
 
 	enum Type {
 		kVideoTypeTry = -1,
 		kVideoTypeIMD = 0,
-		kVideoTypeVMD = 1
+		kVideoTypeVMD = 1,
+		kVideoTypeRMD = 2
 	};
 
 	VideoPlayer(GobEngine *vm);
@@ -58,7 +60,7 @@ public:
 	void primaryPlay(int16 startFrame = -1, int16 lastFrame = -1, int16 breakKey = 27,
 			uint16 palCmd = 8, int16 palStart = 0, int16 palEnd = 255,
 			int16 palFrame = -1, int16 endFrame = -1, bool fade = false,
-			int16 reverseTo = -1);
+			int16 reverseTo = -1, bool forceSeek = false);
 	void primaryClose();
 
 	int slotOpen(const char *videoFile, Type which = kVideoTypeTry);
@@ -79,6 +81,9 @@ public:
 	int16 getHeight(int slot = -1) const;
 	int16 getDefaultX(int slot = -1) const;
 	int16 getDefaultY(int slot = -1) const;
+
+	bool hasExtraData(const char *fileName, int slot = -1) const;
+	Common::MemoryReadStream *getExtraData(const char *fileName, int slot = -1);
 
 	void writeVideoInfo(const char *videoFile, int16 varX, int16 varY,
 			int16 varFrames, int16 varWidth, int16 varHeight);
@@ -103,6 +108,9 @@ private:
 
 			int16 getDefaultX() const;
 			int16 getDefaultY() const;
+
+			bool hasExtraData(const char *fileName) const;
+			Common::MemoryReadStream *getExtraData(const char *fileName);
 
 			CoktelVideo::State nextFrame();
 
@@ -129,6 +137,7 @@ private:
 	bool findFile(char *fileName, Type &which);
 
 	const Video *getVideoBySlot(int slot = -1) const;
+	Video *getVideoBySlot(int slot = -1);
 
 	int getNextFreeSlot();
 

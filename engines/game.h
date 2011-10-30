@@ -62,25 +62,12 @@ const PlainGameDescriptor *findPlainGameDescriptor(const char *gameid, const Pla
  */
 class GameDescriptor : public Common::StringMap {
 public:
-	GameDescriptor() {
-		setVal("gameid", "");
-		setVal("description", "");
-	}
-
-	GameDescriptor(const PlainGameDescriptor &pgd) {
-		setVal("gameid", pgd.gameid);
-		setVal("description", pgd.description);
-	}
-
-	GameDescriptor(const Common::String &g, const Common::String &d, Common::Language l  = Common::UNK_LANG,
-	             Common::Platform p = Common::kPlatformUnknown) {
-		setVal("gameid", g);
-		setVal("description", d);
-		if (l != Common::UNK_LANG)
-			setVal("language", Common::getLanguageCode(l));
-		if (p != Common::kPlatformUnknown)
-			setVal("platform", Common::getPlatformCode(p));
-	}
+	GameDescriptor();
+	GameDescriptor(const PlainGameDescriptor &pgd);
+	GameDescriptor(const Common::String &gameid,
+	              const Common::String &description,
+	              Common::Language language = Common::UNK_LANG,
+	              Common::Platform platform = Common::kPlatformUnknown);
 
 	/**
 	 * Update the description string by appending (LANG/PLATFORM/EXTRA) to it.
@@ -93,7 +80,7 @@ public:
 	const Common::String &description() const { return getVal("description"); }
 	Common::Language language() const { return contains("language") ? Common::parseLanguage(getVal("language")) : Common::UNK_LANG; }
 	Common::Platform platform() const { return contains("platform") ? Common::parsePlatform(getVal("platform")) : Common::kPlatformUnknown; }
-	
+
 	const Common::String &preferredtarget() const {
 		return contains("preferredtarget") ? getVal("preferredtarget") : getVal("gameid");
 	}
@@ -115,7 +102,7 @@ public:
 /**
  * A hashmap describing details about a given save state.
  * TODO
- * Guaranteed to contain save_slot, filename and description values.
+ * Guaranteed to contain save_slot and description values.
  * Additional ideas: Playtime, creation date, thumbnail, ...
  */
 class SaveStateDescriptor : public Common::StringMap {
@@ -126,21 +113,18 @@ public:
 	SaveStateDescriptor() : _thumbnail() {
 		setVal("save_slot", "-1");	// FIXME: default to 0 (first slot) or to -1 (invalid slot) ?
 		setVal("description", "");
-		setVal("filename", "");
 	}
 
-	SaveStateDescriptor(int s, const Common::String &d, const Common::String &f) : _thumbnail() {
+	SaveStateDescriptor(int s, const Common::String &d) : _thumbnail() {
 		char buf[16];
 		sprintf(buf, "%d", s);
 		setVal("save_slot", buf);
 		setVal("description", d);
-		setVal("filename", f);
 	}
 
-	SaveStateDescriptor(const Common::String &s, const Common::String &d, const Common::String &f) : _thumbnail() {
+	SaveStateDescriptor(const Common::String &s, const Common::String &d) : _thumbnail() {
 		setVal("save_slot", s);
 		setVal("description", d);
-		setVal("filename", f);
 	}
 
 	/** The saveslot id, as it would be passed to the "-x" command line switch. */
@@ -155,12 +139,6 @@ public:
 	/** A human readable description of the save state (read-only variant). */
 	const Common::String &description() const { return getVal("description"); }
 
-	/** The filename of the savestate, for use with the SaveFileManager API. */
-	Common::String &filename() { return getVal("filename"); }
-
-	/** The filename of the savestate, for use with the SaveFileManager API (read-only variant). */
-	const Common::String &filename() const { return getVal("filename"); }
-
 	/** Optional entries only included when querying via MetaEngine::querySaveMetaInfo */
 
 	/**
@@ -173,33 +151,44 @@ public:
 	bool getBool(const Common::String &key) const;
 
 	/**
-	 * Sets the 'is_deletable' key, which indicates, if the
+	 * Sets the 'is_deletable' key, which indicates if the
 	 * given savestate is safe for deletion.
 	 */
 	void setDeletableFlag(bool state);
 
 	/**
-	 * Return a thumbnail graphics surface representing the savestate visually
+	 * Sets the 'is_write_protected' key, which indicates if the
+	 * given savestate can be overwritten or not
+	 */
+	void setWriteProtectedFlag(bool state);
+
+	/**
+	 * Return a thumbnail graphics surface representing the savestate visually.
 	 * This is usually a scaled down version of the game graphics. The size
 	 * should be either 160x100 or 160x120 pixels, depending on the aspect
 	 * ratio of the game. If another ratio is required, contact the core team.
 	 */
 	const Graphics::Surface *getThumbnail() const { return _thumbnail.get(); }
-	
+
+	/**
+	 * Set a thumbnail graphics surface representing the savestate visually.
+	 * Ownership of the surface is transferred to the SaveStateDescriptor.
+	 * Hence the caller must not delete the surface.
+	 */
 	void setThumbnail(Graphics::Surface *t);
 
 	/**
-	 * Sets the 'save_date' key properly, based on the given values
+	 * Sets the 'save_date' key properly, based on the given values.
 	 */
 	void setSaveDate(int year, int month, int day);
 
 	/**
-	 * Sets the 'save_time' key properly, based on the given values
+	 * Sets the 'save_time' key properly, based on the given values.
 	 */
 	void setSaveTime(int hour, int min);
 
 	/**
-	 * Sets the 'play_time' key properly, based on the given values
+	 * Sets the 'play_time' key properly, based on the given values.
 	 */
 	void setPlayTime(int hours, int minutes);
 };

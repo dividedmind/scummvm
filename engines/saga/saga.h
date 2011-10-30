@@ -34,9 +34,7 @@
 #include "saga/gfx.h"
 #include "saga/list.h"
 
-namespace Common {
 struct ADGameFileDescription;
-}
 
 namespace Saga {
 
@@ -65,6 +63,7 @@ struct StringList;
 using Common::MemoryReadStream;
 using Common::MemoryReadStreamEndian;
 
+//#define SAGA_DEBUG 1		// define for test functions
 #define SAGA_IMAGE_DATA_OFFSET 776
 #define SAGA_IMAGE_HEADER_LEN  8
 
@@ -73,6 +72,7 @@ using Common::MemoryReadStreamEndian;
 // preserve savegame backwards compatibility. We only check
 // for IHNM's save title during text input
 #define SAVE_TITLE_SIZE 28
+#define TITLESIZE 80
 #define IHNM_SAVE_TITLE_SIZE 22
 #define MAX_SAVES 96
 #define MAX_FILE_NAME 256
@@ -82,7 +82,6 @@ using Common::MemoryReadStreamEndian;
 #define OBJECT_TYPE_SHIFT 13
 #define OBJECT_TYPE_MASK ((1 << OBJECT_TYPE_SHIFT) - 1)
 
-#define OBJ_SPRITE_BASE 9
 #define IHNM_OBJ_PROFILE 0x4000
 
 #define memoryError(Place) error("%s Memory allocation error.", Place)
@@ -92,52 +91,11 @@ enum ERRORCODE {
 	SUCCESS = 0
 };
 
-enum SAGAGameType {
-	GType_ITE = 0,
-	GType_IHNM = 1
-};
-
 enum GameIds {
-	// Dreamers Guild
-	GID_ITE_DEMO_G = 0,
-	GID_ITE_DISK_G,
-	GID_ITE_DISK_G2,
-	GID_ITE_CD_G,
-	GID_ITE_CD_G2,
-	GID_ITE_MACCD_G,
-
-	// Wyrmkeep
-	GID_ITE_CD,       // data for Win rerelease is same as in old DOS
-	GID_ITE_WINCD,    // but it has a bunch of patch files
-	GID_ITE_MACCD,
-	GID_ITE_LINCD,
-	GID_ITE_MULTICD,  // Wyrmkeep combined Windows/Mac/Linux version
-	GID_ITE_WINDEMO1, // older Wyrmkeep windows demo
-	GID_ITE_MACDEMO1, // older Wyrmkeep mac demo
-	GID_ITE_LINDEMO,
-	GID_ITE_WINDEMO2,
-	GID_ITE_WINDEMO3,
-	GID_ITE_MACDEMO2,
-
-	// German
-	GID_ITE_DISK_DE,
-	GID_ITE_DISK_DE2,
-	GID_ITE_AMIGACD_DE, // TODO
-	GID_ITE_OLDMAC_DE,  // TODO
-	GID_ITE_AMIGA_FL_DE,// TODO
-	GID_ITE_CD_DE,      // reported by mld. Bestsellergamers cover disk
-	GID_ITE_CD_DE2,
-	GID_ITE_AMIGA_AGA_DEMO, // TODO
-	GID_ITE_AMIGA_ECS_DEMO, // TODO
-
-	GID_IHNM_DEMO,
-	GID_IHNM_CD,
-	GID_IHNM_CD_DE,   // reported by mld. German retail
-	GID_IHNM_CD_ES,
-	GID_IHNM_CD_RU,
-	GID_IHNM_CD_FR,
-	GID_IHNM_CD_ITA,
-	GID_IHNM_CD_MAC
+	GID_ITE = 0,
+	GID_IHNM = 1,
+	GID_DINO = 2,
+	GID_FTA2 = 3
 };
 
 enum GameFileTypes {
@@ -155,12 +113,16 @@ enum GameFileTypes {
 };
 
 enum GameFeatures {
-	GF_BIG_ENDIAN_DATA   = 1 << 0,
-	GF_WYRMKEEP          = 1 << 1,
-	GF_CD_FX             = 1 << 2,
-	GF_SCENE_SUBSTITUTES = 1 << 3,
-	GF_COMPRESSED_SOUNDS = 1 << 4,
-	GF_NON_INTERACTIVE   = 1 << 5
+	GF_WYRMKEEP          = 1 << 0,
+	GF_ITE_FLOPPY        = 1 << 1,
+	GF_SCENE_SUBSTITUTES = 1 << 2,
+	GF_NON_INTERACTIVE   = 1 << 3,
+	GF_OLD_ITE_DOS       = 1 << 4,
+	GF_MONO_MUSIC        = 1 << 5,
+	GF_EXTRA_ITE_CREDITS = 1 << 6,
+	GF_IHNM_DEMO         = 1 << 7,
+	GF_LE_VOICES         = 1 << 8,
+	GF_8BIT_UNSIGNED_PCM = 1 << 9
 };
 
 enum VerbTypeIds {
@@ -232,22 +194,23 @@ enum GameSoundTypes {
 	kSoundVOX = 1,
 	kSoundVOC = 2,
 	kSoundWAV = 3,
-	kSoundMacPCM = 4,
-	kSoundMP3 = 5,
-	kSoundOGG = 6,
-	kSoundFLAC = 7,
-	kSoundAIFF = 8
+	kSoundMP3 = 4,
+	kSoundOGG = 5,
+	kSoundFLAC = 6,
+	kSoundAIFF = 7,
+	kSoundShorten = 8
 };
 
 enum TextStringIds {
-	kTextWalkTo,
-	kTextLookAt,
 	kTextPickUp,
+	kTextLookAt,
+	kTextWalkTo,
 	kTextTalkTo,
 	kTextOpen,
 	kTextClose,
-	kTextUse,
 	kTextGive,
+	kTextUse,
+
 	kTextOptions,
 	kTextTest,
 	kTextDemo,
@@ -324,18 +287,10 @@ struct GameFontDescription {
 
 struct GameDisplayInfo;
 
-struct GameSoundInfo {
-	GameSoundTypes resourceType;
-	int sampleBits;
-	bool isBigEndian;
-	bool isSigned;
-};
-
 struct GamePatchDescription {
 	const char *fileName;
 	uint16 fileType;
 	uint32 resourceId;
-	const GameSoundInfo *soundInfo;
 };
 
 struct SAGAGameDescription;
@@ -486,12 +441,18 @@ inline uint16 objectIndexToId(int type, int index) {
 class SagaEngine : public Engine {
 	friend class Scene;
 
-protected:
-	int go();
-	int init();
 public:
+	// Engine APIs
+	Common::Error init();
+	Common::Error go();
+	bool hasFeature(EngineFeature f) const;
+	void syncSoundSettings();
+	void pauseEngineIntern(bool pause);
+
+	GUI::Debugger *getDebugger();
+
 	SagaEngine(OSystem *syst, const SAGAGameDescription *gameDesc);
-	virtual ~SagaEngine();
+	~SagaEngine();
 
 	void save(const char *fileName, const char *saveName);
 	void load(const char *fileName);
@@ -512,8 +473,6 @@ public:
 		return isSaveListFull() ? _saveFilesCount : _saveFilesCount + 1;
 	}
 
-	virtual void syncSoundSettings();
-	
 	int16 _framesEsc;
 
 	uint32 _globalFlags;
@@ -530,7 +489,7 @@ public:
 
 	bool _copyProtection;
 	bool _gf_wyrmkeep;
-	bool _gf_compressed_sounds;
+	bool _musicWasPlaying;
 
 	SndRes *_sndRes;
 	Sound *_sound;
@@ -598,7 +557,7 @@ public:
 	}
 
 	inline int ticksToMSec(int tick) {
-		if (getGameType() == GType_ITE)
+		if (getGameId() == GID_ITE)
 			return tick * 1000 / kScriptTimeTicksPerSecond;
 		else
 			return tick * 1000 / kScriptTimeTicksPerSecondIHNM;
@@ -627,30 +586,28 @@ public:
 
 	bool isBigEndian() const;
 	bool isMacResources() const;
+	bool isSaga2() const { return getGameId() == GID_DINO || getGameId() == GID_FTA2; }
 	const GameResourceDescription *getResourceDescription();
-	const GameSoundInfo *getVoiceInfo() const;
-	const GameSoundInfo *getSfxInfo() const;
-	const GameSoundInfo *getMusicInfo() const;
 
 	const GameFontDescription *getFontDescription(int index);
 	int getFontsCount() const;
 
 	int getGameId() const;
-	int getGameType() const;
 	uint32 getFeatures() const;
 	Common::Language getLanguage() const;
 	Common::Platform getPlatform() const;
 	int getGameNumber() const;
 	int getStartSceneNumber() const;
 
-	int getPatchesCount() const;
 	const GamePatchDescription *getPatchDescriptions() const;
 
-	const Common::ADGameFileDescription *getFilesDescriptions() const;
+	const ADGameFileDescription *getFilesDescriptions() const;
 
 	const Common::Rect &getDisplayClip() const { return _displayClip;}
-	int getDisplayWidth() const;
-	int getDisplayHeight() const;
+	Common::Error loadGameState(int slot);
+	Common::Error saveGameState(int slot, const char *desc);
+	bool canLoadGameStateCurrently();
+	bool canSaveGameStateCurrently();
 	const GameDisplayInfo &getDisplayInfo();
 
 	const char *getTextString(int textStringId);

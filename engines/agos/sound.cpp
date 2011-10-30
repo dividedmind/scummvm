@@ -58,7 +58,7 @@ public:
 	BaseSound(Audio::Mixer *mixer, File *file, uint32 *offsets, bool bigEndian = false);
 	virtual ~BaseSound();
 	void close();
-	
+
 	void playSound(uint sound, Audio::Mixer::SoundType type, Audio::SoundHandle *handle, byte flags, int vol = 0) {
 		playSound(sound, sound, type, handle, flags, vol);
 	}
@@ -247,7 +247,7 @@ Audio::AudioStream *WavSound::makeAudioStream(uint sound) {
 		return NULL;
 
 	_file->seek(_offsets[sound], SEEK_SET);
-	return Audio::makeWAVStream(*_file);
+	return Audio::makeWAVStream(_file, false);
 }
 
 void WavSound::playSound(uint sound, uint loopSound, Audio::Mixer::SoundType type, Audio::SoundHandle *handle, byte flags, int vol) {
@@ -261,10 +261,8 @@ void VocSound::playSound(uint sound, uint loopSound, Audio::Mixer::SoundType typ
 
 	_file->seek(_offsets[sound], SEEK_SET);
 
-	int size, rate;
-	byte *buffer = Audio::loadVOCFromStream(*_file, size, rate);
-	assert(buffer);
-	_mixer->playRaw(type, handle, buffer, size, rate, flags | Audio::Mixer::FLAG_AUTOFREE);
+	Audio::AudioStream *stream = Audio::makeVOCStream(*_file, flags);
+	_mixer->playInputStream(type, handle, stream);
 }
 
 void RawSound::playSound(uint sound, uint loopSound, Audio::Mixer::SoundType type, Audio::SoundHandle *handle, byte flags, int vol) {
@@ -563,7 +561,7 @@ void Sound::readSfxFile(const char *filename) {
 
 void Sound::loadSfxTable(File *gameFile, uint32 base) {
 	stopAll();
-	
+
 	if (_effects)
 		_effects->close();
 
@@ -741,6 +739,7 @@ void Sound::playSoundData(Audio::SoundHandle *handle, byte *soundData, uint soun
 	uint16 compType;
 	int blockAlign, rate;
 
+	// TODO: Use makeWAVStream() in future, when makeADPCMStream() allows sound looping
 	int size = READ_LE_UINT32(soundData + 4);
 	Common::MemoryReadStream stream(soundData, size);
 	if (!Audio::loadWAVFromStream(stream, size, rate, flags, &compType, &blockAlign))

@@ -46,12 +46,10 @@
 		#pragma once
 		#pragma warning( disable : 4068 ) // turn off "unknown pragma" warning
 		#pragma	warning( disable : 4103 ) // turn off "alignement changed after including header" warning. We use pack-start.h file
-		#pragma warning( disable : 4125 ) // turn off "decimal digit terminates octal escape sequence" warning
 		#pragma warning( disable : 4244 ) // turn off "conversion type" warning
 		#pragma warning( disable : 4250 ) // turn off "inherits via dominance" warning
 		#pragma warning( disable : 4351 ) // turn off "new behavior ... will be default initialized" warning
 		#pragma warning( disable : 4355 ) // turn off "base member init" warning
-		#pragma warning( disable : 4505 ) // turn off "unreferenced local function has been removed"
 		#pragma warning( disable : 4510 ) // turn off "default constructor could not be generated"
 		#pragma warning( disable : 4610 ) // turn off "struct can never be instantiated - user defined constructor required"
 		#pragma warning( disable : 4800 ) // turn off "forcing value to bool 'true' or 'false' (performance warning)"
@@ -208,7 +206,6 @@
 	#define PLUGIN_EXPORT __declspec(dllexport)
 
 	#if _WIN32_WCE < 300
-	#define CDECL __cdecl
 	#define SMALL_SCREEN_DEVICE
 	#endif
 
@@ -254,12 +251,6 @@
 	#define scumm_strnicmp strncasecmp
 
 	#ifndef CONFIG_H
-		#ifdef X11_BACKEND
-
-		// You need to set this manually if necessary
-	//	#define SCUMM_LITTLE_ENDIAN
-
-		#else
 		/* need this for the SDL_BYTEORDER define */
 		#include <SDL_byteorder.h>
 
@@ -269,7 +260,6 @@
 		#define SCUMM_BIG_ENDIAN
 		#else
 		#error Neither SDL_BIG_ENDIAN nor SDL_LIL_ENDIAN is set.
-		#endif
 		#endif
 	#endif
 
@@ -402,10 +392,6 @@
 //
 #ifndef FORCEINLINE
 #define FORCEINLINE inline
-#endif
-
-#ifndef CDECL
-#define	CDECL
 #endif
 
 #ifndef PLUGIN_EXPORT

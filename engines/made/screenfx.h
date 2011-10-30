@@ -52,9 +52,19 @@ private:
 	void setPalette(byte *palette);
 	void setBlendedPalette(byte *palette, byte *newPalette, int colorCount, int16 value, int16 maxValue);
 	void copyFxRect(Graphics::Surface *surface, int16 x1, int16 y1, int16 x2, int16 y2);
-	void copyRect(Graphics::Surface *surface, int16 x1, int16 y1, int16 x2, int16 y2);
+	void copyRect(Graphics::Surface *surface, int16 x1, int16 y1, int16 x2, int16 y2,
+		int xd = -1, int yd = -1);
+	void reposition(int16 x1, int16 y1, int16 x2, int16 y2, int xd, int yd);
+
 	void vfx00(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
+	void vfx01(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
 	void vfx02(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
+	void vfx03(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
+	void vfx04(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
+	void vfx05(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
+	void vfx06(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
+	void vfx07(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
+	void vfx08(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
 	void vfx09(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
 	void vfx10(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
 	void vfx11(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
@@ -62,7 +72,11 @@ private:
 	void vfx13(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
 	void vfx14(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
 	void vfx15(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
+	void vfx16(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
 	void vfx17(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
+	void vfx18(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
+	void vfx19(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
+	void vfx20(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
 };
 
 } // End of namespace Made

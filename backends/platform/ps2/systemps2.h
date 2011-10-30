@@ -26,7 +26,7 @@
 #ifndef SYSTEMPS2_H
 #define SYSTEMPS2_H
 
-#include "common/system.h"
+#include "backends/base-backend.h"
 
 class DefaultTimerManager;
 
@@ -52,7 +52,7 @@ namespace Audio {
 	class MixerImpl;
 };
 
-class OSystem_PS2 : public OSystem {
+class OSystem_PS2 : public BaseBackend {
 public:
 	OSystem_PS2(const char *elfPath);
 	virtual ~OSystem_PS2(void);
@@ -76,6 +76,8 @@ public:
 	virtual void clearOverlay();
 	virtual void grabOverlay(OverlayColor *buf, int pitch);
 	virtual void copyRectToOverlay(const OverlayColor *buf, int pitch, int x, int y, int w, int h);
+	virtual int16 getOverlayHeight()  { return getHeight(); }
+	virtual int16 getOverlayWidth()   { return getWidth(); }
 
 	virtual bool showMouse(bool visible);
 
@@ -107,9 +109,10 @@ public:
 
 	virtual void quit();
 
-	virtual OverlayColor RGBToColor(uint8 r, uint8 g, uint8 b);
+	virtual Common::SeekableReadStream *createConfigReadStream();
+	virtual Common::WriteStream *createConfigWriteStream();
 
-	virtual void colorToRGB(OverlayColor color, uint8 &r, uint8 &g, uint8 &b);
+	virtual Graphics::PixelFormat getOverlayFormat() const { return Graphics::createPixelFormat<555>(); }
 
 	virtual Common::SaveFileManager *getSavefileManager();
 	virtual FilesystemFactory *getFilesystemFactory();

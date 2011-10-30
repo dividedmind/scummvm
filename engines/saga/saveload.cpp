@@ -23,12 +23,13 @@
  *
  */
 
-
+#include <time.h>	// for extended infos
 
 #include "common/config-manager.h"
 #include "common/savefile.h"
 #include "common/system.h"
 #include "common/file.h"
+#include "graphics/thumbnail.h"
 
 #include "saga/saga.h"
 #include "saga/actor.h"
@@ -40,7 +41,7 @@
 #include "saga/scene.h"
 #include "saga/script.h"
 
-#define CURRENT_SAGA_VER 5
+#define CURRENT_SAGA_VER 7
 
 namespace Saga {
 
@@ -156,8 +157,6 @@ void SagaEngine::fillSaveList() {
 	}
 }
 
-
-#define TITLESIZE 80
 void SagaEngine::save(const char *fileName, const char *saveName) {
 	Common::OutSaveFile *out;
 	char title[TITLESIZE];
@@ -184,24 +183,41 @@ void SagaEngine::save(const char *fileName, const char *saveName) {
 	strncpy(title, _gameTitle.c_str(), TITLESIZE);
 	out->write(title, TITLESIZE);
 
+	// Thumbnail
+	Graphics::saveThumbnail(*out);
+
+	// Date / time
+	tm curTime;
+	_system->getTimeAndDate(curTime);
+
+	uint32 saveDate = ((curTime.tm_mday & 0xFF) << 24) | (((curTime.tm_mon + 1) & 0xFF) << 16) | ((curTime.tm_year + 1900) & 0xFFFF);
+	uint16 saveTime = ((curTime.tm_hour & 0xFF) << 8) | ((curTime.tm_min) & 0xFF);
+
+	out->writeUint32BE(saveDate);
+	out->writeUint16BE(saveTime);
+	// TODO: played time
+
 	// Surrounding scene
 	out->writeSint32LE(_scene->getOutsetSceneNumber());
-	if (getGameType() != GType_ITE) {
+#ifdef ENABLE_IHNM
+	if (getGameId() == GID_IHNM) {
 		out->writeSint32LE(_scene->currentChapterNumber());
 		// Protagonist
 		out->writeSint32LE(_scene->currentProtag());
 		out->writeSint32LE(_scene->getCurrentMusicTrack());
 		out->writeSint32LE(_scene->getCurrentMusicRepeat());
 	}
-
+#endif
 	// Inset scene
 	out->writeSint32LE(_scene->currentSceneNumber());
 
-	if (getGameType() != GType_ITE) {
+#ifdef ENABLE_IHNM
+	if (getGameId() == GID_IHNM) {
 		out->writeUint32LE(_globalFlags);
 		for (int i = 0; i < ARRAYSIZE(_ethicsPoints); i++)
 			out->writeSint16LE(_ethicsPoints[i]);
 	}
+#endif
 
 	_interface->saveState(out);
 
@@ -211,8 +227,11 @@ void SagaEngine::save(const char *fileName, const char *saveName) {
 
 	out->write(_script->_commonBuffer, _script->_commonBufferSize);
 
-	out->writeSint16LE(_isoMap->getMapPosition().x);
-	out->writeSint16LE(_isoMap->getMapPosition().y);
+	// ISO map x, y coordinates for ITE
+	if (getGameId() == GID_ITE) {
+		out->writeSint16LE(_isoMap->getMapPosition().x);
+		out->writeSint16LE(_isoMap->getMapPosition().y);
+	}
 
 	out->finalize();
 
@@ -260,9 +279,26 @@ void SagaEngine::load(const char *fileName) {
 		debug(0, "Save is for: %s", title);
 	}
 
+	if (_saveHeader.version >= 6) {
+		// We don't need the thumbnail here, so just read it and discard it
+		Graphics::Surface *thumbnail = new Graphics::Surface();
+		assert(thumbnail);
+		Graphics::loadThumbnail(*in, *thumbnail);
+		delete thumbnail;
+		thumbnail = 0;
+
+		in->readUint32BE();	// save date
+		in->readUint16BE(); // save time
+		// TODO: played time
+	}
+
+	// Clear pending events here, and don't process queued music events
+	_events->clearList(false);
+
 	// Surrounding scene
 	sceneNumber = in->readSint32LE();
-	if (getGameType() != GType_ITE) {
+#ifdef ENABLE_IHNM
+	if (getGameId() == GID_IHNM) {
 		int currentChapter = _scene->currentChapterNumber();
 		_scene->setChapterNumber(in->readSint32LE());
 		_scene->setProtag(in->readSint32LE());
@@ -273,21 +309,24 @@ void SagaEngine::load(const char *fileName) {
 		_music->stop();
 		if (_scene->currentChapterNumber() == 8)
 			_interface->setMode(kPanelChapterSelection);
-		if (getGameId() != GID_IHNM_DEMO) {
+		if (!(getFeatures() & GF_IHNM_DEMO)) {
 			_music->play(_music->_songTable[_scene->getCurrentMusicTrack()], _scene->getCurrentMusicRepeat() ? MUSIC_LOOP : MUSIC_NORMAL);
 		} else {
 			_music->play(3, MUSIC_LOOP);
 		}
 	}
+#endif
 
 	// Inset scene
 	insetSceneNumber = in->readSint32LE();
 
-	if (getGameType() != GType_ITE) {
+#ifdef ENABLE_IHNM
+	if (getGameId() == GID_IHNM) {
 		_globalFlags = in->readUint32LE();
 		for (int i = 0; i < ARRAYSIZE(_ethicsPoints); i++)
 			_ethicsPoints[i] = in->readSint16LE();
 	}
+#endif
 
 	_interface->loadState(in);
 
@@ -296,8 +335,14 @@ void SagaEngine::load(const char *fileName) {
 	commonBufferSize = in->readSint16LE();
 	in->read(_script->_commonBuffer, commonBufferSize);
 
-	mapx = in->readSint16LE();
-	mapy = in->readSint16LE();
+	if (getGameId() == GID_ITE) {
+		mapx = in->readSint16LE();
+		mapy = in->readSint16LE();
+		_isoMap->setMapPosition(mapx, mapy);
+	}
+	// Note: the mapx, mapy ISO map positions were incorrectly saved
+	// for IHNM too, which has no ISO map scenes, up to save version 6.
+	// Since they're at the end of the savegame, we just ignore them
 
 	delete in;
 
@@ -305,10 +350,9 @@ void SagaEngine::load(const char *fileName) {
 	int volume = _music->getVolume();
 	_music->setVolume(0);
 
-	_isoMap->setMapPosition(mapx, mapy);
-
+#ifdef ENABLE_IHNM
 	// Protagonist swapping
-	if (getGameType() != GType_ITE) {
+	if (getGameId() == GID_IHNM) {
 		if (_scene->currentProtag() != 0 && _scene->currentChapterNumber() != 6) {
 			ActorData *actor1 = _actor->getFirstActor();
 			ActorData *actor2;
@@ -328,6 +372,7 @@ void SagaEngine::load(const char *fileName) {
 			_scene->setProtag(actor1->_id);
 		}
 	}
+#endif
 
 	_scene->clearSceneQueue();
 	_scene->changeScene(sceneNumber, ACTOR_NO_ENTRANCE, kTransitionNoFade);

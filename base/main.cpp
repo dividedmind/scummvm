@@ -37,12 +37,14 @@
 #include "base/plugins.h"
 #include "base/version.h"
 
+#include "common/archive.h"
 #include "common/config-manager.h"
+#include "common/debug.h"
 #include "common/events.h"
 #include "common/file.h"
 #include "common/fs.h"
 #include "common/system.h"
-#include "gui/newgui.h"
+#include "gui/GuiManager.h"
 #include "gui/message.h"
 
 #if defined(_WIN32_WCE)
@@ -54,25 +56,12 @@
 #endif
 
 
-static bool launcherDialog(OSystem &system) {
+static bool launcherDialog() {
 
-	system.beginGFXTransaction();
-		// Set the user specified graphics mode (if any).
-		system.setGraphicsMode(ConfMan.get("gfx_mode").c_str());
-
-		system.initSize(320, 200);
-
-		if (ConfMan.hasKey("aspect_ratio"))
-			system.setFeatureState(OSystem::kFeatureAspectRatioCorrection, ConfMan.getBool("aspect_ratio"));
-		if (ConfMan.hasKey("fullscreen"))
-			system.setFeatureState(OSystem::kFeatureFullscreenMode, ConfMan.getBool("fullscreen"));
-	system.endGFXTransaction();
-
-	// Set initial window caption
-	system.setWindowCaption(gScummVMFullVersion);
-
-	// Clear the main screen
-	system.clearScreen();
+	// Discard any command line options. Those that affect the graphics
+	// mode and the others (like bootparam etc.) should not
+	// blindly be passed to the first game launched from the launcher.
+	ConfMan.getDomain(Common::ConfigManager::kTransientDomain)->clear();
 
 #if defined(_WIN32_WCE)
 	CELauncherDialog dlg;
@@ -115,24 +104,32 @@ static const EnginePlugin *detectPlugin() {
 }
 
 // TODO: specify the possible return values here
-static int runGame(const EnginePlugin *plugin, OSystem &system, const Common::String &edebuglevels) {
-	// Query  the game data path, for messages
-	Common::String path = ConfMan.hasKey("path") ? ConfMan.get("path") : ".";
+static Common::Error runGame(const EnginePlugin *plugin, OSystem &system, const Common::String &edebuglevels) {
+	// Determine the game data path, for validation and error messages
+	Common::FSNode dir(ConfMan.get("path"));
+	Common::Error err = Common::kNoError;
+	Engine *engine = 0;
+
+	// Verify that the game path refers to an actual directory
+	if (!(dir.exists() && dir.isDirectory()))
+		err = Common::kInvalidPathError;
 
 	// Create the game engine
-	Engine *engine = 0;
-	PluginError err = (*plugin)->createInstance(&system, &engine);
-	if (!engine || err != kNoError) {
+	if (err == Common::kNoError)
+		err = (*plugin)->createInstance(&system, &engine);
+
+	// Check for errors
+	if (!engine || err != Common::kNoError) {
 		// TODO: Show an error dialog or so?
 		// TODO: Also take 'err' into consideration...
 		//GUI::MessageDialog alert("ScummVM could not find any game in the specified directory!");
 		//alert.runModal();
 		const char *errMsg = 0;
 		switch (err) {
-		case kInvalidPathError:
+		case Common::kInvalidPathError:
 			errMsg = "Invalid game path";
 			break;
-		case kNoGameDataFoundError:
+		case Common::kNoGameDataFoundError:
 			errMsg = "Unable to locate game data";
 			break;
 		default:
@@ -143,9 +140,9 @@ static int runGame(const EnginePlugin *plugin, OSystem &system, const Common::St
 			plugin->getName(),
 			errMsg,
 			ConfMan.getActiveDomainName().c_str(),
-			path.c_str()
+			dir.getPath().c_str()
 			);
-		return 0;
+		return err;
 	}
 
 	// Set the window caption to the game name
@@ -160,43 +157,43 @@ static int runGame(const EnginePlugin *plugin, OSystem &system, const Common::St
 		system.setWindowCaption(caption.c_str());
 	}
 
-	// FIXME: at this moment, game path handling is being discussed in the mailing list,
-	// while Common::File is being reworked under the hood. After commit 34444, which
-	// changed the implementation of Common::File (specifically removing usage of fopen
-	// and fOpenNoCase, which implicitly supported backslashes in file names), some games
-	// stopped working. Example of this are the HE games which use subdirectories: Kirben
-	// found this issue on lost-win-demo at first. Thus, in commit 34450, searching the
-	// game path was made recursive as a temporary fix/workaround.
+	//
+	// Setup various paths in the SearchManager
+	//
 
 	// Add the game path to the directory search list
-	Common::File::addDefaultDirectoryRecursive(path);
+	SearchMan.addDirectory(dir.getPath(), dir, 0, 4);
 
 	// Add extrapath (if any) to the directory search list
-	if (ConfMan.hasKey("extrapath"))
-		Common::File::addDefaultDirectoryRecursive(ConfMan.get("extrapath"));
+	if (ConfMan.hasKey("extrapath")) {
+		dir = Common::FSNode(ConfMan.get("extrapath"));
+		SearchMan.addDirectory(dir.getPath(), dir);
+	}
 
 	// If a second extrapath is specified on the app domain level, add that as well.
-	if (ConfMan.hasKey("extrapath", Common::ConfigManager::kApplicationDomain))
-		Common::File::addDefaultDirectoryRecursive(ConfMan.get("extrapath", Common::ConfigManager::kApplicationDomain));
+	if (ConfMan.hasKey("extrapath", Common::ConfigManager::kApplicationDomain)) {
+		dir = Common::FSNode(ConfMan.get("extrapath", Common::ConfigManager::kApplicationDomain));
+		SearchMan.addDirectory(dir.getPath(), dir);
+	}
 
-#ifdef DATA_PATH
-	// Add the global DATA_PATH to the directory search list
-	Common::File::addDefaultDirectoryRecursive(DATA_PATH);
-#endif
-
-	// On creation the engine should've set up all debug levels so we can use
+	// On creation the engine should have set up all debug levels so we can use
 	// the command line arugments here
-	Common::enableSpecialDebugLevelList(edebuglevels);
+	Common::StringTokenizer tokenizer(edebuglevels, " ,");
+	while (!tokenizer.empty()) {
+		Common::String token = tokenizer.nextToken();
+		if (!enableDebugChannel(token))
+			warning("Engine does not support debug level '%s'", token.c_str());
+	}
 
 	// Inform backend that the engine is about to be run
 	system.engineInit();
 
 	// Init the engine (this might change the screen parameters)
 	// TODO: We should specify what return values
-	int result = engine->init();
+	Common::Error result = engine->init();
 
 	// Run the game engine if the initialization was successful.
-	if (result == 0) {
+	if (result == Common::kNoError) {
 		result = engine->go();
 	} else {
 		// TODO: Set an error flag, notify user about the problem
@@ -206,16 +203,43 @@ static int runGame(const EnginePlugin *plugin, OSystem &system, const Common::St
 	system.engineDone();
 
 	// We clear all debug levels again even though the engine should do it
-	Common::clearAllSpecialDebugLevels();
+	Common::clearAllDebugChannels();
 
 	// Free up memory
 	delete engine;
 
 	// Reset the file/directory mappings
-	Common::File::resetDefaultDirectories();
+	SearchMan.clear();
 
 	// Return result (== 0 means no error)
 	return result;
+}
+
+static void setupGraphics(OSystem &system) {
+	
+	system.beginGFXTransaction();
+		// Set the user specified graphics mode (if any).
+		system.setGraphicsMode(ConfMan.get("gfx_mode").c_str());
+
+		system.initSize(320, 200);
+
+		if (ConfMan.hasKey("aspect_ratio"))
+			system.setFeatureState(OSystem::kFeatureAspectRatioCorrection, ConfMan.getBool("aspect_ratio"));
+		if (ConfMan.hasKey("fullscreen"))
+			system.setFeatureState(OSystem::kFeatureFullscreenMode, ConfMan.getBool("fullscreen"));
+	system.endGFXTransaction();
+
+	// When starting up launcher for the first time, the user might have specified
+	// a --gui-theme option, to allow that option to be working, we need to initialize
+	// GUI here.
+	// FIXME: Find a nicer way to allow --gui-theme to be working
+	GUI::GuiManager::instance();
+
+	// Set initial window caption
+	system.setWindowCaption(gScummVMFullVersion);
+
+	// Clear the main screen
+	system.clearScreen();
 }
 
 
@@ -274,16 +298,15 @@ extern "C" int scummvm_main(int argc, char *argv[]) {
 	// the command line params) was read.
 	system.initBackend();
 
-	// Unless a game was specified, show the launcher dialog
-	if (0 == ConfMan.getActiveDomain()) {
-		// Discard any command line options. Those that affect the graphics
-		// mode etc. already have should have been handled by the backend at
-		// this point. And the others (like bootparam etc.) should not
-		// blindly be passed to the first game launched from the launcher.
-		ConfMan.getDomain(Common::ConfigManager::kTransientDomain)->clear();
+	setupGraphics(system);
 
-		launcherDialog(system);
-	}
+	// Init the event manager. As the virtual keyboard is loaded here, it must 
+	// take place after the backend is initiated and the screen has been setup
+	system.getEventManager()->init();
+
+	// Unless a game was specified, show the launcher dialog
+	if (0 == ConfMan.getActiveDomain())
+		launcherDialog();
 
 	// FIXME: We're now looping the launcher. This, of course, doesn't
 	// work as well as it should. In theory everything should be destroyed
@@ -297,10 +320,10 @@ extern "C" int scummvm_main(int argc, char *argv[]) {
 			PluginManager::instance().unloadPluginsExcept(PLUGIN_TYPE_ENGINE, plugin);
 
 			// Try to run the game
-			int result = runGame(plugin, system, specialDebug);
+			Common::Error result = runGame(plugin, system, specialDebug);
 
 			// Did an error occur ?
-			if (result != 0) {
+			if (result != Common::kNoError) {
 				// TODO: Show an informative error dialog if starting the selected game failed.
 			}
 
@@ -325,13 +348,16 @@ extern "C" int scummvm_main(int argc, char *argv[]) {
 			// screen to draw on yet.
 			warning("Could not find any engine capable of running the selected game");
 		}
-
-		launcherDialog(system);
+		
+		// reset the graphics to default
+		setupGraphics(system);
+		launcherDialog();
 	}
 	PluginManager::instance().unloadPlugins();
 	PluginManager::destroy();
 	Common::ConfigManager::destroy();
-	GUI::NewGui::destroy();
+	Common::SearchManager::destroy();
+	GUI::GuiManager::destroy();
 
 	return 0;
 }

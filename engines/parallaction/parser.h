@@ -44,8 +44,8 @@ class Script {
 	uint	_line;				// for debug messages
 
 	void clearTokens();
-	uint16 fillTokens(char* line);
-	char   *parseNextToken(char *s, char *tok, uint16 count, const char *brk, bool ignoreQuotes = false);
+	char *parseNextToken(char *s, char *tok, uint16 count, const char *brk);
+	char *readLineIntern(char *buf, size_t bufSize);
 
 public:
 	Script(Common::ReadStream *, bool _disposeSource = false);
@@ -69,7 +69,7 @@ class Parser {
 
 public:
 	Parser() { reset(); }
-	~Parser() {}
+	~Parser() { reset(); }
 
 	uint	_lookup;
 
@@ -185,11 +185,13 @@ protected:
 	virtual void parseHearData(ZonePtr z);
 	virtual void parseSpeakData(ZonePtr z);
 
-	char		*parseComment();
-	char		*parseDialogueString();
+	Common::String	parseComment();
+	Common::String	parseDialogueString();
 	Dialogue	*parseDialogue();
 	void		resolveDialogueForwards(Dialogue *dialogue, uint numQuestions, Table &forwards);
-	Answer		*parseAnswer();
+	virtual Answer *parseAnswer();
+	void 		parseAnswerFlags(Answer *answer);
+	void 		parseAnswerBody(Answer *answer);
 	Question	*parseQuestion();
 
 	void		parseZone(ZoneList &list, char *name);
@@ -198,6 +200,7 @@ protected:
 	void		parseAnimation(AnimationList &list, char *name);
 	void		parseCommands(CommandList&);
 	void		parseCommandFlags();
+	void 		parseCommandFlag(CommandPtr cmd, const char *flag, Table *table, bool checkTrap);
 	void 		saveCommandForward(const char *name, CommandPtr cmd);
 	void 		resolveCommandForwards();
 	void		createCommand(uint id);
@@ -216,7 +219,8 @@ protected:
 	}
 
 public:
-	LocationParser_ns(Parallaction_ns *vm) : _vm(vm) {
+	LocationParser_ns(Parallaction_ns *vm) : _vm(vm), _commandsNames(0), _locationStmt(0),
+		_locationZoneStmt(0), _locationAnimStmt(0) {
 	}
 
 	virtual void init();
@@ -260,9 +264,8 @@ public:
 class LocationParser_br : public LocationParser_ns {
 
 protected:
-	Table		*_audioCommandsNames;
-
 	Parallaction_br*	_vm;
+	Table		*_audioCommandsNames;
 
 	DECLARE_UNQUALIFIED_LOCATION_PARSER(location);
 	DECLARE_UNQUALIFIED_LOCATION_PARSER(zone);
@@ -305,16 +308,18 @@ protected:
 	virtual void	parseZoneTypeBlock(ZonePtr z);
 	void			parsePathData(ZonePtr z);
 	void 			parseGetData(ZonePtr z);
+	void 			parseAnswerCounter(Answer *answer);
+	virtual Answer *parseAnswer();
 
 public:
-	LocationParser_br(Parallaction_br *vm) : LocationParser_ns((Parallaction_ns*)vm), _vm(vm) {
+	LocationParser_br(Parallaction_br *vm) : LocationParser_ns((Parallaction_ns*)vm), _vm(vm),
+		_audioCommandsNames(0) {
 	}
 
 	virtual void init();
 
 	virtual ~LocationParser_br() {
-		delete _commandsNames;
-		delete _locationStmt;
+		delete _audioCommandsNames;
 	}
 
 	void parse(Script *script);
@@ -326,9 +331,8 @@ public:
 class ProgramParser_ns {
 
 protected:
-	Parser	*_parser;
 	Parallaction_ns *_vm;
-
+	Parser	*_parser;
 
 	Script	*_script;
 	ProgramPtr	_program;
@@ -374,7 +378,7 @@ protected:
 	}
 
 public:
-	ProgramParser_ns(Parallaction_ns *vm) : _vm(vm) {
+	ProgramParser_ns(Parallaction_ns *vm) : _vm(vm), _parser(0), _instructionNames(0) {
 	}
 
 	virtual void init();
@@ -412,123 +416,7 @@ public:
 
 	virtual void init();
 
-	virtual ~ProgramParser_br() {
-		delete _instructionNames;
-		delete _parser;
-
-	}
-
 };
-
-
-/*
-	This simple stream is temporarily needed to hook the
-	preprocessor output to the parser. It will go away
-	when the parser is rewritten to fully exploit the
-	statement list provided by the preprocessor.
-*/
-
-class ReadStringStream : public Common::ReadStream {
-
-	char *_text;
-	uint32	_pos;
-	uint32	_size;
-
-public:
-	ReadStringStream(const Common::String &text) {
-		_text = new char[text.size() + 1];
-		strcpy(_text, text.c_str());
-		_size = text.size();
-		_pos = 0;
-	}
-
-	~ReadStringStream() {
-		delete []_text;
-	}
-
-	uint32 read(void *buffer, uint32 size) {
-		if (_pos + size > _size) {
-			size = _size - _pos;
-		}
-		memcpy(buffer, _text + _pos, size);
-		_pos += size;
-		return size;
-	}
-
-	bool eos() const {
-		return _pos == _size; // FIXME (eos definition change)
-	}
-
-};
-
-
-/*
-	Demented as it may sound, the success of a parsing operation in the
-	original BRA depends on what has been parsed before. The game features
-	an innovative chaos system that involves the parser and the very game
-	engine, in order to inflict the user an unforgettable game experience.
-
-	Ok, now for the serious stuff.
-
-	The PreProcessor implemented here fixes the location scripts before
-	they are fed to the parser. It tries to do so by a preliminary scan
-	of the text file, during which a score is assigned to each statement
-	(more on this later). When the whole file has been analyzed, the
-	statements are sorted according to their score, to create a parsable
-	sequence.
-
-	For parsing, the statements in location scripts can be conveniently
-	divided into 3 groups:
-
-	* location definitions
-	* element definitions
-	* start-up commands
-
-	Since the parsing of element definitions requires location parameters
-	to be set, location definitions should be encountered first in the
-	script. Start-up commands in turn may reference elements, so they can
-	be parsed last. The first goal is to make sure the parser gets these
-	three sets in this order.
-
-	Location definitions must also be presented in a certain sequence,
-	because resource files are not fully self-describing. In short, some
-	critical game data in contained in certain files, that must obviously
-	be read before any other can be analyzed. This is the second goal.
-
-	TODO: some words about actual implementation.
-*/
-
-class StatementDef;
-
-struct StatementListNode {
-	int	_score;
-	Common::String	_name;
-	Common::String	_text;
-
-	StatementListNode(int score, const Common::String &name, const Common::String &text) : _score(score), _name(name), _text(text) { }
-
-	bool operator<(const StatementListNode& node) const {
-		return _score < node._score;
-	}
-};
-typedef Common::List<StatementListNode> StatementList;
-
-
-class PreProcessor {
-	typedef Common::List<StatementDef*> DefList;
-
-	int _numZones;
-	DefList _defs;
-
-	StatementDef* findDef(const char* name);
-	uint getDefScore(StatementDef*);
-
-public:
-	PreProcessor();
-	~PreProcessor();
-	void preprocessScript(Script &script, StatementList &list);
-};
-
 
 
 } // namespace Parallaction

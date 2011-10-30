@@ -27,14 +27,16 @@
 
 #include "base/plugins.h"
 
-#include "common/advancedDetector.h"
+#include "engines/advancedDetector.h"
+#include "common/system.h"
 
 #include "cine/cine.h"
+#include "cine/various.h"
 
 namespace Cine {
 
 struct CINEGameDescription {
-	Common::ADGameDescription desc;
+	ADGameDescription desc;
 
 	int gameType;
 	uint32 features;
@@ -54,7 +56,7 @@ static const PlainGameDescriptor cineGames[] = {
 	{0, 0}
 };
 
-static const Common::ADObsoleteGameID obsoleteGameIDsTable[] = {
+static const ADObsoleteGameID obsoleteGameIDsTable[] = {
 	{"fw", "cine", Common::kPlatformUnknown},
 	{"os", "cine", Common::kPlatformUnknown},
 	{0, 0, Common::kPlatformUnknown}
@@ -70,7 +72,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("part01", "61d003202d301c29dd399acfb1354310"),
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_FW,
 		0,
@@ -89,7 +91,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			},
 			Common::EN_USA,
 			Common::kPlatformPC,
-			Common::ADGF_CD
+			ADGF_CD
 		},
 		GType_FW,
 		GF_CD | GF_CRYPTED_BOOT_PRC,
@@ -103,7 +105,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("part01", "91d7271155520eae6915a9dd2dac120c"),
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_FW,
 		0,
@@ -116,7 +118,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("part01", "f5e98fcca3fb5e7afa284c81c39d8b14"),
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_FW,
 		GF_ALT_FONT,
@@ -129,7 +131,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("part01", "570109f965c7f53984b98c83d86eb206"),
 			Common::ES_ESP,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_FW,
 		GF_ALT_FONT,
@@ -142,7 +144,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("part01", "5d1acb97abe9591f9008e00d07add95a"),
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_FW,
 		0,
@@ -155,7 +157,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("part01", "57afd280b598b4180fda6689fbedc4b8"),
 			Common::EN_ANY,
 			Common::kPlatformAmiga,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_FW,
 		0,
@@ -168,7 +170,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("part01", "3a87a913e0e33963a48a7f822ca0eb0e"),
 			Common::DE_DEU,
 			Common::kPlatformAmiga,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_FW,
 		GF_ALT_FONT,
@@ -181,7 +183,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("part01", "5ad0007ccd5f7b3dd6b15ea7f281f9e1"),
 			Common::ES_ESP,
 			Common::kPlatformAmiga,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_FW,
 		0,
@@ -194,7 +196,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("part01", "460f2da8793bc581a2d4b6fc19ccb5ae"),
 			Common::FR_FRA,
 			Common::kPlatformAmiga,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_FW,
 		0,
@@ -207,7 +209,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("part01", "1c8e5207743172134409ac58860021af"),
 			Common::IT_ITA,
 			Common::kPlatformAmiga,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_FW,
 		0,
@@ -224,7 +226,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformAmiga,
-			Common::ADGF_DEMO
+			ADGF_DEMO
 		},
 		GType_FW,
 		0,
@@ -237,7 +239,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("part01", "36050db13af57e462ca1adc4df99de4e"),
 			Common::EN_ANY,
 			Common::kPlatformAtariST,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_FW,
 		0,
@@ -250,7 +252,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("part01", "ef245573b7dab0d4825ceb98e37cef4d"),
 			Common::FR_FRA,
 			Common::kPlatformAtariST,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_FW,
 		0,
@@ -263,7 +265,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs00",	"d6752e7d25924cb866b61eb7cb0c8b56"),
 			Common::EN_GRB,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		0,
@@ -278,7 +280,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs1", "9629129b86979fa592c1787385bf3695"),
 			Common::EN_GRB,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		0,
@@ -291,7 +293,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs1", "d8c3a9d05a63e4cfa801826a7063a126"),
 			Common::EN_USA,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		0,
@@ -304,7 +306,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs00", "862a75d76fb7fffec30e52be9ad1c474"),
 			Common::EN_USA,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		GF_CD,
@@ -317,7 +319,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs1", "39b91ae35d1297ce0a76a1a803ca1593"),
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		0,
@@ -330,7 +332,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs1", "74c2dabd9d212525fca8875a5f6d8994"),
 			Common::ES_ESP,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		0,
@@ -347,7 +349,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			},
 			Common::ES_ESP,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		GF_CD,
@@ -360,7 +362,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs00", "f143567f08cfd1a9b1c9a41c89eadfef"),
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		0,
@@ -373,7 +375,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs1", "da066e6b8dd93f2502c2a3755f08dc12"),
 			Common::IT_ITA,
 			Common::kPlatformPC,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		0,
@@ -386,7 +388,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs0", "a9da5531ead0ebf9ad387fa588c0cbb0"),
 			Common::EN_GRB,
 			Common::kPlatformAmiga,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		0,
@@ -399,7 +401,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs0", "8a429ced2f4acff8a15ae125174042e8"),
 			Common::EN_GRB,
 			Common::kPlatformAmiga,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		0,
@@ -412,7 +414,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs0", "d5f27e33fc29c879f36f15b86ccfa58c"),
 			Common::EN_USA,
 			Common::kPlatformAmiga,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		0,
@@ -425,7 +427,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs0", "8b7dce249821d3a62b314399c4334347"),
 			Common::DE_DEU,
 			Common::kPlatformAmiga,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		0,
@@ -438,7 +440,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs0", "35fc295ddd0af9da932d256ba799a4b0"),
 			Common::ES_ESP,
 			Common::kPlatformAmiga,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		0,
@@ -451,7 +453,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs0", "d4ea4a97e01fa67ea066f9e785050ed2"),
 			Common::FR_FRA,
 			Common::kPlatformAmiga,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		0,
@@ -464,7 +466,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("demo", "8d3a750d1c840b1b1071e42f9e6f6aa2"),
 			Common::EN_GRB,
 			Common::kPlatformAmiga,
-			Common::ADGF_DEMO
+			ADGF_DEMO
 		},
 		GType_OS,
 		GF_DEMO,
@@ -477,7 +479,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs0", "1501d5ae364b2814a33ed19347c3fcae"),
 			Common::EN_GRB,
 			Common::kPlatformAtariST,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		0,
@@ -490,7 +492,7 @@ static const CINEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("procs0", "2148d25de3219dd4a36580ca735d0afa"),
 			Common::FR_FRA,
 			Common::kPlatformAtariST,
-			Common::ADGF_NO_FLAGS
+			ADGF_NO_FLAGS
 		},
 		GType_OS,
 		0,
@@ -501,7 +503,7 @@ static const CINEGameDescription gameDescriptions[] = {
 
 } // End of namespace Cine
 
-static const Common::ADParams detectionParams = {
+static const ADParams detectionParams = {
 	// Pointer to ADGameDescription or its superset structure
 	(const byte *)Cine::gameDescriptions,
 	// Size of that superset structure
@@ -520,9 +522,9 @@ static const Common::ADParams detectionParams = {
 	0
 };
 
-class CineMetaEngine : public Common::AdvancedMetaEngine {
+class CineMetaEngine : public AdvancedMetaEngine {
 public:
-	CineMetaEngine() : Common::AdvancedMetaEngine(detectionParams) {}
+	CineMetaEngine() : AdvancedMetaEngine(detectionParams) {}
 
 	virtual const char *getName() const {
 		return "Cinematique evo 1 engine";
@@ -532,19 +534,28 @@ public:
 		return "Future Wars & Operation Stealth (C) Delphine Software";
 	}
 
-	virtual bool createInstance(OSystem *syst, Engine **engine, const Common::ADGameDescription *desc) const;
+	virtual bool createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const;
 	virtual bool hasFeature(MetaEngineFeature f) const;
 	virtual SaveStateList listSaves(const char *target) const;
+	virtual int getMaximumSaveSlot() const;
+	virtual void removeSaveState(const char *target, int slot) const;
 };
 
 bool CineMetaEngine::hasFeature(MetaEngineFeature f) const {
 	return
-		(f == kSupportsRTL) ||
 		(f == kSupportsListSaves) ||
-		(f == kSupportsDirectLoad);
+		(f == kSupportsLoadingDuringStartup) ||
+		(f == kSupportsDeleteSave);
 }
 
-bool CineMetaEngine::createInstance(OSystem *syst, Engine **engine, const Common::ADGameDescription *desc) const {
+bool Cine::CineEngine::hasFeature(EngineFeature f) const {
+	return
+		(f == kSupportsRTL) ||
+		(f == kSupportsLoadingDuringRuntime) ||
+		(f == kSupportsSavingDuringRuntime);
+}
+
+bool CineMetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const {
 	const Cine::CINEGameDescription *gd = (const Cine::CINEGameDescription *)desc;
 	if (gd) {
 		*engine = new Cine::CineEngine(syst, gd);
@@ -578,14 +589,14 @@ SaveStateList CineMetaEngine::listSaves(const char *target) const {
 				if (pos < (sizeof(saveDesc) - 1)) {
 					if (ch < 32 || in->eos()) {
 						saveDesc[pos++] = '\0';
-					} 
+					}
 					else if (ch >= 32) {
 						saveDesc[pos++] = ch;
 					}
 				}
 			} while (ch >= 32 && !in->eos());
 			if (saveDesc[0] != 0) {
-				saveList.push_back(SaveStateDescriptor(slotNum, Common::String(saveDesc), *file));
+				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc));
 				file++;
 			}
 		} while (!in->eos());
@@ -596,8 +607,102 @@ SaveStateList CineMetaEngine::listSaves(const char *target) const {
 	return saveList;
 }
 
+int CineMetaEngine::getMaximumSaveSlot() const { return 9; }
+
+void CineMetaEngine::removeSaveState(const char *target, int slot) const {
+	// Load savegame descriptions from index file
+	typedef char CommandeType[20];
+	CommandeType saveNames[10];
+
+	Common::InSaveFile *in;
+	char tmp[80];
+
+	snprintf(tmp, 80, "%s.dir", target);
+	in = g_system->getSavefileManager()->openForLoading(tmp);
+
+	if (!in)
+		return;
+
+	in->read(saveNames, 10 * 20);
+	delete in;
+
+	// Set description for selected slot
+	char slotName[20];
+	slotName[0] = 0;
+	strncpy(saveNames[slot], slotName, 20);
+
+	// Update savegame descriptions
+	char indexFile[80];
+	snprintf(indexFile, 80, "%s.dir", target);
+
+	Common::OutSaveFile *out = g_system->getSavefileManager()->openForSaving(indexFile);
+	if (!out) {
+		warning("Unable to open file %s for saving", indexFile);
+		return;
+	}
+
+	out->write(saveNames, 10 * 20);
+	delete out;
+
+	// Delete save file
+	char saveFileName[256];
+	sprintf(saveFileName, "%s.%1d", target, slot);
+
+	g_system->getSavefileManager()->removeSavefile(saveFileName);
+}
+
 #if PLUGIN_ENABLED_DYNAMIC(CINE)
 	REGISTER_PLUGIN_DYNAMIC(CINE, PLUGIN_TYPE_ENGINE, CineMetaEngine);
 #else
 	REGISTER_PLUGIN_STATIC(CINE, PLUGIN_TYPE_ENGINE, CineMetaEngine);
 #endif
+
+namespace Cine {
+
+Common::Error CineEngine::loadGameState(int slot) {
+	char saveNameBuffer[256];
+	sprintf(saveNameBuffer, "%s.%1d", _targetName.c_str(), slot);
+	bool gameLoaded = makeLoad(saveNameBuffer);
+
+	return gameLoaded ? Common::kNoError : Common::kUnknownError;
+}
+
+Common::Error CineEngine::saveGameState(int slot, const char *desc) {
+	// Load savegame descriptions from index file
+	loadSaveDirectory();
+
+	// Set description for selected slot
+	strncpy(currentSaveName[slot], desc, 20);
+
+	// Update savegame descriptions
+	char indexFile[80];
+	snprintf(indexFile, 80, "%s.dir", _targetName.c_str());
+
+	Common::OutSaveFile *fHandle = g_saveFileMan->openForSaving(indexFile);
+	if (!fHandle) {
+		warning("Unable to open file %s for saving", indexFile);
+		return Common::kUnknownError;
+	}
+
+	fHandle->write(currentSaveName, 10 * 20);
+	delete fHandle;
+
+	// Save game
+	char saveFileName[256];
+	sprintf(saveFileName, "%s.%1d", _targetName.c_str(), slot);
+	makeSave(saveFileName);
+
+	checkDataDisk(-1);
+
+	return Common::kNoError;
+}
+
+bool CineEngine::canLoadGameStateCurrently() {
+	return (!disableSystemMenu && !inMenu);
+}
+
+bool CineEngine::canSaveGameStateCurrently() {
+	return (allowPlayerInput && !disableSystemMenu && !inMenu);
+}
+
+} // End of namespace Cine

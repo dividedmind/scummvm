@@ -153,7 +153,7 @@ void GUI::initMenu(Menu &menu) {
 		scrollUpButton->buttonCallback = getScrollUpButtonHandler();
 		scrollUpButton->nextButton = 0;
 		scrollUpButton->mouseWheel = -1;
-		
+
 		_menuButtonList = addButtonToList(_menuButtonList, scrollUpButton);
 		updateMenuButton(scrollUpButton);
 
@@ -335,6 +335,54 @@ int GUI::getNextSavegameSlot() {
 	return 0;
 }
 
+void GUI::checkTextfieldInput() {
+	Common::Event event;
+
+	uint32 now = _vm->_system->getMillis();
+
+	bool running = true;
+	int keys = 0;
+	while (_vm->_eventMan->pollEvent(event) && running) {
+		switch (event.type) {
+		case Common::EVENT_KEYDOWN:
+			if (event.kbd.keycode == 'q' && event.kbd.flags == Common::KBD_CTRL)
+				_vm->quitGame();
+			else
+				_keyPressed = event.kbd;
+			running = false;
+			break;
+
+		case Common::EVENT_LBUTTONDOWN:
+		case Common::EVENT_LBUTTONUP: {
+			Common::Point pos = _vm->getMousePos();
+			_vm->_mouseX = pos.x;
+			_vm->_mouseY = pos.y;
+			keys = event.type == Common::EVENT_LBUTTONDOWN ? 199 : (200 | 0x800);
+			running = false;
+			} break;
+
+		case Common::EVENT_MOUSEMOVE: {
+			Common::Point pos = _vm->getMousePos();
+			_vm->_mouseX = pos.x;
+			_vm->_mouseY = pos.y;
+			_screen->updateScreen();
+			_lastScreenUpdate = now;
+			} break;
+
+		default:
+			break;
+		}
+	}
+
+	if (now - _lastScreenUpdate > 50) {
+		_vm->_system->updateScreen();
+		_lastScreenUpdate = now;
+	}
+
+	processButtonList(_menuButtonList, keys | 0x8000, 0);
+	_vm->_system->delayMillis(3);
+}
+
 #pragma mark -
 
 MainMenu::MainMenu(KyraEngine_v1 *vm) : _vm(vm), _screen(0) {
@@ -393,14 +441,12 @@ int MainMenu::handle(int dim) {
 	memset(colorMap, 0, sizeof(colorMap));
 	_screen->setTextColorMap(colorMap);
 
-	Screen::FontId oldFont = _screen->setFont(Screen::FID_8_FNT);
+	Screen::FontId oldFont = _screen->setFont(_static.font);
 	int charWidthBackUp = _screen->_charWidth;
 
-	_screen->_charWidth = -2;
+	if (_vm->game() != GI_LOL)
+		_screen->_charWidth = -2;
 	_screen->setScreenDim(dim);
-
-	while (!_screen->isMouseVisible())
-		_screen->showMouse();
 
 	int backUpX = _screen->_curDim->sx;
 	int backUpY = _screen->_curDim->sy;
@@ -420,14 +466,15 @@ int MainMenu::handle(int dim) {
 
 	draw(selected);
 
-	_screen->showMouse();
+	while (!_screen->isMouseVisible())
+		_screen->showMouse();
 
 	int fh = _screen->getFontHeight();
 	int textPos = ((_screen->_curDim->w >> 1) + _screen->_curDim->sx) << 3;
 
-	Common::Rect menuRect(x + 16, y + 4, x + width - 16, y + 4 + fh * 4);
+	Common::Rect menuRect(x + 16, y + 4, x + width - 16, y + 4 + fh * _static.menuTable[3]);
 
-	while (!_vm->quit()) {
+	while (!_vm->shouldQuit()) {
 		updateAnimation();
 		bool mousePressed = getInput();
 
@@ -436,18 +483,18 @@ int MainMenu::handle(int dim) {
 			int item = (mouse.y - menuRect.top) / fh;
 
 			if (item != selected) {
-				printString(_static.strings[selected], textPos, menuRect.top + selected * fh, _static.colorNormal, 0, 5);
-				printString(_static.strings[item], textPos, menuRect.top + item * fh, _static.colorFlash, 0, 5);
+				printString(_static.strings[selected], textPos, menuRect.top + selected * fh, _static.menuTable[5], 0, 5);
+				printString(_static.strings[item], textPos, menuRect.top + item * fh, _static.menuTable[6], 0, 5);
 
 				selected = item;
 			}
 
 			if (mousePressed) {
 				for (int i = 0; i < 3; i++) {
-					printString(_static.strings[selected], textPos, menuRect.top + selected * fh, _static.colorNormal, 0, 5);
+					printString(_static.strings[selected], textPos, menuRect.top + selected * fh, _static.menuTable[5], 0, 5);
 					_screen->updateScreen();
 					_system->delayMillis(50);
-					printString(_static.strings[selected], textPos, menuRect.top + selected * fh, _static.colorFlash, 0, 5);
+					printString(_static.strings[selected], textPos, menuRect.top + selected * fh, _static.menuTable[6], 0, 5);
 					_screen->updateScreen();
 					_system->delayMillis(50);
 				}
@@ -458,7 +505,7 @@ int MainMenu::handle(int dim) {
 		_system->delayMillis(10);
 	}
 
-	if (_vm->quit())
+	if (_vm->shouldQuit())
 		command = -1;
 
 	_screen->copyRegion(backUpX, backUpY, backUpX, backUpY, backUpWidth, backUpHeight, 3, 0);
@@ -514,8 +561,8 @@ void MainMenu::printString(const char *format, int x, int y, int col1, int col2,
 		x -= _screen->getTextWidth(string);
 
 	if (flags & 4) {
-		_screen->printText(string, x - 1, y, 240, col2);
-		_screen->printText(string, x, y + 1, 240, col2);
+		_screen->printText(string, x - 1, y, _static.altColor, col2);
+		_screen->printText(string, x, y + 1, _static.altColor, col2);
 	}
 
 	if (flags & 8) {

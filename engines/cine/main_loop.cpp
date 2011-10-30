@@ -25,6 +25,7 @@
 
 
 #include "common/scummsys.h"
+#include "common/events.h"
 #include "common/system.h"
 
 #include "cine/main_loop.h"
@@ -264,7 +265,7 @@ void CineEngine::mainLoop(int bootScriptIdx) {
 
 		errorVar = 0;
 
-		addScriptToGlobalScripts(bootScriptIdx);	
+		addScriptToGlobalScripts(bootScriptIdx);
 
 		menuVar = 0;
 
@@ -336,7 +337,7 @@ void CineEngine::mainLoop(int bootScriptIdx) {
 
 		stopMusicAfterFadeOut();
 		di = executePlayerInput();
-		
+
 		// Clear the zoneQuery table (Operation Stealth specific)
 		if (g_cine->getGameType() == Cine::GType_OS) {
 			Common::set_to(zoneQuery.begin(), zoneQuery.end(), 0);
@@ -419,7 +420,7 @@ void CineEngine::mainLoop(int bootScriptIdx) {
 
 		manageEvents();
 
-	} while (!quit() && _danKeysPressed != 7);
+	} while (!shouldQuit() && _danKeysPressed != 7);
 
 	hideMouse();
 	g_sound->stopMusic();

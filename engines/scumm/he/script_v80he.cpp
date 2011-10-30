@@ -23,8 +23,6 @@
  *
  */
 
-
-
 #include "common/config-file.h"
 #include "common/config-manager.h"
 #include "common/savefile.h"
@@ -401,17 +399,19 @@ void ScummEngine_v80he::o80_createSound() {
 }
 
 void ScummEngine_v80he::o80_getFileSize() {
-	byte filename[256];
+	byte buffer[256];
 
-	copyScriptString(filename, sizeof(filename));
-	convertFilePath(filename);
+	copyScriptString(buffer, sizeof(buffer));
+	const char *filename = (char *)buffer + convertFilePath(buffer);
 
-	Common::SeekableReadStream *f = _saveFileMan->openForLoading((const char *)filename);
-	if (!f) {
+	Common::SeekableReadStream *f = 0;
+	if (!_saveFileMan->listSavefiles(filename).empty()) {
+		f = _saveFileMan->openForLoading((const char *)filename);
+	} else {
 		Common::File *file = new Common::File();
 		file->open((const char *)filename);
 		if (!file->isOpen())
-			delete f;
+			delete file;
 		else
 			f = file;
 	}
@@ -466,7 +466,16 @@ void ScummEngine_v80he::o80_readConfigFile() {
 	copyScriptString(option, sizeof(option));
 	copyScriptString(section, sizeof(section));
 	copyScriptString(filename, sizeof(filename));
+
 	r = convertFilePath(filename);
+
+	if (_game.id == GID_TREASUREHUNT) {
+		// WORKAROUND: Remove invalid characters
+		if (!strcmp((char *)section, "Blue'sTreasureHunt-Disc1"))
+			memcpy(section, "BluesTreasureHunt-Disc1\0", 24);
+		else if (!strcmp((char *)section, "Blue'sTreasureHunt-Disc2"))
+			memcpy(section, "BluesTreasureHunt-Disc2\0", 24);
+	}
 
 	Common::ConfigFile ConfFile;
 	if (!strcmp((char *)filename + r, "map.ini"))
@@ -527,6 +536,14 @@ void ScummEngine_v80he::o80_writeConfigFile() {
 	}
 
 	r = convertFilePath(filename);
+
+	if (_game.id == GID_TREASUREHUNT) {
+		// WORKAROUND: Remove invalid characters
+		if (!strcmp((char *)section, "Blue'sTreasureHunt-Disc1"))
+			memcpy(section, "BluesTreasureHunt-Disc1\0", 24);
+		else if (!strcmp((char *)section, "Blue'sTreasureHunt-Disc2"))
+			memcpy(section, "BluesTreasureHunt-Disc2\0", 24);
+	}
 
 	Common::ConfigFile ConfFile;
 	ConfFile.loadFromSaveFile((const char *)filename + r);
@@ -646,7 +663,7 @@ void ScummEngine_v80he::drawLine(int x1, int y1, int x, int y, int step, int typ
 
 
 	if (type == 2) {
-		Actor *a = derefActor(id, "drawLine");
+		ActorHE *a = (ActorHE *)derefActor(id, "drawLine");
 		a->drawActorToBackBuf(x, y);
 	} else if (type == 3) {
 		WizImage wi;
@@ -697,7 +714,7 @@ void ScummEngine_v80he::drawLine(int x1, int y1, int x, int y, int step, int typ
 			continue;
 
 		if (type == 2) {
-			Actor *a = derefActor(id, "drawLine");
+			ActorHE *a = (ActorHE *)derefActor(id, "drawLine");
 			a->drawActorToBackBuf(x, y);
 		} else if (type == 3) {
 			WizImage wi;

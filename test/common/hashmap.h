@@ -64,6 +64,11 @@ class HashMapTestSuite : public CxxTest::TestSuite
 		TS_ASSERT( !container.empty() );
 		container.erase(4);
 		TS_ASSERT( container.empty() );
+		container[1] = 33;
+		TS_ASSERT( container.contains(1) );
+		TS_ASSERT( !container.empty() );
+		container.erase(1);
+		TS_ASSERT( container.empty() );
 	}
 
 	void test_lookup(void) {
@@ -95,7 +100,7 @@ class HashMapTestSuite : public CxxTest::TestSuite
 		container.clear();
 		TS_ASSERT( container.begin() == container.end() );
 	}
-	
+
 	void test_hash_map_copy(void) {
 		Common::HashMap<int, int> map1, container2;
 		map1[323] = 32;

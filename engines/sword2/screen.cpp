@@ -52,8 +52,6 @@ Screen::Screen(Sword2Engine *vm, int16 width, int16 height) {
 
 	_dirtyGrid = _buffer = NULL;
 
-	_vm->_system->initSize(width, height);
-
 	_screenWide = width;
 	_screenDeep = height;
 
@@ -99,6 +97,9 @@ Screen::Screen(Sword2Engine *vm, int16 width, int16 height) {
 	_layer = 0;
 
 	_dimPalette = false;
+
+	_pauseTicks = 0;
+	_pauseStartTick = 0;
 }
 
 Screen::~Screen() {
@@ -106,6 +107,18 @@ Screen::~Screen() {
 	free(_dirtyGrid);
 	closeBackgroundLayer();
 	free(_lightMask);
+}
+
+uint32 Screen::getTick() {
+	return _vm->getMillis() - _pauseTicks;
+}
+
+void Screen::pauseScreen(bool pause) {
+	if (pause) {
+		_pauseStartTick = _vm->_system->getMillis();
+	} else {
+		_pauseTicks += (_vm->_system->getMillis() - _pauseStartTick);
+	}
 }
 
 /**
@@ -312,10 +325,10 @@ void Screen::buildDisplay() {
 		updateDisplay();
 
 		_frameCount++;
-		if (_vm->getMillis() > _cycleTime) {
+		if (getTick() > _cycleTime) {
 			_fps = _frameCount;
 			_frameCount = 0;
-			_cycleTime = _vm->getMillis() + 1000;
+			_cycleTime = getTick() + 1000;
 		}
 	} while (!endRenderCycle());
 
@@ -386,10 +399,10 @@ void Screen::displayMsg(byte *text, int time) {
 	waitForFade();
 
 	if (time > 0) {
-		uint32 targetTime = _vm->getMillis() + (time * 1000);
+		uint32 targetTime = _vm->_system->getMillis() + (time * 1000);
 		_vm->sleepUntil(targetTime);
 	} else {
-		while (!_vm->quit()) {
+		while (!_vm->shouldQuit()) {
 			MouseEvent *me = _vm->mouseEvent();
 			if (me && (me->buttons & (RD_LEFTBUTTONDOWN | RD_RIGHTBUTTONDOWN)))
 				break;
@@ -919,7 +932,32 @@ void Screen::rollCredits() {
 
 	while (1) {
 		char buffer[80];
-		char *line = f.readLine_OLD(buffer, sizeof(buffer));
+		char *line = f.readLine_NEW(buffer, sizeof(buffer));
+
+		if (line) {
+			// Replace invalid character codes prevent the 'dud'
+			// symbol from showing up in the credits.
+
+			for (byte *ptr = (byte *)line; *ptr; ptr++) {
+				switch (*ptr) {
+				case 9:
+					// The German credits contain these.
+					// Convert them to spaces.
+					*ptr = 32;
+					break;
+				case 10:
+					// LF is treated as end of line.
+					*ptr = 0;
+					break;
+				case 170:
+					// The Spanish credits contain these.
+					// Convert them to periods.
+					*ptr = '.';
+				default:
+					break;
+				}
+			}
+		}
 
 		if (!line || *line == 0) {
 			if (!hasCenterMark) {
@@ -935,21 +973,6 @@ void Screen::rollCredits() {
 				break;
 
 			continue;
-		}
-
-		// Replace invalid character codes to avoid the credits to show
-		// the 'dud' symbol.
-
-		for (byte *ptr = (byte *)line; *ptr; ptr++) {
-			// The German credits contains character code 9. We
-			// replace them with spaces.
-			if (*ptr == 9)
-				*ptr = 32;
-
-			// The Spanish credits contains character code 170. We
-			// replace them with dots.
-			if (*ptr == 170)
-				*ptr = '.';
 		}
 
 		char *center_mark = strchr(line, '^');
@@ -1027,7 +1050,7 @@ void Screen::rollCredits() {
 	bool abortCredits = false;
 
 	int scrollSteps = lineTop + CREDITS_FONT_HEIGHT;
-	uint32 musicStart = _vm->getMillis();
+	uint32 musicStart = getTick();
 
 	// Ideally the music should last just a tiny bit longer than the
 	// credits. Note that musicTimeRemaining() will return 0 if the music
@@ -1035,7 +1058,7 @@ void Screen::rollCredits() {
 
 	uint32 musicLength = MAX((int32)(1000 * (_vm->_sound->musicTimeRemaining() - 3)), 25 * (int32)scrollSteps);
 
-	while (scrollPos < scrollSteps && !_vm->quit()) {
+	while (scrollPos < scrollSteps && !_vm->shouldQuit()) {
 		clearScene();
 
 		for (i = startLine; i < lineCount; i++) {
@@ -1104,7 +1127,7 @@ void Screen::rollCredits() {
 		if (abortCredits && getFadeStatus() == RDFADE_BLACK)
 			break;
 
-		_vm->sleepUntil(musicStart + (musicLength * scrollPos) / scrollSteps);
+		_vm->sleepUntil(musicStart + (musicLength * scrollPos) / scrollSteps + _pauseTicks);
 		scrollPos++;
 	}
 
@@ -1123,13 +1146,13 @@ void Screen::rollCredits() {
 		// The music should either have stopped or be about to stop, so
 		// wait for it to really happen.
 
-		while (_vm->_sound->musicTimeRemaining() && !_vm->quit()) {
+		while (_vm->_sound->musicTimeRemaining() && !_vm->shouldQuit()) {
 			updateDisplay(false);
 			_vm->_system->delayMillis(100);
 		}
 	}
 
-	if (_vm->quit())
+	if (_vm->shouldQuit())
 		return;
 
 	waitForFade();

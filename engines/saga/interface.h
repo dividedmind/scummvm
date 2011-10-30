@@ -59,8 +59,9 @@ enum InterfaceUpdateFlags {
 #define RID_IHNM_BOSS_SCREEN 19		// not in demo
 #define RID_ITE_TYCHO_MAP 1686
 #define RID_ITE_SPR_CROSSHAIR (73 + 9)
-#define TIMETOSAVE (kScriptTimeTicksPerSecond * 1000 * 60 * 30)
-#define TIMETOBLINK	(kScriptTimeTicksPerSecond * 1000 * 1)
+#define TIMETOSAVE (1000000 * 60 * 30) // 30 minutes
+#define TIMETOBLINK_ITE	(1000000 * 1)
+#define TIMETOBLINK_IHNM	(1000000 / 10)
 
 // Converse-specific stuff
 
@@ -255,7 +256,7 @@ public:
 	}
 
 private:
-	void drawInventory(Surface *backBuffer);
+	void drawInventory();
 	void updateInventory(int pos);
 	void inventoryChangePos(int chg);
 	void inventorySetPos(int key);
@@ -338,18 +339,18 @@ private:
 	void setLoad(PanelButton *panelButton);
 	void setSave(PanelButton *panelButton);
 
-	void drawTextInput(Surface *ds, InterfacePanel *panel, PanelButton *panelButton);
-	void drawPanelText(Surface *ds, InterfacePanel *panel, PanelButton *panelButton);
-	void drawPanelButtonText(Surface *ds, InterfacePanel *panel, PanelButton *panelButton, int spritenum = 0);
+	void drawTextInput(InterfacePanel *panel, PanelButton *panelButton);
+	void drawPanelText(InterfacePanel *panel, PanelButton *panelButton);
+	void drawPanelButtonText(InterfacePanel *panel, PanelButton *panelButton, int spritenum = 0);
 	enum ButtonKind {
 		kButton,
 		kSlider,
 		kEdit
 	};
-	void drawButtonBox(Surface *ds, const Rect &rect, ButtonKind kind, bool down);
-	void drawPanelButtonArrow(Surface *ds, InterfacePanel *panel, PanelButton *panelButton);
-	void drawVerbPanelText(Surface *ds, PanelButton *panelButton, KnownColor textKnownColor, KnownColor textShadowKnownColor);
-	void drawVerbPanel(Surface *backBuffer, PanelButton* panelButton);
+	void drawButtonBox(const Rect &rect, ButtonKind kind, bool down);
+	void drawPanelButtonArrow(InterfacePanel *panel, PanelButton *panelButton);
+	void drawVerbPanelText(PanelButton *panelButton, KnownColor textKnownColor, KnownColor textShadowKnownColor);
+	void drawVerbPanel(PanelButton* panelButton);
 	void calcOptionSaveSlider();
 	bool processTextInput(Common::KeyState keystate);
 	void processStatusTextInput(Common::KeyState keystate);
@@ -364,7 +365,7 @@ public:
 	void converseSetPos(int key);
 
 private:
-	void converseDisplayTextLines(Surface *ds);
+	void converseDisplayTextLines();
 	PanelButton *getPanelButtonByVerbType(int verb) {
 		if ((verb < 0) || (verb >= kVerbTypeIdsMax)) {
 			error("Interface::getPanelButtonByVerbType wrong verb");

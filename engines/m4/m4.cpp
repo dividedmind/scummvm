@@ -75,7 +75,7 @@ void escapeHotkeyHandler(M4Engine *vm, View *view, uint32 key) {
 void textviewHotkeyHandler(M4Engine *vm, View *view, uint32 key) {
 	// Deactivate the scene if it's currently active
 	View *sceneView = vm->_viewManager->getView(VIEWID_SCENE);
-	if (sceneView != NULL) 
+	if (sceneView != NULL)
 		vm->_viewManager->deleteView(sceneView);
 
 	// Activate the textview view
@@ -111,8 +111,8 @@ M4Engine::M4Engine(OSystem *syst, const M4GameDescription *gameDesc) :
 	Common::File::addDefaultDirectory("goodstuf");	// FIXME: This is nonsense
 	Common::File::addDefaultDirectory("resource");	// FIXME: This is nonsense
 
-	Common::addSpecialDebugLevel(kDebugScript, "script", "Script debug level");
-	Common::addSpecialDebugLevel(kDebugConversations, "conversations", "Conversations debugging");
+	Common::addDebugChannel(kDebugScript, "script", "Script debug level");
+	Common::addDebugChannel(kDebugConversations, "conversations", "Conversations debugging");
 }
 
 
@@ -141,15 +141,12 @@ M4Engine::~M4Engine() {
 	delete _resourceManager;
 }
 
-int M4Engine::init() {
+Common::Error M4Engine::init() {
 	// Initialize backend
-	_system->beginGFXTransaction();
-	initCommonGFX(isM4());
 	if (isM4())
-		_system->initSize(640, 480);
+		initGraphics(640, 480, true);
 	else
-		_system->initSize(320, 200);
-	_system->endGFXTransaction();
+		initGraphics(320, 200, false);
 
 	_screen = new M4Surface(true); // Special form for creating screen reference
 
@@ -197,7 +194,7 @@ int M4Engine::init() {
 	_random = new Common::RandomSource();
 	g_system->getEventManager()->registerRandomSource(*_random, "m4");
 
-	return 0;
+	return Common::kNoError;
 }
 
 void M4Engine::eventHandler() {
@@ -205,11 +202,11 @@ void M4Engine::eventHandler() {
 	uint32 keycode = 0;
 
 	if ((event = _events->handleEvents()) != MEVENT_NO_EVENT) {
-		if (_viewManager->viewCount() > 0)
+		if (_viewManager->containsViews())
 			_viewManager->handleMouseEvents(event);
 	}
 
-	if (_events->kbdCheck(keycode)) 
+	if (_events->kbdCheck(keycode))
 		_viewManager->handleKeyboardEvents(keycode);
 }
 
@@ -220,9 +217,9 @@ bool M4Engine::delay(int duration, bool keyAborts, bool clickAborts) {
 
 	while (!_events->quitFlag && (g_system->getMillis() < endTime)) {
 		event = _events->handleEvents();
-		if (clickAborts && (event == MEVENT_LEFT_RELEASE) || (event == MEVENT_RIGHT_RELEASE)) 
+		if (clickAborts && (event == MEVENT_LEFT_RELEASE) || (event == MEVENT_RIGHT_RELEASE))
 			return true;
-			
+
 		if (_events->kbdCheck(keycode)) {
 			if (keyAborts)
 				return true;
@@ -272,14 +269,14 @@ void M4Engine::loadMenu(MenuType menuType, bool loadSaveFromHotkey, bool calledF
 	_viewManager->moveToFront(view);
 }
 
-int M4Engine::go() {
+Common::Error M4Engine::go() {
 	if (isM4())
 		return goM4();
 	else
 		return goMADS();
 }
 
-int M4Engine::goMADS() {
+Common::Error M4Engine::goMADS() {
 	_palette->setMadsSystemPalette();
 
 	_mouse->init("cursor.ss", NULL);
@@ -351,10 +348,10 @@ int M4Engine::goMADS() {
 		g_system->delayMillis(10);
 	}
 
-	return 0;
+	return Common::kNoError;
 }
 
-int M4Engine::goM4() {
+Common::Error M4Engine::goM4() {
 
 	_script->open("m4.dat");
 
@@ -375,7 +372,7 @@ int M4Engine::goM4() {
 	}
 #endif
 
-	return 0;
+	return Common::kNoError;
 #endif
 
 	// Set up the inventory
@@ -406,7 +403,7 @@ int M4Engine::goM4() {
 	_viewManager->addView(_scene);
 
 	// Setup game wide hotkeys. Note that Orion Burger used F2/F3 for Save/Restore,
-	// but for standardisation with most other games, F5/F7 are also mapped 
+	// but for standardisation with most other games, F5/F7 are also mapped
 
 	_viewManager->systemHotkeys().add(Common::KEYCODE_ESCAPE, &escapeHotkeyHandler);
 	_viewManager->systemHotkeys().add(Common::KEYCODE_F2, &saveGameHotkeyHandler);
@@ -457,7 +454,7 @@ int M4Engine::goM4() {
 			_kernel->loadRoomScriptFunctions();
 
 			_kernel->roomInit();
-			
+
 #ifdef INTRO_TEST
 			if (_kernel->currentRoom == 951) {
 				curPart = 0;
@@ -508,19 +505,19 @@ int M4Engine::goM4() {
 			_ws->update();
 			_viewManager->refreshAll();
 			nextFrame = g_system->getMillis();// + GAME_FRAME_DELAY;
-			
+
 			// TEST STUFF ONLY
 			if (_player->commandReady) {
 				_kernel->roomParser();
 				_player->commandReady = false;
 			}
-			
+
 		}
 
 		g_system->delayMillis(10);
 	}
 
-	return 0;
+	return Common::kNoError;
 }
 
 void M4Engine::dumpFile(const char* filename, bool uncompress) {
@@ -531,7 +528,7 @@ void M4Engine::dumpFile(const char* filename, bool uncompress) {
 	printf("Dumping %s, size: %i\n", filename, fileS->size());
 
 	if (!uncompress) {
-		while(!fileS->eos()) {
+		while (!fileS->eos()) {
 			bytesRead = fileS->read(buffer, 256);
 			fwrite(buffer, bytesRead, 1, destFile);
 		}
@@ -541,7 +538,7 @@ void M4Engine::dumpFile(const char* filename, bool uncompress) {
 		for (int i = 0; i < packData.getCount(); i++) {
 			sourceUnc = packData.getItemStream(i);
 			printf("Dumping compressed chunk %i of %i, size is %i\n", i + 1, packData.getCount(), sourceUnc->size());
-			while(!sourceUnc->eos()) {
+			while (!sourceUnc->eos()) {
 				bytesRead = sourceUnc->read(buffer, 256);
 				fwrite(buffer, bytesRead, 1, destFile);
 			}

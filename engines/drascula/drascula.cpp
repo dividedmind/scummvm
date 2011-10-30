@@ -55,7 +55,7 @@ static const GameSettings drasculaSettings[] = {
 DrasculaEngine::DrasculaEngine(OSystem *syst, const DrasculaGameDescription *gameDesc) : Engine(syst), _gameDescription(gameDesc) {
 
 	// Setup mixer
-	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));
+	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, ConfMan.getInt("speech_volume"));
 	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, ConfMan.getInt("music_volume"));
 
 	_rnd = new Common::RandomSource();
@@ -66,6 +66,8 @@ DrasculaEngine::DrasculaEngine(OSystem *syst, const DrasculaGameDescription *gam
 		_system->openCD(cd_num);
 
 	_lang = kEnglish;
+
+	_keyBufferHead = _keyBufferTail = 0;
 }
 
 DrasculaEngine::~DrasculaEngine() {
@@ -104,12 +106,9 @@ DrasculaEngine::~DrasculaEngine() {
 	freeTexts(_textd1);
 }
 
-int DrasculaEngine::init() {
+Common::Error DrasculaEngine::init() {
 	// Initialize backend
-	_system->beginGFXTransaction();
-	initCommonGFX(false);
-	_system->initSize(320, 200);
-	_system->endGFXTransaction();
+	initGraphics(320, 200, false);
 
 	switch (getLanguage()) {
 	case Common::EN_ANY:
@@ -170,15 +169,15 @@ int DrasculaEngine::init() {
 	*textName = 0;
 
 	if (!loadDrasculaDat())
-		return 1;
+		return Common::kUnknownError;
 
 	setupRoomsTable();
 	loadArchives();
 
-	return 0;
+	return Common::kNoError;
 }
 
-int DrasculaEngine::go() {
+Common::Error DrasculaEngine::go() {
 	currentChapter = 1; // values from 1 to 6 will start each part of game
 	loadedDifferentChapter = 0;
 
@@ -220,7 +219,7 @@ int DrasculaEngine::go() {
 
 		allocMemory();
 
-		withVoices = 0;
+		_subtitlesDisabled = !ConfMan.getBool("subtitles");
 		selectionMade = 0;
 
 		if (currentChapter != 3)
@@ -274,7 +273,7 @@ int DrasculaEngine::go() {
 		currentChapter++;
 	}
 
-	return 0;
+	return Common::kNoError;
 }
 
 void DrasculaEngine::endChapter() {
@@ -474,7 +473,7 @@ bool DrasculaEngine::runCurrentChapter() {
 
 		if (menuScreen == 0 && takeObject == 1)
 			checkObjects();
-		
+
 #ifdef _WIN32_WCE
 		if (rightMouseButton)
 			if (menuScreen) {
@@ -503,7 +502,7 @@ bool DrasculaEngine::runCurrentChapter() {
 		// Do not show the inventory screen in chapter 5, if the right mouse button is clicked
 		// while the plug (object 16) is held
 		// Fixes bug #2059621 - "DRASCULA: Plug bug"
-		if (rightMouseButton == 1 && menuScreen == 0 && 
+		if (rightMouseButton == 1 && menuScreen == 0 &&
 			!(currentChapter == 5 && pickedObject == 16)) {
 #endif
 			delay(100);
@@ -560,12 +559,16 @@ bool DrasculaEngine::runCurrentChapter() {
 		} else if (key == Common::KEYCODE_F8) {
 			selectVerb(0);
 		} else if (key == Common::KEYCODE_v) {
-			withVoices = 1;
+			_subtitlesDisabled = true;
+			ConfMan.setBool("subtitles", !_subtitlesDisabled);
+
 			print_abc(_textsys[2], 96, 86);
 			updateScreen();
 			delay(1410);
 		} else if (key == Common::KEYCODE_t) {
-			withVoices = 0;
+			_subtitlesDisabled = false;
+			ConfMan.setBool("subtitles", !_subtitlesDisabled);
+
 			print_abc(_textsys[3], 94, 86);
 			updateScreen();
 			delay(1460);
@@ -575,7 +578,7 @@ bool DrasculaEngine::runCurrentChapter() {
 		} else if (currentChapter == 6 && key == Common::KEYCODE_0 && roomNumber == 61) {
 			loadPic("alcbar.alg", bgSurface, 255);
 		}
-		
+
 		if (leftMouseButton != 0 || rightMouseButton != 0 || key != 0)
 			if (currentChapter != 3)
 				framesWithoutAction = 0;
@@ -701,8 +704,27 @@ bool DrasculaEngine::verify2() {
 
 Common::KeyCode DrasculaEngine::getScan() {
 	updateEvents();
+	if (_keyBufferHead == _keyBufferTail) return Common::KEYCODE_INVALID;
 
-	return _keyPressed.keycode;
+	Common::KeyCode key = _keyBuffer[_keyBufferTail].keycode;
+	_keyBufferTail = (_keyBufferTail + 1) % KEYBUFSIZE;
+
+	return key;
+}
+
+void DrasculaEngine::addKeyToBuffer(Common::KeyState& key) {
+	if ((_keyBufferHead + 1) % KEYBUFSIZE == _keyBufferTail) {
+		warning("key buffer overflow");
+		return;
+	}
+
+	_keyBuffer[_keyBufferHead] = key;
+	_keyBufferHead = (_keyBufferHead + 1) % KEYBUFSIZE;
+}
+
+void DrasculaEngine::flushKeyBuffer() {
+	updateEvents();
+	_keyBufferHead = _keyBufferTail = 0;
 }
 
 void DrasculaEngine::updateEvents() {
@@ -718,10 +740,9 @@ void DrasculaEngine::updateEvents() {
 #endif
 		switch (event.type) {
 		case Common::EVENT_KEYDOWN:
-			_keyPressed = event.kbd;
+			addKeyToBuffer(event.kbd);
 			break;
 		case Common::EVENT_KEYUP:
-			_keyPressed.keycode = Common::KEYCODE_INVALID;
 			break;
 		case Common::EVENT_MOUSEMOVE:
 			mouseX = event.mouse.x;
@@ -778,7 +799,7 @@ void DrasculaEngine::reduce_hare_chico(int xx1, int yy1, int xx2, int yy2, int w
 
 	for (n = 0; n < newHeight; n++) {
 		for (m = 0; m < newWidth; m++) {
-			copyRect((int)pixelX, (int)pixelY, xx2 + m, yy2 + n, 
+			copyRect((int)pixelX, (int)pixelY, xx2 + m, yy2 + n,
 					 1, 1, dir_inicio, dir_fin);
 
 			pixelX += totalX;
@@ -833,7 +854,7 @@ bool DrasculaEngine::loadDrasculaDat() {
 	if (!in.isOpen()) {
 		Common::String errorMessage = "You're missing the 'drascula.dat' file. Get it from the ScummVM website";
 		GUIErrorMessage(errorMessage);
-		warning(errorMessage.c_str());
+		warning("%s", errorMessage.c_str());
 
 		return false;
 	}
@@ -847,17 +868,17 @@ bool DrasculaEngine::loadDrasculaDat() {
 	if (strcmp(buf, "DRASCULA")) {
 		Common::String errorMessage = "File 'drascula.dat' is corrupt. Get it from the ScummVM website";
 		GUIErrorMessage(errorMessage);
-		warning(errorMessage.c_str());
+		warning("%s", errorMessage.c_str());
 
 		return false;
 	}
 
 	ver = in.readByte();
-	
+
 	if (ver != DRASCULA_DAT_VER) {
 		snprintf(buf, 256, "File 'drascula.dat' is wrong version. Expected %d but got %d. Get it from the ScummVM website", DRASCULA_DAT_VER, ver);
 		GUIErrorMessage(buf);
-		warning(buf);
+		warning("%s", buf);
 
 		return false;
 	}

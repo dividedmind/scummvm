@@ -32,20 +32,115 @@ using Common::File;
 
 namespace AGOS {
 
-const byte *AGOSEngine::getStringPtrByID(uint16 stringId) {
-	const byte *string_ptr;
+void AGOSEngine::uncompressText(byte *ptr) {
+	byte a;
+	while (1) {
+		if (_awaitTwoByteToken != 0)
+			a = _awaitTwoByteToken;
+		else
+			a = *ptr++;
+		if (a == 0)
+			return;
+		ptr = uncompressToken(a, ptr);
+		if (ptr == 0)
+			return;
+	}
+}
+
+byte *AGOSEngine::uncompressToken(byte a, byte *ptr) {
+	byte *ptr1 = 0;
+	byte *ptr2 = 0;
+	byte b;
+	int count1 = 0;
+
+	if (a == 0xFF || a == 0xFE || a == 0xFD) {
+		if (a == 0xFF)
+			ptr2 = _twoByteTokenStrings;
+		if (a == 0xFE) 
+			ptr2 = _secondTwoByteTokenStrings;
+		if (a == 0xFD)
+			ptr2 = _thirdTwoByteTokenStrings;
+		_awaitTwoByteToken = a;
+		b = a;
+		a = *ptr++;
+		if (a == 0)		/* Need to return such that next byte   */
+			return 0;	/* is used as two byte token		*/
+
+		_awaitTwoByteToken = 0;
+		ptr1 = _twoByteTokens;
+		while (*ptr1 != a) {
+			ptr1++;
+			count1++;
+			if (*ptr1 == 0)	{	/* If was not a two byte token  */
+				count1 = 0;	/* then was a byte token.	*/
+				ptr1 = _byteTokens;
+				while (*ptr1 != a) {
+					ptr1++;
+					count1++;
+				}
+				ptr1 = _byteTokenStrings;		/* Find it */
+				while (count1--)	{			
+					while (*ptr1++)
+						;
+				}
+				ptr1 = uncompressToken(b, ptr1);	/* Try this one as a two byte token */
+				uncompressText(ptr1);			/* Uncompress rest of this token    */
+				return ptr;
+			}
+		}
+		while (count1--) {
+			while (*ptr2++)
+				;
+		}
+		uncompressText(ptr2);
+	} else {
+		ptr1 = _byteTokens;
+		while (*ptr1 != a) {
+			ptr1++;
+			count1++;
+			if (*ptr1 == 0) {
+				_textBuffer[_textCount++] = a;	/* Not a byte token */
+				return ptr;			/* must be real character */
+			}
+		}
+		ptr1 = _byteTokenStrings;
+		while (count1--)	{		/* Is a byte token so count */
+			while (*ptr1++)		/* to start of token */
+				;
+		}
+		uncompressText(ptr1);			/* and do it */
+	}
+	return ptr;
+}
+
+const byte *AGOSEngine::getStringPtrByID(uint16 stringId, bool upperCase) {
+	const byte *stringPtr;
 	byte *dst;
 
 	_freeStringSlot ^= 1;
+	dst = _stringReturnBuffer[_freeStringSlot];
 
-	if (stringId < 0x8000) {
-		string_ptr = _stringTabPtr[stringId];
+	if (getGameType() == GType_ELVIRA1 && getPlatform() == Common::kPlatformAtariST) {
+		byte *ptr = _stringTabPtr[stringId];
+		_textCount = 0;
+		_awaitTwoByteToken = 0;
+		uncompressText(ptr);
+		_textBuffer[_textCount] = 0;
+		strcpy((char *)dst, (const char *)_textBuffer);
 	} else {
-		string_ptr = getLocalStringByID(stringId);
+		if (stringId < 0x8000) {
+			stringPtr = _stringTabPtr[stringId];
+		} else {
+			stringPtr = getLocalStringByID(stringId);
+		}
+		strcpy((char *)dst, (const char *)stringPtr);
 	}
 
-	dst = _stringReturnBuffer[_freeStringSlot];
-	strcpy((char *)dst, (const char *)string_ptr);
+	if (upperCase && *dst) {
+		if (islower(*dst))
+			*dst = toupper(*dst);
+	}
+
 	return dst;
 }
 
@@ -75,20 +170,63 @@ TextLocation *AGOSEngine::getTextLocation(uint a) {
 void AGOSEngine::allocateStringTable(int num) {
 	_stringTabPtr = (byte **)calloc(num, sizeof(byte *));
 	_stringTabPos = 0;
-	_stringtab_numalloc = num;
+	_stringTabSize = num;
 }
 
 void AGOSEngine::setupStringTable(byte *mem, int num) {
 	int i = 0;
-	for (;;) {
-		_stringTabPtr[i++] = mem;
-		if (--num == 0)
-			break;
-		for (; *mem; mem++);
-		mem++;
-	}
 
-	_stringTabPos = i;
+	if (getGameType() == GType_ELVIRA1 && getPlatform() == Common::kPlatformAtariST) {
+		int ct1;
+
+		_twoByteTokens = mem;
+		while (*mem++) {
+			i++;
+		}
+		_twoByteTokenStrings = mem;
+		ct1 = i;
+		while (*mem++) {
+			while (*mem++)
+				;
+			i--;
+			if ((i == 0) && (ct1 != 0)) {
+				_secondTwoByteTokenStrings = mem;
+				i = ct1;
+				ct1 = 0;
+			}
+			if (i == 0)
+				_thirdTwoByteTokenStrings = mem;
+		}
+		_byteTokens = mem;
+		while (*mem++)
+			;
+		_byteTokenStrings = mem;
+		while (*mem++) {
+			while (*mem++)
+				;
+		}
+		i = 0;
+l1:		_stringTabPtr[i++] = mem;
+		num--;
+		if (!num) {
+			_stringTabPos = i;
+			return;
+		}
+		while (*mem++)
+			;
+		goto l1;
+	} else {
+		for (;;) {
+			_stringTabPtr[i++] = mem;
+			if (--num == 0)
+				break;
+			for (; *mem; mem++)
+				;
+			mem++;
+		}
+	
+		_stringTabPos = i;
+	}
 }
 
 void AGOSEngine::setupLocalStringTable(byte *mem, int num) {
@@ -97,7 +235,8 @@ void AGOSEngine::setupLocalStringTable(byte *mem, int num) {
 		_localStringtable[i++] = mem;
 		if (--num == 0)
 			break;
-		for (; *mem; mem++);
+		for (; *mem; mem++)
+			;
 		mem++;
 	}
 }
@@ -144,7 +283,7 @@ void AGOSEngine::loadTextIntoMem(uint16 stringId) {
 	byte *p;
 	char filename[30];
 	int i;
-	uint base_min = 0x8000, base_max, size;
+	uint16 baseMin = 0x8000, baseMax, size;
 
 	_tablesHeapPtr = _tablesheapPtrNew;
 	_tablesHeapCurPos = _tablesHeapCurPosNew;
@@ -162,22 +301,22 @@ void AGOSEngine::loadTextIntoMem(uint16 stringId) {
 			sprintf(filename, "%s.DAT", filename);
 		}
 
-		base_max = (p[0] * 256) | p[1];
+		baseMax = (p[0] * 256) | p[1];
 		p += 2;
 
-		if (stringId < base_max) {
-			_stringIdLocalMin = base_min;
-			_stringIdLocalMax = base_max;
+		if (stringId < baseMax) {
+			_stringIdLocalMin = baseMin;
+			_stringIdLocalMax = baseMax;
 
 			_localStringtable = (byte **)_tablesHeapPtr;
 
-			size = (base_max - base_min + 1) * sizeof(byte *);
+			size = (baseMax - baseMin + 1) * sizeof(byte *);
 			_tablesHeapPtr += size;
 			_tablesHeapCurPos += size;
 
 			size = loadTextFile(filename, _tablesHeapPtr);
 
-			setupLocalStringTable(_tablesHeapPtr, base_max - base_min + 1);
+			setupLocalStringTable(_tablesHeapPtr, baseMax - baseMin + 1);
 
 			_tablesHeapPtr += size;
 			_tablesHeapCurPos += size;
@@ -188,7 +327,7 @@ void AGOSEngine::loadTextIntoMem(uint16 stringId) {
 			return;
 		}
 
-		base_min = base_max;
+		baseMin = baseMax;
 	}
 
 	error("loadTextIntoMem: didn't find %d", stringId);
@@ -437,7 +576,7 @@ void AGOSEngine_Feeble::printScreenText(uint vgaSpriteId, uint color, const char
 		height += textHeight;
 		y -= textHeight;
 		if (y < 2)
-		    y = 2;
+			y = 2;
 		string = string2;
 	}
 
@@ -619,7 +758,7 @@ uint16 AGOSEngine_Waxworks::getBoxSize() {
 		if ((_lineCounts[0] <= 96) && (checkFit(_linePtrs[0], 48, 3))) {
 			if (_lineCounts[1] <= 48) {
 				if (_lineCounts[2] <= 48)
-				    return 5;
+					return 5;
 			}
 			return 6;
 		}
@@ -655,30 +794,30 @@ uint16 AGOSEngine_Waxworks::getBoxSize() {
 			return 5;
 	default:
 		return 6;
-    }
+	}
 }
 
 
-uint16 AGOSEngine_Waxworks::checkFit(char *Ptr, int width, int lines) {
+uint16 AGOSEngine_Waxworks::checkFit(char *ptr, int width, int lines) {
 	int countw = 0;
 	int countl = 0;
 	char *x = NULL;
-	while (*Ptr) {
-		if (*Ptr == '\n')
+	while (*ptr) {
+		if (*ptr == '\n')
 			return 1;
 		if (countw == width) {
 			countl++;
 			countw = 0;
-			Ptr = x;
+			ptr = x;
 		}
-		if (*Ptr == ' ') {
-			x = Ptr;
+		if (*ptr == ' ') {
+			x = ptr;
 			x++;
 		}
 		countw++;
 		if (countl == lines)
 			return 0;
-		Ptr++;
+		ptr++;
 	}
 
 	return 1;
