@@ -231,7 +231,7 @@ public:
 	int readBuffer(int16 *buffer, const int numSamples);
 	bool isStereo() const { return false; }
 	bool endOfData() const;
-	int getRate() const { return 22050; }
+	int getRate() const { return Sword2Engine::isPsx() ? 11025 : 22050; }
 
 	// End of AudioStream API
 
@@ -266,6 +266,7 @@ public:
 	void unpauseAllSound();
 
 	void playMovieSound(int32 res, int type);
+	void stopMovieSounds();
 
 	void queueFx(int32 res, int32 type, int32 delay, int32 volume, int32 pan);
 	int32 playFx(FxQueueEntry *fx);

@@ -23,17 +23,15 @@
  *
  */
 
-
-
 #include "common/config-manager.h"
 #include "common/util.h"
+#include "common/system.h"
 
 #include "scumm/actor.h"
-#include "scumm/intern.h"
 #include "scumm/object.h"
 #include "scumm/resource.h"
 #include "scumm/util.h"
-#include "scumm/scumm.h"
+#include "scumm/scumm_v2.h"
 #include "scumm/verbs.h"
 
 namespace Scumm {
@@ -134,6 +132,8 @@ void ScummEngine::runObjectScript(int object, int entry, bool freezeResistant, b
 
 	initializeLocals(slot, vars);
 
+	// V0 Ensure we don't try and access objects via index inside the script
+	_v0ObjectIndex = false;
 	runScriptNested(slot);
 }
 
@@ -446,14 +446,14 @@ void ScummEngine::getScriptEntryPoint() {
 	_scriptPointer = _scriptOrgPointer + vm.slot[_currentScript].offs;
 }
 
-/* Execute a script - Read opcode, and execute it from the table */
+/** Execute a script - Read opcode, and execute it from the table */
 void ScummEngine::executeScript() {
 	int c;
 	while (_currentScript != 0xFF) {
 
 		if (_showStack == 1) {
 			printf("Stack:");
-			for (c=0; c < _scummStackPos; c++) {
+			for (c = 0; c < _scummStackPos; c++) {
 				printf(" %d", _vmStack[c]);
 			}
 			printf("\n");
@@ -463,11 +463,11 @@ void ScummEngine::executeScript() {
 			vm.slot[_currentScript].didexec = true;
 		debugC(DEBUG_OPCODES, "Script %d, offset 0x%x: [%X] %s()",
 				vm.slot[_currentScript].number,
-				_scriptPointer - _scriptOrgPointer,
+				(uint)(_scriptPointer - _scriptOrgPointer),
 				_opcode,
 				getOpcodeDesc(_opcode));
 		if (_hexdumpScripts == true) {
-			for (c= -1; c < 15; c++) {
+			for (c = -1; c < 15; c++) {
 				printf(" %02x", *(_scriptPointer + c));
 			}
 			printf("\n");
@@ -476,6 +476,18 @@ void ScummEngine::executeScript() {
 		executeOpcode(_opcode);
 
 	}
+}
+
+void ScummEngine::executeOpcode(byte i) {
+	if (_opcodes[i].proc && _opcodes[i].proc->isValid())
+		(*_opcodes[i].proc)();
+	else {
+		error("Invalid opcode '%x' at %lx", i, (long)(_scriptPointer - _scriptOrgPointer));
+	}
+}
+
+const char *ScummEngine::getOpcodeDesc(byte i) {
+	return _opcodes[i].desc;
 }
 
 byte ScummEngine::fetchScriptByte() {
@@ -628,10 +640,10 @@ void ScummEngine::writeVar(uint var, int value) {
 			// look at the target specific settings, assuming that any global
 			// value is likely to be bogus. See also bug #2251765.
 			if (ConfMan.hasKey("talkspeed", _targetName)) {
-				value = getTalkDelay();
+				value = getTalkSpeed();
 			} else {
 				// Save the new talkspeed value to ConfMan
-				setTalkDelay(value);
+				setTalkSpeed(value);
 			}
 		}
 
@@ -775,92 +787,65 @@ void ScummEngine::runInventoryScript(int i) {
 }
 
 void ScummEngine::inventoryScriptIndy3Mac() {
-	VerbSlot *vs;
-	int args[24];
-	int j, slot;
+	int slot;
 
-	memset(args, 0, sizeof(args));
+	// VAR(67) controls the scroll offset of the inventory in Indy3 for Macintosh.
+	// The inventory consists of two columns with three items visible in each,
+	// so a maximum of six items are visible at once.
 
-	if (VAR(67) < 0) {
+	// The scroll offset must be non-negative and if there are six or less items
+	// in the inventory, the inventory is fixed in the top position.
+	const int invCount = getInventoryCount(VAR(VAR_EGO));
+	if (VAR(67) < 0 || invCount <= 6) {
 		VAR(67) = 0;
 	}
-	args[5] = getInventoryCount(VAR(VAR_EGO));
-	if (args[5] <= 6) {
-		VAR(67) = 0;
-	}
-	if (args[5] >= 6) {
-		args[5] -= 6;
-	}
-	args[6] = 0;
-	if (VAR(67) >= args[5]) {
-		VAR(67) = args[5];
-		args[4] = args[5];
-		args[5] /= 2;
-		args[5] *= 2;
-		args[4] -= args[5];
-		if (args[4]) {
+
+	// If there are more than six items in the inventory, clamp the scroll position
+	// to be at most invCount-6, rounded up to the next even integer.
+	bool scrolledToBottom = false;
+	if (invCount > 6 && VAR(67) >= invCount - 6) {
+		VAR(67) = invCount - 6;
+		// Odd number of inventory items? -> increment VAR(67) to make it even
+		if (invCount & 1) {
 			VAR(67)++;
 		}
-		args[6]++;
-	}
-	args[2] = 1;
-	for (j = 1; j < 7; j++) {
-		args[1] = (VAR(67) + args[2]);
-		args[3] = findInventory(VAR(VAR_EGO),args[1]);
-		VAR(82 + args[2]) = args[3];
-		args[2]++;
+		scrolledToBottom = true;
 	}
 
-	byte tmp[6];
+	// Now update var 83 till 89 to contain the inventory IDs of the
+	// corresponding inventory slots.
+	// Also setup fake verbs for the inventory
+	byte tmp[6] = { 0xFF, 0x06, 0x52, 0x00, 0x00, 0x00 };
+	for (int j = 1; j < 7; j++) {
+		int tmpA = (VAR(67) + j);
+		int tmpB = findInventory(VAR(VAR_EGO), tmpA);
+		VAR(82 + j) = tmpB;
 
-	tmp[0] = 0xFF;
-	tmp[1] = 0x06;
-	tmp[3] = 0x00;
-	tmp[4] = 0x00;
-
-	for (j = 0; j < 6; j++) {
-		tmp[2] = 0x53 + j;
-
-		slot = getVerbSlot(101 + j, 0);
-		vs = &_verbs[slot];
+		// Setup fake verb
+		tmp[2] = 0x52 + j;
+		slot = getVerbSlot(100 + j, 0);
 		loadPtrToResource(rtVerb, slot, tmp);
+
+		VerbSlot *vs = &_verbs[slot];
 		vs->type = kTextVerbType;
 		vs->imgindex = 0;
 		vs->curmode = 1;
 		drawVerb(slot, 0);
 	}
 
-	args[5] = getInventoryCount(VAR(VAR_EGO));
-	if (args[5] > 6) {
-		slot = getVerbSlot(107, 0);
-		if (VAR(67)) {
-			vs = &_verbs[slot];
-			vs->curmode = 1;
-		} else {
-			vs = &_verbs[slot];
-			vs->curmode = 0;
-		}
-		drawVerb(slot, 0);
-		slot = getVerbSlot(108, 0);
-		if (!args[6]) {
-			vs = &_verbs[slot];
-			vs->curmode = 1;
-		} else {
-			vs = &_verbs[slot];
-			vs->curmode = 0;
-		}
-		drawVerb(slot, 0);
-	} else {
-		slot = getVerbSlot(107, 0);
-		vs = &_verbs[slot];
-		vs->curmode = 0;
-		drawVerb(slot, 0);
-		slot = getVerbSlot(108, 0);
-		vs = &_verbs[slot];
-		vs->curmode = 0;
-		drawVerb(slot, 0);
-	}
+	// Enable up arrow if there are more than six items and we are not already
+	// scrolled all the way up.
+	slot = getVerbSlot(107, 0);
+	_verbs[slot].curmode = (invCount > 6 && VAR(67)) ? 1 : 0;
+	drawVerb(slot, 0);
 
+	// Enable down arrow if there are more than six items and we are not already
+	// scrolled all the way down.
+	slot = getVerbSlot(108, 0);
+	_verbs[slot].curmode = (invCount > 6 && !scrolledToBottom) ? 1 : 0;
+	drawVerb(slot, 0);
+
+	// Redraw!
 	verbMouseOver(0);
 }
 
@@ -1047,8 +1032,7 @@ void ScummEngine::killAllScriptsExceptCurrent() {
 	for (int i = 0; i < NUM_SCRIPT_SLOT; i++) {
 		if (i != _currentScript) {
 			vm.slot[i].status = ssDead;
-			if (_game.version == 6)
-				vm.slot[i].cutsceneOverride = 0;
+			vm.slot[i].cutsceneOverride = 0;
 		}
 	}
 }
@@ -1194,7 +1178,7 @@ void ScummEngine::runInputScript(int clickArea, int val, int mode) {
 		args[4] = VAR(VAR_VIRT_MOUSE_Y);
 	}
 
-	// Macintosh verison of indy3ega used different interface, so adjust values.
+	// Macintosh version of indy3ega used different interface, so adjust values.
 	if (_game.id == GID_INDY3 && _game.platform == Common::kPlatformMacintosh) {
 		if (clickArea == kVerbClickArea && (val >= 101 && val <= 108)) {
 			if (val == 107) {
@@ -1206,10 +1190,16 @@ void ScummEngine::runInputScript(int clickArea, int val, int mode) {
 				inventoryScriptIndy3Mac();
 				return;
 			} else {
-				args[0] = 3;
-				args[1] = VAR(83 + (val - 101));
+				args[0] = kInventoryClickArea;
+				args[1] = VAR(82 + (val - 100));
 			}
 		}
+
+		// Clicks are handled differently in Indy3 mac: param 2 of the
+		// input script is set to 0 for normal clicks, and to 1 for double clicks.
+		uint32 time = _system->getMillis();
+		args[2] = (time < _lastInputScriptTime + 500);	// 500 ms double click delay
+		_lastInputScriptTime = time;
 	}
 
 	if (verbScript)
@@ -1357,17 +1347,6 @@ void ScummEngine::abortCutscene() {
 
 		VAR(VAR_OVERRIDE) = 1;
 		vm.cutScenePtr[idx] = 0;
-
-		// HACK to fix issues with SMUSH and the way it does keyboard handling.
-		// In particular, normally abortCutscene() is being called while no
-		// scripts are active. But SMUSH runs from *inside* the script engine.
-		// And it calls abortCutscene() if ESC is pressed... not good.
-		// Proper fix might be to let SMUSH/INSANE run from outside the script
-		// engine but that would require lots of changes and may actually have
-		// negative effects, too. So we cheat here, to fix bug #751670.
-		if (_game.version == 7)
-			getScriptEntryPoint();
-
 	}
 }
 

@@ -635,7 +635,7 @@ void SetMoverWalkReel(PMOVER pMover, DIRECTION reel, int scale, bool force) {
 		if (pMover->scale != scale
 				&& scale <= NUM_MAINSCALES && pMover->scale <= NUM_MAINSCALES
 				&& (whichReel = ScalingReel(pMover->actorID, pMover->scale, scale, reel)) != 0) {
-//			error("Cripes!");
+//			error("Cripes");
 			;	// Use what is now in 'whichReel'
 		} else {
 			whichReel = pMover->walkReels[scale-1][reel];
@@ -761,7 +761,7 @@ void T1MoverProcess(CORO_PARAM, const void *param) {
 
 	while (1) {
 		if (pActor->bSpecReel) {
- 			if (!pActor->bHidden)
+			if (!pActor->bHidden)
 #ifdef DEBUG
 			assert(StepAnimScript(&pActor->actorAnim) != ScriptFinished); // Actor reel has finished!
 #else

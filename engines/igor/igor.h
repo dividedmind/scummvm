@@ -312,8 +312,8 @@ public:
 	IgorEngine(OSystem *system, const DetectedGameVersion *dgv);
 	virtual ~IgorEngine();
 
-	virtual Common::Error init();
-	virtual Common::Error go();
+	// Engine APIs
+	virtual Common::Error run();
 
 	void handleOptionsMenu_paintSave();
 	bool handleOptionsMenu_handleKeyDownSave(int key);

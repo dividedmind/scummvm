@@ -50,7 +50,7 @@
 #include "tinsel/polygons.h"
 #include "tinsel/savescn.h"
 #include "tinsel/sched.h"
-#include "tinsel/serializer.h"
+#include "common/serializer.h"
 #include "tinsel/sound.h"
 #include "tinsel/strres.h"
 #include "tinsel/sysvar.h"
@@ -1107,7 +1107,7 @@ static void PrimeSceneHopper(void) {
 	pBuffer = (char *)malloc(size);
 	if (pBuffer == NULL)
 		// cannot alloc buffer for index
-		error(NO_MEM, "Scene hopper data\n");
+		error(NO_MEM, "Scene hopper data");
 
 	// load data
 	if (f.read(pBuffer, size) != size)
@@ -3584,7 +3584,7 @@ void SetConvDetails(CONV_PARAM fn, HPOLYGON hPoly, int ano) {
 	bMoveOnUnHide = true;
 
 	// Get the Actor Tag's or Tagged Actor's label for the conversation window title
-	if (hPoly != NOPOLY) 	{
+	if (hPoly != NOPOLY)	{
 		int x, y;
 		GetTagTag(hPoly, &InvD[INV_CONV].hInvTitle, &x, &y);
 	} else {
@@ -3899,6 +3899,7 @@ void OpenMenu(CONFTYPE menuType) {
 		break;
 
 	case SAVE_MENU:
+		g_system->setFeatureState(OSystem::kFeatureVirtualKeyboard, true);	// Show VK when saving a game
 		if (!TinselV2)
 			SetCursorScreenXY(262, 91);
 		SetMenuGlobals(&ciSave);
@@ -4060,6 +4061,7 @@ void KillInventory(void) {
 		if (ino == INV_CONV)
 			_vm->_pcmMusic->unDim(false);
 
+	g_system->setFeatureState(OSystem::kFeatureVirtualKeyboard, false);	// Hide VK after save dialog closes
 }
 
 void CloseInventory(void) {
@@ -4197,7 +4199,7 @@ void InventoryProcess(CORO_PARAM, const void *) {
 					break;
 				case INITGAME:
 					KillInventory();
-					bRestart = true;
+					FnRestartGame();
 					break;
 				case CLANG:
 					if (!LanguageChange())
@@ -5473,7 +5475,7 @@ void SetObjectFilm(int object, SCNHANDLE hFilm) {
 /**
  * (Un)serialize the inventory data for save/restore game.
  */
-void syncInvInfo(Serializer &s) {
+void syncInvInfo(Common::Serializer &s) {
 	for (int i = 0; i < NUM_INV; i++) {
 		s.syncAsSint32LE(InvD[i].MinHicons);
 		s.syncAsSint32LE(InvD[i].MinVicons);
@@ -5564,7 +5566,7 @@ void setInvWinParts(SCNHANDLE hf) {
 
 #ifdef DEBUG
 	pfilm = (const FILM *)LockMem(hf);
-	assert(FROM_LE_32(pfilm->numreels) >= HOPEDFORREELS); // not as many reels as expected
+	assert(FROM_LE_32(pfilm->numreels) >= (uint32)(TinselV2 ? T2_HOPEDFORREELS : T1_HOPEDFORREELS)); // not as many reels as expected
 #endif
 }
 

@@ -53,13 +53,7 @@ class SaveLoadChooser : public GUI::Dialog {
 protected:
 	GUI::ListWidget		*_list;
 	GUI::ButtonWidget	*_chooseButton;
-	GUI::GraphicsWidget	*_gfxWidget;
-	GUI::StaticTextWidget	*_date;
-	GUI::StaticTextWidget	*_time;
-	GUI::StaticTextWidget	*_playtime;
 	GUI::ContainerWidget	*_container;
-
-	uint8 _fillR, _fillG, _fillB;
 
 public:
 	SaveLoadChooser(const String &title, const String &buttonLabel);
@@ -73,16 +67,6 @@ public:
 	virtual void reflowLayout();
 };
 
-Common::String SaveLoad_ns::genOldSaveFileName(uint slot) {
-	assert(slot < NUM_SAVESLOTS || slot == SPECIAL_SAVESLOT);
-
-	char s[20];
-	sprintf(s, "game.%i", slot);
-
-	return Common::String(s);
-}
-
-
 Common::String SaveLoad::genSaveFileName(uint slot) {
 	assert(slot < NUM_SAVESLOTS || slot == SPECIAL_SAVESLOT);
 
@@ -94,12 +78,12 @@ Common::String SaveLoad::genSaveFileName(uint slot) {
 
 Common::InSaveFile *SaveLoad::getInSaveFile(uint slot) {
 	Common::String name = genSaveFileName(slot);
-	return _saveFileMan->openForLoading(name.c_str());
+	return _saveFileMan->openForLoading(name);
 }
 
 Common::OutSaveFile *SaveLoad::getOutSaveFile(uint slot) {
 	Common::String name = genSaveFileName(slot);
-	return _saveFileMan->openForSaving(name.c_str());
+	return _saveFileMan->openForSaving(name);
 }
 
 
@@ -125,7 +109,7 @@ void SaveLoad_ns::doLoadGame(uint16 slot) {
 	_vm->_location._startPosition.y = atoi(s.c_str());
 
 	s = f->readLine();
-	_score = atoi(s.c_str());
+	_vm->_score = atoi(s.c_str());
 
 	s = f->readLine();
 	_globalFlags = atoi(s.c_str());
@@ -202,7 +186,7 @@ void SaveLoad_ns::doSaveGame(uint16 slot, const char* name) {
 	f->writeString(s);
 	sprintf(s, "%d\n", _vm->_char._ani->getY());
 	f->writeString(s);
-	sprintf(s, "%d\n", _score);
+	sprintf(s, "%d\n", _vm->_score);
 	f->writeString(s);
 	sprintf(s, "%u\n", _globalFlags);
 	f->writeString(s);
@@ -240,7 +224,7 @@ enum {
 
 
 SaveLoadChooser::SaveLoadChooser(const String &title, const String &buttonLabel)
-	: Dialog("ScummSaveLoad"), _list(0), _chooseButton(0), _gfxWidget(0) {
+	: Dialog("ScummSaveLoad"), _list(0), _chooseButton(0) {
 
 //	_drawingHints |= GUI::THEME_HINT_SPECIAL_COLOR;
 	_backgroundType = GUI::ThemeEngine::kDialogBackgroundSpecial;
@@ -252,19 +236,10 @@ SaveLoadChooser::SaveLoadChooser(const String &title, const String &buttonLabel)
 	_list->setEditable(true);
 	_list->setNumberingMode(GUI::kListNumberingOne);
 
-	_gfxWidget = new GUI::GraphicsWidget(this, 0, 0, 10, 10);
-
-	_date = new GUI::StaticTextWidget(this, 0, 0, 10, 10, "No date saved", Graphics::kTextAlignCenter);
-	_time = new GUI::StaticTextWidget(this, 0, 0, 10, 10, "No time saved", Graphics::kTextAlignCenter);
-	_playtime = new GUI::StaticTextWidget(this, 0, 0, 10, 10, "No playtime saved", Graphics::kTextAlignCenter);
-
 	// Buttons
 	new GUI::ButtonWidget(this, "ScummSaveLoad.Cancel", "Cancel", GUI::kCloseCmd, 0);
 	_chooseButton = new GUI::ButtonWidget(this, "ScummSaveLoad.Choose", buttonLabel, kChooseCmd, 0);
 	_chooseButton->setEnabled(false);
-
-	_container = new GUI::ContainerWidget(this, 0, 0, 10, 10);
-//	_container->setHints(GUI::THEME_HINT_USE_SHADOW);
 }
 
 SaveLoadChooser::~SaveLoadChooser() {
@@ -279,10 +254,7 @@ void SaveLoadChooser::setList(const StringList& list) {
 }
 
 int SaveLoadChooser::runModal() {
-	if (_gfxWidget)
-		_gfxWidget->setGfx(0);
-	int ret = GUI::Dialog::runModal();
-	return ret;
+	return GUI::Dialog::runModal();
 }
 
 void SaveLoadChooser::handleCommand(GUI::CommandSender *sender, uint32 cmd, uint32 data) {
@@ -319,18 +291,13 @@ void SaveLoadChooser::handleCommand(GUI::CommandSender *sender, uint32 cmd, uint
 }
 
 void SaveLoadChooser::reflowLayout() {
-	_container->setVisible(false);
-	_gfxWidget->setVisible(false);
-	_date->setVisible(false);
-	_time->setVisible(false);
-	_playtime->setVisible(false);
-
 	Dialog::reflowLayout();
 }
 
-int SaveLoad_ns::buildSaveFileList(Common::StringList& l) {
+
+int SaveLoad::buildSaveFileList(Common::StringList& l) {
 	Common::String pattern = _saveFilePrefix + ".???";
-	Common::StringList filenames = _saveFileMan->listSavefiles(pattern.c_str());
+	Common::StringList filenames = _saveFileMan->listSavefiles(pattern);
 
 	Common::String s;
 
@@ -353,30 +320,28 @@ int SaveLoad_ns::buildSaveFileList(Common::StringList& l) {
 }
 
 
-int SaveLoad_ns::selectSaveFile(uint16 arg_0, const char* caption, const char* button) {
+int SaveLoad::selectSaveFile(Common::String &selectedName, const Common::String &caption, const Common::String &button) {
+	Common::StringList list;
+	buildSaveFileList(list);
 
-	SaveLoadChooser* slc = new SaveLoadChooser(caption, button);
+	SaveLoadChooser slc(caption, button);
+	slc.setList(list);
 
-	Common::StringList l;
+	selectedName.clear();
 
-	/*int count = */ buildSaveFileList(l);
-	slc->setList(l);
-
-	int idx = slc->runModal();
-	if (idx >= 0) {
-		_saveFileName = slc->getResultString();
+	int slot = slc.runModal();
+	if (slot >= 0) {
+		selectedName = slc.getResultString();
 	}
 
-	delete slc;
-
-	return idx;
+	return slot;
 }
 
 
 
-bool SaveLoad_ns::loadGame() {
-
-	int _di = selectSaveFile( 0, "Load file", "Load" );
+bool SaveLoad::loadGame() {
+	Common::String null;
+	int _di = selectSaveFile(null, "Load file", "Load");
 	if (_di == -1) {
 		return false;
 	}
@@ -392,18 +357,14 @@ bool SaveLoad_ns::loadGame() {
 }
 
 
-bool SaveLoad_ns::saveGame() {
-
-	if (!scumm_stricmp(_vm->_location._name, "caveau")) {
-		return false;
-	}
-
-	int slot = selectSaveFile( 1, "Save file", "Save" );
+bool SaveLoad::saveGame() {
+	Common::String saveName;
+	int slot = selectSaveFile(saveName, "Save file", "Save");
 	if (slot == -1) {
 		return false;
 	}
 
-	doSaveGame(slot, _saveFileName.c_str());
+	doSaveGame(slot, saveName.c_str());
 
 	GUI::TimedMessageDialog dialog("Saving game...", 1500);
 	dialog.runModal();
@@ -411,6 +372,16 @@ bool SaveLoad_ns::saveGame() {
 	return true;
 }
 
+
+bool SaveLoad_ns::saveGame() {
+	// NOTE: shouldn't this check be done before, so that the
+	// user can't even select 'save'?
+	if (!scumm_stricmp(_vm->_location._name, "caveau")) {
+		return false;
+	}
+
+	return SaveLoad::saveGame();
+}
 
 void SaveLoad_ns::setPartComplete(const char *part) {
 	Common::String s;
@@ -449,55 +420,55 @@ void SaveLoad_ns::getGamePartProgress(bool *complete, int size) {
 	complete[2] = s.contains("dough");
 }
 
-void SaveLoad_ns::renameOldSavefiles() {
-
-	bool exists[NUM_SAVESLOTS];
-	uint num = 0;
-	uint i;
-
-	for (i = 0; i < NUM_SAVESLOTS; i++) {
-		exists[i] = false;
-		Common::String name = genOldSaveFileName(i);
-		Common::InSaveFile *f = _saveFileMan->openForLoading(name.c_str());
-		if (f) {
-			exists[i] = true;
-			num++;
-		}
-		delete f;
-	}
-
-	if (num == 0) {
-		// there are no old savefiles: nothing to do
-		return;
-	}
-
+static bool askRenameOldSavefiles() {
 	GUI::MessageDialog dialog0(
 		"ScummVM found that you have old savefiles for Nippon Safes that should be renamed.\n"
 		"The old names are no longer supported, so you will not be able to load your games if you don't convert them.\n\n"
-		"Press OK to convert them now, otherwise you will be asked you next time.\n", "OK", "Cancel");
+		"Press OK to convert them now, otherwise you will be asked next time.\n", "OK", "Cancel");
 
-	int choice = dialog0.runModal();
-	if (choice == 0) {
-		// user pressed cancel
-		return;
-	}
+	return (dialog0.runModal() != 0);
+}
 
-	uint success = 0;
-	for (i = 0; i < NUM_SAVESLOTS; i++) {
-		if (exists[i]) {
-			Common::String oldName = genOldSaveFileName(i);
-			Common::String newName = genSaveFileName(i);
-			if (_saveFileMan->renameSavefile(oldName.c_str(), newName.c_str())) {
-				success++;
-			} else {
-				warning("Error %i (%s) occurred while renaming %s to %s", _saveFileMan->getError(),
-					_saveFileMan->getErrorDesc().c_str(), oldName.c_str(), newName.c_str());
-			}
+void SaveLoad_ns::renameOldSavefiles() {
+	Common::StringList oldFilenames = _saveFileMan->listSavefiles("game.*");
+	uint numOldSaves = oldFilenames.size();
+
+	bool rename = false;
+	uint success = 0, id;
+	Common::String oldName, newName;
+	for (uint i = 0; i < oldFilenames.size(); ++i) {
+		oldName = oldFilenames[i];
+		int e = sscanf(oldName.c_str(), "game.%u", &id);
+		if (e != 1) {
+			// this wasn't a savefile, so adjust numOldSaves accordingly				
+			--numOldSaves;
+			continue;
+		}
+
+		if (!rename) {
+			rename = askRenameOldSavefiles();			
+		}
+		if (!rename) {
+			// return immediately if the user doesn't want to rename the files
+			return;
+		}
+
+		newName = genSaveFileName(id);
+		if (_saveFileMan->renameSavefile(oldName, newName)) {
+			success++;
+		} else {
+			warning("Error %i (%s) occurred while renaming %s to %s", _saveFileMan->getError(),
+				_saveFileMan->getErrorDesc().c_str(), oldName.c_str(), newName.c_str());
 		}
 	}
 
+	if (numOldSaves == 0) {
+		// there were no old savefiles: nothing to notify
+		return;
+	}
+
 	char msg[200];
-	if (success == num) {
+	if (success == numOldSaves) {
 		sprintf(msg, "ScummVM successfully converted all your savefiles.");
 	} else {
 		sprintf(msg,
@@ -512,14 +483,14 @@ void SaveLoad_ns::renameOldSavefiles() {
 }
 
 
-bool SaveLoad_br::loadGame() {
+void SaveLoad_br::doLoadGame(uint16 slot) {
 	// TODO: implement loadgame
-	return false;
+	return;
 }
 
-bool SaveLoad_br::saveGame() {
+void SaveLoad_br::doSaveGame(uint16 slot, const char* name) {
 	// TODO: implement savegame
-	return false;
+	return;
 }
 
 void SaveLoad_br::getGamePartProgress(bool *complete, int size) {

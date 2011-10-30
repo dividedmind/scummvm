@@ -144,7 +144,7 @@ GBAMPSaveFileManager::~GBAMPSaveFileManager() {
 
 }
 
-GBAMPSaveFile* GBAMPSaveFileManager::openSavefile(char const* name, bool saveOrLoad) {
+GBAMPSaveFile *GBAMPSaveFileManager::openSavefile(const char *name, bool saveOrLoad) {
 	char fileSpec[128];
 
 	strcpy(fileSpec, getSavePath());
@@ -156,7 +156,7 @@ GBAMPSaveFile* GBAMPSaveFileManager::openSavefile(char const* name, bool saveOrL
 	}
 
 //	consolePrintf("Opening the file: %s\n", fileSpec);
-	GBAMPSaveFile* sf = new GBAMPSaveFile(fileSpec, saveOrLoad);
+	GBAMPSaveFile *sf = new GBAMPSaveFile(fileSpec, saveOrLoad);
 	if (sf->isOpen()) {
 //		consolePrintf("Ok");
 		return sf;
@@ -169,27 +169,18 @@ GBAMPSaveFile* GBAMPSaveFileManager::openSavefile(char const* name, bool saveOrL
 
 // This method copied from an old version of the savefile.cpp, since it's been removed from there and
 // placed in default-saves.cpp, where I cannot call it.
+// FIXME: Does it even make sense to change the "savepath" on the NDS? Considering
+// that nothing sets a default value for the "savepath" either, wouldn't it better
+// to return a fixed path here?
 const char *GBAMPSaveFileManager::getSavePath() const {
-	const char *dir = NULL;
-
 	// Try to use game specific savepath from config
-	dir = ConfMan.get("savepath").c_str();
-
-	// Work around a bug (#999122) in the original 0.6.1 release of
-	// ScummVM, which would insert a bad savepath value into config files.
-	if (0 == strcmp(dir, "None")) {
-		ConfMan.removeKey("savepath", ConfMan.getActiveDomainName());
-		ConfMan.flushToDisk();
-		dir = ConfMan.get("savepath").c_str();
-	}
-
-
+	const char *dir = ConfMan.get("savepath").c_str();
 	assert(dir);
 
 	return dir;
 }
 
-Common::StringList GBAMPSaveFileManager::listSavefiles(const char *pattern) {
+Common::StringList GBAMPSaveFileManager::listSavefiles(const Common::String &pattern) {
 
 	enum { TYPE_NO_MORE = 0, TYPE_FILE = 1, TYPE_DIR = 2 };
 	char name[256];
@@ -234,7 +225,7 @@ Common::StringList GBAMPSaveFileManager::listSavefiles(const char *pattern) {
 			}
 
 
-			if (Common::matchString(name, pattern)) {
+			if (Common::matchString(name, pattern.c_str())) {
 				list.push_back(name);
 			}
 		}
@@ -245,5 +236,3 @@ Common::StringList GBAMPSaveFileManager::listSavefiles(const char *pattern) {
 
 	return list;
 }
-
-

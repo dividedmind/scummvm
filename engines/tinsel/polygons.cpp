@@ -30,7 +30,7 @@
 #include "tinsel/polygons.h"
 #include "tinsel/rince.h"
 #include "tinsel/sched.h"
-#include "tinsel/serializer.h"
+#include "common/serializer.h"
 #include "tinsel/tinsel.h"
 #include "tinsel/token.h"
 
@@ -135,21 +135,38 @@ struct LINEINFO {
 
 #include "common/pack-end.h"	// END STRUCT PACKING
 
-// POLY structure class. This is implemented as a class, because the structure
-// of POLY's changed between TINSEL v1 and v2
+/**
+ * POLY structure class. This is implemented as a class, because the structure
+ * of POLY's changed between TINSEL v1 and v2.
+ *
+ * FIXME: Right now, we always read *all* data in a polygon, even if only a single
+ * field is needed. This is rather inefficient.
+ */
 class Poly {
 private:
-	const byte *_pStart;
+	const byte * const  _pStart;
 	const byte *_pData;
 	int _recordSize;
 	void nextPoly();
+
 public:
 	Poly(const byte *pSrc);
 	Poly(const byte *pSrc, int startIndex);
 	void operator++();
 	void setIndex(int index);
 
+
+	POLY_TYPE getType() const { return (POLY_TYPE)FROM_LE_32(type); }
+	int getNodecount() const { return (int)FROM_LE_32(nodecount); }
+	int getNodeX(int i) const { return (int)FROM_LE_32(nlistx[i]); }
+	int getNodeY(int i) const { return (int)FROM_LE_32(nlisty[i]); }
+
+	// get Inter-node line structure
+	LINEINFO *getLineinfo(int i) const { return ((LINEINFO *)(_pStart + (int)FROM_LE_32(plinelist))) + i; }
+
+protected:
 	POLY_TYPE type;		//!< type of polygon
+public:
 	int32 x[4], y[4];	// Polygon definition
 	uint32 xoff, yoff;	// DW2 - polygon offset
 
@@ -169,23 +186,25 @@ public:
 	int32 reel;			// } PATH and NPATH
 	int32 zFactor;		// }
 
-	//The arrays now stored externally
+protected:
 	int32 nodecount;		//!<The number of nodes in this polygon
-	int32 pnodelistx,pnodelisty;	//!<offset in chunk to this array if present
+	int32 pnodelistx, pnodelisty;	//!<offset in chunk to this array if present
 	int32 plinelist;
 
+	int32 *nlistx;
+	int32 *nlisty;
+
+public:
 	SCNHANDLE hScript;	//!< handle of code segment for polygon events
 };
 
-Poly::Poly(const byte *pSrc) {
-	_pStart = pSrc;
+Poly::Poly(const byte *pSrc) : _pStart(pSrc) {
 	_pData = pSrc;
 	nextPoly();
 	_recordSize = _pData - pSrc;
 }
 
-Poly::Poly(const byte *pSrc, int startIndex) {
-	_pStart = pSrc;
+Poly::Poly(const byte *pSrc, int startIndex) : _pStart(pSrc)  {
 	_pData = pSrc;
 	nextPoly();
 	_recordSize = _pData - pSrc;
@@ -201,24 +220,26 @@ void Poly::setIndex(int index) {
 	nextPoly();
 }
 
-uint32 nextLong(const byte *&p) {
-	uint32 result = *((const uint32 *)p);
+static uint32 nextLong(const byte *&p) {
+	uint32 result = READ_UINT32(p);
 	p += 4;
 	return result;
 }
 
 void Poly::nextPoly() {
-	// Note: Originally I used a Serialiser, but dropped because for now we want
-	// the endian to remain as it is. It may be cleaner to later on switch to using
-	// it, and removing all endian conversions from the code that uses POLY's
+	// Note: For now we perform no endian conversion of the data. We could change that
+	// at some point, and remove all endian conversions from the code that uses POLY's
 	const byte *pRecord = _pData;
 
 	int typeVal = nextLong(_pData);
-	if ((FROM_LE_32(typeVal) == 5) && TinselV2) typeVal = TO_LE_32(6);
+	if ((FROM_LE_32(typeVal) == 5) && TinselV2)
+		typeVal = TO_LE_32(6);
 	type = (POLY_TYPE)typeVal;
 
-	for (int i = 0; i < 4; ++i) x[i] = nextLong(_pData);
-	for (int i = 0; i < 4; ++i) y[i] = nextLong(_pData);
+	for (int i = 0; i < 4; ++i)
+		x[i] = nextLong(_pData);
+	for (int i = 0; i < 4; ++i)
+		y[i] = nextLong(_pData);
 
 	if (TinselV2) {
 		xoff = nextLong(_pData);
@@ -255,6 +276,9 @@ void Poly::nextPoly() {
 	pnodelistx = nextLong(_pData);
 	pnodelisty = nextLong(_pData);
 	plinelist = nextLong(_pData);
+
+	nlistx = (int32 *)(_pStart + (int)FROM_LE_32(pnodelistx));
+	nlisty = (int32 *)(_pStart + (int)FROM_LE_32(pnodelisty));
 
 	if (TinselV0)
 		// Skip to the last 4 bytes of the record for the hScript value
@@ -396,7 +420,6 @@ bool IsInPolygon(int xt, int yt, HPOLYGON hp) {
 /**
  * Finds a polygon of the specified type containing the supplied point.
  */
-
 HPOLYGON InPolygon(int xt, int yt, PTYPE type) {
 	for (int j = 0; j <= MAX_POLY; j++)	{
 		if (Polys[j] && Polys[j]->polyType == type) {
@@ -551,7 +574,6 @@ void FindBestPoint(HPOLYGON hp, int *x, int *y, int *pline) {
 	int	dropD;		// length of perpendicular (i.e. distance of point from line)
 	int	dropX, dropY;	// (X, Y) where dropped perpendicular intersects the line
 	int	d1, d2;		// distance from perpendicular intersect to line's end nodes
-	int32	*nlistx, *nlisty;
 
 	int	shortestD = 10000;	// Shortest distance found
 	int	nearestL = -1;		// Nearest line
@@ -559,7 +581,6 @@ void FindBestPoint(HPOLYGON hp, int *x, int *y, int *pline) {
 
 	int	h = *x;		// For readability/conveniance
 	int	k = *y;		//	- why aren't these #defines?
-	LINEINFO *llist;		// Inter-node line structure
 
 	CHECK_HP(hp, "Out of range polygon handle (3)");
 	pp = Polys[hp];
@@ -568,51 +589,44 @@ void FindBestPoint(HPOLYGON hp, int *x, int *y, int *pline) {
 	pps = LockMem(pHandle);	// All polygons
 	Poly ptp(pps, pp->pIndex);	// This polygon
 
-	nlistx = (int32 *)(pps + (int)FROM_LE_32(ptp.pnodelistx));
-	nlisty = (int32 *)(pps + (int)FROM_LE_32(ptp.pnodelisty));
-	llist = (LINEINFO *)(pps + (int)FROM_LE_32(ptp.plinelist));
-
 	// Look for fit of perpendicular to lines between nodes
-	for (int i = 0; i < (int)FROM_LE_32(ptp.nodecount) - 1; i++) {
-		const int32	a = (int)FROM_LE_32(llist[i].a);
-		const int32	b = (int)FROM_LE_32(llist[i].b);
-		const int32	c = (int)FROM_LE_32(llist[i].c);
+	for (int i = 0; i < ptp.getNodecount() - 1; i++) {
+		LINEINFO *line = ptp.getLineinfo(i);
+
+		const int32	a = (int)FROM_LE_32(line->a);
+		const int32	b = (int)FROM_LE_32(line->b);
+		const int32	c = (int)FROM_LE_32(line->c);
 
 #if 1
-		if (true) {
-			//printf("a %d, b %d, c %d,  a^2+b^2 = %d\n", a, b, c, a*a+b*b);
+		// TODO: If the comments of the LINEINFO struct are correct, then it contains mostly
+		// duplicate data, probably in an effort to safe CPU cycles. Even on the slowest devices
+		// we support, calculating a product of two ints is not an issue.
+		// So we can just load & endian convert a,b,c, then replace stuff like
+		//   (int)FROM_LE_32(line->ab)
+		// by simply a*b, which makes it easier to understand what the code does, too.
+		// Just in case there is some bugged data, I leave this code here for verifying it.
+		// Let's leave it in for some time.
+		//
+		// One bad thing: We use sqrt to compute a square root. Might not be a good idea,
+		// speed wise. Maybe we should take Vicent's fp_sqroot. But that's a problem for later.
 
-			// TODO: If the comments of the LINEINFO struct are correct, then it contains mostly
-			// duplicate data, probably in an effort to safe CPU cycles. Even on the slowest devices
-			// we support, calculatin a product of two ints is not an issue.
-			// So we can just load & endian convert a,b,c, then replace stuff like
-			//   (int)FROM_LE_32(line->ab)
-			// by simply a*b, which makes it easier to understand what the code does, too.
-			// Just in case there is some bugged data, I leave this code here for verifying it.
-			// Let's leave it in for some time.
-			//
-			// One bad thing: We use sqrt to compute a square root. Might not be a good idea,
-			// speed wise. Maybe we should take Vicent's fp_sqroot. But that's a problem for later.
+		int32	a2 = (int)FROM_LE_32(line->a2);             //!< a squared
+		int32	b2 = (int)FROM_LE_32(line->b2);             //!< b squared
+		int32	a2pb2 = (int)FROM_LE_32(line->a2pb2);          //!< a squared + b squared
+		int32	ra2pb2 = (int)FROM_LE_32(line->ra2pb2);         //!< root(a squared + b squared)
 
-			LINEINFO *line = &llist[i];
-			int32	a2 = (int)FROM_LE_32(line->a2);             //!< a squared
-			int32	b2 = (int)FROM_LE_32(line->b2);             //!< b squared
-			int32	a2pb2 = (int)FROM_LE_32(line->a2pb2);          //!< a squared + b squared
-			int32	ra2pb2 = (int)FROM_LE_32(line->ra2pb2);         //!< root(a squared + b squared)
+		int32	ab = (int)FROM_LE_32(line->ab);
+		int32	ac = (int)FROM_LE_32(line->ac);
+		int32	bc = (int)FROM_LE_32(line->bc);
 
-			int32	ab = (int)FROM_LE_32(line->ab);
-			int32	ac = (int)FROM_LE_32(line->ac);
-			int32	bc = (int)FROM_LE_32(line->bc);
+		assert(a*a == a2);
+		assert(b*b == b2);
+		assert(a*b == ab);
+		assert(a*c == ac);
+		assert(b*c == bc);
 
-			assert(a*a == a2);
-			assert(b*b == b2);
-			assert(a*b == ab);
-			assert(a*c == ac);
-			assert(b*c == bc);
-
-			assert(a2pb2 == a*a + b*b);
-			assert(ra2pb2 == (int)sqrt((float)a*a + (float)b*b));
-		}
+		assert(a2pb2 == a*a + b*b);
+		assert(ra2pb2 == (int)sqrt((float)a*a + (float)b*b));
 #endif
 
 
@@ -623,8 +637,8 @@ void FindBestPoint(HPOLYGON hp, int *x, int *y, int *pline) {
 		dropX = ((b*b * h) - (a*b * k) - a*c) / (a*a + b*b);
 
 		// X distances from intersection to end nodes
-		d1 = dropX - (int)FROM_LE_32(nlistx[i]);
-		d2 = dropX - (int)FROM_LE_32(nlistx[i+1]);
+		d1 = dropX - ptp.getNodeX(i);
+		d2 = dropX - ptp.getNodeX(i+1);
 
 		// if both -ve or both +ve, no fit
 		if ((d1 < 0 && d2 < 0) || (d1 > 0 && d2 > 0))
@@ -634,8 +648,8 @@ void FindBestPoint(HPOLYGON hp, int *x, int *y, int *pline) {
 		dropY = ((a*a * k) - (a*b * h) - b*c) / (a*a + b*b);
 
 		// Y distances from intersection to end nodes
-		d1 = dropY - (int)FROM_LE_32(nlisty[i]);
-		d2 = dropY - (int)FROM_LE_32(nlisty[i+1]);
+		d1 = dropY - ptp.getNodeY(i);
+		d2 = dropY - ptp.getNodeY(i+1);
 
 		// if both -ve or both +ve, no fit
 		if ((d1 < 0 && d2 < 0) || (d1 > 0 && d2 > 0))
@@ -651,21 +665,22 @@ void FindBestPoint(HPOLYGON hp, int *x, int *y, int *pline) {
 
 	// Distance to nearest node
 	nearestN = NearestNodeWithin(hp, h, k);
-	dropD = ABS(h - (int)FROM_LE_32(nlistx[nearestN])) + ABS(k - (int)FROM_LE_32(nlisty[nearestN]));
+	dropD = ABS(h - ptp.getNodeX(nearestN)) + ABS(k - ptp.getNodeY(nearestN));
 
 	// Go to a node or a point on a line
 	if (dropD < shortestD) {
 		// A node is nearest
-		*x = (int)FROM_LE_32(nlistx[nearestN]);
-		*y = (int)FROM_LE_32(nlisty[nearestN]);
+		*x = ptp.getNodeX(nearestN);
+		*y = ptp.getNodeY(nearestN);
 		*pline = nearestN;
 	} else {
 		assert(nearestL != -1);
 
 		// A point on a line is nearest
-		const int32	a = (int)FROM_LE_32(llist[nearestL].a);
-		const int32	b = (int)FROM_LE_32(llist[nearestL].b);
-		const int32	c = (int)FROM_LE_32(llist[nearestL].c);
+		LINEINFO *line = ptp.getLineinfo(nearestL);
+		const int32	a = (int)FROM_LE_32(line->a);
+		const int32	b = (int)FROM_LE_32(line->b);
+		const int32	c = (int)FROM_LE_32(line->c);
 		dropX = ((b*b * h) - (a*b * k) - a*c) / (a*a + b*b);
 		dropY = ((a*a * k) - (a*b * h) - b*c) / (a*a + b*b);
 		*x = dropX;
@@ -808,7 +823,6 @@ int NearestEndNode(HPOLYGON hPath, int x, int y) {
 
 	int	d1, d2;
 	uint8	*pps;		// Compiled polygon data
-	int32	*nlistx, *nlisty;
 
 	CHECK_HP(hPath, "Out of range polygon handle (8)");
 	pp = Polys[hPath];
@@ -816,15 +830,12 @@ int NearestEndNode(HPOLYGON hPath, int x, int y) {
 	pps = LockMem(pHandle);		// All polygons
 	Poly ptp(pps, pp->pIndex);	// This polygon
 
-	nlistx = (int32 *)(pps + (int)FROM_LE_32(ptp.pnodelistx));
-	nlisty = (int32 *)(pps + (int)FROM_LE_32(ptp.pnodelisty));
+	const int nodecount = ptp.getNodecount() - 1;
 
-	const int nodecount = (int)FROM_LE_32(ptp.nodecount);
+	d1 = ABS(x - ptp.getNodeX(0)) + ABS(y - ptp.getNodeY(0));
+	d2 = ABS(x - ptp.getNodeX(nodecount)) + ABS(y - ptp.getNodeY(nodecount));
 
-	d1 = ABS(x - (int)FROM_LE_32(nlistx[0])) + ABS(y - (int)FROM_LE_32(nlisty[0]));
-	d2 = ABS(x - (int)FROM_LE_32(nlistx[nodecount - 1])) + ABS(y - (int)FROM_LE_32(nlisty[nodecount - 1]));
-
-	return (d2 > d1) ? 0 : nodecount - 1;
+	return (d2 > d1) ? 0 : nodecount;
 }
 
 
@@ -836,12 +847,9 @@ int NearestEndNode(HPOLYGON hPath, int x, int y) {
 int NearEndNode(HPOLYGON hSpath, HPOLYGON hDpath) {
 	const POLYGON *pSpath, *pDpath;
 
-	int	ns, nd;		// 'top' nodes in each path
 	int	dist, NearDist;
 	int	NearNode;
 	uint8	*pps;		// Compiled polygon data
-	int32	*snlistx, *snlisty;
-	int32	*dnlistx, *dnlisty;
 
 	CHECK_HP(hSpath, "Out of range polygon handle (9)");
 	CHECK_HP(hDpath, "Out of range polygon handle (10)");
@@ -852,32 +860,28 @@ int NearEndNode(HPOLYGON hSpath, HPOLYGON hDpath) {
 	Poly ps(pps, pSpath->pIndex);	// Start polygon
 	Poly pd(pps, pDpath->pIndex);	// Dest polygon
 
-	ns = (int)FROM_LE_32(ps.nodecount) - 1;
-	nd = (int)FROM_LE_32(pd.nodecount) - 1;
-
-	snlistx = (int32 *)(pps + (int)FROM_LE_32(ps.pnodelistx));
-	snlisty = (int32 *)(pps + (int)FROM_LE_32(ps.pnodelisty));
-	dnlistx = (int32 *)(pps + (int)FROM_LE_32(pd.pnodelistx));
-	dnlisty = (int32 *)(pps + (int)FROM_LE_32(pd.pnodelisty));
+	// 'top' nodes in each path
+	const int ns = ps.getNodecount() - 1;
+	const int nd = pd.getNodecount() - 1;
 
 	// start[0] to dest[0]
-	NearDist = ABS((int)FROM_LE_32(snlistx[0]) - (int)FROM_LE_32(dnlistx[0])) + ABS((int)FROM_LE_32(snlisty[0]) - (int)FROM_LE_32(dnlisty[0]));
+	NearDist = ABS(ps.getNodeX(0) - pd.getNodeX(0)) + ABS(ps.getNodeY(0) - pd.getNodeY(0));
 	NearNode = 0;
 
 	// start[0] to dest[top]
-	dist = ABS((int)FROM_LE_32(snlistx[0]) - (int)FROM_LE_32(dnlistx[nd])) + ABS((int)FROM_LE_32(snlisty[0]) - (int)FROM_LE_32(dnlisty[nd]));
+	dist = ABS(ps.getNodeX(0) - pd.getNodeX(nd)) + ABS(ps.getNodeY(0) - pd.getNodeY(nd));
 	if (dist < NearDist)
 		NearDist = dist;
 
 	// start[top] to dest[0]
-	dist = ABS((int)FROM_LE_32(snlistx[ns]) - (int)FROM_LE_32(dnlistx[0])) + ABS((int)FROM_LE_32(snlisty[ns]) - (int)FROM_LE_32(dnlisty[0]));
+	dist = ABS(ps.getNodeX(ns) - pd.getNodeX(0)) + ABS(ps.getNodeY(ns) - pd.getNodeY(0));
 	if (dist < NearDist) {
 		NearDist = dist;
 		NearNode = ns;
 	}
 
 	// start[top] to dest[top]
-	dist = ABS((int)FROM_LE_32(snlistx[ns]) - (int)FROM_LE_32(dnlistx[nd])) + ABS((int)FROM_LE_32(snlisty[ns]) - (int)FROM_LE_32(dnlisty[nd]));
+	dist = ABS(ps.getNodeX(ns) - pd.getNodeX(nd)) + ABS(ps.getNodeY(ns) - pd.getNodeY(nd));
 	if (dist < NearDist) {
 		NearNode = ns;
 	}
@@ -891,23 +895,18 @@ int NearEndNode(HPOLYGON hSpath, HPOLYGON hDpath) {
  */
 int NearestNodeWithin(HPOLYGON hNpath, int x, int y) {
 	int	ThisDistance, SmallestDistance = 1000;
-	int	NumNodes;	// Number of nodes in this follow nodes path
 	int	NearestYet = 0;	// Number of nearest node
 	uint8	*pps;		// Compiled polygon data
-	int32	*nlistx, *nlisty;
 
 	CHECK_HP(hNpath, "Out of range polygon handle (11)");
 
 	pps = LockMem(pHandle);		// All polygons
 	Poly ptp(pps, Polys[hNpath]->pIndex);	// This polygon
 
-	nlistx = (int32 *)(pps + (int)FROM_LE_32(ptp.pnodelistx));
-	nlisty = (int32 *)(pps + (int)FROM_LE_32(ptp.pnodelisty));
+	const int numNodes = ptp.getNodecount();	// Number of nodes in this follow nodes path
 
-	NumNodes = (int)FROM_LE_32(ptp.nodecount);
-
-	for (int i = 0; i < NumNodes; i++) {
-		ThisDistance = ABS(x - (int)FROM_LE_32(nlistx[i])) + ABS(y - (int)FROM_LE_32(nlisty[i]));
+	for (int i = 0; i < numNodes; i++) {
+		ThisDistance = ABS(x - ptp.getNodeX(i)) + ABS(y - ptp.getNodeY(i));
 
 		if (ThisDistance < SmallestDistance) {
 			NearestYet = i;
@@ -1067,23 +1066,18 @@ int GetBrightness(HPOLYGON hPath, int y) {
  */
 void getNpathNode(HPOLYGON hNpath, int node, int *px, int *py) {
 	uint8	*pps;		// Compiled polygon data
-	int32	*nlistx, *nlisty;
-
 	CHECK_HP(hNpath, "Out of range polygon handle (15)");
 	assert(Polys[hNpath] != NULL && Polys[hNpath]->polyType == PATH && Polys[hNpath]->subtype == NODE); // must be given a node path!
 
 	pps = LockMem(pHandle);		// All polygons
 	Poly ptp(pps, Polys[hNpath]->pIndex);	// This polygon
 
-	nlistx = (int32 *)(pps + (int)FROM_LE_32(ptp.pnodelistx));
-	nlisty = (int32 *)(pps + (int)FROM_LE_32(ptp.pnodelisty));
-
 	// Might have just walked to the node from above.
-	if (node == (int)FROM_LE_32(ptp.nodecount))
+	if (node == ptp.getNodecount())
 		node -= 1;
 
-	*px = (int)FROM_LE_32(nlistx[node]);
-	*py = (int)FROM_LE_32(nlisty[node]);
+	*px = ptp.getNodeX(node);
+	*py = ptp.getNodeY(node);
 }
 
 /**
@@ -1148,7 +1142,7 @@ int numNodes(HPOLYGON hp) {
 
 	Poly pp(LockMem(pHandle), Polys[hp]->pIndex);
 
-	return (int)FROM_LE_32(pp.nodecount);
+	return pp.getNodecount();
 }
 
 // *************************************************************************
@@ -1198,7 +1192,7 @@ void RebootDeadTags(void) {
 /**
  * (Un)serialize the dead tag and exit data for save/restore game.
  */
-void syncPolyInfo(Serializer &s) {
+void syncPolyInfo(Common::Serializer &s) {
 	int i;
 
 	for (i = 0; i < MAX_SCENES; i++) {
@@ -1278,7 +1272,7 @@ HPOLYGON FirstPathPoly(void) {
 		if (Polys[i]->polyType == PATH)
 			return i;
 	}
-	error("FirstPathPoly() - no PATH polygons!");
+	error("FirstPathPoly() - no PATH polygons");
 	return NOPOLY;
 }
 
@@ -1336,11 +1330,11 @@ static bool MatchingLevels(PPOLYGON p1, PPOLYGON p2) {
 	Poly pp1(pps, p1->pIndex);	// This polygon 1
 	Poly pp2(pps, p2->pIndex);	// This polygon 2
 
-	assert(pp1.level1 <= pp1.level2);
-	assert(pp2.level1 <= pp2.level2);
+	assert((int32)FROM_LE_32(pp1.level1) <= (int32)FROM_LE_32(pp1.level2));
+	assert((int32)FROM_LE_32(pp2.level1) <= (int32)FROM_LE_32(pp2.level2));
 
-	for (int pl = pp1.level1; pl <= pp1.level2; pl++) {
-		if (pl >= pp2.level1 && pl <= pp2.level2)
+	for (int pl = (int32)FROM_LE_32(pp1.level1); pl <= (int32)FROM_LE_32(pp1.level2); pl++) {
+		if (pl >= (int32)FROM_LE_32(pp2.level1) && pl <= (int32)FROM_LE_32(pp2.level2))
 			return true;
 	}
 
@@ -1412,10 +1406,8 @@ void CheckNPathIntegrity() {
 	uint8		*pps;	// Compiled polygon data
 	const POLYGON *rp;	// Run-time polygon structure
 	HPOLYGON	hp;
-	const POLY *cp;	// Compiled polygon structure
 	int		i, j;	// Loop counters
 	int		n;	// Last node in current path
-	int32	*nlistx, *nlisty;
 
 	pps = LockMem(pHandle);		// All polygons
 
@@ -1423,18 +1415,16 @@ void CheckNPathIntegrity() {
 		rp = Polys[i];
 		if (rp && rp->polyType == PATH && rp->subtype == NODE) { //...if it's a node path
 			// Get compiled polygon structure
-			cp = (const POLY *)pps + rp->pIndex;	// This polygon
-			nlistx = (int32 *)(pps + (int)FROM_LE_32(cp.pnodelistx));
-			nlisty = (int32 *)(pps + (int)FROM_LE_32(cp.pnodelisty));
+			const Poly cp(pps, rp->pIndex);	// This polygon
 
-			n = (int)FROM_LE_32(cp.nodecount) - 1;		// Last node
+			n = cp.getNodecount() - 1;		// Last node
 			assert(n >= 1); // Node paths must have at least 2 nodes
 
 			hp = PolygonIndex(rp);
 			for (j = 0; j <= n; j++) {
-				if (!IsInPolygon((int)FROM_LE_32(nlistx[j]), (int)FROM_LE_32(nlisty[j]), hp)) {
+				if (!IsInPolygon(cp.getNodeX(j), cp.getNodeY(j), hp)) {
 					sprintf(TextBufferAddr(), "Node (%d, %d) is not in its own path (starting (%d, %d))",
-						 (int)FROM_LE_32(nlistx[j]), (int)FROM_LE_32(nlisty[j]), rp->cx[0], rp->cy[0]);
+						 cp.getNodeX(j), cp.getNodeY(j), rp->cx[0], rp->cy[0]);
 					error(TextBufferAddr());
 				}
 			}
@@ -1444,15 +1434,15 @@ void CheckNPathIntegrity() {
 				if (rp->adjpaths[j] == NULL)
 					break;
 
-				if (IsInPolygon((int)FROM_LE_32(nlistx[0]), (int)FROM_LE_32(nlisty[0]), PolygonIndex(rp->adjpaths[j]))) {
+				if (IsInPolygon(cp.getNodeX(0), cp.getNodeY(0), PolygonIndex(rp->adjpaths[j]))) {
 					sprintf(TextBufferAddr(), "Node (%d, %d) is in another path (starting (%d, %d))",
-						 (int)FROM_LE_32(nlistx[0]), (int)FROM_LE_32(nlisty[0]), rp->adjpaths[j]->cx[0], rp->adjpaths[j]->cy[0]);
-					error(TextBufferAddr())
+						 cp.getNodeX(0), cp.getNodeY(0), rp->adjpaths[j]->cx[0], rp->adjpaths[j]->cy[0]);
+					error(TextBufferAddr());
 				}
-				if (IsInPolygon((int)FROM_LE_32(nlistx[n]), (int)FROM_LE_32(nlisty[n]), PolygonIndex(rp->adjpaths[j]))) {
+				if (IsInPolygon(cp.getNodeX(n), cp.getNodeY(n), PolygonIndex(rp->adjpaths[j]))) {
 					sprintf(TextBufferAddr(), "Node (%d, %d) is in another path (starting (%d, %d))",
-						 (int)FROM_LE_32(nlistx[n]), (int)FROM_LE_32(nlisty[n]), rp->adjpaths[j]->cx[0], rp->adjpaths[j]->cy[0]);
-					error(TextBufferAddr())
+						 cp.getNodeX(n), cp.getNodeY(n), rp->adjpaths[j]->cx[0], rp->adjpaths[j]->cy[0]);
+					error(TextBufferAddr());
 				}
 			}
 		}
@@ -1470,7 +1460,7 @@ static void SetExBlocks() {
 				Polys[i]->polyType = EX_BLOCK;
 #ifdef DEBUG
 			else
-				error("Impossible message!");
+				error("Impossible message");
 #endif
 		}
 	}
@@ -1795,7 +1785,7 @@ static void KillDeadPolygons(void) {
 				break;
 
 			default:
-				error("Impossible message!");
+				error("Impossible message");
 			}
 		}
 	}
@@ -1841,7 +1831,7 @@ void InitPolygons(SCNHANDLE ph, int numPoly, bool bRestart) {
 		Poly pp(LockMem(ph));
 
 		for (int i = 0; i < numPoly; ++i, ++pp) {
-			switch (FROM_LE_32(pp.type)) {
+			switch (pp.getType()) {
 			case POLY_PATH:
 				InitPath(pp, false, i, bRestart);
 				break;

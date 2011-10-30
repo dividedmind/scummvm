@@ -86,9 +86,9 @@ int32 LogicHE::dispatch(int op, int numArgs, int32 *args) {
 
 	for (int i = 1; i < numArgs; i++) {
 		snprintf(tmp, 32, ", %d", args[i]);
-		strncat(str, tmp, 256);
+		strncat(str, tmp, sizeof(str) - strlen(str) - 1);
 	}
-	strncat(str, "])", 256);
+	strncat(str, "])", sizeof(str) - strlen(str) - 1);
 
 	debug(0, "%s", str);
 #else
@@ -357,8 +357,8 @@ int32 LogicHErace::op_1140(int32 *args) {
 	const double scalarProduct = x * args[0] + y * args[1];
 
 	// Finally compute the projection of (arg2,arg3) onto (arg0,arg1)
-	double projX = args[0] - 2 * scalarProduct * args[2];
-	double projY = args[1] - 2 * scalarProduct * args[3];
+	double projX = args[0] - 2 * scalarProduct * x;
+	double projY = args[1] - 2 * scalarProduct * y;
 
 	projX = projX * 20.0 / 23.0;	// FIXME: Why is this here?
 
@@ -446,7 +446,7 @@ void LogicHEfunshop::op_1004(int32 *args) {
 		(int32)data[2], (int32)data[3], (int32)data[6], (int32)data[7], &x, &y);
 
 	if (s != 1) {
-		error("LogicHEfunshop::op_1004: Your shape has defied the laws of physics\n");
+		error("LogicHEfunshop::op_1004: Your shape has defied the laws of physics");
 		return;
 	}
 
@@ -957,6 +957,92 @@ int LogicHEsoccer::op_1021(int32 *args) {
 	// TODO: Used during a match (ball movement?)
 
 	return 1;
+}
+
+/***********************
+ * Backyard Basketball
+ *
+ */
+
+int LogicHEbasketball::versionID() {
+	return 1;
+}
+
+int32 LogicHEbasketball::dispatch(int op, int numArgs, int32 *args) {
+	int res = 0;
+
+	switch (op) {
+	case 1001:
+		break;
+
+	case 1006:
+		break;
+
+	case 1011:
+		break;
+
+	case 1012:
+		break;
+
+	case 1035:
+		break;
+
+	case 1050:
+		break;
+
+	case 1051:
+		break;
+
+	case 1052:
+		break;
+
+	case 1056:
+		break;
+
+	case 1057:
+		break;
+
+	case 1058:
+		break;
+
+	case 1060:
+		break;
+
+	case 1064:
+		break;
+
+	case 1067:
+		break;
+
+	case 1073:
+		break;
+
+	case 1075:
+		break;
+
+	case 1076:
+		break;
+
+	case 1080:
+		break;
+
+	case 1081:
+		break;
+
+	case 1090:
+		break;
+
+	case 1091:
+		break;
+
+	case 1513:
+		break;
+
+	default:
+		LogicHE::dispatch(op, numArgs, args);
+	}
+
+	return res;
 }
 
 /***********************

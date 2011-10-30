@@ -38,39 +38,38 @@ Screen_v2::~Screen_v2() {
 	delete[] _wsaFrameAnimBuffer;
 }
 
-uint8 *Screen_v2::generateOverlay(const uint8 *palette, uint8 *buffer, int startColor, uint16 factor) {
-	if (!palette || !buffer)
+uint8 *Screen_v2::generateOverlay(const Palette &pal, uint8 *buffer, int startColor, uint16 factor) {
+	if (!buffer)
 		return buffer;
 
 	factor = MIN<uint16>(255, factor);
 	factor >>= 1;
 	factor &= 0xFF;
 
-	const byte col1 = palette[startColor * 3 + 0];
-	const byte col2 = palette[startColor * 3 + 1];
-	const byte col3 = palette[startColor * 3 + 2];
+	const byte col1 = pal[startColor * 3 + 0];
+	const byte col2 = pal[startColor * 3 + 1];
+	const byte col3 = pal[startColor * 3 + 2];
 
 	uint8 *dst = buffer;
 	*dst++ = 0;
 
 	for (int i = 1; i != 255; ++i) {
 		uint8 processedPalette[3];
-		const uint8 *src = palette + i*3;
 		byte col;
 
-		col = *src++;
+		col = pal[i * 3 + 0];
 		col -= ((((col - col1) * factor) << 1) >> 8) & 0xFF;
 		processedPalette[0] = col;
 
-		col = *src++;
+		col = pal[i * 3 + 1];
 		col -= ((((col - col2) * factor) << 1) >> 8) & 0xFF;
 		processedPalette[1] = col;
 
-		col = *src++;
+		col = pal[i * 3 + 2];
 		col -= ((((col - col3) * factor) << 1) >> 8) & 0xFF;
 		processedPalette[2] = col;
 
-		*dst++ = findLeastDifferentColor(processedPalette, palette+3, 255)+1;
+		*dst++ = findLeastDifferentColor(processedPalette, pal, 1, 255) + 1;
 	}
 
 	return buffer;
@@ -90,19 +89,19 @@ void Screen_v2::applyOverlay(int x, int y, int w, int h, int pageNum, const uint
 	}
 }
 
-int Screen_v2::findLeastDifferentColor(const uint8 *paletteEntry, const uint8 *palette, uint16 numColors, bool skipSpecialColours) {
+int Screen_v2::findLeastDifferentColor(const uint8 *paletteEntry, const Palette &pal, uint8 firstColor, uint16 numColors, bool skipSpecialColors) {
 	int m = 0x7fff;
 	int r = 0x101;
 
 	for (int i = 0; i < numColors; i++) {
-		if (skipSpecialColours && i >= 0xc0 && i <= 0xc3)
+		if (skipSpecialColors && i >= 0xc0 && i <= 0xc3)
 			continue;
 
-		int v = paletteEntry[0] - *palette++;
+		int v = paletteEntry[0] - pal[(i + firstColor) * 3 + 0];
 		int c = v * v;
-		v = paletteEntry[1] - *palette++;
+		v = paletteEntry[1] - pal[(i + firstColor) * 3 + 1];
 		c += (v * v);
-		v = paletteEntry[2] - *palette++;
+		v = paletteEntry[2] - pal[(i + firstColor) * 3 + 2];
 		c += (v * v);
 
 		if (c <= m) {
@@ -114,13 +113,11 @@ int Screen_v2::findLeastDifferentColor(const uint8 *paletteEntry, const uint8 *p
 	return r;
 }
 
-void Screen_v2::getFadeParams(const uint8 *palette, int delay, int &delayInc, int &diff) {
-	debugC(9, kDebugLevelScreen, "Screen_v2::getFadeParams(%p, %d, %p, %p)", (const void *)palette, delay, (const void *)&delayInc, (const void *)&diff);
-
+void Screen_v2::getFadeParams(const Palette &pal, int delay, int &delayInc, int &diff) {
 	int maxDiff = 0;
 	diff = 0;
-	for (int i = 0; i < 768; ++i) {
-		diff = ABS(palette[i] - _screenPalette[i]);
+	for (int i = 0; i < pal.getNumColors() * 3; ++i) {
+		diff = ABS(pal[i] - (*_screenPalette)[i]);
 		maxDiff = MAX(maxDiff, diff);
 	}
 
@@ -138,150 +135,7 @@ void Screen_v2::getFadeParams(const uint8 *palette, int delay, int &delayInc, in
 	}
 }
 
-void Screen_v2::copyWsaRect(int x, int y, int w, int h, int dimState, int plotFunc, const uint8 *src,
-							int unk1, const uint8 *unkPtr1, const uint8 *unkPtr2) {
-	uint8 *dstPtr = getPagePtr(_curPage);
-	uint8 *origDst = dstPtr;
-
-	const ScreenDim *dim = getScreenDim(dimState);
-	int dimX1 = dim->sx << 3;
-	int dimX2 = dim->w << 3;
-	dimX2 += dimX1;
-
-	int dimY1 = dim->sy;
-	int dimY2 = dim->h;
-	dimY2 += dimY1;
-
-	int temp = y - dimY1;
-	if (temp < 0) {
-		if ((temp += h) <= 0)
-			return;
-		else {
-			SWAP(temp, h);
-			y += temp - h;
-			src += (temp - h) * w;
-		}
-	}
-
-	temp = dimY2 - y;
-	if (temp <= 0)
-		return;
-
-	if (temp < h)
-		h = temp;
-
-	int srcOffset = 0;
-	temp = x - dimX1;
-	if (temp < 0) {
-		temp = -temp;
-		srcOffset = temp;
-		x += temp;
-		w -= temp;
-	}
-
-	int srcAdd = 0;
-
-	temp = dimX2 - x;
-	if (temp <= 0)
-		return;
-
-	if (temp < w) {
-		SWAP(w, temp);
-		temp -= w;
-		srcAdd = temp;
-	}
-
-	dstPtr += y * SCREEN_W + x;
-	uint8 *dst = dstPtr;
-
-	if (_curPage == 0 || _curPage == 1)
-		addDirtyRect(x, y, w, h);
-
-	clearOverlayRect(_curPage, x, y, w, h);
-
-	temp = h;
-	int curY = y;
-	while (h--) {
-		src += srcOffset;
-		++curY;
-		int cW = w;
-
-		switch (plotFunc) {
-		case 0:
-			memcpy(dst, src, cW);
-			dst += cW; src += cW;
-			break;
-
-		case 1:
-			while (cW--) {
-				uint8 d = *src++;
-				uint8 t = unkPtr1[d];
-				if (t != 0xFF)
-					d = unkPtr2[*dst + (t << 8)];
-				*dst++ = d;
-			}
-			break;
-
-		case 4:
-			while (cW--) {
-				uint8 d = *src++;
-				if (d)
-					*dst = d;
-				++dst;
-			}
-			break;
-
-		case 5:
-			while (cW--) {
-				uint8 d = *src++;
-				if (d) {
-					uint8 t = unkPtr1[d];
-					if (t != 0xFF)
-						d = unkPtr2[*dst + (t << 8)];
-					*dst = d;
-				}
-				++dst;
-			}
-			break;
-
-		case 8:
-		case 9:
-			while (cW--) {
-				uint8 d = *src++;
-				uint8 t = _shapePages[0][dst - origDst] & 7;
-				if (unk1 < t && (curY > _maskMinY && curY < _maskMaxY))
-					d = _shapePages[1][dst - origDst];
-				*dst++ = d;
-			}
-			break;
-
-		case 12:
-		case 13:
-			while (cW--) {
-				uint8 d = *src++;
-				if (d) {
-					uint8 t = _shapePages[0][dst - origDst] & 7;
-					if (unk1 < t && (curY > _maskMinY && curY < _maskMaxY))
-						d = _shapePages[1][dst - origDst];
-					*dst++ = d;
-				} else {
-					d = _shapePages[1][dst - origDst];
-					*dst++ = d;
-				}
-			}
-			break;
-
-		default:
-			break;
-		}
-
-		dst = (dstPtr += SCREEN_W);
-		src += srcAdd;
-	}
-}
-
 const uint8 *Screen_v2::getPtrToShape(const uint8 *shpFile, int shape) {
-	debugC(9, kDebugLevelScreen, "Screen_v2::getPtrToShape(%p, %d)", (const void *)shpFile, shape);
 	uint16 shapes = READ_LE_UINT16(shpFile);
 
 	if (shapes <= shape)
@@ -293,7 +147,6 @@ const uint8 *Screen_v2::getPtrToShape(const uint8 *shpFile, int shape) {
 }
 
 uint8 *Screen_v2::getPtrToShape(uint8 *shpFile, int shape) {
-	debugC(9, kDebugLevelScreen, "Screen_v2::getPtrToShape(%p, %d)", (void *)shpFile, shape);
 	uint16 shapes = READ_LE_UINT16(shpFile);
 
 	if (shapes <= shape)
@@ -305,26 +158,20 @@ uint8 *Screen_v2::getPtrToShape(uint8 *shpFile, int shape) {
 }
 
 int Screen_v2::getShapeScaledWidth(const uint8 *shpFile, int scale) {
-	debugC(9, kDebugLevelScreen, "Screen_v2::getShapeScaledWidth(%p, %d)", (const void*)shpFile, scale);
 	int width = READ_LE_UINT16(shpFile+3);
 	return (width * scale) >> 8;
 }
 
 int Screen_v2::getShapeScaledHeight(const uint8 *shpFile, int scale) {
-	debugC(9, kDebugLevelScreen, "Screen_v2::getShapeScaledHeight(%p, %d)", (const void*)shpFile, scale);
 	int height = shpFile[2];
 	return (height * scale) >> 8;
 }
 
 uint16 Screen_v2::getShapeSize(const uint8 *shp) {
-	debugC(9, kDebugLevelScreen, "Screen_v2::getShapeSize(%p)", (const void *)shp);
-
 	return READ_LE_UINT16(shp+6);
 }
 
 uint8 *Screen_v2::makeShapeCopy(const uint8 *src, int index) {
-	debugC(9, kDebugLevelScreen, "Screen_v2::makeShapeCopy(%p, %d)", (const void *)src, index);
-
 	const uint8 *shape = getPtrToShape(src, index);
 	if (!shape)
 		return 0;
@@ -339,7 +186,6 @@ uint8 *Screen_v2::makeShapeCopy(const uint8 *src, int index) {
 }
 
 int Screen_v2::getLayer(int x, int y) {
-	debugC(9, kDebugLevelScreen, "Screen_v2::getLayer(%d, %d)", x, y);
 	if (x < 0)
 		x = 0;
 	else if (x >= 320)
@@ -361,14 +207,12 @@ int Screen_v2::getLayer(int x, int y) {
 }
 
 int Screen_v2::getRectSize(int w, int h) {
-	debugC(9, kDebugLevelScreen, "Screen_v2::getRectSize(%d, %d)", w, h);
 	if (w > 320 || h > 200)
 		return 0;
 	return w*h;
 }
 
 void Screen_v2::setTextColorMap(const uint8 *cmap) {
-	debugC(9, kDebugLevelScreen, "Screen_v2::setTextColorMap(%p)", (const void *)cmap);
 	setTextColor(cmap, 0, 15);
 }
 
@@ -440,6 +284,9 @@ void Screen_v2::wsaFrameAnimationStep(int x1, int y1, int x2, int y2,
 		memcpy(dst + x2 + cdm.sx, _wsaFrameAnimBuffer + na, w2);
 		dst += 320;
 	} while (++nb < h2);
+
+	if (!dstPage)
+		addDirtyRect(x2, y2, w2, h2);
 }
 
 bool Screen_v2::calcBounds(int w0, int h0, int &x1, int &y1, int &w1, int &h1, int &x2, int &y2, int &w2) {
@@ -489,8 +336,6 @@ bool Screen_v2::calcBounds(int w0, int h0, int &x1, int &y1, int &w1, int &h1, i
 }
 
 void Screen_v2::checkedPageUpdate(int srcPage, int dstPage) {
-	debugC(9, kDebugLevelScreen, "Screen_v2::checkedPageUpdate(%d, %d)", srcPage, dstPage);
-
 	const uint32 *src = (const uint32 *)getPagePtr(srcPage);
 	uint32 *dst = (uint32 *)getPagePtr(dstPage);
 	uint32 *page0 = (uint32 *)getPagePtr(0);

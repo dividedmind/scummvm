@@ -18,10 +18,8 @@
 	<Configurations>
 		<Configuration
 			Name="Debug|Win32"
-			OutputDirectory="scummvm_Debug"
-			IntermediateDirectory="scummvm_Debug"
 			ConfigurationType="1"
-			CharacterSet="2"
+			InheritedPropertySheets=".\ScummVM_Debug.vsprops"
 			>
 			<Tool
 				Name="VCPreBuildEventTool"
@@ -40,26 +38,6 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalOptions="/wd4201 /wd4512 /wd4511 /wd4100 /wd4121 /wd4310 /wd4706 /wd4127 /wd4189 /wd4702 /wd4996"
-				Optimization="0"
-				InlineFunctionExpansion="0"
-				AdditionalIncludeDirectories="../../;../../engines"
-				PreprocessorDefinitions="WIN32;_DEBUG;_CONSOLE;USE_ZLIB;USE_MAD;USE_VORBIS;USE_MPEG2;USE_NASM;USE_MT32EMU;ENABLE_AGI;ENABLE_AGOS;ENABLE_CINE;ENABLE_CRUISE;ENABLE_DRASCULA;ENABLE_GOB;ENABLE_IGOR;ENABLE_KYRA;ENABLE_LURE;ENABLE_M4;ENABLE_MADE;ENABLE_PARALLACTION;ENABLE_QUEEN;ENABLE_SAGA;ENABLE_SCUMM;ENABLE_SKY;ENABLE_SWORD1;ENABLE_SWORD2;ENABLE_TOUCHE;ENABLE_SCUMM_7_8;ENABLE_HE;ENABLE_TINSEL;ENABLE_TUCKER;ENABLE_GROOVIE"
-				MinimalRebuild="true"
-				ExceptionHandling="1"
-				BasicRuntimeChecks="3"
-				RuntimeLibrary="1"
-				BufferSecurityCheck="true"
-				EnableFunctionLevelLinking="true"
-				DisableLanguageExtensions="false"
-				ForceConformanceInForLoopScope="true"
-				RuntimeTypeInfo="true"
-				UsePrecompiledHeader="0"
-				WarningLevel="4"
-				WarnAsError="true"
-				SuppressStartupBanner="false"
-				Detect64BitPortabilityProblems="false"
-				DebugInformationFormat="4"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -72,17 +50,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="winmm.lib sdl.lib zlib.lib libmad.lib vorbisfile_static.lib vorbis_static.lib ogg_static.lib libmpeg2.lib sword1_debug/sword1.lib sword2_debug/sword2.lib lure_debug/lure.lib cine_debug/cine.lib cruise_debug/cruise.lib igor_debug/igor.lib kyra_debug/kyra.lib gob_debug/gob.lib queen_debug/queen.lib saga_debug/saga.lib agi_debug/agi.lib scumm_debug/scumm.lib agos_debug/agos.lib drascula_debug/drascula.lib sky_debug/sky.lib parallaction_debug/parallaction.lib m4_debug/m4.lib made_debug/made.lib tinsel_Debug/tinsel.lib tucker_Debug/tucker.lib groovie_Debug/groovie.lib"
+				AdditionalDependencies="winmm.lib sdl.lib zlib.lib libmad.lib vorbisfile_static.lib vorbis_static.lib ogg_static.lib libmpeg2.lib $(OutDir)/*.lib"
 				OutputFile="$(OutDir)/scummvm.exe"
-				LinkIncremental="2"
-				IgnoreDefaultLibraryNames="libc.lib;libcmt.lib"
-				GenerateDebugInformation="true"
-				ProgramDatabaseFile="$(OutDir)/scummvm.pdb"
-				SubSystem="1"
-				EntryPointSymbol="WinMainCRTStartup"
-				RandomizedBaseAddress="1"
-				DataExecutionPrevention="0"
-				TargetMachine="1"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -108,11 +77,8 @@
 		</Configuration>
 		<Configuration
 			Name="Release|Win32"
-			OutputDirectory="scummvm_Release"
-			IntermediateDirectory="scummvm_Release"
 			ConfigurationType="1"
-			CharacterSet="2"
-			WholeProgramOptimization="1"
+			InheritedPropertySheets=".\ScummVM_Release.vsprops"
 			>
 			<Tool
 				Name="VCPreBuildEventTool"
@@ -131,27 +97,6 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalOptions="/wd4201 /wd4512 /wd4511 /wd4100 /wd4121 /wd4310 /wd4706 /wd4127 /wd4189 /wd4702 /wd4996"
-				Optimization="3"
-				InlineFunctionExpansion="2"
-				EnableIntrinsicFunctions="true"
-				FavorSizeOrSpeed="2"
-				OmitFramePointers="true"
-				AdditionalIncludeDirectories="../../;../../engines"
-				PreprocessorDefinitions="WIN32;NDEBUG;_CONSOLE;USE_ZLIB;USE_MAD;USE_VORBIS;USE_MPEG2;USE_MT32EMU;ENABLE_AGI;ENABLE_AGOS;ENABLE_CINE;ENABLE_CRUISE;ENABLE_DRASCULA;ENABLE_GOB;ENABLE_IGOR;ENABLE_KYRA;ENABLE_LURE;ENABLE_M4;ENABLE_MADE;ENABLE_PARALLACTION;ENABLE_QUEEN;ENABLE_SAGA;ENABLE_SCUMM;ENABLE_SKY;ENABLE_SWORD1;ENABLE_SWORD2;ENABLE_TOUCHE;ENABLE_SCUMM_7_8;ENABLE_HE;ENABLE_TINSEL;ENABLE_TUCKER;ENABLE_GROOVIE"
-				StringPooling="true"
-				MinimalRebuild="false"
-				ExceptionHandling="1"
-				RuntimeLibrary="0"
-				BufferSecurityCheck="false"
-				EnableFunctionLevelLinking="false"
-				DisableLanguageExtensions="false"
-				ForceConformanceInForLoopScope="true"
-				RuntimeTypeInfo="true"
-				UsePrecompiledHeader="0"
-				WarningLevel="4"
-				WarnAsError="true"
-				DebugInformationFormat="0"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -164,19 +109,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="winmm.lib sdl.lib zlib.lib libmad.lib vorbisfile_static.lib vorbis_static.lib ogg_static.lib libmpeg2.lib saga_release/saga.lib agi_release/agi.lib sword1_release/sword1.lib sword2_release/sword2.lib lure_release/lure.lib cine_release/cine.lib cruise_release/cruise.lib igor_release/igor.lib kyra_release/kyra.lib gob_release/gob.lib queen_release/queen.lib scumm_release/scumm.lib agos_release/agos.lib sky_release/sky.lib drascula_release/drascula.lib parallaction_release/parallaction.lib m4_release/m4.lib made_release/made.lib tinsel_release/tinsel.lib tucker_release/tucker.lib groovie_release/groovie.lib"
+				AdditionalDependencies="winmm.lib sdl.lib zlib.lib libmad.lib vorbisfile_static.lib vorbis_static.lib ogg_static.lib libmpeg2.lib $(OutDir)/*.lib"
 				OutputFile="$(OutDir)/scummvm.exe"
-				LinkIncremental="1"
-				SuppressStartupBanner="true"
-				IgnoreDefaultLibraryNames="libc.lib"
-				GenerateDebugInformation="false"
-				SubSystem="1"
-				OptimizeReferences="2"
-				EnableCOMDATFolding="2"
-				EntryPointSymbol="WinMainCRTStartup"
-				RandomizedBaseAddress="1"
-				DataExecutionPrevention="0"
-				TargetMachine="1"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -296,6 +230,18 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\common\EventDispatcher.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\common\EventRecorder.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\common\EventRecorder.h"
+				>
+			</File>
+			<File
 				RelativePath="..\..\common\events.h"
 				>
 			</File>
@@ -345,6 +291,10 @@
 			</File>
 			<File
 				RelativePath="..\..\common\list.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\common\list_intern.h"
 				>
 			</File>
 			<File
@@ -401,6 +351,10 @@
 			</File>
 			<File
 				RelativePath="..\..\common\scummsys.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\common\serializer.h"
 				>
 			</File>
 			<File
@@ -532,29 +486,11 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\sound\iff.cpp"
+				RelativePath="..\..\sound\iff_sound.cpp"
 				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						ObjectFile="$(IntDir)\$(InputName)1.obj"
-						XMLDocumentationFileName="$(IntDir)\$(InputName)1.xdc"
-					/>
-				</FileConfiguration>
-				<FileConfiguration
-					Name="Release|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-						ObjectFile="$(IntDir)\$(InputName)1.obj"
-						XMLDocumentationFileName="$(IntDir)\$(InputName)1.xdc"
-					/>
-				</FileConfiguration>
 			</File>
 			<File
-				RelativePath="..\..\sound\iff.h"
+				RelativePath="..\..\sound\iff_sound.h"
 				>
 			</File>
 			<File
@@ -638,6 +574,22 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\sound\timestamp.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\sound\timestamp.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\sound\vag.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\sound\vag.h"
+				>
+			</File>
+			<File
 				RelativePath="..\..\sound\voc.cpp"
 				>
 			</File>
@@ -667,24 +619,6 @@
 				<File
 					RelativePath="..\..\sound\softsynth\adlib.cpp"
 					>
-					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							ObjectFile="$(IntDir)/$(InputName)1.obj"
-							XMLDocumentationFileName="$(IntDir)/$(InputName)1.xdc"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							ObjectFile="$(IntDir)/$(InputName)1.obj"
-							XMLDocumentationFileName="$(IntDir)/$(InputName)1.xdc"
-						/>
-					</FileConfiguration>
 				</File>
 				<File
 					RelativePath="..\..\sound\softsynth\emumidi.h"
@@ -697,24 +631,6 @@
 				<File
 					RelativePath="..\..\sound\softsynth\mt32.cpp"
 					>
-					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							ObjectFile="$(IntDir)/$(InputName)1.obj"
-							XMLDocumentationFileName="$(IntDir)/$(InputName)1.xdc"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							ObjectFile="$(IntDir)/$(InputName)1.obj"
-							XMLDocumentationFileName="$(IntDir)/$(InputName)1.xdc"
-						/>
-					</FileConfiguration>
 				</File>
 				<File
 					RelativePath="..\..\sound\softsynth\pcspk.cpp"
@@ -727,24 +643,6 @@
 				<File
 					RelativePath="..\..\sound\softsynth\ym2612.cpp"
 					>
-					<FileConfiguration
-						Name="Debug|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							ObjectFile="$(IntDir)/$(InputName)1.obj"
-							XMLDocumentationFileName="$(IntDir)/$(InputName)1.xdc"
-						/>
-					</FileConfiguration>
-					<FileConfiguration
-						Name="Release|Win32"
-						>
-						<Tool
-							Name="VCCLCompilerTool"
-							ObjectFile="$(IntDir)/$(InputName)1.obj"
-							XMLDocumentationFileName="$(IntDir)/$(InputName)1.xdc"
-						/>
-					</FileConfiguration>
 				</File>
 				<File
 					RelativePath="..\..\sound\softsynth\ym2612.h"
@@ -826,6 +724,34 @@
 						>
 					</File>
 				</Filter>
+				<Filter
+					Name="opl"
+					>
+					<File
+						RelativePath="..\..\sound\softsynth\opl\dosbox.cpp"
+						>
+					</File>
+					<File
+						RelativePath="..\..\sound\softsynth\opl\dosbox.h"
+						>
+					</File>
+					<File
+						RelativePath="..\..\sound\softsynth\opl\mame.cpp"
+						>
+					</File>
+					<File
+						RelativePath="..\..\sound\softsynth\opl\mame.h"
+						>
+					</File>
+					<File
+						RelativePath="..\..\sound\softsynth\opl\opl_impl.h"
+						>
+					</File>
+					<File
+						RelativePath="..\..\sound\softsynth\opl\opl_inc.h"
+						>
+					</File>
+				</Filter>
 			</Filter>
 			<Filter
 				Name="mods"
@@ -902,7 +828,6 @@
 		</Filter>
 		<Filter
 			Name="rsc"
-			Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"
 			>
 			<File
 				RelativePath="..\..\icons\scummvm.ico"
@@ -933,6 +858,10 @@
 				</File>
 				<File
 					RelativePath="..\..\backends\platform\sdl\graphics.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\platform\sdl\hardwarekeys.cpp"
 					>
 				</File>
 				<File
@@ -1026,14 +955,6 @@
 				Name="saves"
 				>
 				<File
-					RelativePath="..\..\backends\saves\compressed\compressed-saves.cpp"
-					>
-				</File>
-				<File
-					RelativePath="..\..\backends\saves\compressed\compressed-saves.h"
-					>
-				</File>
-				<File
 					RelativePath="..\..\backends\saves\default\default-saves.cpp"
 					>
 				</File>
@@ -1061,6 +982,98 @@
 						>
 					</File>
 				</Filter>
+			</Filter>
+			<Filter
+				Name="keymapper"
+				>
+				<File
+					RelativePath="..\..\backends\keymapper\action.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\keymapper\action.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\keymapper\hardware-key.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\keymapper\keymap.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\keymapper\keymap.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\keymapper\keymapper.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\keymapper\keymapper.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\keymapper\remap-dialog.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\keymapper\remap-dialog.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\keymapper\types.h"
+					>
+				</File>
+			</Filter>
+			<Filter
+				Name="vkeybd"
+				>
+				<File
+					RelativePath="..\..\backends\vkeybd\image-map.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\vkeybd\image-map.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\vkeybd\keycode-descriptions.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\vkeybd\polygon.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\vkeybd\polygon.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\vkeybd\virtual-keyboard-gui.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\vkeybd\virtual-keyboard-gui.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\vkeybd\virtual-keyboard-parser.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\vkeybd\virtual-keyboard-parser.h"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\vkeybd\virtual-keyboard.cpp"
+					>
+				</File>
+				<File
+					RelativePath="..\..\backends\vkeybd\virtual-keyboard.h"
+					>
+				</File>
 			</Filter>
 		</Filter>
 		<Filter
@@ -1265,13 +1278,6 @@
 			<File
 				RelativePath="..\..\gui\ThemeParser.h"
 				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCustomBuildTool"
-					/>
-				</FileConfiguration>
 			</File>
 			<File
 				RelativePath="..\..\gui\widget.cpp"
@@ -1338,6 +1344,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\graphics\pixelformat.h"
+				>
+			</File>
+			<File
 				RelativePath="..\..\graphics\primitives.cpp"
 				>
 			</File>
@@ -1351,6 +1361,14 @@
 			</File>
 			<File
 				RelativePath="..\..\graphics\scaler.h"
+				>
+			</File>
+			<File
+				RelativePath="..\..\graphics\sjis.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\..\graphics\sjis.h"
 				>
 			</File>
 			<File
@@ -1513,19 +1531,19 @@
 				Name="video"
 				>
 				<File
-					RelativePath="..\..\graphics\video\dxa_player.cpp"
+					RelativePath="..\..\graphics\video\dxa_decoder.cpp"
 					>
 				</File>
 				<File
-					RelativePath="..\..\graphics\video\dxa_player.h"
+					RelativePath="..\..\graphics\video\dxa_decoder.h"
 					>
 				</File>
 				<File
-					RelativePath="..\..\graphics\video\flic_player.cpp"
+					RelativePath="..\..\graphics\video\flic_decoder.cpp"
 					>
 				</File>
 				<File
-					RelativePath="..\..\graphics\video\flic_player.h"
+					RelativePath="..\..\graphics\video\flic_decoder.h"
 					>
 				</File>
 				<File
@@ -1537,11 +1555,11 @@
 					>
 				</File>
 				<File
-					RelativePath="..\..\graphics\video\smk_player.cpp"
+					RelativePath="..\..\graphics\video\smk_decoder.cpp"
 					>
 				</File>
 				<File
-					RelativePath="..\..\graphics\video\smk_player.h"
+					RelativePath="..\..\graphics\video\smk_decoder.h"
 					>
 				</File>
 				<File
@@ -1552,6 +1570,30 @@
 					RelativePath="..\..\graphics\video\video_player.h"
 					>
 				</File>
+				<Filter
+					Name="coktelvideo"
+					>
+					<File
+						RelativePath="..\..\graphics\video\coktelvideo\coktelvideo.cpp"
+						>
+					</File>
+					<File
+						RelativePath="..\..\graphics\video\coktelvideo\coktelvideo.h"
+						>
+					</File>
+					<File
+						RelativePath="..\..\graphics\video\coktelvideo\indeo3.cpp"
+						>
+					</File>
+					<File
+						RelativePath="..\..\graphics\video\coktelvideo\indeo3.h"
+						>
+					</File>
+					<File
+						RelativePath="..\..\graphics\video\coktelvideo\indeo3data.h"
+						>
+					</File>
+				</Filter>
 			</Filter>
 		</Filter>
 		<Filter

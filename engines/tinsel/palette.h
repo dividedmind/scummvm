@@ -33,11 +33,13 @@ namespace Tinsel {
 
 typedef	uint32	COLORREF;
 
-#define RGB(r,g,b)	((COLORREF)TO_LE_32(((uint8)(r)|((uint16)(g)<<8))|(((uint32)(uint8)(b))<<16)))
+#define TINSEL_RGB(r,g,b)	((COLORREF)TO_LE_32(((uint8)(r)|((uint16)(g)<<8))|(((uint32)(uint8)(b))<<16)))
 
-#define GetRValue(rgb)	((uint8)(FROM_LE_32(rgb)))
-#define GetGValue(rgb)	((uint8)(((uint16)(FROM_LE_32(rgb))) >> 8))
-#define GetBValue(rgb)	((uint8)((FROM_LE_32(rgb))>>16))
+#define TINSEL_GetRValue(rgb)	((uint8)(FROM_LE_32(rgb)))
+#define TINSEL_GetGValue(rgb)	((uint8)(((uint16)(FROM_LE_32(rgb)))>>8))
+#define TINSEL_GetBValue(rgb)	((uint8)((FROM_LE_32(rgb))>>16))
+
+#define TINSEL_PSX_RGB(r,g,b) ((uint16)(((uint8)(r))|((uint16)(g)<<5)|(((uint16)(b))<<10)))
 
 enum {
 	MAX_COLOURS		= 256,	//!< maximum number of colours - for VGA 256
@@ -57,14 +59,14 @@ enum {
 
 // some common colours
 
-#define	BLACK	(RGB(0, 0, 0))
-#define	WHITE	(RGB(MAX_INTENSITY, MAX_INTENSITY, MAX_INTENSITY))
-#define	RED		(RGB(MAX_INTENSITY, 0, 0))
-#define	GREEN	(RGB(0, MAX_INTENSITY, 0))
-#define	BLUE	(RGB(0, 0, MAX_INTENSITY))
-#define	YELLOW	(RGB(MAX_INTENSITY, MAX_INTENSITY, 0))
-#define	MAGENTA	(RGB(MAX_INTENSITY, 0, MAX_INTENSITY))
-#define	CYAN	(RGB(0, MAX_INTENSITY, MAX_INTENSITY))
+#define	BLACK	(TINSEL_RGB(0, 0, 0))
+#define	WHITE	(TINSEL_RGB(MAX_INTENSITY, MAX_INTENSITY, MAX_INTENSITY))
+#define	RED		(TINSEL_RGB(MAX_INTENSITY, 0, 0))
+#define	GREEN	(TINSEL_RGB(0, MAX_INTENSITY, 0))
+#define	BLUE	(TINSEL_RGB(0, 0, MAX_INTENSITY))
+#define	YELLOW	(TINSEL_RGB(MAX_INTENSITY, MAX_INTENSITY, 0))
+#define	MAGENTA	(TINSEL_RGB(MAX_INTENSITY, 0, MAX_INTENSITY))
+#define	CYAN	(TINSEL_RGB(0, MAX_INTENSITY, MAX_INTENSITY))
 
 
 #include "common/pack-start.h"	// START STRUCT PACKING
@@ -106,6 +108,8 @@ void ResetPalAllocator(void);	// wipe out all palettes
 #ifdef	DEBUG
 void PaletteStats(void);	// Shows the maximum number of palettes used at once
 #endif
+
+void psxPaletteMapper(PALQ *originalPal, uint8 *psxClut, byte *mapperTable); // Maps PSX CLUTs to original palette in resource file
 
 void PalettesToVideoDAC(void);	// Update the video DAC with palettes currently the the DAC queue
 

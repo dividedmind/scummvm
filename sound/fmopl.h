@@ -8,166 +8,171 @@
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
  * of the License, or (at your option) any later version.
-
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
  * $URL$
  * $Id$
- *
- * LGPL licensed version of MAMEs fmopl (V0.37a modified) by
- * Tatsuyuki Satoh. Included from LGPL'ed AdPlug.
  */
-
 
 #ifndef SOUND_FMOPL_H
 #define SOUND_FMOPL_H
 
 #include "common/scummsys.h"
-#include "common/util.h"
+#include "common/str.h"
 
-enum {
-	FMOPL_ENV_BITS_HQ = 16,
-	FMOPL_ENV_BITS_MQ = 8,
-	FMOPL_ENV_BITS_LQ = 8,
-	FMOPL_EG_ENT_HQ = 4096,
-	FMOPL_EG_ENT_MQ = 1024,
-	FMOPL_EG_ENT_LQ = 128
+namespace OPL {
+
+class OPL;
+
+class Config {
+public:
+	enum OplFlags {
+		kFlagOpl2		= (1 << 0),
+		kFlagDualOpl2	= (1 << 1),
+		kFlagOpl3		= (1 << 2)
+	};
+
+	/**
+	 * OPL type to emulate.
+	 */
+	enum OplType {
+		kOpl2,
+		kDualOpl2,
+		kOpl3
+	};
+
+	typedef int8 DriverId;
+	struct EmulatorDescription {
+		const char *name;
+		const char *description;
+
+		DriverId id;	// A unique ID for each driver
+		uint32 flags;	// Capabilities of this driver
+	};
+
+	/**
+	 * Get a list of all available OPL emulators.
+	 * @return list of all available OPL emulators, terminated by a zero entry
+	 */
+	static const EmulatorDescription *getAvailable() { return _drivers; }
+
+	/**
+	 * Returns the driver id of a given name.
+	 */
+	static DriverId parse(const Common::String &name);
+
+	/**
+	 * Detects a driver for the specific type.
+	 */
+	static DriverId detect(OplType type);
+
+	/**
+	 * Creates the specific driver with a specific type setup.
+	 */
+	static OPL *create(DriverId driver, OplType type);
+
+	/**
+	 * Wrapper to easily init an OPL chip, without specifing an emulator.
+	 * By default it will try to initialize an OPL2 emulator, thus an AdLib card.
+	 */
+	static OPL *create(OplType type = kOpl2) { return create(detect(type), type); }
+
+private:
+	static const EmulatorDescription _drivers[];
 };
 
+class OPL {
+private:
+	// TODO: This is part of a temporary HACK to allow only 1 instance
+	static bool _hasInstance;
+public:
+	OPL() { assert(!_hasInstance); _hasInstance = true; }
+	virtual ~OPL() { _hasInstance = false; }
 
-typedef void (*OPL_TIMERHANDLER)(int channel,double interval_Sec);
-typedef void (*OPL_IRQHANDLER)(int param,int irq);
-typedef void (*OPL_UPDATEHANDLER)(int param,int min_interval_us);
+	/**
+	 * Initializes the OPL emulator.
+	 *
+	 * @param rate	output sample rate
+	 * @return		true on success, false on failure
+	 */
+	virtual bool init(int rate) = 0;
 
-#define OPL_TYPE_WAVESEL   0x01  /* waveform select    */
+	/**
+	 * Reinitializes the OPL emulator
+	 */
+	virtual void reset() = 0;
 
-/* Saving is necessary for member of the 'R' mark for suspend/resume */
-/* ---------- OPL one of slot  ---------- */
-typedef struct fm_opl_slot {
-	int TL;		/* total level     :TL << 8				*/
-	int TLL;	/* adjusted now TL						*/
-	uint8 KSR;	/* key scale rate  :(shift down bit)	*/
-	int *AR;	/* attack rate     :&AR_TABLE[AR<<2]	*/
-	int *DR;	/* decay rate      :&DR_TABLE[DR<<2]	*/
-	int SL;		/* sustain level   :SL_TABLE[SL]		*/
-	int *RR;	/* release rate    :&DR_TABLE[RR<<2]	*/
-	uint8 ksl;	/* keyscale level  :(shift down bits)	*/
-	uint8 ksr;	/* key scale rate  :kcode>>KSR			*/
-	uint mul;	/* multiple        :ML_TABLE[ML]		*/
-	uint Cnt;	/* frequency count						*/
-	uint Incr;	/* frequency step						*/
+	/**
+	 * Writes a byte to the given I/O port.
+	 *
+	 * @param a		port address
+	 * @param v		value, which will be written
+	 */
+	virtual void write(int a, int v) = 0;
 
-	/* envelope generator state */
-	uint8 eg_typ;/* envelope type flag					*/
-	uint8 evm;	/* envelope phase						*/
-	int evc;	/* envelope counter						*/
-	int eve;	/* envelope counter end point			*/
-	int evs;	/* envelope counter step				*/
-	int evsa;	/* envelope step for AR :AR[ksr]		*/
-	int evsd;	/* envelope step for DR :DR[ksr]		*/
-	int evsr;	/* envelope step for RR :RR[ksr]		*/
+	/**
+	 * Reads a byte from the given I/O port.
+	 *
+	 * @param a		port address
+	 * @return		value read
+	 */
+	virtual byte read(int a) = 0;
 
-	/* LFO */
-	uint8 ams;		/* ams flag                            */
-	uint8 vib;		/* vibrate flag                        */
-	/* wave selector */
-	int **wavetable;
-} OPL_SLOT;
+	/**
+	 * Function to directly write to a specific OPL register.
+	 * This writes to *both* chips for a Dual OPL2.
+	 *
+	 * @param r		hardware register number to write to
+	 * @param v		value, which will be written
+	 */
+	virtual void writeReg(int r, int v) = 0;
 
-/* ---------- OPL one of channel  ---------- */
-typedef struct fm_opl_channel {
-	OPL_SLOT SLOT[2];
-	uint8 CON;			/* connection type					*/
-	uint8 FB;			/* feed back       :(shift down bit)*/
-	int *connect1;		/* slot1 output pointer				*/
-	int *connect2;		/* slot2 output pointer				*/
-	int op1_out[2];		/* slot1 output for selfeedback		*/
+	/**
+	 * Read up to 'length' samples.
+	 *
+	 * Data will be in native endianess, 16 bit per sample, signed.
+	 * For stereo OPL, buffer will be filled with interleaved
+	 * left and right channel samples, starting with a left sample.
+	 * Furthermore, the samples in the left and right are summed up.
+	 * So if you request 4 samples from a stereo OPL, you will get
+	 * a total of two left channel and two right channel samples.
+	 */
+	virtual void readBuffer(int16 *buffer, int length) = 0;
 
-	/* phase generator state */
-	uint block_fnum;	/* block+fnum						*/
-	uint8 kcode;		/* key code        : KeyScaleCode	*/
-	uint fc;			/* Freq. Increment base				*/
-	uint ksl_base;		/* KeyScaleLevel Base step			*/
-	uint8 keyon;		/* key on/off flag					*/
-} OPL_CH;
+	/**
+	 * Returns whether the setup OPL mode is stereo or not
+	 */
+	virtual bool isStereo() const = 0;
+};
 
-/* OPL state */
-typedef struct fm_opl_f {
-	uint8 type;			/* chip type                         */
-	int clock;			/* master clock  (Hz)                */
-	int rate;			/* sampling rate (Hz)                */
-	double freqbase;	/* frequency base                    */
-	double TimerBase;	/* Timer base time (==sampling time) */
-	uint8 address;		/* address register                  */
-	uint8 status;		/* status flag                       */
-	uint8 statusmask;	/* status mask                       */
-	uint mode;			/* Reg.08 : CSM , notesel,etc.       */
+} // end of namespace OPL
 
-	/* Timer */
-	int T[2];			/* timer counter                     */
-	uint8 st[2];		/* timer enable                      */
+// Legacy API
+// !You should not write any new code using the legacy API!
+typedef OPL::OPL FM_OPL;
 
-	/* FM channel slots */
-	OPL_CH *P_CH;		/* pointer of CH                     */
-	int	max_ch;			/* maximum channel                   */
-
-	/* Rythm sention */
-	uint8 rythm;		/* Rythm mode , key flag */
-
-	/* time tables */
-	int AR_TABLE[76];	/* atttack rate tables				*/
-	int DR_TABLE[76];	/* decay rate tables				*/
-	uint FN_TABLE[1024];/* fnumber -> increment counter		*/
-
-	/* LFO */
-	int *ams_table;
-	int *vib_table;
-	int amsCnt;
-	int amsIncr;
-	int vibCnt;
-	int vibIncr;
-
-	/* wave selector enable flag */
-	uint8 wavesel;
-
-	/* external event callback handler */
-	OPL_TIMERHANDLER  TimerHandler;		/* TIMER handler   */
-	int TimerParam;						/* TIMER parameter */
-	OPL_IRQHANDLER    IRQHandler;		/* IRQ handler    */
-	int IRQParam;						/* IRQ parameter  */
-	OPL_UPDATEHANDLER UpdateHandler;	/* stream update handler   */
-	int UpdateParam;					/* stream update parameter */
-
-	Common::RandomSource rnd;
-} FM_OPL;
-
-/* ---------- Generic interface section ---------- */
-#define OPL_TYPE_YM3526 (0)
-#define OPL_TYPE_YM3812 (OPL_TYPE_WAVESEL)
-
-void OPLBuildTables(int ENV_BITS_PARAM, int EG_ENT_PARAM);
-
-FM_OPL *OPLCreate(int type, int clock, int rate);
 void OPLDestroy(FM_OPL *OPL);
-void OPLSetTimerHandler(FM_OPL *OPL, OPL_TIMERHANDLER TimerHandler, int channelOffset);
-void OPLSetIRQHandler(FM_OPL *OPL, OPL_IRQHANDLER IRQHandler, int param);
-void OPLSetUpdateHandler(FM_OPL *OPL, OPL_UPDATEHANDLER UpdateHandler, int param);
 
 void OPLResetChip(FM_OPL *OPL);
-int OPLWrite(FM_OPL *OPL, int a, int v);
+void OPLWrite(FM_OPL *OPL, int a, int v);
 unsigned char OPLRead(FM_OPL *OPL, int a);
-int OPLTimerOver(FM_OPL *OPL, int c);
 void OPLWriteReg(FM_OPL *OPL, int r, int v);
 void YM3812UpdateOne(FM_OPL *OPL, int16 *buffer, int length);
 
-// Factory method
+/**
+ * Legacy factory to create an AdLib (OPL2) chip.
+ *
+ * !You should not write any new code using the legacy API!
+ */
 FM_OPL *makeAdlibOPL(int rate);
 
 #endif
+

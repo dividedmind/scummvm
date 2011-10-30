@@ -22,7 +22,6 @@
  * $Id$
  */
 
-
 #include "common/scummsys.h"
 #include "common/endian.h"
 #include "common/util.h"
@@ -636,7 +635,7 @@ int32 decompressCodec(int32 codec, byte *compInput, byte *compOutput, int32 inpu
 		break;
 
 	default:
-		error("BundleCodecs::decompressCodec() Unknown codec %d!", (int)codec);
+		error("BundleCodecs::decompressCodec() Unknown codec %d", (int)codec);
 		outputSize = 0;
 		break;
 	}

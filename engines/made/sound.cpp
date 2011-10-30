@@ -42,11 +42,11 @@ void ManholeEgaSoundDecompressor::decompress(byte *source, byte *dest, uint32 si
 	_writeFlag = false;
 	_eof = false;
 	_sample1 = 0x80000;
- 	_sample2 = 0x800000;
- 	_sample3 = 0x800000;
- 	_sample4 = 0x800000;
- 	_mode = getBit();
- 	while (!_eof) {
+	_sample2 = 0x800000;
+	_sample3 = 0x800000;
+	_sample4 = 0x800000;
+	_mode = getBit();
+	while (!_eof) {
 		update1();
 		update3();
 		update0();
@@ -150,7 +150,7 @@ void decompressSound(byte *source, byte *dest, uint16 chunkSize, uint16 chunkCou
 	uint16 ofs = 0;
 	uint16 i = 0, l = 0;
 	byte val;
-	
+
 	SoundEnergyItem soundEnergyItem;
 
 	const int modeValues[3][4] = {
@@ -225,15 +225,15 @@ void decompressSound(byte *source, byte *dest, uint16 chunkSize, uint16 chunkCou
 			for (i = 0; i < workChunkSize; i++)
 				soundBuffer[i] = *source++;
 			workSample = soundBuffer[workChunkSize - 1] - 128;
-			
+
 			soundEnergyItem.energy = 4;
 			if (soundEnergyArray)
 				soundEnergyArray->push_back(soundEnergyItem);
-			
+
 			break;
 
 		default:
-	  		return;
+	 		return;
 
 		}
 

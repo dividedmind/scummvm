@@ -23,11 +23,13 @@
  *
  */
 
-#include "kyra/sound.h"
+#include "kyra/sound_intern.h"
 #include "kyra/resource.h"
 
 #include "common/system.h"
 #include "common/config-manager.h"
+
+#include "gui/message.h"
 
 namespace Kyra {
 
@@ -269,8 +271,8 @@ void MidiOutput::sendIntern(const byte event, const byte channel, byte param1, c
 void MidiOutput::sysEx(const byte *msg, uint16 length) {
 	uint32 curTime = _system->getMillis();
 
-	if (_lastSysEx + 40 > curTime)
-		_system->delayMillis(_lastSysEx + 40 - curTime);
+	if (_lastSysEx + 45 > curTime)
+		_system->delayMillis(_lastSysEx + 45 - curTime);
 
 	_output->sysEx(msg, length);
 
@@ -309,10 +311,8 @@ void MidiOutput::sendSysEx(const byte p1, const byte p2, const byte p3, const by
 }
 
 void MidiOutput::metaEvent(byte type, byte *data, uint16 length) {
-	if (type == 0x2F) { // End of Track
+	if (type == 0x2F) // End of Track
 		deinitSource(_curSource);
-		//XXX
-	}
 
 	_output->metaEvent(type, data, length);
 }
@@ -438,7 +438,7 @@ void MidiOutput::stopNotesOnChannel(int channel) {
 
 #pragma mark -
 
-SoundMidiPC::SoundMidiPC(KyraEngine_v1 *vm, Audio::Mixer *mixer, MidiDriver *driver) : Sound(vm, mixer) {
+SoundMidiPC::SoundMidiPC(KyraEngine_v1 *vm, Audio::Mixer *mixer, MidiDriver *driver, kType type) : Sound(vm, mixer) {
 	_driver = driver;
 	_output = 0;
 
@@ -453,6 +453,33 @@ SoundMidiPC::SoundMidiPC(KyraEngine_v1 *vm, Audio::Mixer *mixer, MidiDriver *dri
 
 	_musicVolume = _sfxVolume = 0;
 	_fadeMusicOut = false;
+
+	_type = type;
+	assert(_type == kMidiMT32 || _type == kMidiGM || _type == kPCSpkr);
+
+	// Only General MIDI isn't a Roland MT-32 MIDI implemenation,
+	// even the PC Speaker driver is a Roland MT-32 based MIDI implementation.
+	// Thus we set "_nativeMT32" for all types except Gerneral MIDI to true.
+	_nativeMT32 = (_type != kMidiGM);
+
+	// KYRA1 does not include any General MIDI tracks, thus we have
+	// to overwrite the internal type with MT32 to get the correct
+	// file extension.
+	if (_vm->game() == GI_KYRA1 && _type == kMidiGM)
+		_type = kMidiMT32;
+
+	// Display a warning about possibly wrong sound when the user only has
+	// a General MIDI device, but the game is setup to use Roland MT32 MIDI.
+	// (This will only happen in The Legend of Kyrandia 1 though, all other
+	// supported games include special General MIDI tracks).
+	if (_type == kMidiMT32 && !_nativeMT32) {
+		::GUI::MessageDialog dialog("You appear to be using a General MIDI device,\n"
+									"but your game only supports Roland MT32 MIDI.\n"
+									"We try to map the Roland MT32 instruments to\n"
+									"General MIDI ones. After all it might happen\n"
+									"that a few tracks will not be correctly played.");
+		dialog.runModal();
+	}
 }
 
 SoundMidiPC::~SoundMidiPC() {
@@ -469,23 +496,10 @@ SoundMidiPC::~SoundMidiPC() {
 		delete[] _sfxFile;
 
 	delete[] _musicFile;
-
-	_nativeMT32 = false;
-	_useC55 = false;
-}
-
-void SoundMidiPC::hasNativeMT32(bool nativeMT32) {
-	_nativeMT32 = nativeMT32;
-
-	// C55 is XMIDI for General MIDI instruments
-	if (!_nativeMT32 && _vm->game() != GI_KYRA1)
-		_useC55 = true;
-	else
-		_useC55 = false;
 }
 
 bool SoundMidiPC::init() {
-	_output = new MidiOutput(_vm->_system, _driver, _nativeMT32, !_useC55);
+	_output = new MidiOutput(_vm->_system, _driver, _nativeMT32, (_type != kMidiGM));
 	assert(_output);
 
 	updateVolumeSettings();
@@ -502,7 +516,7 @@ bool SoundMidiPC::init() {
 
 	_output->setTimerCallback(this, SoundMidiPC::onTimer);
 
-	if (_nativeMT32) {
+	if (_nativeMT32 && _type == kMidiMT32) {
 		const char *midiFile = 0;
 		const char *pakFile = 0;
 		if (_vm->gameFlags().gameID == GI_KYRA1) {
@@ -513,12 +527,27 @@ bool SoundMidiPC::init() {
 		} else if (_vm->gameFlags().gameID == GI_LOL) {
 			midiFile = "LOREINTR";
 
-			if (_vm->gameFlags().isTalkie)
-				pakFile = "ENG/STARTUP.PAK";
-			else if (_vm->gameFlags().useInstallerPackage)
-				pakFile = "INTROVOC.CMP";
-			else
-				pakFile = "INTROVOC.PAK";
+			if (_vm->gameFlags().isDemo) {
+				if (_vm->gameFlags().useAltShapeHeader) {
+					// Intro demo
+					pakFile = "INTROVOC.PAK";
+
+					// HACK: To prevent "Exc. Buffer overflow"
+					// we delay some time here.
+					_vm->_system->delayMillis(1000);
+				} else {
+					// Kyra2 SEQ player based demo
+					pakFile = "GENERAL.PAK";
+					midiFile = "LOLSYSEX";
+				}
+			} else {
+				if (_vm->gameFlags().isTalkie)
+					pakFile = "ENG/STARTUP.PAK";
+				else if (_vm->gameFlags().useInstallerPackage)
+					pakFile = "INTROVOC.CMP";
+				else
+					pakFile = "INTROVOC.PAK";
+			}
 		}
 
 		if (!midiFile)
@@ -566,9 +595,7 @@ void SoundMidiPC::loadSoundFile(uint file) {
 
 void SoundMidiPC::loadSoundFile(Common::String file) {
 	Common::StackLock lock(_mutex);
-
-	file += _useC55 ? ".C55" : ".XMI";
-	file.toUppercase();
+	file = getFileName(file);
 
 	if (_mFileName == file)
 		return;
@@ -609,8 +636,7 @@ void SoundMidiPC::loadSfxFile(Common::String file) {
 	if (_vm->gameFlags().gameID == GI_KYRA1)
 		return;
 
-	file += _useC55 ? ".C55" : ".XMI";
-	file.toUppercase();
+	file = getFileName(file);
 
 	if (_sFileName == file)
 		return;
@@ -723,6 +749,21 @@ void SoundMidiPC::onTimer(void *data) {
 		midi->_output->setSoundSource(i+1);
 		midi->_sfx[i]->onTimer();
 	}
+}
+
+Common::String SoundMidiPC::getFileName(const Common::String &str) {
+	Common::String file = str;
+	if (_type == kMidiMT32)
+		file += ".XMI";
+	else if (_type == kMidiGM)
+		file += ".C55";
+	else if (_type == kPCSpkr)
+		file += ".PCS";
+
+	if (_vm->resource()->exists(file.c_str()))
+		return file;
+
+	return str + ".XMI";
 }
 
 } // end of namespace Kyra

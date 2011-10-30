@@ -23,12 +23,58 @@
  *
  */
 
+#ifdef ENABLE_LOL
+
 #ifndef KYRA_GUI_LOL_H
 #define KYRA_GUI_LOL_H
 
 #include "kyra/gui.h"
 
 namespace Kyra {
+#define GUI_LOL_MENU(menu, a, b, c, d, e, f, g, i) \
+	do { \
+		const ScreenDim *dim = _screen->getScreenDim(a); \
+		menu.x = (dim->sx << 3); \
+		menu.y = (dim->sy); \
+		menu.width = (dim->w << 3); \
+		menu.height = (dim->h); \
+		menu.bkgdColor = 225; \
+		menu.color1 = 223; \
+		menu.color2 = 227; \
+		menu.menuNameId = b; \
+		menu.highlightedItem = c; \
+		menu.numberOfItems = d; \
+		menu.titleX = (dim->sx << 3) + (dim->w << 2); \
+		menu.titleY = 6; \
+		menu.textColor = 254; \
+		menu.scrollUpButtonX = e; \
+		menu.scrollUpButtonY = f; \
+		menu.scrollDownButtonX = g; \
+		menu.scrollDownButtonY = i; \
+	} while (0)
+
+	#define GUI_LOL_MENU_ITEM(item, a, b, c, d, e, f, g) \
+	do { \
+		item.enabled = 1; \
+		item.itemId = a; \
+		item.itemString = 0; \
+		item.x = b; \
+		item.y = c; \
+		item.width = d; \
+		item.height = e; \
+		item.textColor = 204; \
+		item.highlightColor = 254; \
+		item.titleX = -1; \
+		item.bkgdColor = 225; \
+		item.color1 = 223; \
+		item.color2 = 227; \
+		item.saveSlot = 0; \
+		item.labelId = f; \
+		item.labelString = 0; \
+		item.labelX = 0; \
+		item.labelY = 0; \
+		item.keyCode = g; \
+	} while (0)
 
 class LoLEngine;
 class Screen_LoL;
@@ -41,39 +87,85 @@ public:
 	void initStaticData();
 
 	// button specific
-	void processButton(Button *button) {}
+	void processButton(Button *button);
 	int processButtonList(Button *buttonList, uint16 inputFlags, int8 mouseWheel);
 
+	int redrawShadedButtonCallback(Button *button);
+	int redrawButtonCallback(Button *button);
+
+	int runMenu(Menu &menu);
+
 	// utilities for thumbnail creation
-	void createScreenThumbnail(Graphics::Surface &dst) {}
+	void createScreenThumbnail(Graphics::Surface &dst);
 
 private:
+	void backupPage0();
+	void restorePage0();
+
+	void setupSavegameNames(Menu &menu, int num);
+
+	void printMenuText(const char *str, int x, int y, uint8 c0, uint8 c1, uint8 flags, Screen::FontId font=Screen::FID_9_FNT);
+	int getMenuCenterStringX(const char *str, int x1, int x2);
+
+	int getInput();
+
+	int clickedMainMenu(Button *button);
+	int clickedLoadMenu(Button *button);
+	int clickedSaveMenu(Button *button);
+	int clickedDeleteMenu(Button *button);
+	int clickedOptionsMenu(Button *button);
+	int clickedAudioMenu(Button *button);
+	int clickedDeathMenu(Button *button);
+	int clickedSavenameMenu(Button *button);
+	int clickedChoiceMenu(Button *button);
+
+	int scrollUp(Button *button);
+	int scrollDown(Button *button);
+
+	Button *getButtonListData() { return _menuButtons; }
+	Button *getScrollUpButton() { return &_scrollUpButton; }
+	Button *getScrollDownButton() { return &_scrollDownButton; }
+
+
+	Button::Callback getScrollUpButtonHandler() const { return _scrollUpFunctor; }
+	Button::Callback getScrollDownButtonHandler() const { return _scrollDownFunctor; }
+
+	uint8 defaultColor1() const { return 0xFE; }
+	uint8 defaultColor2() const { return 0x00; }
+
+	const char *getMenuTitle(const Menu &menu);
+	const char *getMenuItemTitle(const MenuItem &menuItem);
+	const char *getMenuItemLabel(const MenuItem &menuItem);
+
+	Button _menuButtons[10];
+	Button _scrollUpButton;
+	Button _scrollDownButton;
+	Menu _mainMenu, _gameOptions, _audioOptions, _choiceMenu, _loadMenu, _saveMenu, _deleteMenu, _savenameMenu, _deathMenu;
+	Menu *_currentMenu, *_lastMenu, *_newMenu;
+	int _menuResult;
+	char *_saveDescription;
+
 	LoLEngine *_vm;
 	Screen_LoL *_screen;
 
 	bool _pressFlag;
 
-	int scrollUp(Button *button) { return 0; }
-	int scrollDown(Button *button) { return 0; }
+	Button *_specialProcessButton;
+	Button *_backUpButtonList;
+	bool _buttonListChanged;
+	uint16 _flagsModifier;
+	uint8 _mouseClick;
 
-	Button *getButtonListData() { return 0; }
-	Button *getScrollUpButton() { return 0; }
-	Button *getScrollDownButton() { return 0; }
+	int _savegameOffset;
+	int _sliderSfx;
 
 	Button::Callback _scrollUpFunctor;
 	Button::Callback _scrollDownFunctor;
-	Button::Callback getScrollUpButtonHandler() const { return _scrollUpFunctor; }
-	Button::Callback getScrollDownButtonHandler() const { return _scrollDownFunctor; }
-
-	uint8 defaultColor1() const { return 0; }
-	uint8 defaultColor2() const { return 0; }
-
-	const char *getMenuTitle(const Menu &menu) { return 0; }
-	const char *getMenuItemTitle(const MenuItem &menuItem) { return 0; }
-	const char *getMenuItemLabel(const MenuItem &menuItem) { return 0; }
 };
 
 } // end of namespace Kyra
 
 #endif
+
+#endif // ENABLE_LOL
 

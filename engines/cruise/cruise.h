@@ -30,8 +30,11 @@
 #include "common/util.h"
 
 #include "engines/engine.h"
+#include "engines/game.h"
 
 #include "cruise/cruise_main.h"
+#include "cruise/debugger.h"
+#include "cruise/sound.h"
 
 namespace Cruise {
 
@@ -39,14 +42,38 @@ enum CruiseGameType {
 	GType_CRUISE = 1
 };
 
+#define GAME_FRAME_DELAY_1 50
+#define GAME_FRAME_DELAY_2 100
+
+#define MAX_LANGUAGE_STRINGS 25
+
+enum LangStringId { ID_PAUSED = 0, ID_INVENTORY = 5, ID_SPEAK_ABOUT = 6, ID_PLAYER_MENU = 7,
+	ID_SAVE = 9, ID_LOAD = 10, ID_RESTART = 11, ID_QUIT = 12};
+
 struct CRUISEGameDescription;
 
 class CruiseEngine: public Engine {
+private:
+	bool _preLoad;
+	Debugger *_debugger;
+	MidiDriver *_driver;
+	PCSound *_sound;
+	bool _mt32, _adlib;
+	Common::StringList _langStrings;
+	CursorType _savedCursor;
+	uint32 lastTick, lastTickDebug;
+	int _gameSpeed;
+	bool _speedFlag;
 
+	void initialize(void);
+	void deinitialise(void);
+	bool loadLanguageStrings();
+	bool makeLoad(char *saveName);
+	void mainLoop();
+	int processInput(void);
 protected:
 	// Engine APIs
-	virtual Common::Error init();
-	virtual Common::Error go();
+	virtual Common::Error run();
 
 	void shutdown();
 
@@ -55,25 +82,30 @@ protected:
 public:
 	CruiseEngine(OSystem * syst, const CRUISEGameDescription *gameDesc);
 	virtual ~ CruiseEngine();
+	virtual bool hasFeature(EngineFeature f) const;
 
 	int getGameType() const;
 	uint32 getFeatures() const;
 	Common::Language getLanguage() const;
 	Common::Platform getPlatform() const;
+	PCSound &sound() { return *_sound; }
+	bool mt32() const { return _mt32; }
+	bool adlib() const { return _adlib; }
+	virtual GUI::Debugger *getDebugger() { return _debugger; }
+	virtual void pauseEngine(bool pause);
+	const char *langString(LangStringId langId) { return _langStrings[(int)langId].c_str(); }
 
-	bool loadSaveDirectory(void);
-	void makeSystemMenu(void);
+	static const char *getSavegameFile(int saveGameIdx);
+	virtual Common::Error loadGameState(int slot);
+	virtual bool canLoadGameStateCurrently();
+	virtual Common::Error saveGameState(int slot, const char *desc);
+	virtual bool canSaveGameStateCurrently();
+	virtual void syncSoundSettings();
 
 	const CRUISEGameDescription *_gameDescription;
+	void initAllData(void);
 
 	Common::RandomSource _rnd;
-
-private:
-	void initialize(void);
-	bool makeLoad(char *saveName);
-	void mainLoop(int bootScriptIdx);
-
-	bool _preLoad;
 };
 
 extern CruiseEngine *_vm;
@@ -94,7 +126,8 @@ enum {
 };
 
 enum {
-	kCruiseDebugScript = 1 << 0
+	kCruiseDebugScript = 1 << 0,
+	kCruiseDebugSound = 1 << 1
 };
 
 enum {
@@ -102,7 +135,6 @@ enum {
 	kCmpGT = (1 << 1),
 	kCmpLT = (1 << 2)
 };
-
 
 } // End of namespace Cruise
 

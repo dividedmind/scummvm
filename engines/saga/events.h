@@ -28,7 +28,6 @@
 #ifndef SAGA_EVENT_H
 #define SAGA_EVENT_H
 
-#include "saga/list.h"
 
 namespace Saga {
 
@@ -148,7 +147,7 @@ struct Event {
 	}
 };
 
-typedef SortedList<Event> EventList;
+typedef Common::List<Event> EventList;
 
 #define EVENT_WARNINGCOUNT 1000
 #define EVENT_MASK 0x00FF

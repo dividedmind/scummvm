@@ -22,11 +22,10 @@
  *
  */
 
-
 #include "scumm/scumm.h"
-#include "scumm/intern.h"
 #include "scumm/actor.h"
 #include "scumm/charset.h"
+#include "scumm/scumm_v7.h"
 
 namespace Scumm {
 
@@ -105,7 +104,7 @@ void ScummEngine::moveCamera() {
 	int pos = camera._cur.x;
 	int t;
 	Actor *a = NULL;
-	const bool snapToX = (VAR_CAMERA_FAST_X != 0xFF && VAR(VAR_CAMERA_FAST_X));
+	const bool snapToX = (_snapScroll || (VAR_CAMERA_FAST_X != 0xFF && VAR(VAR_CAMERA_FAST_X)));
 
 	camera._cur.x &= 0xFFF8;
 
@@ -341,10 +340,10 @@ void ScummEngine_v7::moveCamera() {
 		VAR(VAR_CAMERA_SPEED_X) += camera._accel.x / 100;
 		VAR(VAR_CAMERA_SPEED_Y) += camera._accel.y / 100;
 
-		if (VAR(VAR_CAMERA_SPEED_X) < 8)
+		if (VAR(VAR_CAMERA_SPEED_X) > 8)
 			VAR(VAR_CAMERA_SPEED_X) = 8;
 
-		if (VAR(VAR_CAMERA_SPEED_Y) < 8)
+		if (VAR(VAR_CAMERA_SPEED_Y) > 8)
 			VAR(VAR_CAMERA_SPEED_Y) = 8;
 
 	}

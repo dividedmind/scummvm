@@ -56,8 +56,6 @@ Events::~Events(void) {
 // First advances event times, then processes each event with the appropriate
 // handler depending on the type of event.
 int Events::handleEvents(long msec) {
-	Event *event_p;
-
 	long delta_time;
 	int result;
 
@@ -66,7 +64,7 @@ int Events::handleEvents(long msec) {
 
 	// Process each event in list
 	for (EventList::iterator eventi = _eventList.begin(); eventi != _eventList.end(); ++eventi) {
-		event_p = (Event *)eventi.operator->();
+		Event *event_p = &*eventi;
 
 		// Call the appropriate event handler for the specific event type
 		switch (event_p->type) {
@@ -98,7 +96,7 @@ int Events::handleEvents(long msec) {
 		if ((result == kEvStDelete) || (result == kEvStInvalidCode)) {
 			// If there is no event chain, delete the base event.
 			if (event_p->chain == NULL) {
-				eventi = _eventList.eraseAndPrev(eventi);
+				eventi = _eventList.reverse_erase(eventi);
 			} else {
 				// If there is an event chain present, move the next event
 				// in the chain up, adjust it by the previous delta time,
@@ -275,7 +273,6 @@ int Events::handleImmediate(Event *event) {
 }
 
 int Events::handleOneShot(Event *event) {
-	ScriptThread *sthread;
 	Rect rect;
 
 
@@ -292,7 +289,7 @@ int Events::handleOneShot(Event *event) {
 			((TextListEntry *)event->data)->display = true;
 			break;
 		case kEventRemove:
-			_vm->_scene->_textList.remove((TextListEntry *)event->data);
+			_vm->_scene->_textList.remove(*((TextListEntry *)event->data));
 			break;
 		default:
 			break;
@@ -480,24 +477,20 @@ int Events::handleOneShot(Event *event) {
 	case kScriptEvent:
 		switch (event->op) {
 		case kEventExecBlocking:
-		case kEventExecNonBlocking:
+		case kEventExecNonBlocking: {
 			debug(6, "Exec module number %ld script entry number %ld", event->param, event->param2);
 
-			sthread = _vm->_script->createThread(event->param, event->param2);
-			if (sthread == NULL) {
-				_vm->_console->DebugPrintf("Thread creation failed.\n");
-				break;
-			}
-
-			sthread->_threadVars[kThreadVarAction] = event->param3;
-			sthread->_threadVars[kThreadVarObject] = event->param4;
-			sthread->_threadVars[kThreadVarWithObject] = event->param5;
-			sthread->_threadVars[kThreadVarActor] = event->param6;
+			ScriptThread &sthread = _vm->_script->createThread(event->param, event->param2);
+			sthread._threadVars[kThreadVarAction] = event->param3;
+			sthread._threadVars[kThreadVarObject] = event->param4;
+			sthread._threadVars[kThreadVarWithObject] = event->param5;
+			sthread._threadVars[kThreadVarActor] = event->param6;
 
 			if (event->op == kEventExecBlocking)
 				_vm->_script->completeThread();
 
 			break;
+			}
 		case kEventThreadWake:
 			_vm->_script->wakeUpThreads(event->param);
 			break;
@@ -582,7 +575,8 @@ int Events::handleInterval(Event *event) {
 Event *Events::queue(Event *event) {
 	Event *queuedEvent;
 
-	queuedEvent = _eventList.pushBack(*event).operator->();
+	_eventList.push_back(*event);
+	queuedEvent = &*--_eventList.end();
 	initializeEvent(queuedEvent);
 
 	return queuedEvent;
@@ -628,29 +622,27 @@ int Events::initializeEvent(Event *event) {
 int Events::clearList(bool playQueuedMusic) {
 	Event *chain_walk;
 	Event *next_chain;
-	Event *event_p;
 
 	// Walk down event list
 	for (EventList::iterator eventi = _eventList.begin(); eventi != _eventList.end(); ++eventi) {
-		event_p = (Event *)eventi.operator->();
 
 		// Only remove events not marked kEvFNoDestory (engine events)
-		if (!(event_p->code & kEvFNoDestory)) {
+		if (!(eventi->code & kEvFNoDestory)) {
 			// Handle queued music change events before deleting them
 			// This can happen in IHNM by music events set by sfQueueMusic()
 			// Fixes bug #2057987 - "IHNM: Music stops in Ellen's chapter"
-			if (playQueuedMusic && ((event_p->code & EVENT_MASK) == kMusicEvent)) {
+			if (playQueuedMusic && ((eventi->code & EVENT_MASK) == kMusicEvent)) {
 				_vm->_music->stop();
-				if (event_p->op == kEventPlay)
-					_vm->_music->play(event_p->param, (MusicFlags)event_p->param2);
+				if (eventi->op == kEventPlay)
+					_vm->_music->play(eventi->param, (MusicFlags)eventi->param2);
 			}
 
 			// Remove any events chained off this one
-			for (chain_walk = event_p->chain; chain_walk != NULL; chain_walk = next_chain) {
+			for (chain_walk = eventi->chain; chain_walk != NULL; chain_walk = next_chain) {
 				next_chain = chain_walk->chain;
 				free(chain_walk);
 			}
-			eventi = _eventList.eraseAndPrev(eventi);
+			eventi = _eventList.reverse_erase(eventi);
 		}
 	}
 
@@ -661,19 +653,17 @@ int Events::clearList(bool playQueuedMusic) {
 int Events::freeList() {
 	Event *chain_walk;
 	Event *next_chain;
-	Event *event_p;
 
 	// Walk down event list
 	EventList::iterator eventi = _eventList.begin();
 	while (eventi != _eventList.end()) {
-		event_p = (Event *)eventi.operator->();
 
 		// Remove any events chained off this one */
-		for (chain_walk = event_p->chain; chain_walk != NULL; chain_walk = next_chain) {
+		for (chain_walk = eventi->chain; chain_walk != NULL; chain_walk = next_chain) {
 			next_chain = chain_walk->chain;
 			free(chain_walk);
 		}
-		eventi=_eventList.erase(eventi);
+		eventi = _eventList.erase(eventi);
 	}
 
 	return SUCCESS;
@@ -681,16 +671,13 @@ int Events::freeList() {
 
 // Walks down the event list, updating event times by 'msec'.
 int Events::processEventTime(long msec) {
-	Event *event_p;
 	uint16 event_count = 0;
 
 	for (EventList::iterator eventi = _eventList.begin(); eventi != _eventList.end(); ++eventi) {
-		event_p = (Event *)eventi.operator->();
-
-		event_p->time -= msec;
+		eventi->time -= msec;
 		event_count++;
 
-		if (event_p->type == kEvTImmediate)
+		if (eventi->type == kEvTImmediate)
 			break;
 
 		if (event_count > EVENT_WARNINGCOUNT) {

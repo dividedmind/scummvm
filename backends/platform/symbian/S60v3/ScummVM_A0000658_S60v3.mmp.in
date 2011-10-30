@@ -107,6 +107,7 @@ SOURCEPATH ..\..\..\..
 // backend EPOC/SDL/ESDL specific includes
 SOURCE backends\platform\sdl\events.cpp
 SOURCE backends\platform\sdl\graphics.cpp
+SOURCE backends\platform\sdl\hardwarekeys.cpp
 SOURCE backends\platform\sdl\sdl.cpp
 SOURCE backends\fs\symbian\symbian-fs-factory.cpp
 SOURCE backends\platform\symbian\src\SymbianOS.cpp
@@ -128,3 +129,5 @@ LIBRARY estlib.lib apgrfx.lib
 LIBRARY gdi.lib hal.lib bitgdi.lib
 LIBRARY mediaclientaudiostream.lib efsrv.lib ws32.lib
 library avkon.lib bafl.lib
+
+CAPABILITY LocalServices ReadUserData

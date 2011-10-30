@@ -25,16 +25,19 @@
 
 #include "mt32emu.h"
 
-#if defined(MACOSX) || defined(SOLARIS)
+#if defined(MACOSX) || defined(SOLARIS) || defined(__MINGW32__)
 // Older versions of Mac OS X didn't supply a powf function, so using it
 // will cause a binary incompatibility when trying to run a binary built
 // on a newer OS X release on an olderr one. And Solaris 8 doesn't provide
 // powf, floorf, fabsf etc. at all.
+// Cross-compiled MinGW32 toolchains suffer from a cross-compile bug in
+// libstdc++. math/stubs.o should be empty, but it comes with a symbol for
+// powf, resulting in a linker error because of multiple definitions.
 // Hence we re-define them here. The only potential drawback is that it
 // might be a little bit slower this way.
-#define powf pow
-#define floorf floor
-#define fabsf fabs
+#define powf(x,y)	((float)pow(x,y))
+#define floorf(x)	((float)floor(x))
+#define fabsf(x)	((float)fabs(x))
 #endif
 
 #define FIXEDPOINT_UDIV(x, y, point) (((x) << (point)) / ((y)))
@@ -501,10 +504,10 @@ Bit16s *Partial::mixBuffersRingMix(Bit16s * buf1, Bit16s *buf2, int len) {
 		a = ((float)*buf1) / 8192.0f;
 		b = ((float)*buf2) / 8192.0f;
 		a = (a * b) + a;
-		if (a>1.0)
-			a = 1.0;
-		if (a<-1.0)
-			a = -1.0;
+		if (a > 1.0f)
+			a = 1.0f;
+		if (a < -1.0f)
+			a = -1.0f;
 		*buf1 = (Bit16s)(a * 8192.0f);
 		buf1++;
 		buf2++;
@@ -534,10 +537,10 @@ Bit16s *Partial::mixBuffersRing(Bit16s * buf1, Bit16s *buf2, int len) {
 		a = ((float)*buf1) / 8192.0f;
 		b = ((float)*buf2) / 8192.0f;
 		a *= b;
-		if (a>1.0)
-			a = 1.0;
-		if (a<-1.0)
-			a = -1.0;
+		if (a > 1.0f)
+			a = 1.0f;
+		if (a < -1.0f)
+			a = -1.0f;
 		*buf1 = (Bit16s)(a * 8192.0f);
 		buf1++;
 		buf2++;

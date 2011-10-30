@@ -37,10 +37,14 @@ ENABLE_SWORD2 = STATIC_PLUGIN
 ENABLE_TOUCHE = STATIC_PLUGIN
 ENABLE_PARALLACTION = STATIC_PLUGIN
 ENABLE_DRASCULA = STATIC_PLUGIN
-#ENABLE_CRUISE = STATIC_PLUGIN
+ENABLE_GROOVIE = STATIC_PLUGIN
+ENABLE_TUCKER = STATIC_PLUGIN
+ENABLE_TINSEL = STATIC_PLUGIN
+ENABLE_CRUISE = STATIC_PLUGIN
+ENABLE_MADE = STATIC_PLUGIN
+#ENABLE_SCI = STATIC_PLUGIN
 #ENABLE_IGOR = STATIC_PLUGIN
 #ENABLE_M4 = STATIC_PLUGIN
-#ENABLE_MADE = STATIC_PLUGIN
 
 ########################################################################
 ## Pick which libraries you want to use here
@@ -72,6 +76,7 @@ USE_ARM_SOUND_ASM = 1
 USE_ARM_SMUSH_ASM = 1
 USE_ARM_GFX_ASM   = 1
 USE_ARM_COSTUME_ASM = 1
+USE_ARM_SCALER_ASM = 1
 
 ########################################################################
 ##    Hopefully you shouldn't need to change anything below here.     ##
@@ -163,6 +168,10 @@ ifdef USE_ARM_COSTUME_ASM
 DEFINES += -DUSE_ARM_COSTUME_ASM
 endif
 
+ifdef USE_ARM_SCALER_ASM
+DEFINES += -DUSE_ARM_SCALER_ASM
+endif
+
 ########################################################################
 # Targets follow here
 
@@ -179,9 +188,10 @@ OBJS += CEgui/GUIElement.o CEgui/Panel.o CEgui/SDL_ImageResource.o \
         CEgui/ItemSwitch.o CEgui/PanelKeyboard.o CEgui/ToolbarHandler.o
 OBJS += CEkeys/EventsBuffer.o
 OBJS += $(srcdir)/gui/Actions.o $(srcdir)/gui/Key.o $(srcdir)/gui/KeysDialog.o
-OBJS += ../sdl/sdl.o ../sdl/graphics.o ../sdl/events.o
+OBJS += ../sdl/sdl.o ../sdl/graphics.o ../sdl/events.o ../sdl/hardwarekeys.o
 OBJS += missing/missing.o
 OBJS += ARMscaler.o
+OBJS += smartLandScale.o
 ifndef DYNAMIC_MODULES
 OBJS += PocketSCUMM.o
 endif

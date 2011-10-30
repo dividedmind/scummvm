@@ -117,7 +117,7 @@ void AGOSEngine::setup_cond_c_helper() {
 
 	_lastHitArea = 0;
 	_hitAreaObjectItem = NULL;
-	_nameLocked = 0;
+	_nameLocked = false;
 
 	last = _lastNameOn;
 	clearName();
@@ -126,7 +126,7 @@ void AGOSEngine::setup_cond_c_helper() {
 	while (!shouldQuit()) {
 		_lastHitArea = NULL;
 		_lastHitArea3 = 0;
-		_leftButtonDown = 0;
+		_leftButtonDown = false;
 
 		do {
 			if (_exitCutscene && getBitFlag(9)) {
@@ -172,14 +172,14 @@ void AGOSEngine::waitForInput() {
 	HitArea *ha;
 	uint id;
 
-	_leftButtonDown = 0;
+	_leftButtonDown = false;
 	_lastHitArea = 0;
 	//_lastClickRem = 0;
 	_verbHitArea = 0;
 	_hitAreaSubjectItem = NULL;
 	_hitAreaObjectItem = NULL;
-	_clickOnly = 0;
-	_nameLocked = 0;
+	_clickOnly = false;
+	_nameLocked = false;
 
 	if (getGameType() == GType_WW) {
 		_mouseCursor = 0;
@@ -192,21 +192,20 @@ void AGOSEngine::waitForInput() {
 	while (!shouldQuit()) {
 		_lastHitArea = NULL;
 		_lastHitArea3 = NULL;
-		_dragAccept = 1;
+		_dragAccept = true;
 
 		while (!shouldQuit()) {
 			if ((getGameType() == GType_SIMON1 || getGameType() == GType_SIMON2) &&
 					_keyPressed.keycode == Common::KEYCODE_F10)
 				displayBoxStars();
 			if (processSpecialKeys()) {
-				if ((getGameType() == GType_PP && getGameId() != GID_DIMP) ||
-					getGameType() == GType_WW)
+				if (getGameId() != GID_DIMP)
 					goto out_of_here;
 			}
 			if (_lastHitArea3 == (HitArea *) -1) {
 				_lastHitArea = NULL;
 				_lastHitArea3 = NULL;
-				_dragAccept = 1;
+				_dragAccept = true;
 			} else {
 				if (_lastHitArea3 || _dragMode)
 					break;
@@ -219,10 +218,10 @@ void AGOSEngine::waitForInput() {
 			ha = _lastClickRem;
 
 			if (ha == 0 || ha->itemPtr == NULL || !(ha->flags & kBFDragBox)) {
-				_dragFlag = 0;
-				_dragMode = 0;
+				_dragFlag = false;
+				_dragMode = false;
 				_dragCount = 0;
-				_dragEnd = 0;
+				_dragEnd = false;
 				continue;
 			}
 
@@ -234,24 +233,24 @@ void AGOSEngine::waitForInput() {
 				hitarea_stuff_helper();
 				delay(100);
 
-				if (_dragFlag == 0) {
-					_dragFlag = 0;
-					_dragMode = 0;
+				if (!_dragFlag) {
+					_dragFlag = false;
+					_dragMode = false;
 					_dragCount = 0;
-					_dragEnd = 0;
+					_dragEnd = false;
 				}
 			} while (!_dragEnd);
 
-			_dragFlag = 0;
-			_dragMode = 0;
+			_dragFlag = false;
+			_dragMode = false;
 			_dragCount = 0;
-			_dragEnd = 0;
+			_dragEnd = false;
 
 			boxController(_mouse.x, _mouse.y, 1);
 
 			if (_currentBox != NULL) {
 				_hitAreaObjectItem = _currentBox->itemPtr;
-				setVerbText(ha);
+				setVerbText(_currentBox);
 			}
 
 			break;
@@ -304,9 +303,9 @@ void AGOSEngine::waitForInput() {
 				) {
 				_hitAreaSubjectItem = ha->itemPtr;
 				id = setVerbText(ha);
-				_nameLocked = 0;
+				_nameLocked = false;
 				displayName(ha);
-				_nameLocked = 1;
+				_nameLocked = true;
 
 				if (_verbHitArea) {
 					break;
@@ -353,9 +352,9 @@ out_of_here:
 	else if (getGameType() == GType_ELVIRA1)
 		unlightMenuStrip();
 
-	_nameLocked = 0;
+	_nameLocked = false;
 	_needHitAreaRecalc++;
-	_dragAccept = 0;
+	_dragAccept = false;
 
 	if (getGameType() == GType_WW && _mouseCursor < 3)
 		_mouseCursor = 0;
@@ -464,9 +463,9 @@ bool AGOSEngine::processSpecialKeys() {
 			_lastMinute = t1;
 		}
 	}
-	
+
 	if (shouldQuit())
-		_exitCutscene = true;		
+		_exitCutscene = true;
 
 	switch (_keyPressed.keycode) {
 	case Common::KEYCODE_UP:
@@ -474,6 +473,10 @@ bool AGOSEngine::processSpecialKeys() {
 			_verbHitArea = 302;
 		else if (getGameType() == GType_WW)
 			_verbHitArea = 239;
+		else if (getGameType() == GType_ELVIRA2 && isBoxDead(101))
+			_verbHitArea = 200;
+		else if (getGameType() == GType_ELVIRA1 && isBoxDead(101))
+			_verbHitArea = 214;
 		verbCode = true;
 		break;
 	case Common::KEYCODE_DOWN:
@@ -481,6 +484,10 @@ bool AGOSEngine::processSpecialKeys() {
 			_verbHitArea = 304;
 		else if (getGameType() == GType_WW)
 			_verbHitArea = 241;
+		else if (getGameType() == GType_ELVIRA2 && isBoxDead(107))
+			_verbHitArea = 202;
+		else if (getGameType() == GType_ELVIRA1 && isBoxDead(105))
+			_verbHitArea = 215;
 		verbCode = true;
 		break;
 	case Common::KEYCODE_RIGHT:
@@ -488,6 +495,10 @@ bool AGOSEngine::processSpecialKeys() {
 			_verbHitArea = 303;
 		else if (getGameType() == GType_WW)
 			_verbHitArea = 240;
+		else if (getGameType() == GType_ELVIRA2 && isBoxDead(102))
+			_verbHitArea = 201;
+		else if (getGameType() == GType_ELVIRA1 && isBoxDead(103))
+			_verbHitArea = 216;
 		verbCode = true;
 		break;
 	case Common::KEYCODE_LEFT:
@@ -495,6 +506,10 @@ bool AGOSEngine::processSpecialKeys() {
 			_verbHitArea = 301;
 		else if (getGameType() == GType_WW)
 			_verbHitArea = 242;
+		else if (getGameType() == GType_ELVIRA2 && isBoxDead(104))
+			_verbHitArea = 203;
+		else if (getGameType() == GType_ELVIRA1 && isBoxDead(107))
+			_verbHitArea = 217;
 		verbCode = true;
 		break;
 	case Common::KEYCODE_ESCAPE:
@@ -547,74 +562,59 @@ bool AGOSEngine::processSpecialKeys() {
 			}
 		}
 		break;
-	case Common::KEYCODE_p:
+	case Common::KEYCODE_PAUSE:
 		pause();
 		break;
-	case Common::KEYCODE_t:
+	default:
+		break;
+	}
+
+	switch (_keyPressed.ascii) {
+	case 't':
 		if (getGameType() == GType_FF || (getGameType() == GType_SIMON2 && (getFeatures() & GF_TALKIE)) ||
 			((getFeatures() & GF_TALKIE) && _language != Common::EN_ANY && _language != Common::DE_DEU)) {
 			if (_speech)
 				_subtitles ^= 1;
 		}
 		break;
-	case Common::KEYCODE_v:
+	case 'v':
 		if (getGameType() == GType_FF || (getGameType() == GType_SIMON2 && (getFeatures() & GF_TALKIE))) {
 			if (_subtitles)
 				_speech ^= 1;
 		}
 		break;
-	case Common::KEYCODE_PLUS:
-	case Common::KEYCODE_KP_PLUS:
+	case '+':
 		if (_midiEnabled) {
 			_midi.setVolume(_midi.getMusicVolume() + 16, _midi.getSFXVolume() + 16);
 		}
 		ConfMan.setInt("music_volume", _mixer->getVolumeForSoundType(Audio::Mixer::kMusicSoundType) + 16);
 		syncSoundSettings();
 		break;
-	case Common::KEYCODE_MINUS:
-	case Common::KEYCODE_KP_MINUS:
+	case '-':
 		if (_midiEnabled) {
 			_midi.setVolume(_midi.getMusicVolume() - 16, _midi.getSFXVolume() - 16);
 		}
 		ConfMan.setInt("music_volume", _mixer->getVolumeForSoundType(Audio::Mixer::kMusicSoundType) - 16);
 		syncSoundSettings();
 		break;
-	case Common::KEYCODE_m:
+	case 'm':
 		_musicPaused ^= 1;
 		if (_midiEnabled) {
 			_midi.pause(_musicPaused);
 		}
 		_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, (_musicPaused) ? 0 : ConfMan.getInt("music_volume"));
 		break;
-	case Common::KEYCODE_s:
+	case 's':
 		if (getGameId() == GID_SIMON1DOS) {
 			_midi._enable_sfx ^= 1;
 		} else {
 			_sound->effectsPause(_effectsPaused ^= 1);
 		}
 		break;
-	case Common::KEYCODE_b:
-		_sound->ambientPause(_ambientPaused ^= 1);
-		break;
-	case Common::KEYCODE_r:
-		if (_debugMode)
-			_dumpScripts ^= 1;
-		break;
-	case Common::KEYCODE_o:
-		if (_debugMode)
-			_dumpOpcodes ^= 1;
-		break;
-	case Common::KEYCODE_a:
-		if (_debugMode)
-			_dumpVgaScripts ^= 1;
-		break;
-	case Common::KEYCODE_g:
-		if (_debugMode)
-			_dumpVgaOpcodes ^= 1;
-		break;
-	case Common::KEYCODE_d:
-		if (_debugMode)
-			_dumpImages ^=1;
+	case 'b':
+		if (getGameType() == GType_SIMON2) {
+			_sound->ambientPause(_ambientPaused ^= 1);
+		}
 		break;
 	default:
 		break;
@@ -624,6 +624,143 @@ bool AGOSEngine::processSpecialKeys() {
 	return verbCode;
 }
 
+#ifdef ENABLE_PN
+// Personal Nightmare specific
+void AGOSEngine_PN::clearInputLine() {
+	_inputting = false;
+	_inputReady = false;
+	clearWindow(_windowArray[2]);
+}
+
+void AGOSEngine_PN::handleKeyboard() {
+	if (!_inputReady)
+		return;
+
+	if (_hitCalled != 0) {
+		mouseHit();
+	}
+
+	int16 chr = -1;
+	if (_mouseString) {
+		const char *strPtr = _mouseString;
+		while (*strPtr != 0 && *strPtr != 13)
+			addChar(*strPtr++);
+		_mouseString = 0;
+
+		chr = *strPtr;
+		if (chr == 13) {
+			addChar(13);
+		}
+	}
+	if (_mouseString1 && chr != 13) {
+		const char *strPtr = _mouseString1;
+		while (*strPtr != 13)
+			addChar(*strPtr++);
+		_mouseString1 = 0;
+
+		chr = *strPtr;
+		if (chr == 13) {
+			addChar(13);
+		}
+	}
+	if (chr == -1) {
+		if (_keyPressed.keycode == Common::KEYCODE_BACKSPACE || _keyPressed.keycode == Common::KEYCODE_RETURN) {
+			chr = _keyPressed.keycode;
+			addChar(chr);
+		} else if (!(_videoLockOut & 0x10)) {
+			chr = _keyPressed.ascii;
+			if (chr >= 32)
+				addChar(chr);
+		}
+	}
+
+	if (chr == 13) {
+		_mouseString = 0;
+		_mouseString1 = 0;
+		_mousePrintFG = 0;
+		_inputReady = false;
+	}
+
+	_keyPressed.reset();
+}
+
+void AGOSEngine_PN::interact(char *buffer, uint8 size) {
+	if (!_inputting) {
+		memset(_keyboardBuffer, 0, sizeof(_keyboardBuffer));
+		_intputCounter = 0;
+		_inputMax = size;
+		_inputWindow = _windowArray[_curWindow];
+		windowPutChar(_inputWindow, 128);
+		windowPutChar(_inputWindow, 8);
+		_inputting = true;
+		_inputReady = true;
+	}
+
+	while (!shouldQuit() && _inputReady) {
+		if (!_noScanFlag && _scanFlag) {
+			buffer[0] = 1;
+			buffer[1] = 0;
+			_scanFlag = 0;
+			break;
+		}
+		delay(1);
+	}
+
+	if (!_inputReady) {
+		memcpy(buffer, _keyboardBuffer, size);
+		_inputting = false;
+	}
+}
+
+void AGOSEngine_PN::addChar(uint8 chr) {
+	if (chr == 13) {
+		_keyboardBuffer[_intputCounter++] = chr;
+		windowPutChar(_inputWindow, 13);
+	} else if (chr == 8 && _intputCounter) {
+		clearCursor(_inputWindow);
+		windowPutChar(_inputWindow, 8);
+		windowPutChar(_inputWindow, 128);
+		windowPutChar(_inputWindow, 8);
+
+		_keyboardBuffer[--_intputCounter] = 0;
+	} else if (chr >= 32 && _intputCounter < _inputMax) {
+		_keyboardBuffer[_intputCounter++] = chr;
+
+		clearCursor(_inputWindow);
+		windowPutChar(_inputWindow, chr);
+		windowPutChar(_inputWindow, 128);
+		windowPutChar(_inputWindow, 8);
+	}
+}
+
+void AGOSEngine_PN::clearCursor(WindowBlock *window) {
+	byte oldTextColor = window->textColor;
+
+	window->textColor = window->fillColor;
+	windowPutChar(window, 128);
+	window->textColor = oldTextColor;
+
+	windowPutChar(window, 8);
+}
+
+bool AGOSEngine_PN::processSpecialKeys() {
+	if (shouldQuit())
+		_exitCutscene = true;
+
+	switch (_keyPressed.keycode) {
+	case Common::KEYCODE_ESCAPE:
+		_exitCutscene = true;
+		break;
+	case Common::KEYCODE_PAUSE:
+		pause();
+		break;
+	default:
+		break;
+	}
+
+	_keyPressed.reset();
+	return false;
+}
+#endif
+
 } // End of namespace AGOS
-
-

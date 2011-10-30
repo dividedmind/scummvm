@@ -25,7 +25,7 @@
 
 #include "common/system.h"
 #include "kyra/resource.h"
-#include "kyra/sound.h"
+#include "kyra/sound_intern.h"
 #include "kyra/screen.h"
 
 #include "sound/audiocd.h"
@@ -285,7 +285,7 @@ void Towns_EuphonyFmChannel::pitchBend(int16 value) {
 }
 
 void Towns_EuphonyFmChannel::nextTick(int32 *outbuf, int buflen) {
-	_voice->nextTick((int*) outbuf, buflen);
+	_voice->nextTick((int *)outbuf, buflen);
 }
 
 void Towns_EuphonyFmChannel::rate(uint16 r) {
@@ -344,45 +344,45 @@ void Towns_EuphonyPcmChannel::noteOff(byte note) {
 
 void Towns_EuphonyPcmChannel::controlChange(byte control, byte value) {
 	switch (control) {
-		case 0x07:
-			// volume
-			_ctrl7_volume = value;
-			break;
-		case 0x0A:
-			// pan position
-			break;
-		case 0x79:
-			// Reset controller
-			for (uint8 i = 0; i < 8; i++) {
-				if (_voice->_snd[i])
-					delete _voice->_snd[i];
-				delete _voice->_env[i];
-			}
-			delete _voice;
-			_voice = new Voice;
-			for (uint8 i = 0; i < 8; i++) {
-				_voice->_env[i] = new Voice::Env;
-				_voice->_snd[i] = 0;
-			}
-			break;
-		case 0x7B:
-			noteOff(_note);
-			break;
-		default:
-			break;
+	case 0x07:
+		// volume
+		_ctrl7_volume = value;
+		break;
+	case 0x0A:
+		// pan position
+		break;
+	case 0x79:
+		// Reset controller
+		for (uint8 i = 0; i < 8; i++) {
+			if (_voice->_snd[i])
+				delete _voice->_snd[i];
+			delete _voice->_env[i];
+		}
+		delete _voice;
+		_voice = new Voice;
+		for (uint8 i = 0; i < 8; i++) {
+			_voice->_env[i] = new Voice::Env;
+			_voice->_snd[i] = 0;
+		}
+		break;
+	case 0x7B:
+		noteOff(_note);
+		break;
+	default:
+		break;
 	}
 }
 
 void Towns_EuphonyPcmChannel::sysEx_customInstrument(uint32 type, const byte *fmInst) {
 	if (type == 0x80) {
 		for (uint8 i = 0; i < 8; i++) {
-			const byte * const* pos = (const byte * const*) fmInst;
+			const byte * const* pos = (const byte * const *)fmInst;
 			for (uint8 ii = 0; ii < 10; ii++) {
 				if (_voice->id[i] == *(pos[ii] + 8)) {
 					if (!_voice->_snd[i])
 						_voice->_snd[i] = new Voice::Snd;
-					memset (_voice->_snd[i]->name, 0, 9);
-					memcpy (_voice->_snd[i]->name, (const char*) pos[ii], 8);
+					memset(_voice->_snd[i]->name, 0, 9);
+					memcpy(_voice->_snd[i]->name, (const char *)pos[ii], 8);
 					_voice->_snd[i]->id = READ_LE_UINT32(pos[ii] + 8);
 					_voice->_snd[i]->numSamples = READ_LE_UINT32(pos[ii] + 12);
 					_voice->_snd[i]->loopStart = READ_LE_UINT32(pos[ii] + 16);
@@ -395,8 +395,8 @@ void Towns_EuphonyPcmChannel::sysEx_customInstrument(uint32 type, const byte *fm
 			}
 		}
 	} else {
-		memset (_voice->name, 0, 9);
-		memcpy (_voice->name, (const char*) fmInst, 8);
+		memset(_voice->name, 0, 9);
+		memcpy(_voice->name, (const char *)fmInst, 8);
 
 		for (uint8 i = 0; i < 8; i++) {
 			_voice->split[i] = READ_LE_UINT16(fmInst + 16 + 2 * i);
@@ -473,85 +473,85 @@ void Towns_EuphonyPcmChannel::nextTick(int32 *outbuf, int buflen) {
 
 void Towns_EuphonyPcmChannel::evpNextTick() {
 	switch (_voice->_env[_current]->state) {
-		case s_ready:
+	case s_ready:
+		_voice->_env[_current]->currentLevel = 0;
+		return;
+
+	case s_attacking:
+		if (_voice->_env[_current]->attackRate == 0)
+			_voice->_env[_current]->currentLevel = _voice->_env[_current]->totalLevel;
+		else if (_voice->_env[_current]->attackRate >= 1270)
 			_voice->_env[_current]->currentLevel = 0;
-			return;
+		else
+			_voice->_env[_current]->currentLevel = (_voice->_env[_current]->totalLevel *
+				_voice->_env[_current]->tickCount++ * 1000) /
+					(_voice->_env[_current]->attackRate * _voice->_env[_current]->rate);
 
-		case s_attacking:
-			if (_voice->_env[_current]->attackRate == 0)
-				_voice->_env[_current]->currentLevel = _voice->_env[_current]->totalLevel;
-			else if (_voice->_env[_current]->attackRate >= 1270)
-				_voice->_env[_current]->currentLevel = 0;
-			else
-				_voice->_env[_current]->currentLevel = (_voice->_env[_current]->totalLevel *
-					_voice->_env[_current]->tickCount++ * 1000) /
-						(_voice->_env[_current]->attackRate * _voice->_env[_current]->rate);
+		if (_voice->_env[_current]->currentLevel >= _voice->_env[_current]->totalLevel) {
+			_voice->_env[_current]->currentLevel = _voice->_env[_current]->totalLevel;
+			_voice->_env[_current]->state = s_decaying;
+			_voice->_env[_current]->tickCount = 0;
+		}
+		break;
 
-			if (_voice->_env[_current]->currentLevel >= _voice->_env[_current]->totalLevel) {
-				_voice->_env[_current]->currentLevel = _voice->_env[_current]->totalLevel;
-				_voice->_env[_current]->state = s_decaying;
-				_voice->_env[_current]->tickCount = 0;
-			}
-			break;
+	case s_decaying:
+		if (_voice->_env[_current]->decayRate == 0) {
+			_voice->_env[_current]->currentLevel = _voice->_env[_current]->sustainLevel;
+		} else if (_voice->_env[_current]->decayRate >= 1270) {
+			_voice->_env[_current]->currentLevel = _voice->_env[_current]->totalLevel;
+		} else {
+			_voice->_env[_current]->currentLevel = _voice->_env[_current]->totalLevel;
+			_voice->_env[_current]->currentLevel -= ((_voice->_env[_current]->totalLevel -
+				_voice->_env[_current]->sustainLevel) * _voice->_env[_current]->tickCount++ * 1000) /
+					(_voice->_env[_current]->decayRate * _voice->_env[_current]->rate);
+		}
 
-		case s_decaying:
-			if (_voice->_env[_current]->decayRate == 0)
-				_voice->_env[_current]->currentLevel = _voice->_env[_current]->sustainLevel;
-			else if (_voice->_env[_current]->decayRate >= 1270)
-				_voice->_env[_current]->currentLevel = _voice->_env[_current]->totalLevel;
-			else {
-				_voice->_env[_current]->currentLevel = _voice->_env[_current]->totalLevel;
-				_voice->_env[_current]->currentLevel -= ((_voice->_env[_current]->totalLevel -
-					_voice->_env[_current]->sustainLevel) * _voice->_env[_current]->tickCount++ * 1000) /
-						(_voice->_env[_current]->decayRate * _voice->_env[_current]->rate);
-			}
+		if (_voice->_env[_current]->currentLevel <= _voice->_env[_current]->sustainLevel) {
+			_voice->_env[_current]->currentLevel = _voice->_env[_current]->sustainLevel;
+			_voice->_env[_current]->state = s_sustaining;
+			_voice->_env[_current]->tickCount = 0;
+		}
+		break;
 
-			if (_voice->_env[_current]->currentLevel <= _voice->_env[_current]->sustainLevel) {
-				_voice->_env[_current]->currentLevel = _voice->_env[_current]->sustainLevel;
-				_voice->_env[_current]->state = s_sustaining;
-				_voice->_env[_current]->tickCount = 0;
-			}
-			break;
+	case s_sustaining:
+		if (_voice->_env[_current]->sustainRate == 0) {
+			_voice->_env[_current]->currentLevel = 0;
+		} else if (_voice->_env[_current]->sustainRate >= 2540) {
+			_voice->_env[_current]->currentLevel = _voice->_env[_current]->sustainLevel;
+		} else {
+			_voice->_env[_current]->currentLevel = _voice->_env[_current]->sustainLevel;
+			_voice->_env[_current]->currentLevel -= (_voice->_env[_current]->sustainLevel *
+				_voice->_env[_current]->tickCount++ * 1000) / (_voice->_env[_current]->sustainRate *
+					_voice->_env[_current]->rate);
+		}
 
-			case s_sustaining:
-				if (_voice->_env[_current]->sustainRate == 0)
-					_voice->_env[_current]->currentLevel = 0;
-				else if (_voice->_env[_current]->sustainRate >= 2540)
-					_voice->_env[_current]->currentLevel = _voice->_env[_current]->sustainLevel;
-				else {
-					_voice->_env[_current]->currentLevel = _voice->_env[_current]->sustainLevel;
-					_voice->_env[_current]->currentLevel -= (_voice->_env[_current]->sustainLevel *
-						_voice->_env[_current]->tickCount++ * 1000) / (_voice->_env[_current]->sustainRate *
-							_voice->_env[_current]->rate);
-				}
+		if (_voice->_env[_current]->currentLevel <= 0) {
+			_voice->_env[_current]->currentLevel = 0;
+			_voice->_env[_current]->state = s_ready;
+			_voice->_env[_current]->tickCount = 0;
+		}
+		break;
 
-				if (_voice->_env[_current]->currentLevel <= 0) {
-					_voice->_env[_current]->currentLevel = 0;
-					_voice->_env[_current]->state = s_ready;
-					_voice->_env[_current]->tickCount = 0;
-				}
-				break;
+	case s_releasing:
+		if (_voice->_env[_current]->releaseRate == 0) {
+			_voice->_env[_current]->currentLevel = 0;
+		} else if (_voice->_env[_current]->releaseRate >= 1270) {
+			_voice->_env[_current]->currentLevel = _voice->_env[_current]->releaseLevel;
+		} else {
+			_voice->_env[_current]->currentLevel = _voice->_env[_current]->releaseLevel;
+			_voice->_env[_current]->currentLevel -= (_voice->_env[_current]->releaseLevel *
+				_voice->_env[_current]->tickCount++ * 1000) / (_voice->_env[_current]->releaseRate *
+					_voice->_env[_current]->rate);
+		}
 
-			case s_releasing:
-				if (_voice->_env[_current]->releaseRate == 0)
-					_voice->_env[_current]->currentLevel = 0;
-				else if (_voice->_env[_current]->releaseRate >= 1270)
-					_voice->_env[_current]->currentLevel = _voice->_env[_current]->releaseLevel;
-				else {
-					_voice->_env[_current]->currentLevel = _voice->_env[_current]->releaseLevel;
-					_voice->_env[_current]->currentLevel -= (_voice->_env[_current]->releaseLevel *
-						_voice->_env[_current]->tickCount++ * 1000) / (_voice->_env[_current]->releaseRate *
-							_voice->_env[_current]->rate);
-				}
+		if (_voice->_env[_current]->currentLevel <= 0) {
+			_voice->_env[_current]->currentLevel = 0;
+			_voice->_env[_current]->state = s_ready;
+		}
+		break;
 
-				if (_voice->_env[_current]->currentLevel <= 0) {
-					_voice->_env[_current]->currentLevel = 0;
-					_voice->_env[_current]->state = s_ready;
-				}
-				break;
-
-			default:
-			break;
+	default:
+		break;
 	}
 }
 
@@ -578,7 +578,7 @@ Towns_EuphonyDriver::Towns_EuphonyDriver(Audio::Mixer *mixer)
 	_channel[14] = _channel[15] = 0;
 
 	_fmInstruments = _waveInstruments = 0;
-	memset(_waveSounds, 0, sizeof(uint8*) * 10);
+	memset(_waveSounds, 0, sizeof(uint8*)* 10);
 
 	rate(getRate());
 	fading(0);
@@ -687,7 +687,7 @@ void Towns_EuphonyDriver::send(byte chan, uint32 b) {
 		for (int i = 0; i < 8; i++) {
 			if (_channel[chan] == _wChannel[i]) {
 				_channel[chan]->sysEx_customInstrument(0, _waveInstruments + param1 * 0x80);
-				_channel[chan]->sysEx_customInstrument(0x80, (const byte*) _waveSounds);
+				_channel[chan]->sysEx_customInstrument(0x80, (const byte *)_waveSounds);
 				break;
 			}
 		}
@@ -887,7 +887,7 @@ void Towns_EuphonyParser::parseNextEvent(EventInfo &info) {
 			_tempo[0] = (tempo >> 16) & 0xff;
 			_tempo[1] = (tempo >> 8) & 0xff;
 			_tempo[2] = tempo & 0xff;
-			info.ext.data = (byte*) _tempo;
+			info.ext.data = (byte *)_tempo;
 			pos += 6;
 			loop = false;
 		} else if (cmd == 0xFD || cmd == 0xFE) {
@@ -968,7 +968,7 @@ void Towns_EuphonyParser::setup() {
 	_mode = data + 0x374;
 	_channel = data + 0x394;
 	_adjVelo = data + 0x3B4;
-	_adjNote = (int8*) data + 0x3D4;
+	_adjNote = (int8*)data + 0x3D4;
 
 	_nextBaseTickStep = _firstBaseTickStep = data[0x804];
 	_initialTempo = calculateTempo((data[0x805] > 0xfc) ? 0x5a : data[0x805]);
@@ -1232,32 +1232,38 @@ void TownsPC98_OpnOperator::generateOutput(int32 phasebuf, int32 *feed, int32 &o
 		EnvelopeState nextState = s_ready;
 
 		switch (_state) {
-			case s_ready:
-				return;
-			case s_attacking:
-				nextState = s_decaying;
+		case s_ready:
+			return;
+		case s_attacking:
+			targetLevel = 0;
+			nextState = s_decaying;
+			if ((_specifiedAttackRate << 1) + _keyScale2 < 64) {
 				targetTime = (1 << fs_a.shift) - 1;
-				targetLevel = 0;
 				levelIncrement = (~_currentLevel * _adTbl[fs_a.rate + ((_tickCount >> fs_a.shift) & 7)]) >> 4;
 				break;
-			case s_decaying:
-				targetTime = (1 << fs_d.shift) - 1;
-				nextState = s_sustaining;
-				targetLevel = _sustainLevel;
-				levelIncrement = _adTbl[fs_d.rate + ((_tickCount >> fs_d.shift) & 7)];
-				break;
-			case s_sustaining:
-				targetTime = (1 << fs_s.shift) - 1;
-				nextState = s_sustaining;
-				targetLevel = 1023;
-				levelIncrement = _adTbl[fs_s.rate + ((_tickCount >> fs_s.shift) & 7)];
-				break;
-			case s_releasing:
-				targetTime = (1 << fs_r.shift) - 1;
-				nextState = s_ready;
-				targetLevel = 1023;
-				levelIncrement = _adTbl[fs_r.rate + ((_tickCount >> fs_r.shift) & 7)];
-				break;
+			} else {
+				_currentLevel = targetLevel;
+				_state = nextState;
+			}
+			// Fall through
+		case s_decaying:
+			targetTime = (1 << fs_d.shift) - 1;
+			nextState = s_sustaining;
+			targetLevel = _sustainLevel;
+			levelIncrement = _adTbl[fs_d.rate + ((_tickCount >> fs_d.shift) & 7)];
+			break;
+		case s_sustaining:
+			targetTime = (1 << fs_s.shift) - 1;
+			nextState = s_sustaining;
+			targetLevel = 1023;
+			levelIncrement = _adTbl[fs_s.rate + ((_tickCount >> fs_s.shift) & 7)];
+			break;
+		case s_releasing:
+			targetTime = (1 << fs_r.shift) - 1;
+			nextState = s_ready;
+			targetLevel = 1023;
+			levelIncrement = _adTbl[fs_r.rate + ((_tickCount >> fs_r.shift) & 7)];
+			break;
 		}
 
 		if (!(_tickCount & targetTime)) {
@@ -1498,7 +1504,7 @@ public:
 private:
 	void updatesRegs();
 
-	uint8 _updateRequestBuf[32];
+	uint8 _updateRequestBuf[64];
 	int _updateRequest;
 	int _rand;
 
@@ -2553,7 +2559,7 @@ bool TownsPC98_OpnChannelPCM::control_ff_endOfTrack(uint8 para) {
 	}
 }
 
-TownsPC98_OpnSquareSineSource::TownsPC98_OpnSquareSineSource(const uint32 timerbase) : 	_tlTable(0),
+TownsPC98_OpnSquareSineSource::TownsPC98_OpnSquareSineSource(const uint32 timerbase) : _tlTable(0),
 	_tleTable(0), _updateRequest(-1), _tickLength(timerbase * 27), _ready(0), _reg(0), _rand(1), _outN(1),
 	_nTick(0), _evpUpdateCnt(0), _evpTimer(0x1f), _pReslt(0x1f), _attack(0), _cont(false), _evpUpdate(true),
 	_timer(0), _noiseGenerator(0), _chanEnable(0) {
@@ -2651,7 +2657,7 @@ void TownsPC98_OpnSquareSineSource::writeReg(uint8 address, uint8 value, bool fo
 	}
 
 	if (!force) {
-		if (_updateRequest == 31) {
+		if (_updateRequest >= 63) {
 			warning("TownsPC98_OpnSquareSineSource: event buffer overflow");
 			_updateRequest = -1;
 		}
@@ -2714,7 +2720,7 @@ void TownsPC98_OpnSquareSineSource::nextTick(int32 *buffer, uint32 bufferSize) {
 				finOut += _tlTable[_channels[ii].out ? (_channels[ii].vol & 0x0f) : 0];
 		}
 
-		finOut /= 2;
+		finOut /= 3;
 		buffer[i << 1] += finOut;
 		buffer[(i << 1) + 1] += finOut;
 	}
@@ -2887,7 +2893,7 @@ void TownsPC98_OpnPercussionSource::nextTick(int32 *buffer, uint32 bufferSize) {
 				finOut += _rhChan[ii].out;
 		}
 
-		finOut *= 7;
+		finOut <<= 1;
 
 		buffer[i << 1] += finOut;
 		buffer[(i << 1) + 1] += finOut;
@@ -3028,146 +3034,145 @@ void TownsPC98_OpnCore::writeReg(uint8 part, uint8 regAddress, uint8 value) {
 	}
 
 	switch (h) {
-		case 0x00:
-			// ssg
-			if (_ssg)
-				_ssg->writeReg(l, value);
-			break;
-		case 0x10:
-			// pcm rhythm channel
-			if (_prc)
-				_prc->writeReg(l, value);
-			break;
-		case 0x20:
-			if (l == 8) {
-				// Key on/off
-				for (int i = 0; i < 4; i++) {
-					if ((value >> (4 + i)) & 1)
-						co[oprOrdr[i]]->keyOn();
-					else
-						co[oprOrdr[i]]->keyOff();
-				}
-			} else if (l == 4) {
-				// Timer A
-				_timers[0].value = (_timers[0].value & 0xff00) | value;
-			} else if (l == 5) {
-				// Timer A
-				_timers[0].value = (_timers[0].value & 0xff) | (value << 8);
-			} else if (l == 6) {
-				// Timer B
-				_timers[1].value = value & 0xff;
-			} else if (l == 7) {
-				_timers[0].enabled = (value & 1) ? 1 : 0;
-				_timers[1].enabled = (value & 2) ? 1 : 0;
-
-				float spc = (float)(0x400 - _timers[0].value) / _baserate;
-				_timers[0].smpPerCb = (int32) spc;
-				_timers[0].smpPerCbRem = (uint32) ((spc - (float)_timers[0].smpPerCb) * 1000000.0f);
-
-				spc = (float)(0x100 - _timers[1].value) * 16.0f / _baserate;
-				_timers[1].smpPerCb = (int32) spc;
-				_timers[1].smpPerCbRem = (uint32) ((spc - (float)_timers[1].smpPerCb) * 1000000.0f);
-
-				if (value & 10) {
-					_timers[0].smpTillCb = _timers[0].smpPerCb;
-					_timers[0].smpTillCbRem = _timers[0].smpTillCbRem;
-				}
-
-				if (value & 20) {
-					_timers[1].smpTillCb = _timers[1].smpPerCb;
-					_timers[1].smpTillCbRem = _timers[1].smpTillCbRem;
-				}
-			} else if (l == 2) {
-				// LFO
-				warning("TownsPC98_OpnDriver: TRYING TO USE LFO (NOT SUPPORTED)");
-			} else if (l == 10 || l == 11) {
-				// DAC
-				warning("TownsPC98_OpnDriver: TRYING TO USE DAC (NOT SUPPORTED)");
+	case 0x00:
+		// ssg
+		if (_ssg)
+			_ssg->writeReg(l, value);
+		break;
+	case 0x10:
+		// pcm rhythm channel
+		if (_prc)
+			_prc->writeReg(l, value);
+		break;
+	case 0x20:
+		if (l == 8) {
+			// Key on/off
+			for (int i = 0; i < 4; i++) {
+				if ((value >> (4 + i)) & 1)
+					co[oprOrdr[i]]->keyOn();
+				else
+					co[oprOrdr[i]]->keyOff();
 			}
-			break;
+		} else if (l == 4) {
+			// Timer A
+			_timers[0].value = (_timers[0].value & 0xff00) | value;
+		} else if (l == 5) {
+			// Timer A
+			_timers[0].value = (_timers[0].value & 0xff) | (value << 8);
+		} else if (l == 6) {
+			// Timer B
+			_timers[1].value = value & 0xff;
+		} else if (l == 7) {
+			_timers[0].enabled = (value & 1) ? 1 : 0;
+			_timers[1].enabled = (value & 2) ? 1 : 0;
 
-		case 0x30:
-			// detune, multiple
-			o->detune((value >> 4) & 7);
-			o->multiple(value & 0x0f);
+			float spc = (float)(0x400 - _timers[0].value) / _baserate;
+			_timers[0].smpPerCb = (int32) spc;
+			_timers[0].smpPerCbRem = (uint32) ((spc - (float)_timers[0].smpPerCb) * 1000000.0f);
+
+			spc = (float)(0x100 - _timers[1].value) * 16.0f / _baserate;
+			_timers[1].smpPerCb = (int32) spc;
+			_timers[1].smpPerCbRem = (uint32) ((spc - (float)_timers[1].smpPerCb) * 1000000.0f);
+
+			if (value & 10) {
+				_timers[0].smpTillCb = _timers[0].smpPerCb;
+				_timers[0].smpTillCbRem = _timers[0].smpTillCbRem;
+			}
+
+			if (value & 20) {
+				_timers[1].smpTillCb = _timers[1].smpPerCb;
+				_timers[1].smpTillCbRem = _timers[1].smpTillCbRem;
+			}
+		} else if (l == 2) {
+			// LFO
+			warning("TownsPC98_OpnDriver: TRYING TO USE LFO (NOT SUPPORTED)");
+		} else if (l == 10 || l == 11) {
+			// DAC
+			warning("TownsPC98_OpnDriver: TRYING TO USE DAC (NOT SUPPORTED)");
+		}
+		break;
+
+	case 0x30:
+		// detune, multiple
+		o->detune((value >> 4) & 7);
+		o->multiple(value & 0x0f);
+		c->updateEnvelopeParameters = true;
+		break;
+
+	case 0x40:
+		// total level
+		o->totalLevel(value & 0x7f);
+		break;
+
+	case 0x50:
+		// rate scaling, attack rate
+		o->attackRate(value & 0x1f);
+		if (o->scaleRate(value >> 6))
 			c->updateEnvelopeParameters = true;
-			break;
+		break;
 
-		case 0x40:
-			// total level
-			o->totalLevel(value & 0x7f);
-			break;
+	case 0x60:
+		// first decay rate, amplitude modulation
+		o->decayRate(value & 0x1f);
+		if (value & 0x80)
+			warning("TownsPC98_OpnDriver: TRYING TO USE AMP MODULATION (NOT SUPPORTED)");
+		break;
 
-		case 0x50:
-			// rate scaling, attack rate
-			o->attackRate(value & 0x1f);
-			if (o->scaleRate(value >> 6))
-				c->updateEnvelopeParameters = true;
-			break;
+	case 0x70:
+		// secondary decay rate
+		o->sustainRate(value & 0x1f);
+		break;
 
-		case 0x60:
-			// first decay rate, amplitude modulation
-			o->decayRate(value & 0x1f);
-			if (value & 0x80)
-				warning("TownsPC98_OpnDriver: TRYING TO USE AMP MODULATION (NOT SUPPORTED)");
-			break;
+	case 0x80:
+		// secondary amplitude, release rate;
+		o->sustainLevel(value >> 4);
+		o->releaseRate(value & 0x0f);
+		break;
 
-		case 0x70:
-			// secondary decay rate
-			o->sustainRate(value & 0x1f);
-			break;
+	case 0x90:
+		warning("TownsPC98_OpnDriver: TRYING TO SSG ENVELOPE SHAPES (NOT SUPPORTED)");
+		break;
 
-		case 0x80:
-			// secondary amplitude, release rate;
-			o->sustainLevel(value >> 4);
-			o->releaseRate(value & 0x0f);
-			break;
+	case 0xa0:
+		// frequency
+		l &= ~3;
+		if (l == 0) {
+			c->frqTemp = (c->frqTemp & 0xff00) | value;
+			c->updateEnvelopeParameters = true;
+			for (int i = 0; i < 4; i++)
+				co[i]->frequency(c->frqTemp);
+		} else if (l == 4) {
+			c->frqTemp = (c->frqTemp & 0xff) | (value << 8);
+		} else if (l == 8) {
+			// Ch 3/6 special mode frq
+			warning("TownsPC98_OpnDriver: TRYING TO USE CH 3/6 SPECIAL MODE FREQ (NOT SUPPORTED)");
+		} else if (l == 12) {
+			// Ch 3/6 special mode frq
+			warning("TownsPC98_OpnDriver: TRYING TO USE CH 3/6 SPECIAL MODE FREQ (NOT SUPPORTED)");
+		}
+		break;
 
-		case 0x90:
-			warning("TownsPC98_OpnDriver: TRYING TO SSG ENVELOPE SHAPES (NOT SUPPORTED)");
-			break;
+	case 0xb0:
+		l &= ~3;
+		if (l == 0) {
+			// feedback, _algorithm
+			co[0]->feedbackLevel((value >> 3) & 7);
+			c->algorithm = value & 7;
+		} else if (l == 4) {
+			// stereo, LFO sensitivity
+			c->enableLeft = value & 0x80 ? true : false;
+			c->enableRight = value & 0x40 ? true : false;
+			uint8 ams = (value & 0x3F) >> 3;
+			if (ams)
+				warning("TownsPC98_OpnDriver: TRYING TO USE AMP MODULATION SENSITIVITY (NOT SUPPORTED)");
+			uint8 fms = value & 3;
+			if (fms)
+				warning("TownsPC98_OpnDriver: TRYING TO USE FREQ MODULATION SENSITIVITY (NOT SUPPORTED)");
+		}
+		break;
 
-		case 0xa0:
-			// frequency
-			l &= ~3;
-			if (l == 0) {
-				c->frqTemp = (c->frqTemp & 0xff00) | value;
-				c->updateEnvelopeParameters = true;
-				for (int i = 0; i < 4; i++)
-					co[i]->frequency(c->frqTemp);
-			} else if (l == 4) {
-				c->frqTemp = (c->frqTemp & 0xff) | (value << 8);
-			} else if (l == 8) {
-				// Ch 3/6 special mode frq
-				warning("TownsPC98_OpnDriver: TRYING TO USE CH 3/6 SPECIAL MODE FREQ (NOT SUPPORTED)");
-			} else if (l == 12) {
-				// Ch 3/6 special mode frq
-				warning("TownsPC98_OpnDriver: TRYING TO USE CH 3/6 SPECIAL MODE FREQ (NOT SUPPORTED)");
-			}
-			break;
-
-		case 0xb0:
-			l &= ~3;
-			if (l == 0) {
-				// feedback, _algorithm
-				co[0]->feedbackLevel((value >> 3) & 7);
-				c->algorithm = value & 7;
-			} else if (l == 4) {
-				// stereo, LFO sensitivity
-				c->enableLeft = value & 0x80 ? true : false;
-				c->enableRight = value & 0x40 ? true : false;
-				uint8 ams = (value & 0x3F) >> 3;
-				if (ams)
-					warning("TownsPC98_OpnDriver: TRYING TO USE AMP MODULATION SENSITIVITY (NOT SUPPORTED)");
-				uint8 fms = value & 3;
-				if (fms)
-					warning("TownsPC98_OpnDriver: TRYING TO USE FREQ MODULATION SENSITIVITY (NOT SUPPORTED)");
-			}
-			break;
-
-		default:
-			warning("TownsPC98_OpnDriver: UNKNOWN ADDRESS %d", regAddress);
-			break;
+	default:
+		warning("TownsPC98_OpnDriver: UNKNOWN ADDRESS %d", regAddress);
 	}
 }
 
@@ -3231,21 +3236,26 @@ int inline TownsPC98_OpnCore::readBuffer(int16 *buffer, const int numSamples) {
 void TownsPC98_OpnCore::generateTables() {
 	delete[] _oprRates;
 	_oprRates = new uint8[128];
+
+	WRITE_BE_UINT32(_oprRates + 32, _numChan == 6 ? 0x90900000 : 0x00081018);
+	WRITE_BE_UINT32(_oprRates + 36, _numChan == 6 ? 0x00001010 : 0x00081018);
 	memset(_oprRates, 0x90, 32);
-	uint8 *dst = (uint8*) _oprRates + 32;
+	memset(_oprRates + 96, 0x80, 32);
+	uint8 *dst = (uint8*)_oprRates + 40;
+	for (int i = 0; i < 40; i += 4)
+		WRITE_BE_UINT32(dst + i, 0x00081018);
 	for (int i = 0; i < 48; i += 4)
 		WRITE_BE_UINT32(dst + i, 0x00081018);
-	dst += 48;
+	dst += 40;
 	for (uint8 i = 0; i < 16; i ++) {
 		uint8 v = (i < 12) ? i : 12;
 		*dst++ = ((4 + v) << 3);
 	}
-	memset(dst, 0x80, 32);
 
 	delete[] _oprRateshift;
 	_oprRateshift = new uint8[128];
 	memset(_oprRateshift, 0, 128);
-	dst = (uint8*) _oprRateshift + 32;
+	dst = (uint8*)_oprRateshift + 32;
 	for (int i = 11; i; i--) {
 		memset(dst, i, 4);
 		dst += 4;
@@ -3381,7 +3391,7 @@ void TownsPC98_OpnCore::nextTick(int32 *buffer, uint32 bufferSize) {
 				break;
 			};
 
-			int32 finOut = ((output * 7) / 2);
+			int32 finOut = (output << 2) / ((_numChan + _numSSG - 3) / 3);
 
 			if (_chanInternal[i].enableLeft)
 				*leftSample += finOut;
@@ -3410,6 +3420,8 @@ TownsPC98_OpnDriver::TownsPC98_OpnDriver(Audio::Mixer *mixer, OpnType type) : To
 }
 
 TownsPC98_OpnDriver::~TownsPC98_OpnDriver() {
+	reset();
+
 	if (_channels) {
 		for (int i = 0; i < _numChan; i++)
 			delete _channels[i];
@@ -3812,7 +3824,7 @@ void SoundTowns::playTrack(uint8 track) {
 		return;
 	track -= 2;
 
-	const int32 *const tTable = (const int32 *const) cdaData();
+	const int32 *const tTable = (const int32 *const)cdaData();
 	int tTableIndex = 3 * track;
 
 	int trackNum = (int) READ_LE_UINT32(&tTable[tTableIndex + 2]);
@@ -4064,8 +4076,7 @@ bool SoundPC98::init() {
 }
 
 void SoundPC98::playTrack(uint8 track) {
-	if (--track >= 56)
-		track -= 55;
+	track += extraOffset();
 
 	if (track == _lastTrack && _musicEnabled)
 		return;
@@ -4074,6 +4085,10 @@ void SoundPC98::playTrack(uint8 track) {
 
 	char musicfile[13];
 	sprintf(musicfile, fileListEntry(0), track);
+	if (fileListLen() == 1)
+		sprintf(musicfile, fileListEntry(0), track);
+	else
+		strcpy(musicfile, fileListEntry(track));
 	delete[] _musicTrackData;
 	_musicTrackData = _vm->resource()->fileData(musicfile, 0);
 	if (_musicEnabled)
@@ -4107,7 +4122,7 @@ void SoundPC98::playSoundEffect(uint8 track) {
 	//	This has been disabled for now since I don't know
 	//	how to make up the correct track number. It probably
 	//	needs a map.
-	//_driver->loadSoundEffectData(_sfxTrackData, track);
+	_driver->loadSoundEffectData(_sfxTrackData, track);
 }
 
 
@@ -4126,19 +4141,25 @@ SoundTownsPC98_v2::~SoundTownsPC98_v2() {
 bool SoundTownsPC98_v2::init() {
 	_driver = new TownsPC98_OpnDriver(_mixer, _vm->gameFlags().platform == Common::kPlatformPC98 ?
 		TownsPC98_OpnDriver::OD_TYPE86 : TownsPC98_OpnDriver::OD_TOWNS);
-	_useFmSfx = _vm->gameFlags().platform == Common::kPlatformPC98 ? true : false;
-	_vm->checkCD();
-	// FIXME: While checking for 'track1.XXX(X)' looks like
-	// a good idea, we should definitely not be doing this
-	// here. Basically our filenaming scheme could change
-	// or we could add support for other audio formats. Also
-	// this misses the possibility that we play the tracks
-	// right off CD. So we should find another way to
-	// check if we have access to CD audio.
-	Resource *res = _vm->resource();
-	if (_musicEnabled &&
-		(res->exists("track1.mp3") || res->exists("track1.ogg") || res->exists("track1.flac") || res->exists("track1.fla")))
-			_musicEnabled = 2;
+
+	if (_vm->gameFlags().platform == Common::kPlatformFMTowns) {
+		_vm->checkCD();
+		// FIXME: While checking for 'track1.XXX(X)' looks like
+		// a good idea, we should definitely not be doing this
+		// here. Basically our filenaming scheme could change
+		// or we could add support for other audio formats. Also
+		// this misses the possibility that we play the tracks
+		// right off CD. So we should find another way to
+		// check if we have access to CD audio.
+		Resource *res = _vm->resource();
+		if (_musicEnabled &&
+			(res->exists("track1.mp3") || res->exists("track1.ogg") || res->exists("track1.flac") || res->exists("track1.fla")))
+				_musicEnabled = 2;
+		_useFmSfx = false;
+
+	} else {
+		_useFmSfx = true;
+	}
 
 	return _driver->init();
 }
@@ -4153,6 +4174,8 @@ void SoundTownsPC98_v2::process() {
 }
 
 void SoundTownsPC98_v2::playTrack(uint8 track) {
+	track += extraOffset();
+
 	if (track == _lastTrack && _musicEnabled)
 		return;
 
@@ -4171,7 +4194,10 @@ void SoundTownsPC98_v2::playTrack(uint8 track) {
 	beginFadeOut();
 
 	char musicfile[13];
-	sprintf(musicfile, fileListEntry(0), track);
+	if (fileListLen() == 1)
+		sprintf(musicfile, fileListEntry(0), track);
+	else
+		strcpy(musicfile, fileListEntry(track));
 	delete[] _musicTrackData;
 
 	_musicTrackData = _vm->resource()->fileData(musicfile, 0);
@@ -4206,29 +4232,34 @@ void SoundTownsPC98_v2::beginFadeOut() {
 	haltTrack();
 }
 
-int32 SoundTownsPC98_v2::voicePlay(const char *file, uint8, bool) {
+int32 SoundTownsPC98_v2::voicePlay(const char *file, Audio::SoundHandle *handle, uint8, bool) {
 	static const uint16 rates[] =	{ 0x10E1, 0x0CA9, 0x0870, 0x0654, 0x0438, 0x032A, 0x021C, 0x0194 };
+	static const char patternHOF[] = "%s.PCM";
+	static const char patternLOL[] = "%s.VOC";
 
 	int h = 0;
 	if (_currentSFX) {
-		while (_mixer->isSoundHandleActive(_soundChannels[h].channelHandle) && h < kNumChannelHandles)
+		while (_mixer->isSoundHandleActive(_soundChannels[h]) && h < kNumChannelHandles)
 			h++;
 		if (h >= kNumChannelHandles)
 			return 0;
 	}
 
 	char filename[13];
-	sprintf(filename, "%s.PCM", file);
+	const char *pattern = _vm->game() == GI_LOL ? patternLOL : patternHOF;
+	sprintf(filename, pattern, file);
 
 	uint8 *data = _vm->resource()->fileData(filename, 0);
 	uint8 *src = data;
+	if (!src)
+		return 0;
 
 	uint16 sfxRate = rates[READ_LE_UINT16(src)];
 	src += 2;
 	bool compressed = (READ_LE_UINT16(src) & 1) ? true : false;
 	src += 2;
 	uint32 outsize = READ_LE_UINT32(src);
-	uint8 *sfx = (uint8*) malloc(outsize);
+	uint8 *sfx = (uint8*)malloc(outsize);
 	uint8 *dst = sfx;
 	src += 4;
 
@@ -4267,8 +4298,9 @@ int32 SoundTownsPC98_v2::voicePlay(const char *file, uint8, bool) {
 
 	_currentSFX = Audio::makeLinearInputStream(sfx, outsize, outputRate,
 		Audio::Mixer::FLAG_UNSIGNED | Audio::Mixer::FLAG_LITTLE_ENDIAN | Audio::Mixer::FLAG_AUTOFREE, 0, 0);
-	_soundChannels[h].file = file;
-	_mixer->playInputStream(Audio::Mixer::kSFXSoundType, &_soundChannels[h].channelHandle, _currentSFX);
+	_mixer->playInputStream(Audio::Mixer::kSFXSoundType, &_soundChannels[h], _currentSFX);
+	if (handle)
+		*handle = _soundChannels[h];
 
 	delete[] data;
 	return 1;

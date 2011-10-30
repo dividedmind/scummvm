@@ -97,8 +97,8 @@ bool bOldAudio;
 #define BIT0		0x01
 
 #define CD_XSCR		0x04	// Screen has a scroll offset
-#define CD_CMAP 	0x08	// Colour map is included
-#define CD_CMND 	0x10	// Command is included
+#define CD_CMAP	0x08	// Colour map is included
+#define CD_CMND	0x10	// Command is included
 #define CD_AUDIO	0x20	// Audio data is included
 #define CD_EXTEND	0x40	// Extended modes "A"-"z"
 #define CD_PRINT	0x80	// goes in conjunction with CD_CMD
@@ -260,11 +260,11 @@ static void PrepBMV(const byte *sourceData, int length, short deltaFetchDisp) {
 			firstLoop = true;
 		} else {
 			// Get the high nibble
-			eax = eax & 0xffffff00 | (NibbleHi >> 4);
+			eax = (eax & 0xffffff00) | (NibbleHi >> 4);
 			firstLoop = false;
 		}
 
- 		// Is lo nibble '00xx'?
+		// Is lo nibble '00xx'?
 		if ((eax & 0xC) == 0) {
 			for (;;) {
 //@_rDN_Lp_1:
@@ -438,8 +438,8 @@ static void MoviePalette(int paletteOffset) {
 
 	r = bigBuffer + paletteOffset;
 
-	for (i = 0; i < 256; i++, r += 3) 	{
-		moviePal[i] = RGB(*r, *(r + 1), *(r + 2));
+	for (i = 0; i < 256; i++, r += 3)	{
+		moviePal[i] = TINSEL_RGB(*r, *(r + 1), *(r + 2));
 	}
 
 	UpdateDACqueue(1, 255, &moviePal[1]);
@@ -596,7 +596,7 @@ static int MovieCommand(char cmd, int commandOffset) {
 		PPRINT_CMD pCmd;
 
 		pCmd = (PPRINT_CMD)(bigBuffer + commandOffset);
-		
+
 		MovieText(nullContext, (int16)READ_LE_UINT16(&pCmd->stringId),
 				(int16)READ_LE_UINT16(&pCmd->x),
 				(int16)READ_LE_UINT16(&pCmd->y),
@@ -610,7 +610,7 @@ static int MovieCommand(char cmd, int commandOffset) {
 			PTALK_CMD pCmd;
 
 			pCmd = (PTALK_CMD)(bigBuffer + commandOffset);
-			talkColour = RGB(pCmd->r, pCmd->g, pCmd->b);
+			talkColour = TINSEL_RGB(pCmd->r, pCmd->g, pCmd->b);
 
 			MovieText(nullContext, (int16)READ_LE_UINT16(&pCmd->stringId),
 					(int16)READ_LE_UINT16(&pCmd->x),
@@ -740,12 +740,12 @@ static void InitialiseBMV(void) {
 	// Grab the data buffer
 	bigBuffer = (byte *)malloc(NUM_SLOTS * SLOT_SIZE);
 	if (bigBuffer == NULL)
-		error(NO_MEM, "FMV data buffer\n");
+		error(NO_MEM, "FMV data buffer");
 
 	// Screen buffer (2 lines more than screen
 	screenBuffer = (byte *)malloc(SCREEN_WIDTH * (SCREEN_HIGH + 2));
 	if (screenBuffer == NULL)
-		error(NO_MEM, "FMV screen buffer\n");
+		error(NO_MEM, "FMV screen buffer");
 
 	// Pass the sceen buffer to the decompresser
 	InitBMV(screenBuffer);

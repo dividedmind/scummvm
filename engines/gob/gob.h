@@ -26,11 +26,16 @@
 #ifndef GOB_GOB_H
 #define GOB_GOB_H
 
-
 #include "common/system.h"
 #include "common/savefile.h"
 
+#include "gui/dialog.h"
+
 #include "engines/engine.h"
+
+namespace GUI {
+	class StaticTextWidget;
+}
 
 namespace Gob {
 
@@ -47,7 +52,6 @@ class Inter;
 class Map;
 class Mult;
 class PalAnim;
-class Parse;
 class Scenery;
 class Util;
 class SaveLoad;
@@ -66,12 +70,10 @@ class SaveLoad;
 #define READ_VARO_UINT32(off)       _vm->_inter->_variables->readOff32(off)
 #define READ_VARO_UINT16(off)       _vm->_inter->_variables->readOff16(off)
 #define READ_VARO_UINT8(off)        _vm->_inter->_variables->readOff8(off)
-#define GET_VAR_STR(var)            _vm->_inter->_variables->getAddressVarString(var, 0)
-#define GET_VARO_STR(off)           _vm->_inter->_variables->getAddressOffString(off, 0)
+#define GET_VAR_STR(var)            _vm->_inter->_variables->getAddressVarString(var)
+#define GET_VARO_STR(off)           _vm->_inter->_variables->getAddressOffString(off)
 #define GET_VAR_FSTR(var)           _vm->_inter->_variables->getAddressVarString(var)
 #define GET_VARO_FSTR(off)          _vm->_inter->_variables->getAddressOffString(off)
-
-#define VAR_ADDRESS(var)            _vm->_inter->_variables->getAddressVar32(var)
 
 #define WRITE_VAR_OFFSET(off, val)  WRITE_VARO_UINT32((off), (val))
 #define WRITE_VAR(var, val)         WRITE_VAR_UINT32((var), (val))
@@ -79,11 +81,14 @@ class SaveLoad;
 #define VAR(var)                    READ_VAR_UINT32(var)
 
 
+// WARNING: Reordering these will invalidate save games!
 enum Endianness {
 	kEndiannessLE,
 	kEndiannessBE
 };
 
+// WARNING: Reordering these will invalidate save games!
+//          Add new games to the bottom of the list.
 enum GameType {
 	kGameTypeNone = 0,
 	kGameTypeGob1,
@@ -95,95 +100,59 @@ enum GameType {
 	kGameTypeLostInTime,
 	kGameTypeInca2,
 	kGameTypeDynasty,
-	kGameTypeUrban
+	kGameTypeUrban,
+	kGameTypePlaytoon,
+	kGameTypePlaytnCk,
+	kGameTypeBambou,
+	kGameTypeFascination,
+	kGameTypeGeisha,
+	kGameTypeMagicStones,
+	kGameTypeAdibou4,
+	kGameTypeAdibouUnknown
 };
 
 enum Features {
-	kFeaturesNone = 0,
-	kFeaturesCD = 1 << 0,
-	kFeaturesEGA = 1 << 1,
-	kFeaturesAdlib = 1 << 2,
-	kFeatures640 = 1 << 3
+	kFeaturesNone    =      0,
+	kFeaturesCD      = 1 << 0,
+	kFeaturesEGA     = 1 << 1,
+	kFeaturesAdlib   = 1 << 2,
+	kFeatures640     = 1 << 3,
+	kFeaturesSCNDemo = 1 << 4,
+	kFeaturesBATDemo = 1 << 5,
+	kFeatures800x600     = 1 << 6
 };
 
 enum {
-	kDebugFuncOp = 1 << 0,
-	kDebugDrawOp = 1 << 1,
-	kDebugGobOp = 1 << 2,
-	kDebugSound = 1 << 3,
-	kDebugParser = 1 << 4,
-	kDebugGameFlow = 1 << 5,
-	kDebugFileIO = 1 << 6,
-	kDebugSaveLoad = 1 << 7,
-	kDebugGraphics = 1 << 8,
-	kDebugVideo = 1 << 9,
-	kDebugCollisions = 1 << 10
-};
-
-inline char *strncpy0(char *dest, const char *src, size_t n) {
-	strncpy(dest, src, n);
-	dest[n] = 0;
-	return dest;
-}
-
-// A "smart" reference counting templated class
-template<typename T>
-class ReferenceCounter {
-public:
-	class Ptr {
-	public:
-		bool operator==(const Ptr &p) const { return _p == p._p; }
-		bool operator==(const ReferenceCounter *p) const { return _p == p; }
-
-		T *operator-> () { return _p; }
-		T &operator* () { return *_p; }
-		operator T*() { return _p; }
-
-		Ptr(T *p) : _p(p) { ++_p->_references; }
-		Ptr() : _p(0) { }
-
-		~Ptr() {
-			if (_p && (--_p->_references == 0))
-				delete _p;
-		}
-
-		Ptr(const Ptr &p) : _p(p._p) { ++_p->_references; }
-
-		Ptr &operator= (const Ptr &p) {
-			++p._p->_references;
-			if (_p && (--_p->_references == 0))
-				delete _p;
-			_p = p._p;
-			return *this;
-		}
-		Ptr *operator= (const Ptr *p) {
-			if (p)
-				++p->_p->_references;
-			if (_p && (--_p->_references == 0))
-				delete _p;
-
-			_p = p ? p->_p : 0;
-			return this;
-		}
-
-	private:
-		T *_p;
-	};
-
-	ReferenceCounter() : _references(0) { }
-	virtual ~ReferenceCounter() {}
-
-private:
-	unsigned _references;
-	friend class Ptr;
+	kDebugFuncOp     = 1 <<  0,
+	kDebugDrawOp     = 1 <<  1,
+	kDebugGobOp      = 1 <<  2,
+	kDebugSound      = 1 <<  3,
+	kDebugExpression = 1 <<  4,
+	kDebugGameFlow   = 1 <<  5,
+	kDebugFileIO     = 1 <<  6,
+	kDebugSaveLoad   = 1 <<  7,
+	kDebugGraphics   = 1 <<  8,
+	kDebugVideo      = 1 <<  9,
+	kDebugHotspots   = 1 << 10,
+	kDebugDemo       = 1 << 11
 };
 
 struct GOBGameDescription;
 
+class PauseDialog : public GUI::Dialog {
+public:
+	PauseDialog();
+
+  virtual void reflowLayout();
+	virtual void handleKeyDown(Common::KeyState state);
+
+private:
+	Common::String _message;
+	GUI::StaticTextWidget *_text;
+};
+
 class GobEngine : public Engine {
 private:
-	GobEngine *_vm;
-
 	GameType _gameType;
 	int32 _features;
 	Common::Platform _platform;
@@ -191,10 +160,10 @@ private:
 	uint32 _pauseStart;
 
 	// Engine APIs
-	virtual Common::Error init();
-	virtual Common::Error go();
+	virtual Common::Error run();
 	virtual bool hasFeature(EngineFeature f) const;
 	virtual void pauseEngineIntern(bool pause);
+	virtual void syncSoundSettings();
 
 	bool initGameParts();
 	void deinitGameParts();
@@ -209,8 +178,10 @@ public:
 	uint16 _height;
 	uint8 _mode;
 
-	char *_startTot;
-	char *_startTot0;
+	Common::String _startStk;
+	Common::String _startTot;
+	uint32 _demoIndex;
+
 	bool _copyProtection;
 	bool _noMusic;
 
@@ -226,7 +197,6 @@ public:
 	Map *_map;
 	Mult *_mult;
 	PalAnim *_palAnim;
-	Parse *_parse;
 	Scenery *_scenery;
 	Inter *_inter;
 	SaveLoad *_saveLoad;
@@ -236,6 +206,8 @@ public:
 	void validateLanguage();
 	void validateVideoMode(int16 videoMode);
 
+	void pauseGame();
+
 	Endianness getEndianness() const;
 	Common::Platform getPlatform() const;
 	GameType getGameType() const;
@@ -243,6 +215,10 @@ public:
 	bool isEGA() const;
 	bool is640() const;
 	bool hasAdlib() const;
+	bool isSCNDemo() const;
+	bool isBATDemo() const;
+	bool is800x600() const;
+	bool isDemo() const;
 
 	GobEngine(OSystem *syst);
 	virtual ~GobEngine();

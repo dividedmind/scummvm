@@ -143,9 +143,13 @@ public:
 	int compareTo(const char *x) const;	// strcmp clone
 	int compareToIgnoreCase(const char *x) const;	// stricmp clone
 
+	bool hasSuffix(const String &x) const;
 	bool hasSuffix(const char *x) const;
+
+	bool hasPrefix(const String &x) const;
 	bool hasPrefix(const char *x) const;
 
+	bool contains(const String &x) const;
 	bool contains(const char *x) const;
 	bool contains(char x) const;
 
@@ -166,11 +170,12 @@ public:
 	 *
 	 * @param str Text to be matched against the given pattern.
 	 * @param pat Glob pattern.
+	 * @param pathMode Whether to use path mode, i.e., whether slashes must be matched explicitly.
 	 *
 	 * @return true if str matches the pattern, false otherwise.
 	 */
-	bool matchString(const char *pat) const;
-	bool matchString(const String &pat) const;
+	bool matchString(const char *pat, bool pathMode = false) const;
+	bool matchString(const String &pat, bool pathMode = false) const;
 
 
 	inline const char *c_str() const		{ return _str; }
@@ -179,7 +184,7 @@ public:
 	inline bool empty() const	{ return (_size == 0); }
 	char lastChar() const	{ return (_size > 0) ? _str[_size-1] : 0; }
 
-	char operator [](int idx) const {
+	char operator[](int idx) const {
 		assert(_str && idx >= 0 && idx < (int)_size);
 		return _str[idx];
 	}
@@ -193,7 +198,7 @@ public:
 	/** Set character c at position p, replacing the previous character there. */
 	void setChar(char c, uint32 p);
 
-	/** Set character c at position p. */
+	/** Insert character c before position p. */
 	void insertChar(char c, uint32 p);
 
 	/** Clears the string, making it empty. */
@@ -212,6 +217,11 @@ public:
 	void trim();
 
 	uint hash() const;
+
+	/**
+	 * Printf-like function. Returns a formatted String.
+	 */
+	static Common::String printf(const char *fmt, ...) GCC_PRINTF(1,2);
 
 public:
 	typedef char *        iterator;
@@ -306,22 +316,14 @@ Common::String normalizePath(const Common::String &path, const char sep);
  *
  * @param str Text to be matched against the given pattern.
  * @param pat Glob pattern.
+ * @param pathMode Whether to use path mode, i.e., whether slashes must be matched explicitly.
  *
  * @return true if str matches the pattern, false otherwise.
  */
-bool matchString(const char *str, const char *pat);
+bool matchString(const char *str, const char *pat, bool pathMode = false);
 
 
-class StringList : public Array<String> {
-public:
-	void push_back(const char *str) {
-		Array<String>::push_back(str);
-	}
-
-	void push_back(const String &str) {
-		Array<String>::push_back(str);
-	}
-};
+typedef Array<String> StringList;
 
 }	// End of namespace Common
 

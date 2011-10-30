@@ -23,7 +23,9 @@
  *
  */
 
+#include "cruise/cruise.h"
 #include "cruise/cruise_main.h"
+#include "common/endian.h"
 
 namespace Cruise {
 
@@ -33,19 +35,15 @@ scriptInstanceStruct procHead;
 scriptInstanceStruct *currentScriptPtr;
 
 int8 getByteFromScript(void) {
-	int8 var = *(int8*)(currentData3DataPtr + currentScriptPtr->var4);
-
-	currentScriptPtr->var4 = currentScriptPtr->var4 + 1;
+	int8 var = *(int8*)(currentData3DataPtr + currentScriptPtr->scriptOffset);
+	++currentScriptPtr->scriptOffset;
 
 	return (var);
 }
 
 short int getShortFromScript(void) {
-	short int var = *(int16 *)(currentData3DataPtr + currentScriptPtr->var4);
-
-	currentScriptPtr->var4 = currentScriptPtr->var4 + 2;
-
-	flipShort(&var);
+	short int var = (int16)READ_BE_UINT16(currentData3DataPtr + currentScriptPtr->scriptOffset);
+	currentScriptPtr->scriptOffset += 2;
 
 	return (var);
 }
@@ -98,14 +96,13 @@ int32 opcodeType0(void) {
 
 		if (size == 1) {
 			address += index;
-			pushVar(loadShort(address));
+			pushVar((int16)READ_BE_UINT16(address));
 			return (0);
 		} else if (size == 2) {
 			pushVar(*address);
 			return (0);
 		} else {
-			printf("Unsupported code in opcodeType0 case 1!\n");
-			exit(1);
+			error("Unsupported code in opcodeType0 case 1");
 		}
 
 		return (0);
@@ -129,11 +126,8 @@ int32 opcodeType0(void) {
 
 		break;
 	}
-	default: {
-		printf("Unsupported type %d in opcodeType0\n",
-		       currentScriptOpcodeType);
-		exit(1);
-	}
+	default:
+		error("Unsupported type %d in opcodeType0", currentScriptOpcodeType);
 	}
 
 	return 0;
@@ -193,17 +187,15 @@ int32 opcodeType1(void)	{
 
 		switch (type2) {
 		case 1: {
-			saveShort(ptr + var_A + offset * 2, var);
+			WRITE_BE_UINT16(ptr + var_A + offset * 2, var);
 			return 0;
 		}
 		case 2: {
 			*(ptr + var_A + offset) = var;
 			return (0);
 		}
-		default: {
-			printf("Unsupported code in opcodeType1 case 1!\n");
-			exit(1);
-		}
+		default:
+			error("Unsupported code in opcodeType1 case 1");
 		}
 
 		break;
@@ -229,11 +221,8 @@ int32 opcodeType1(void)	{
 		saveOpcodeVar = var;
 		break;
 	}
-	default: {
-		printf("Unsupported type %d in opcodeType1\n",
-		       currentScriptOpcodeType);
-		exit(1);
-	}
+	default:
+		error("Unsupported type %d in opcodeType1", currentScriptOpcodeType);
 	}
 
 	return (0);
@@ -371,7 +360,7 @@ int32 opcodeType7(void) {
 }
 
 int32 opcodeType5(void) {
-	int offset = currentScriptPtr->var4;
+	int offset = currentScriptPtr->scriptOffset;
 	int short1 = getShortFromScript();
 	int newSi = short1 + offset;
 	int bitMask = currentScriptPtr->ccr;
@@ -379,37 +368,37 @@ int32 opcodeType5(void) {
 	switch (currentScriptOpcodeType) {
 	case 0: {
 		if (!(bitMask & 1)) {
-			currentScriptPtr->var4 = newSi;
+			currentScriptPtr->scriptOffset = newSi;
 		}
 		break;
 	}
 	case 1: {
 		if (bitMask & 1) {
-			currentScriptPtr->var4 = newSi;
+			currentScriptPtr->scriptOffset = newSi;
 		}
 		break;
 	}
 	case 2: {
 		if (bitMask & 2) {
-			currentScriptPtr->var4 = newSi;
+			currentScriptPtr->scriptOffset = newSi;
 		}
 		break;
 	}
 	case 3: {
 		if (bitMask & 3) {
-			currentScriptPtr->var4 = newSi;
+			currentScriptPtr->scriptOffset = newSi;
 		}
 		break;
 	}
 	case 4: {
 		if (bitMask & 4) {
-			currentScriptPtr->var4 = newSi;
+			currentScriptPtr->scriptOffset = newSi;
 		}
 		break;
 	}
 	case 5: {
 		if (bitMask & 5) {
-			currentScriptPtr->var4 = newSi;
+			currentScriptPtr->scriptOffset = newSi;
 		}
 		break;
 	}
@@ -417,7 +406,7 @@ int32 opcodeType5(void) {
 		break;	// never
 	}
 	case 7: {
-		currentScriptPtr->var4 = newSi;	//always
+		currentScriptPtr->scriptOffset = newSi;	//always
 		break;
 	}
 	}
@@ -565,7 +554,7 @@ uint8 *attacheNewScriptToTail(scriptInstanceStruct *scriptHandlePtr, int16 overl
 
 	tempPtr->varA = var_C;
 	tempPtr->nextScriptPtr = NULL;
-	tempPtr->var4 = 0;
+	tempPtr->scriptOffset = 0;
 
 	tempPtr->scriptNumber = param;
 	tempPtr->overlayNumber = overlayNumber;
@@ -635,21 +624,25 @@ int executeScripts(scriptInstanceStruct *ptr) {
 	positionInStack = 0;
 
 	do {
-		if (currentScriptPtr->var4 == 290
+#ifdef SKIP_INTRO
+		if (currentScriptPtr->scriptOffset == 290
 		        && currentScriptPtr->overlayNumber == 4
 		        && currentScriptPtr->scriptNumber == 0) {
-			currentScriptPtr->var4 = 923;
+			currentScriptPtr->scriptOffset = 923;
 		}
+#endif
 		opcodeType = getByteFromScript();
 
-		//	printf("opType: %d\n",(opcodeType&0xFB)>>3);
+		debugC(5, kCruiseDebugScript, "Script %s/%d ip=%d opcode=%d",
+			overlayTable[currentScriptPtr->overlayNumber].overlayName, 
+			currentScriptPtr->scriptNumber, 
+			currentScriptPtr->scriptOffset,
+			(opcodeType & 0xFB) >> 3);
 
 		currentScriptOpcodeType = opcodeType & 7;
 
 		if (!opcodeTypeTable[(opcodeType & 0xFB) >> 3]) {
-			printf("Unsupported opcode type %d\n", (opcodeType & 0xFB) >> 3);
-			exit(1);
-			return (-21);
+			error("Unsupported opcode type %d", (opcodeType & 0xFB) >> 3);
 		}
 	} while (!opcodeTypeTable[(opcodeType & 0xFB) >> 3]());
 

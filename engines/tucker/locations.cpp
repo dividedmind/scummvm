@@ -154,7 +154,7 @@ void TuckerEngine::updateSprite_locationNum2() {
 		_spritesTable[0].needUpdate = 1;
 		return;
 	}
-	if (_csDataHandled != 0) {
+	if (_csDataHandled) {
 		_spritesTable[0].needUpdate = 0;
 		if (_flagsTable[199] == 0) {
 			_flagsTable[199] = 1;
@@ -195,8 +195,8 @@ void TuckerEngine::execData3PreUpdate_locationNum2() {
 				for (int j = 0; j < 2; ++j) {
 					const int offset = (_updateLocationYPosTable2[i] + j) * 640 + _updateLocationXPosTable2[i];
 					_locationBackgroundGfxBuf[offset] = 142 + j * 2;
-					addDirtyRect(offset % 640, offset / 640, 1, 1);
 				}
+				addDirtyRect(_updateLocationXPosTable2[i], _updateLocationYPosTable2[i], 1, 2);
 				_updateLocationYPosTable2[i] += 2;
 				if (_updateLocationYPosTable2[i] > _updateLocationYMaxTable[i]) {
 					_updateLocationYPosTable2[i] = 0;
@@ -288,7 +288,7 @@ void TuckerEngine::updateSprite_locationNum3_1(int i) {
 		}
 	} else {
 		_spritesTable[i].needUpdate = 0;
-		if (_csDataHandled != 0) {
+		if (_csDataHandled) {
 			num = 6;
 			if (getRandomNumber() < 32000) {
 				_spritesTable[i].updateDelay = 5;
@@ -455,9 +455,9 @@ void TuckerEngine::updateSprite_locationNum6_1(int i) {
 		} else {
 			_spritesTable[i].needUpdate = 0;
 			state = 7;
-			_soundsMapTable[0] = 3;
+			_miscSoundFxNum[0] = 3;
 			_miscSoundFxDelayCounter[0] = 70;
-			_soundsMapTable[1] = 4;
+			_miscSoundFxNum[1] = 4;
 			_miscSoundFxDelayCounter[1] = 25;
 		}
 	}
@@ -540,13 +540,14 @@ void TuckerEngine::execData3PreUpdate_locationNum6Helper1() {
 		x2 = 15 - _flagsTable[27];
 	}
 	for (int i = 0; i < x1; ++i) {
-		execData3PreUpdate_locationNum6Helper2(13125 + i * 8, _data3GfxBuf + _dataTable[238].sourceOffset);
-		execData3PreUpdate_locationNum6Helper2(13245 - i * 8, _data3GfxBuf + _dataTable[238].sourceOffset);
+		execData3PreUpdate_locationNum6Helper2(20 * 640 + 325 + i * 8, _data3GfxBuf + _dataTable[238].sourceOffset);
+		execData3PreUpdate_locationNum6Helper2(20 * 640 + 445 - i * 8, _data3GfxBuf + _dataTable[238].sourceOffset);
 	}
 	for (int i = 0; i < x2; ++i) {
-		execData3PreUpdate_locationNum6Helper3(13125 + x1 * 8 + i * 4, _data3GfxBuf + _dataTable[238].sourceOffset);
-		execData3PreUpdate_locationNum6Helper3(13249 - x1 * 8 - i * 4, _data3GfxBuf + _dataTable[238].sourceOffset);
+		execData3PreUpdate_locationNum6Helper3(20 * 640 + 325 + x1 * 8 + i * 4, _data3GfxBuf + _dataTable[238].sourceOffset);
+		execData3PreUpdate_locationNum6Helper3(20 * 640 + 449 - x1 * 8 - i * 4, _data3GfxBuf + _dataTable[238].sourceOffset);
 	}
+	addDirtyRect(0, 20, 640, 51);
 }
 
 void TuckerEngine::execData3PreUpdate_locationNum6Helper2(int dstOffset, const uint8 *src) {
@@ -562,7 +563,6 @@ void TuckerEngine::execData3PreUpdate_locationNum6Helper2(int dstOffset, const u
 			}
 		}
 	}
-	addDirtyRect(dstOffset % 640, dstOffset / 640, 8, 51);
 }
 
 void TuckerEngine::execData3PreUpdate_locationNum6Helper3(int dstOffset, const uint8 *src) {
@@ -575,7 +575,6 @@ void TuckerEngine::execData3PreUpdate_locationNum6Helper3(int dstOffset, const u
 			}
 		}
 	}
-	addDirtyRect(dstOffset % 640, dstOffset / 640, 4, 51);
 }
 
 void TuckerEngine::execData3PostUpdate_locationNum6() {
@@ -650,22 +649,18 @@ void TuckerEngine::execData3PostUpdate_locationNum8() {
 		if (_execData3Counter > 30) {
 			_updateLocationYPosTable2[0] = 16;
 			_updateLocationXPosTable2[0] = 264;
-
 		}
 	}
 	if (_updateLocationYPosTable2[0] > 0) {
 		const int offset = _updateLocationYPosTable2[0] * 640 + _updateLocationXPosTable2[0];
-		_locationBackgroundGfxBuf[offset]               = 142;
-		_locationBackgroundGfxBuf[offset + 640     - 1] = 143;
-		_locationBackgroundGfxBuf[offset + 640]         = 143;
-		_locationBackgroundGfxBuf[offset + 640     + 1] = 144;
-		_locationBackgroundGfxBuf[offset + 640 * 2 - 1] = 144;
-		_locationBackgroundGfxBuf[offset + 640 * 2]     = 144;
-		_locationBackgroundGfxBuf[offset + 640 * 2 + 1] = 145;
-		_locationBackgroundGfxBuf[offset + 640 * 3 - 1] = 147;
-		_locationBackgroundGfxBuf[offset + 640 * 3]     = 143;
-		_locationBackgroundGfxBuf[offset + 640 * 3 + 1] = 147;
-		addDirtyRect(_updateLocationXPosTable2[0] - 1, _updateLocationYPosTable2[0], 3, 4);
+		static const int colorsTable[] = { 143, 143, 144, 144, 144, 145, 147, 143, 147 };
+		_locationBackgroundGfxBuf[offset] = 142;
+		for (int j = 1; j <= 3; ++j) {
+			for (int i = -1; i <= 1; ++i) {
+				_locationBackgroundGfxBuf[offset + 640 * j + i] = colorsTable[(j - 1) * 3  + i + 1];
+			}
+		}
+		addDirtyRect(_updateLocationXPosTable2[0] - 1, _updateLocationYPosTable2[0] + 1, 3, 4);
 		_updateLocationYPosTable2[0] += 2;
 		if (_updateLocationYPosTable2[0] > 120) {
 			_updateLocationYPosTable2[0] = 0;
@@ -785,7 +780,7 @@ void TuckerEngine::updateSprite_locationNum10() {
 		} else if (r > 24000) {
 			state = 6;
 			_miscSoundFxDelayCounter[0] = 120;
-			_soundsMapTable[0] = 0;
+			_miscSoundFxNum[0] = 0;
 		} else {
 			setCharacterAnimation(0, 0);
 		}
@@ -1017,9 +1012,10 @@ void TuckerEngine::execData3PreUpdate_locationNum14() {
 		if (num > 0) {
 			const int w = _dataTable[num].xSize;
 			const int h = _dataTable[num].ySize;
-			const int dstOffset = (_updateLocationYPosTable2[i] / 16 - h / 2) * 640 + (_updateLocationXPosTable2[i] - w / 2);
-			Graphics::decodeRLE_248(_locationBackgroundGfxBuf + dstOffset, _data3GfxBuf + _dataTable[num].sourceOffset, w, h, 0, 0, false);
-			addDirtyRect(dstOffset % 640, dstOffset / 640, w, h);
+			const int x = _updateLocationXPosTable2[i] - w / 2;
+			const int y = _updateLocationYPosTable2[i] / 16 - h / 2;
+			Graphics::decodeRLE_248(_locationBackgroundGfxBuf + y * 640 + x, _data3GfxBuf + _dataTable[num].sourceOffset, w, h, 0, 0, false);
+			addDirtyRect(x, y, w, h);
 		}
 	}
 }
@@ -1149,7 +1145,7 @@ void TuckerEngine::updateSprite_locationNum16_0(int i) {
 		state = 4;
 		if (_xPosCurrent < 300) {
 			_miscSoundFxDelayCounter[0] = 2;
-			_soundsMapTable[0] = 9;
+			_miscSoundFxNum[0] = 9;
 		}
 	} else if (r < 32000) {
 		state = 5;
@@ -1354,7 +1350,7 @@ void TuckerEngine::updateSprite_locationNum21() {
 
 void TuckerEngine::execData3PreUpdate_locationNum21() {
 	if (_xPosCurrent > 460 && _flagsTable[58] == 0 && _nextAction == 0) {
-		_updateCharPositionNewType = 0;
+		_currentActionVerb = 0;
 		_pendingActionDelay = 0;
 		_flagsTable[59] = 1;
 		_nextAction = 2;
@@ -1402,7 +1398,7 @@ void TuckerEngine::execData3PreUpdate_locationNum22() {
 			_flagsTable[53] = 5;
 		}
 	}
-	if (_flagsTable[210] < 2 && _csDataHandled == 0 && _flagsTable[54] == 1) {
+	if (_flagsTable[210] < 2 && !_csDataHandled && _flagsTable[54] == 1) {
 		_nextAction = 25;
 		_csDataLoaded = 0;
 		_flagsTable[210] = 2;
@@ -1675,7 +1671,7 @@ void TuckerEngine::execData3PreUpdate_locationNum26() {
 
 void TuckerEngine::updateSprite_locationNum27(int i) {
 	int state;
-	if (_flagsTable[155] < 3 || _flagsTable[125] == 5) {
+	if (_flagsTable[155] < 3 || _flagsTable[155] == 5) {
 		state = -1;
 	} else if (_flagsTable[155] == 3) {
 		state = 1;
@@ -1758,7 +1754,7 @@ void TuckerEngine::execData3PreUpdate_locationNum28() {
 		_csDataLoaded = 0;
 		_pendingActionDelay = 0;
 		_pendingActionIndex = 0;
-		_updateCharPositionNewType = 0;
+		_currentActionVerb = 0;
 	}
 }
 
@@ -2117,7 +2113,7 @@ void TuckerEngine::updateSprite_locationNum43_2(int i) {
 
 void TuckerEngine::updateSprite_locationNum43_3(int i) {
 	int state;
-	if (_flagsTable[236] > 0) {
+	if (_flagsTable[236] < 4) {
 		state = -1;
 	} else if (_charSpeechSoundCounter > 0 && _actionCharacterNum == i) {
 		state = 7;
@@ -2131,7 +2127,7 @@ void TuckerEngine::updateSprite_locationNum43_3(int i) {
 
 void TuckerEngine::updateSprite_locationNum43_4(int i) {
 	int state;
-	if (_flagsTable[236] > 0) {
+	if (_flagsTable[236] < 4) {
 		state = -1;
 	} else if (_charSpeechSoundCounter > 0 && _actionCharacterNum == i) {
 		state = 9;
@@ -2361,7 +2357,7 @@ void TuckerEngine::execData3PreUpdate_locationNum53() {
 		_csDataLoaded = 0;
 		_pendingActionDelay = 0;
 		_pendingActionIndex = 0;
-		_updateCharPositionNewType = 0;
+		_currentActionVerb = 0;
 	}
 }
 
@@ -3029,25 +3025,25 @@ void TuckerEngine::execData3PreUpdate_locationNum70() {
 		_execData3Counter = 1;
 		_flagsTable[143] = 0;
 		_updateLocation70StringLen = 0;
-		_forceRedrawPanelItems = 1;
+		_forceRedrawPanelItems = true;
 		_panelState = 1;
 		setCursorType(2);
 	}
-	_forceRedrawPanelItems = 1;
+	_forceRedrawPanelItems = true;
 	_panelState = 1;
 	setCursorType(2);
 	int pos = getPositionForLine(22, _infoBarBuf);
-	int offset = (_flagsTable[143] == 0) ? 57688 : 46168;
+	int offset = (_flagsTable[143] == 0) ? 90 * 640 + 88 : 72 * 640 + 88;
 	drawStringAlt(offset, color, &_infoBarBuf[pos]);
-	Graphics::drawStringChar(_locationBackgroundGfxBuf + offset + 5760, 62, 640, color, _charsetGfxBuf);
+	Graphics::drawStringChar(_locationBackgroundGfxBuf + offset + 9 * 640, 62, 640, color, _charsetGfxBuf);
 	if (_flagsTable[143] != 0) {
 		pos = getPositionForLine(_flagsTable[143] * 2 + 23, _infoBarBuf);
-		drawStringAlt(offset + 11520, color, &_infoBarBuf[pos]);
+		drawStringAlt(offset + 18 * 640, color, &_infoBarBuf[pos]);
 		pos = getPositionForLine(_flagsTable[143] * 2 + 24, _infoBarBuf);
-		drawStringAlt(offset + 17280, color, &_infoBarBuf[pos]);
+		drawStringAlt(offset + 27 * 640, color, &_infoBarBuf[pos]);
 	}
 	execData3PreUpdate_locationNum70Helper();
-	drawStringAlt(offset + 5768, color, _updateLocation70String, _updateLocation70StringLen);
+	drawStringAlt(offset + 9 * 640 + 8, color, _updateLocation70String, _updateLocation70StringLen);
 }
 
 void TuckerEngine::execData3PreUpdate_locationNum70Helper() {

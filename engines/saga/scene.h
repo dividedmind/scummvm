@@ -29,7 +29,6 @@
 #define SAGA_SCENE_H
 
 #include "saga/font.h"
-#include "saga/list.h"
 #include "saga/actor.h"
 #include "saga/interface.h"
 #include "saga/puzzle.h"
@@ -375,7 +374,7 @@ class Scene {
 	}
 
  private:
-	void loadScene(LoadSceneParams *loadSceneParams);
+	void loadScene(LoadSceneParams &loadSceneParams);
 	void loadSceneDescriptor(uint32 resourceId);
 	void loadSceneResourceList(uint32 resourceId);
 	void loadSceneEntryList(const byte* resourcePointer, size_t resourceLength);
@@ -422,6 +421,7 @@ class Scene {
 	int ITEStartProc();
 	int IHNMStartProc();
 	int IHNMCreditsProc();
+	int DinoStartProc();
 	int FTA2StartProc();
 	int FTA2EndProc(FTA2Endings whichEnding);
 

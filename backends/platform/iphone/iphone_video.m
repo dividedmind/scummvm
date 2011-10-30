@@ -26,50 +26,44 @@
 #include "iphone_video.h"
 #include "iphone_common.h"
 
-#import <UIKit/UIKit.h>
-#import <UIKit/UIView-Geometry.h>
-#import <GraphicsServices/GraphicsServices.h>
-#import <Foundation/Foundation.h>
-#import <CoreSurface/CoreSurface.h>
-#import <UIKit/UIKeyboardLayoutQWERTY.h>
-#import <QuartzCore/QuartzCore.h>
-
 static iPhoneView *sharedInstance = nil;
 static int _width = 0;
 static int _height = 0;
-static bool _landscape;
-static int _orientation = -1;
 static CGRect _screenRect;
+static char* _textureBuffer = 0;
+static int _textureWidth = 0;
+static int _textureHeight = 0;
+NSLock* _lock = nil;
+static int _needsScreenUpdate = 0;
+
+static UITouch* _firstTouch = NULL;
+static UITouch* _secondTouch = NULL;
 
 // static long lastTick = 0;
 // static int frames = 0;
 
-unsigned short* iPhone_getSurface() {
-	return CoreSurfaceBufferGetBaseAddress([sharedInstance getSurface]);
-}
-
 void iPhone_updateScreen() {
-	[sharedInstance performSelectorOnMainThread:@selector(setNeedsDisplay) withObject:nil waitUntilDone: NO];
+	if (!_needsScreenUpdate) {
+		_needsScreenUpdate = 1;
+		[sharedInstance performSelectorOnMainThread:@selector(updateSurface) withObject:nil waitUntilDone: NO];
+	}
 }
 
-void iPhone_updateScreenRect(int x1, int y1, int x2, int y2) {
-	//CGRect rect = CGRectMake(x1, y1, x2, y2);
-	//[sharedInstance performSelectorOnMainThread:@selector(updateScreenRect:) withObject: [NSValue valueWithRect:rect] waitUntilDone: NO];
+void iPhone_updateScreenRect(unsigned short* screen, int x1, int y1, int x2, int y2) {
+	//[_lock lock];
+
+	int y;
+	for (y = y1; y < y2; ++y) {
+		memcpy(&_textureBuffer[(y * _textureWidth + x1 )* 2], &screen[y * _width + x1], (x2 - x1) * 2);
+	}
+
+	//[_lock unlock];
 }
 
-void iPhone_lockSurface() {
-	CoreSurfaceBufferLock([sharedInstance getSurface], 3);
-}
 
-void iPhone_unlockSurface() {
-	CoreSurfaceBufferUnlock([sharedInstance getSurface]);
-}
-
-void iPhone_initSurface(int width, int height, bool landscape) {
+void iPhone_initSurface(int width, int height) {
 	_width = width;
 	_height = height;
-	_landscape = landscape;
-
 	[sharedInstance performSelectorOnMainThread:@selector(initSurface) withObject:nil waitUntilDone: YES];
 }
 
@@ -92,6 +86,12 @@ bool iPhone_fetchEvent(int *outEvent, float *outX, float *outY) {
 	return true;
 }
 
+const char* iPhone_getDocumentsDir() {
+	NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+	NSString *documentsDirectory = [paths objectAtIndex:0];
+	return [documentsDirectory UTF8String];
+}
+
 bool getLocalMouseCoords(CGPoint *point) {
 	if (point->x < _screenRect.origin.x || point->x >= _screenRect.origin.x + _screenRect.size.width ||
 		point->y < _screenRect.origin.y || point->y >= _screenRect.origin.y + _screenRect.size.height) {
@@ -104,7 +104,25 @@ bool getLocalMouseCoords(CGPoint *point) {
 	return true;
 }
 
+uint getSizeNextPOT(uint size) {
+    if ((size & (size - 1)) || !size) {
+        int log = 0;
+
+        while (size >>= 1)
+            ++log;
+
+        size = (2 << log);
+    }
+
+    return size;
+}
+
 @implementation iPhoneView
+
++ (Class) layerClass
+{
+	return [CAEAGLLayer class];
+}
 
 - (id)initWithFrame:(struct CGRect)frame {
 	[super initWithFrame: frame];
@@ -114,8 +132,11 @@ bool getLocalMouseCoords(CGPoint *point) {
 	_screenLayer = nil;
 
 	sharedInstance = self;
+
+	_lock = [NSLock new];
 	_keyboardView = nil;
-	//[super setTapDelegate: self];
+	_context = nil;
+	_screenTexture = 0;
 
 	return self;
 }
@@ -126,9 +147,12 @@ bool getLocalMouseCoords(CGPoint *point) {
 	if (_keyboardView != nil) {
 		[_keyboardView dealloc];
 	}
+
+	if (_screenTexture)
+		free(_textureBuffer);
 }
 
-- (CoreSurfaceBufferRef)getSurface {
+- (void *)getSurface {
 	return _screenSurface;
 }
 
@@ -145,44 +169,136 @@ bool getLocalMouseCoords(CGPoint *point) {
 	// }
 }
 
-- (void)updateScreenRect:(id)rect {
-	// NSRect nsRect = [rect rectValue];
-	// CGRect cgRect = CGRectMake(nsRect.origin.x, nsRect.origin.y, nsRect.size.width, nsRect.size.height);
-	// [sharedInstance setNeedsDisplayInRect: cgRect];
+- (void)updateSurface {
+	if (!_needsScreenUpdate) {
+		return;
+	}
+	_needsScreenUpdate = 0;
+
+	GLfloat vertices[] = {
+		0.0f + _heightOffset, 0.0f + _widthOffset,
+		_visibleWidth - _heightOffset, 0.0f + _widthOffset,
+		0.0f + _heightOffset,  _visibleHeight - _widthOffset,
+		_visibleWidth - _heightOffset,  _visibleHeight - _widthOffset
+	};
+
+	float texWidth = _width / (float)_textureWidth;;
+	float texHeight = _height / (float)_textureHeight;
+
+	const GLfloat texCoords[] = {
+		texWidth, 0.0f,
+		0.0f, 0.0f,
+		texWidth, texHeight,
+		0.0f, texHeight
+	};
+
+	glVertexPointer(2, GL_FLOAT, 0, vertices);
+	glTexCoordPointer(2, GL_FLOAT, 0, texCoords);
+
+	//[_lock lock];
+	// Unfortunately we have to update the whole texture every frame, since glTexSubImage2D is actually slower in all cases
+	// due to the iPhone internals having to convert the whole texture back from its internal format when used.
+	// In the future we could use several tiled textures instead.
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _textureWidth, _textureHeight, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, _textureBuffer);
+	//[_lock unlock];
+
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	glBindRenderbufferOES(GL_RENDERBUFFER_OES, _viewRenderbuffer);
+	[_context presentRenderbuffer:GL_RENDERBUFFER_OES];
+
 }
 
 - (void)initSurface {
-	//printf("Window: (%d, %d), Surface: (%d, %d)\n", _fullWidth, _fullHeight, _width, _height);
+	_textureWidth = getSizeNextPOT(_width);
+	_textureHeight = getSizeNextPOT(_height);
 
-	int pitch = _width * 2;
-	int allocSize = 2 * _width * _height;
-	char *pixelFormat = "565L";
+	UIDeviceOrientation orientation = [[UIDevice currentDevice] orientation];
 
-	NSDictionary* dict = [[NSDictionary alloc] initWithObjectsAndKeys:
-		kCFBooleanTrue, kCoreSurfaceBufferGlobal,
-		 @"PurpleGFXMem", kCoreSurfaceBufferMemoryRegion,
-		[NSNumber numberWithInt: pitch], kCoreSurfaceBufferPitch,
-		[NSNumber numberWithInt: _width], kCoreSurfaceBufferWidth,
-		[NSNumber numberWithInt: _height], kCoreSurfaceBufferHeight,
-		[NSNumber numberWithInt: *(int*)pixelFormat], kCoreSurfaceBufferPixelFormat,
-		[NSNumber numberWithInt: allocSize], kCoreSurfaceBufferAllocSize,
-		nil
-	];
+	//printf("Window: (%d, %d), Surface: (%d, %d), Texture(%d, %d)\n", _fullWidth, _fullHeight, _width, _height, _textureWidth, _textureHeight);
 
-	//("Allocating surface: %d\n", allocSize);
-	_screenSurface = CoreSurfaceBufferCreate((CFDictionaryRef)dict);
-	//printf("Surface created.\n");
-	CoreSurfaceBufferLock(_screenSurface, 3);
+	if (_context == nil) {
+		orientation = UIDeviceOrientationLandscapeRight;
+		CAEAGLLayer *eaglLayer = (CAEAGLLayer*) self.layer;
 
-	CALayer* screenLayer = [[CALayer layer] retain];
+		eaglLayer.opaque = YES;
+		eaglLayer.drawableProperties = [NSDictionary dictionaryWithObjectsAndKeys:
+										[NSNumber numberWithBool:FALSE], kEAGLDrawablePropertyRetainedBacking, kEAGLColorFormatRGB565, kEAGLDrawablePropertyColorFormat, nil];
+
+		_context = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES1];
+		if (!_context || [EAGLContext setCurrentContext:_context]) {
+			glGenFramebuffersOES(1, &_viewFramebuffer);
+			glGenRenderbuffersOES(1, &_viewRenderbuffer);
+
+			glBindFramebufferOES(GL_FRAMEBUFFER_OES, _viewFramebuffer);
+			glBindRenderbufferOES(GL_RENDERBUFFER_OES, _viewRenderbuffer);
+			[_context renderbufferStorage:GL_RENDERBUFFER_OES fromDrawable:(id<EAGLDrawable>)self.layer];
+			glFramebufferRenderbufferOES(GL_FRAMEBUFFER_OES, GL_COLOR_ATTACHMENT0_OES, GL_RENDERBUFFER_OES, _viewRenderbuffer);
+
+			glGetRenderbufferParameterivOES(GL_RENDERBUFFER_OES, GL_RENDERBUFFER_WIDTH_OES, &_backingWidth);
+			glGetRenderbufferParameterivOES(GL_RENDERBUFFER_OES, GL_RENDERBUFFER_HEIGHT_OES, &_backingHeight);
+
+			if (glCheckFramebufferStatusOES(GL_FRAMEBUFFER_OES) != GL_FRAMEBUFFER_COMPLETE_OES) {
+				NSLog(@"Failed to make complete framebuffer object %x.", glCheckFramebufferStatusOES(GL_FRAMEBUFFER_OES));
+				return;
+			}
+
+			glViewport(0, 0, _backingWidth, _backingHeight);
+			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+			glEnable(GL_TEXTURE_2D);
+			glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+			glEnableClientState(GL_VERTEX_ARRAY);
+		}
+	}
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+
+	if (orientation ==  UIDeviceOrientationLandscapeRight) {
+		glRotatef(-90, 0, 0, 1);
+	} else if (orientation == UIDeviceOrientationLandscapeLeft) {
+		glRotatef(90, 0, 0, 1);
+	} else {
+		glRotatef(180, 0, 0, 1);
+	}
+
+	glOrthof(0, _backingWidth, 0, _backingHeight, 0, 1);
+
+	if (_screenTexture > 0) {
+		glDeleteTextures(1, &_screenTexture);
+	}
+
+	glGenTextures(1, &_screenTexture);
+	glBindTexture(GL_TEXTURE_2D, _screenTexture);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	if (_textureBuffer) {
+		free(_textureBuffer);
+	}
+
+	int textureSize = _textureWidth * _textureHeight * 2;
+	_textureBuffer = (char*)malloc(textureSize);
+	memset(_textureBuffer, 0, textureSize);
+
+	glBindRenderbufferOES(GL_RENDERBUFFER_OES, _viewRenderbuffer);
+
+	// The color buffer is triple-buffered, so we clear it multiple times right away to avid doing any glClears later.
+	int clearCount = 5;
+	while (clearCount-- > 0) {
+		glClear(GL_COLOR_BUFFER_BIT);
+		[_context presentRenderbuffer:GL_RENDERBUFFER_OES];
+	}
 
 	if (_keyboardView != nil) {
 		[_keyboardView removeFromSuperview];
 		[[_keyboardView inputView] removeFromSuperview];
 	}
 
-	if (_landscape) {
-		float ratioDifference = ((float)_width / (float)_height) / ((float)_fullWidth / (float)_fullHeight);
+	if (orientation == UIDeviceOrientationLandscapeLeft || orientation ==  UIDeviceOrientationLandscapeRight) {
+		_visibleHeight = _backingHeight;
+		_visibleWidth = _backingWidth;
+
+		float ratioDifference = ((float)_height / (float)_width) / ((float)_fullWidth / (float)_fullHeight);
 		int rectWidth, rectHeight;
 		if (ratioDifference < 1.0f) {
 			rectWidth = _fullWidth * ratioDifference;
@@ -198,47 +314,27 @@ bool getLocalMouseCoords(CGPoint *point) {
 
 		//printf("Rect: %i, %i, %i, %i\n", _widthOffset, _heightOffset, rectWidth, rectHeight);
 		_screenRect = CGRectMake(_widthOffset, _heightOffset, rectWidth, rectHeight);
-		[screenLayer setFrame: _screenRect];
 	} else {
 		float ratio = (float)_height / (float)_width;
 		int height = _fullWidth * ratio;
 		//printf("Making rect (%u, %u)\n", _fullWidth, height);
 		_screenRect = CGRectMake(0, 0, _fullWidth - 1, height - 1);
-		[screenLayer setFrame: _screenRect];
 
-		//CGRect keyFrame = CGRectMake(0.0f, _screenRect.size.height, _fullWidth, _fullHeight - _screenRect.size.height);
+		_visibleHeight = height;
+		_visibleWidth = _backingWidth;
+		_heightOffset = 0.0f;
+		_widthOffset = 0.0f;
+
 		CGRect keyFrame = CGRectMake(0.0f, 0.0f, 0.0f, 0.0f);
 		if (_keyboardView == nil) {
 			_keyboardView = [[SoftKeyboard alloc] initWithFrame:keyFrame];
 			[_keyboardView setInputDelegate:self];
 		}
-		
+
 		[self addSubview:[_keyboardView inputView]];
 		[self addSubview: _keyboardView];
 		[[_keyboardView inputView] becomeFirstResponder];
 	}
-
-	[screenLayer setContents: _screenSurface];
-	[screenLayer setOpaque: YES];
-
-	if (_screenLayer != nil) {
-		[[sharedInstance _layer] replaceSublayer: _screenLayer with: screenLayer];
-	} else {
-		[[sharedInstance _layer] addSublayer: screenLayer];
-	}
-	_screenLayer = screenLayer;
-
-	CoreSurfaceBufferUnlock(_screenSurface);
-	[dict release];
-}
-
-
-- (void)lock {
-	[_lock lock];
-}
-
-- (void)unlock {
-	[_lock unlock];
 }
 
 - (id)getEvent {
@@ -246,25 +342,20 @@ bool getLocalMouseCoords(CGPoint *point) {
 		return nil;
 	}
 
-	[self lock];
 
 	id event = [_events objectAtIndex: 0];
 
 	[_events removeObjectAtIndex: 0];
-	[self unlock];
 
 	return event;
 }
 
 - (void)addEvent:(NSDictionary*)event {
-	[self lock];
 
 	if(_events == nil)
 		_events = [[NSMutableArray alloc] init];
 
 	[_events addObject: event];
-
-	[self unlock];
 }
 
 - (void)deviceOrientationChanged:(int)orientation {
@@ -278,109 +369,134 @@ bool getLocalMouseCoords(CGPoint *point) {
 	];
 }
 
-- (void)mouseDown:(GSEvent*)event {
-	//printf("mouseDown()\n");
-	CGRect rect = GSEventGetLocationInWindow(event);
-	CGPoint point = CGPointMake(rect.origin.x, rect.origin.y);
-	
-	if (!getLocalMouseCoords(&point))
-		return;
-	
-	[self addEvent:
-		[[NSDictionary alloc] initWithObjectsAndKeys:
-		 [NSNumber numberWithInt:kInputMouseDown], @"type",
-		 [NSNumber numberWithFloat:point.x], @"x",
-		 [NSNumber numberWithFloat:point.y], @"y",
-		 nil
-		]
-	];
-}
-
-- (void)touchesBegan {
-	//printf("touchesBegan()\n");	
-}
-	
-- (void)mouseUp:(GSEvent*)event {
-	//printf("mouseUp()\n");
-	CGRect rect = GSEventGetLocationInWindow(event);
-	CGPoint point = CGPointMake(rect.origin.x, rect.origin.y);
-	
-	if (!getLocalMouseCoords(&point))
-		return;
-	
-	[self addEvent:
-		[[NSDictionary alloc] initWithObjectsAndKeys:
-		 [NSNumber numberWithInt:kInputMouseUp], @"type",
-		 [NSNumber numberWithFloat:point.x], @"x",
-		 [NSNumber numberWithFloat:point.y], @"y",
-		 nil
-		]
-	];
-}
-
-- (void)mouseDragged:(GSEvent*)event {
-	//printf("mouseDragged()\n");
-	CGRect rect = GSEventGetLocationInWindow(event);
-	CGPoint point = CGPointMake(rect.origin.x, rect.origin.y);
-	
-	if (!getLocalMouseCoords(&point))
-		return;
-	
-	[self addEvent:
-		[[NSDictionary alloc] initWithObjectsAndKeys:
-		 [NSNumber numberWithInt:kInputMouseDragged], @"type",
-		 [NSNumber numberWithFloat:point.x], @"x",
-		 [NSNumber numberWithFloat:point.y], @"y",
-		 nil
-		]
-	];
-}
-
-- (void)mouseEntered:(GSEvent*)event {
-	//printf("mouseEntered()\n");
-	CGRect rect = GSEventGetLocationInWindow(event);
-	CGPoint point = CGPointMake(rect.origin.x, rect.origin.y);
-
-	
-	if (!getLocalMouseCoords(&point))
-		return;
-	
-	[self addEvent:
-		[[NSDictionary alloc] initWithObjectsAndKeys:
-		 [NSNumber numberWithInt:kInputMouseSecondToggled], @"type",
-		 [NSNumber numberWithFloat:point.x], @"x",
-		 [NSNumber numberWithFloat:point.y], @"y",
-		 nil
-		]
-	];
-}
-
-- (void)mouseExited:(GSEvent*)event {
-	//printf("mouseExited().\n");
-	// [self addEvent:
-	//	[[NSDictionary alloc] initWithObjectsAndKeys:
-	//	 @"mouseExited", @"type",
-	//	 nil
-	//	]
-	// ];
-}
-
-- (void)mouseMoved:(GSEvent*)event
+- (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
 {
-	//printf("mouseMoved()\n");
-	// struct CGPoint point = GSEventGetLocationInWindow(event);
-	// 
-	// if (!getLocalMouseCoords(&point))
-	// 	return;
-	// 
-	// [self addEvent:
-	// 	[[NSDictionary alloc] initWithObjectsAndKeys:
-	// 	 [NSNumber numberWithInt:kInputMouseSecondToggled], @"type",
-	// 	 [NSNumber numberWithFloat:point.x], @"x",
-	// 	 [NSNumber numberWithFloat:point.y], @"y",
-	// 	 nil
-	// 	]
-	// ];
+	NSSet *allTouches = [event allTouches];
+
+	switch ([allTouches count]) {
+		case 1:
+		{
+			UITouch *touch = [touches anyObject];
+			CGPoint point = [touch locationInView:self];
+			if (!getLocalMouseCoords(&point))
+				return;
+
+			_firstTouch = touch;
+			[self addEvent:
+			 [[NSDictionary alloc] initWithObjectsAndKeys:
+			  [NSNumber numberWithInt:kInputMouseDown], @"type",
+			  [NSNumber numberWithFloat:point.x], @"x",
+			  [NSNumber numberWithFloat:point.y], @"y",
+			  nil
+			  ]
+			 ];
+			break;
+		}
+		case 2:
+		{
+			UITouch *touch = [touches anyObject];
+			CGPoint point = [touch locationInView:self];
+			if (!getLocalMouseCoords(&point))
+				return;
+
+			_secondTouch = touch;
+			[self addEvent:
+			 [[NSDictionary alloc] initWithObjectsAndKeys:
+			  [NSNumber numberWithInt:kInputMouseSecondDown], @"type",
+			  [NSNumber numberWithFloat:point.x], @"x",
+			  [NSNumber numberWithFloat:point.y], @"y",
+			  nil
+			  ]
+			 ];
+			break;
+		}
+	}
+}
+
+- (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event
+{
+	NSSet *allTouches = [event allTouches];
+
+	for (UITouch* touch in touches) {
+		if (touch == _firstTouch) {
+
+			CGPoint point = [touch locationInView:self];
+			if (!getLocalMouseCoords(&point))
+				return;
+			
+			[self addEvent:
+			 [[NSDictionary alloc] initWithObjectsAndKeys:
+			  [NSNumber numberWithInt:kInputMouseDragged], @"type",
+			  [NSNumber numberWithFloat:point.x], @"x",
+			  [NSNumber numberWithFloat:point.y], @"y",
+			  nil
+			  ]
+			 ];
+			
+		} else if (touch == _secondTouch) {
+
+			CGPoint point = [touch locationInView:self];
+			if (!getLocalMouseCoords(&point))
+				return;
+			
+			[self addEvent:
+			 [[NSDictionary alloc] initWithObjectsAndKeys:
+			  [NSNumber numberWithInt:kInputMouseSecondDragged], @"type",
+			  [NSNumber numberWithFloat:point.x], @"x",
+			  [NSNumber numberWithFloat:point.y], @"y",
+			  nil
+			  ]
+			 ];
+			
+		}
+	}
+}
+
+- (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
+{
+	NSSet *allTouches = [event allTouches];
+
+	switch ([allTouches count]) {
+		case 1:
+		{
+			UITouch *touch = [[allTouches allObjects] objectAtIndex:0];
+			CGPoint point = [touch locationInView:self];
+			if (!getLocalMouseCoords(&point))
+				return;
+
+			[self addEvent:
+			 [[NSDictionary alloc] initWithObjectsAndKeys:
+			  [NSNumber numberWithInt:kInputMouseUp], @"type",
+			  [NSNumber numberWithFloat:point.x], @"x",
+			  [NSNumber numberWithFloat:point.y], @"y",
+			  nil
+			  ]
+			 ];
+			break;
+		}
+		case 2:
+		{
+			UITouch *touch = [[allTouches allObjects] objectAtIndex:1];
+			CGPoint point = [touch locationInView:self];
+			if (!getLocalMouseCoords(&point))
+				return;
+
+			[self addEvent:
+			 [[NSDictionary alloc] initWithObjectsAndKeys:
+			  [NSNumber numberWithInt:kInputMouseSecondUp], @"type",
+			  [NSNumber numberWithFloat:point.x], @"x",
+			  [NSNumber numberWithFloat:point.y], @"y",
+			  nil
+			  ]
+			 ];
+			break;
+		}
+	}
+}
+
+- (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event
+{
+
 }
 
 - (void)handleKeyPress:(unichar)c {
@@ -398,7 +514,7 @@ bool getLocalMouseCoords(CGPoint *point) {
 	return TRUE;
 }
 
-- (int)swipe:(int)num withEvent:(GSEvent*)event {
+- (int)swipe:(int)num withEvent:(struct __GSEvent *)event {
 	//printf("swipe: %i\n", num);
 
 	[self addEvent:
@@ -409,10 +525,6 @@ bool getLocalMouseCoords(CGPoint *point) {
 		 nil
 		]
 	];
-}
-
-- (void)view:(UIView *)view handleTapWithCount:(int)count event:(GSEvent *)event fingerCount:(int)fingerCount{
-	//printf("handleTapWithCount(%i, %i)\n", count, fingerCount);
 }
 
 - (void)applicationSuspend {

@@ -33,12 +33,15 @@
 #include "common/config-manager.h"
 #include "common/endian.h"
 #include "common/events.h"
+#include "common/EventRecorder.h"
 
 #define NUM_OPCODES 90
 
 namespace Groovie {
 
-void debugScript(int level, bool nl, const char *s, ...) {
+static void debugScript(int level, bool nl, const char *s, ...) GCC_PRINTF(3, 4);
+
+static void debugScript(int level, bool nl, const char *s, ...) {
 	char buf[STRINGBUFLEN];
 	va_list va;
 
@@ -56,12 +59,22 @@ void debugScript(int level, bool nl, const char *s, ...) {
 		debugN(level, "%s", buf);
 }
 
-Script::Script(GroovieEngine *vm) :
+Script::Script(GroovieEngine *vm, EngineVersion version) :
 	_code(NULL), _savedCode(NULL), _stacktop(0),
 	_debugger(NULL), _vm(vm),
-	_videoFile(NULL), _videoRef(0), _font(NULL) {
+	_videoFile(NULL), _videoRef(0), _font(NULL), _staufsMove(NULL) {
+	// Initialize the opcode set depending on the engine version
+	switch (version) {
+	case kGroovieT7G:
+		_opcodes = _opcodesT7G;
+		break;
+	case kGroovieV2:
+		_opcodes = _opcodesV2;
+		break;
+	}
+
 	// Initialize the random source
-	_vm->_system->getEventManager()->registerRandomSource(_random, "GroovieScripts");
+	g_eventRec.registerRandomSource(_random, "GroovieScripts");
 
 	// Prepare the variables
 	_bitflags = 0;
@@ -74,7 +87,7 @@ Script::Script(GroovieEngine *vm) :
 	if (midiDriver == MD_ADLIB) {
 		// MIDI through AdLib
 		setVariable(0x100, 0);
-	} else 	if ((midiDriver == MD_MT32) || ConfMan.getBool("native_mt32")) {
+	} else if ((midiDriver == MD_MT32) || ConfMan.getBool("native_mt32")) {
 		// MT-32
 		setVariable(0x100, 2);
 	} else {
@@ -87,6 +100,8 @@ Script::Script(GroovieEngine *vm) :
 	_hotspotRightAction = 0;
 	_hotspotLeftAction = 0;
 	_hotspotSlot = (uint16)-1;
+
+	_oldInstruction = (uint16)-1;
 }
 
 Script::~Script() {
@@ -181,6 +196,10 @@ void Script::directGameLoad(int slot) {
 	// TODO: We'll probably need to start by running the beginning of the
 	// script to let it do the soundcard initialization and then do the
 	// actual loading.
+
+	// Due to HACK above, the call to check valid save slots is not run.
+	// As this is where we load save names, manually call it here.
+	o_checkvalidsaves();
 }
 
 void Script::step() {
@@ -197,7 +216,13 @@ void Script::step() {
 	// Show the opcode debug string
 	sprintf(debugstring, "op 0x%02X: ", opcode);
 	_debugString += debugstring;
-	debugScript(1, false, _debugString.c_str());
+
+	// Only output if we're not re-doing the previous instruction
+	if (_currentInstruction != _oldInstruction) {
+		debugScript(1, false, _debugString.c_str());
+
+		_oldInstruction = _currentInstruction;
+	}
 
 	// Detect invalid opcodes
 	if (opcode >= NUM_OPCODES) {
@@ -482,7 +507,7 @@ void Script::o_videofromref() {			// 0x09
 
 	case 0x400D:	// floating objects in music room
 	case 0x5060:	// a sound from gamwav?
-	case 0x5098: 	// a sound from gamwav?
+	case 0x5098:	// a sound from gamwav?
 	case 0x2402:	// House becomes book in intro?
 	case 0x1426:	// Turn to face front in hall: played after intro
 	case 0x206D:	// Cards on table puzzle (bedroom)
@@ -493,7 +518,7 @@ void Script::o_videofromref() {			// 0x09
 		}
 	}
 	if (fileref != _videoRef) {
-		debugScript(1, true, "");
+		debugScript(1, false, "\n");
 	}
 	// Play the video
 	if (!playvideofromref(fileref)) {
@@ -502,7 +527,7 @@ void Script::o_videofromref() {			// 0x09
 	}
 }
 
-bool Script::playvideofromref(uint16 fileref) {
+bool Script::playvideofromref(uint32 fileref) {
 	// It isn't the current video, open it
 	if (fileref != _videoRef) {
 
@@ -539,6 +564,7 @@ bool Script::playvideofromref(uint16 fileref) {
 	// Video available, play one frame
 	if (_videoFile) {
 		bool endVideo = _vm->_videoPlayer->playFrame();
+		_vm->_musicPlayer->frameTick();
 
 		if (endVideo) {
 			// Close the file
@@ -551,7 +577,7 @@ bool Script::playvideofromref(uint16 fileref) {
 			_eventKbdChar = 0;
 
 			// Newline
-			debugScript(1, true, "");
+			debugScript(1, false, "\n");
 		}
 
 		// Let the caller know if the video has ended
@@ -567,7 +593,7 @@ void Script::o_bf5on() {			// 0x0A
 	_bitflags |= 1 << 5;
 }
 
-void Script::o_inputloopstart() {
+void Script::o_inputloopstart() {	//0x0B
 	debugScript(5, true, "Input loop start");
 
 	// Reset the input action and the mouse cursor
@@ -584,6 +610,8 @@ void Script::o_inputloopstart() {
 	// Save the current pressed character for the whole loop
 	_kbdChar = _eventKbdChar;
 	_eventKbdChar = 0;
+
+	_vm->_musicPlayer->startBackground();
 }
 
 void Script::o_keyboardaction() {
@@ -653,14 +681,14 @@ void Script::o_hotspot_center() {
 }
 
 void Script::o_hotspot_current() {
-       uint16 address = readScript16bits();
+	uint16 address = readScript16bits();
 
-       debugScript(5, true, "HOTSPOT-CURRENT @0x%04X", address);
+	debugScript(5, true, "HOTSPOT-CURRENT @0x%04X", address);
 
-       // The original interpreter doesn't check the position, so accept the
-       // whole screen
-       Common::Rect rect(0, 0, 640, 480);
-       hotspot(rect, address, 0);
+	// The original interpreter doesn't check the position, so accept the
+	// whole screen
+	Common::Rect rect(0, 0, 640, 480);
+	hotspot(rect, address, 0);
 }
 
 void Script::o_inputloopend() {
@@ -739,7 +767,7 @@ void Script::o_loadstring() {
 		setVariable(varnum++, readScriptChar(true, true, true));
 		debugScript(1, false, " 0x%02X", _variables[varnum - 1]);
 	} while (!(getCodeByte(_currentInstruction - 1) & 0x80));
-	debugScript(1, true, "");
+	debugScript(1, false, "\n");
 }
 
 void Script::o_ret() {
@@ -820,7 +848,7 @@ void Script::o_xor_obfuscate() {
 
 		varnum++;
 	} while (!_firstbit);
-	debugScript(1, true, "");
+	debugScript(1, false, "\n");
 }
 
 void Script::o_vdxtransition() {		// 0x1C
@@ -1021,7 +1049,7 @@ void Script::o_loadgame() {
 	debugScript(1, true, "LOADGAME var[0x%04X] -> slot=%d (TODO)", varnum, slot);
 
 	loadgame(slot);
-	_vm->_system->clearScreen();
+	_vm->_system->fillScreen(0);
 }
 
 void Script::o_savegame() {
@@ -1075,7 +1103,7 @@ void Script::o_loadstringvar() {
 		setVariable(varnum++, readScriptChar(true, true, true));
 		debugScript(1, false, " 0x%02X", _variables[varnum - 1]);
 	} while (!(getCodeByte(_currentInstruction - 1) & 0x80));
-	debugScript(1, true, "");
+	debugScript(1, false, "\n");
 }
 
 void Script::o_chargreatjmp() {
@@ -1354,33 +1382,21 @@ void Script::o_sub() {
 }
 
 void Script::o_cellmove() {
-	uint16 arg = readScript8bits();
+	uint16 depth = readScript8bits();
 	byte *scriptBoard = &_variables[0x19];
-	byte *board = (byte*) malloc (BOARDSIZE * BOARDSIZE * sizeof(byte));
 	byte startX, startY, endX, endY;
 
-	debugScript(1, true, "CELL MOVE var[0x%02X]", arg);
+	debugScript(1, true, "CELL MOVE var[0x%02X]", depth);
 
-	// Arguments used by the original implementation: (2, arg, scriptBoard)
-	for (int y = 0; y < 7; y++) {
-		for (int x = 0; x < 7; x++) {
-			uint8 offset = x + BOARDSIZE * y;
-			*(board + offset) = 0;
-			if (*scriptBoard == 0x32) *(board + offset) = CELL_BLUE;
-			if (*scriptBoard == 0x42) *(board + offset) = CELL_GREEN;
-			scriptBoard++;
-			debugScript(1, false, "%d", *(board + offset));
-		}
-		debugScript(1, false, "\n");
-	}
+	if (!_staufsMove)
+		_staufsMove = new CellGame;
 
-	CellGame staufsMove((byte*) board);
-	staufsMove.calcMove((byte*) board, CELL_GREEN, 2);
-	startX = staufsMove.getStartX();
-	startY = staufsMove.getStartY();
-	endX = staufsMove.getEndX();
-	endY = staufsMove.getEndY();
+	_staufsMove->playStauf(2, depth, scriptBoard);
 
+	startX = _staufsMove->getStartX();
+	startY = _staufsMove->getStartY();
+	endX = _staufsMove->getEndX();
+	endY = _staufsMove->getEndY();
 
 	// Set the movement origin
 	setVariable(0, startY); // y
@@ -1388,8 +1404,6 @@ void Script::o_cellmove() {
 	// Set the movement destination
 	setVariable(2, endY);
 	setVariable(3, endX);
-
-	free (board);
 }
 
 void Script::o_returnscript() {
@@ -1478,6 +1492,14 @@ void Script::o_playcd() {
 	_vm->_musicPlayer->playCD(val);
 }
 
+void Script::o_musicdelay() {
+	uint16 delay = readScript16bits();
+
+	debugScript(1, true, "MUSICDELAY %d", delay);
+
+	_vm->_musicPlayer->setBackgroundDelay(delay);
+}
+
 void Script::o_hotspot_outrect() {
 	uint16 left = readScript16bits();
 	uint16 top = readScript16bits();
@@ -1493,7 +1515,7 @@ void Script::o_hotspot_outrect() {
 	bool contained = rect.contains(mousepos);
 
 	if (!contained) {
-		error("hotspot-outrect unimplemented!");
+		error("hotspot-outrect unimplemented");
 		// TODO: what to do with address?
 	}
 }
@@ -1513,7 +1535,64 @@ void Script::o_stub59() {
 	debugScript(1, true, "STUB59: 0x%04X 0x%02X", val1, val2);
 }
 
-Script::OpcodeFunc Script::_opcodes[NUM_OPCODES] = {
+void Script::o2_playsong(){
+	uint32 fileref = readScript32bits();
+	debugScript(1, true, "PlaySong(0x%08X): Play xmidi file", fileref);
+	_vm->_musicPlayer->playSong(fileref);
+
+}
+
+void Script::o2_setbackgroundsong(){
+	uint32 fileref = readScript32bits();
+	debugScript(1, true, "SetBackgroundSong(0x%08X)", fileref);
+	_vm->_musicPlayer->setBackgroundSong(fileref);
+}
+
+void Script::o2_videofromref(){
+	uint32 fileref = readScript32bits();
+
+	// Show the debug information just when starting the playback
+	if (fileref != _videoRef) {
+		debugScript(1, true, "VIDEOFROMREF(0x%08X) (Not fully imp): Play video file from ref", fileref);
+		debugC(5, kGroovieDebugVideo | kGroovieDebugAll, "Playing video 0x%08X via 0x09", fileref);
+	}
+	// Play the video
+	if (!playvideofromref(fileref)) {
+		// Move _currentInstruction back
+		_currentInstruction -= 5;
+	}
+}
+
+void Script::o2_vdxtransition(){
+	uint32 fileref = readScript32bits();
+
+	// Show the debug information just when starting the playback
+	if (fileref != _videoRef) {
+		debugScript(1, true, "VDX transition fileref = 0x%08X", fileref);
+		debugC(1, kGroovieDebugVideo | kGroovieDebugAll, "Playing video 0x%08X with transition", fileref);
+	}
+
+	// Set bit 1
+	_bitflags |= 1 << 1;
+
+	// Set bit 2 if _firstbit
+	if (_firstbit) {
+		_bitflags |= 1 << 2;
+	}
+
+	// Play the video
+	if (!playvideofromref(fileref)) {
+		// Move _currentInstruction back
+		_currentInstruction -= 5;
+	}
+}
+
+void Script::o2_stub52(){
+	uint8 arg = readScript8bits();
+	debugScript(1, true, "STUB52 (0x%02X)", arg);
+}
+
+Script::OpcodeFunc Script::_opcodesT7G[NUM_OPCODES] = {
 	&Script::o_nop, // 0x00
 	&Script::o_nop,
 	&Script::o_playsong,
@@ -1592,7 +1671,7 @@ Script::OpcodeFunc Script::_opcodes[NUM_OPCODES] = {
 	&Script::o_nop8,
 	&Script::o_getcd, // 0x4C
 	&Script::o_playcd,
-	&Script::o_nop16,
+	&Script::o_musicdelay,
 	&Script::o_nop16,
 	&Script::o_nop16, // 0x50
 	&Script::o_nop16,
@@ -1606,6 +1685,99 @@ Script::OpcodeFunc Script::_opcodes[NUM_OPCODES] = {
 	&Script::o_invalid,		// completely unimplemented, plays vdx in some way
 	//&Script::o_nop, // 0x58
 	&Script::o_invalid, // 0x58	// like above, but plays from string not ref
+	&Script::o_stub59
+};
+
+Script::OpcodeFunc Script::_opcodesV2[NUM_OPCODES] = {
+	&Script::o_invalid, // 0x00
+	&Script::o_nop,
+	&Script::o2_playsong,
+	&Script::o_bf9on,
+	&Script::o_palfadeout, // 0x04
+	&Script::o_bf8on,
+	&Script::o_bf6on,
+	&Script::o_bf7on,
+	&Script::o2_setbackgroundsong, // 0x08
+	&Script::o2_videofromref,
+	&Script::o_bf5on,
+	&Script::o_inputloopstart,
+	&Script::o_keyboardaction, // 0x0C
+	&Script::o_hotspot_rect,
+	&Script::o_hotspot_left,
+	&Script::o_hotspot_right,
+	&Script::o_hotspot_center, // 0x10
+	&Script::o_hotspot_center,
+	&Script::o_hotspot_current,
+	&Script::o_inputloopend,
+	&Script::o_random, // 0x14
+	&Script::o_jmp,
+	&Script::o_loadstring,
+	&Script::o_ret,
+	&Script::o_call, // 0x18
+	&Script::o_sleep,
+	&Script::o_strcmpnejmp,
+	&Script::o_xor_obfuscate,
+	&Script::o2_vdxtransition, // 0x1C
+	&Script::o_swap,
+	&Script::o_nop8,
+	&Script::o_inc,
+	&Script::o_dec, // 0x20
+	&Script::o_strcmpnejmp_var,
+	&Script::o_copybgtofg,
+	&Script::o_strcmpeqjmp,
+	&Script::o_mov, // 0x24
+	&Script::o_add,
+	&Script::o_videofromstring1,
+	&Script::o_videofromstring2,
+	&Script::o_nop16, // 0x28
+	&Script::o_stopmidi,
+	&Script::o_endscript,
+	&Script::o_nop,
+	&Script::o_sethotspottop, // 0x2C
+	&Script::o_sethotspotbottom,
+	&Script::o_loadgame,
+	&Script::o_savegame,
+	&Script::o_hotspotbottom_4, // 0x30
+	&Script::o_midivolume,
+	&Script::o_jne,
+	&Script::o_loadstringvar,
+	&Script::o_chargreatjmp, // 0x34
+	&Script::o_bf7off,
+	&Script::o_charlessjmp,
+	&Script::o_copyrecttobg,
+	&Script::o_restorestkpnt, // 0x38
+	&Script::o_obscureswap,
+	&Script::o_printstring,
+	&Script::o_hotspot_slot,
+	&Script::o_checkvalidsaves, // 0x3C
+	&Script::o_resetvars,
+	&Script::o_mod,
+	&Script::o_loadscript,
+	&Script::o_setvideoorigin, // 0x40
+	&Script::o_sub,
+	&Script::o_cellmove,
+	&Script::o_returnscript,
+	&Script::o_sethotspotright, // 0x44
+	&Script::o_sethotspotleft,
+	&Script::o_nop,
+	&Script::o_nop,
+	&Script::o_nop8, // 0x48
+	&Script::o_nop,
+	&Script::o_nop16,
+	&Script::o_nop8,
+	&Script::o_getcd, // 0x4C
+	&Script::o_playcd,
+	&Script::o_nop16,
+	&Script::o_nop16,
+	&Script::o_nop16, // 0x50
+	&Script::o_nop16,
+	&Script::o2_stub52,
+	&Script::o_hotspot_outrect,
+	&Script::o_nop, // 0x54
+	&Script::o_nop16,
+	&Script::o_stub56,
+	&Script::o_invalid,
+	&Script::o_invalid, // 0x58
 	&Script::o_stub59
 };
 

@@ -23,13 +23,13 @@
  *
  */
 
-#include "scumm/scumm.h"
 #include "scumm/actor.h"
 #include "scumm/bomp.h"
-#include "scumm/intern.h"
 #include "scumm/he/intern_he.h"
 #include "scumm/object.h"
 #include "scumm/resource.h"
+#include "scumm/scumm_v0.h"
+#include "scumm/scumm_v8.h"
 #include "scumm/usage_bits.h"
 #include "scumm/util.h"
 
@@ -181,7 +181,11 @@ void ScummEngine::clearOwnerOf(int obj) {
 		// Alternatively, scan the inventory to see if the object is in there...
 		for (i = 0; i < _numInventory; i++) {
 			if (_inventory[i] == obj) {
-				assert(WIO_INVENTORY == whereIsObject(obj));
+				if (_game.version == 0)
+					assert(WIO_INVENTORY == whereIsObjectInventory(obj));
+				else
+					assert(WIO_INVENTORY == whereIsObject(obj));
+
 				// Found the object! Nuke it from the inventory.
 				_res->nukeResource(rtInventory, i);
 				_inventory[i] = 0;
@@ -286,7 +290,7 @@ int ScummEngine::getState(int obj) {
 		// it. Fortunately this does not prevent frustrated players from
 		// blowing up the mansion, should they feel the urge to.
 
-		if (_game.id == GID_MANIAC && (obj == 182 || obj == 193))
+		if (_game.id == GID_MANIAC && _game.version != 0 && (obj == 182 || obj == 193))
 			_objectStateTable[obj] |= kObjectState_08;
 	}
 
@@ -317,6 +321,15 @@ int ScummEngine::getObjectIndex(int object) const {
 	return -1;
 }
 
+int ScummEngine::whereIsObjectInventory(int object) {
+	int res = 0;
+	_v0ObjectInInventory = true;
+	res = whereIsObject(object);
+	_v0ObjectInInventory = false;
+	
+	return res;
+}
+
 int ScummEngine::whereIsObject(int object) const {
 	int i;
 
@@ -326,7 +339,7 @@ int ScummEngine::whereIsObject(int object) const {
 	if (object < 1)
 		return WIO_NOT_FOUND;
 
-	if (_objectOwnerTable[object] != OF_OWNER_ROOM) {
+	if ((_objectOwnerTable[object] != OF_OWNER_ROOM && _game.version != 0) || _v0ObjectInInventory) {
 		for (i = 0; i < _numInventory; i++)
 			if (_inventory[i] == object)
 				return WIO_INVENTORY;
@@ -334,7 +347,7 @@ int ScummEngine::whereIsObject(int object) const {
 	}
 
 	for (i = (_numLocalObjects-1); i > 0; i--)
-		if (_objs[i].obj_nr == object) {
+		if ((_objs[i].obj_nr == object && !_v0ObjectIndex) || (_v0ObjectIndex && i == object)) {
 			if (_objs[i].fl_object_index)
 				return WIO_FLOBJECT;
 			return WIO_ROOM;
@@ -379,7 +392,7 @@ int ScummEngine::getObjectOrActorXY(int object, int &x, int &y) {
  * Returns X, Y and direction in angles
  */
 void ScummEngine::getObjectXYPos(int object, int &x, int &y, int &dir) {
-	int idx = getObjectIndex(object);
+	int idx = (_v0ObjectIndex) ? object : getObjectIndex(object);
 	assert(idx >= 0);
 	ObjectData &od = _objs[idx];
 	int state;
@@ -412,7 +425,7 @@ void ScummEngine::getObjectXYPos(int object, int &x, int &y, int &dir) {
 				y = od.y_pos + (int32)READ_LE_UINT32(&imhd->v8.hotspot[state].y);
 				break;
 			default:
-				error("Unsupported image header version %d\n", FROM_LE_32(imhd->v8.version));
+				error("Unsupported image header version %d", FROM_LE_32(imhd->v8.version));
 			}
 		} else if (_game.version == 7) {
 			x = od.x_pos + (int16)READ_LE_UINT16(&imhd->v7.hotspot[state].x);
@@ -434,7 +447,7 @@ void ScummEngine::getObjectXYPos(int object, int &x, int &y, int &dir) {
 		dir = oldDirToNewDir(od.actordir & 3);
 }
 
-static int getDist(int x, int y, int x2, int y2) {
+int ScummEngine::getDist(int x, int y, int x2, int y2) {
 	int a = ABS(y - y2);
 	int b = ABS(x - x2);
 	return MAX(a, b);
@@ -475,6 +488,14 @@ int ScummEngine::getObjActToObjActDist(int a, int b) {
 	return getDist(x, y, x2, y2);
 }
 
+int ScummEngine_v0::findObjectIndex(int x, int y) {
+	int objIdx;
+	_v0ObjectIndex = true;
+	objIdx = findObject(x, y);
+	_v0ObjectIndex = false;
+	return objIdx;
+}
+
 int ScummEngine::findObject(int x, int y) {
 	int i, b;
 	byte a;
@@ -504,8 +525,12 @@ int ScummEngine::findObject(int x, int y) {
 				}
 #endif
 				if (_objs[i].x_pos <= x && _objs[i].width + _objs[i].x_pos > x &&
-				    _objs[i].y_pos <= y && _objs[i].height + _objs[i].y_pos > y)
-					return _objs[i].obj_nr;
+				    _objs[i].y_pos <= y && _objs[i].height + _objs[i].y_pos > y) {
+					if (_game.version == 0 && _v0ObjectIndex)
+						return i;
+					else
+						return _objs[i].obj_nr;
+				}
 				break;
 			}
 		} while ((_objs[b].state & mask) == a);
@@ -589,9 +614,11 @@ void ScummEngine::drawObject(int obj, int arg) {
 	if (width == 0 || xpos > _screenEndStrip || xpos + width < _screenStartStrip)
 		return;
 
-	ptr = getOBIMFromObjectData(od);
-	ptr = getObjectImage(ptr, getState(od.obj_nr));
+	// For objects without image in Apple II & Commodore 64 versions of Maniac Mansion
+	if (_game.version == 0 && od.OBIMoffset == 0)
+		return;
 
+	ptr = getObjectImage(getOBIMFromObjectData(od), getState(od.obj_nr));
 	if (!ptr)
 		return;
 
@@ -809,6 +836,9 @@ void ScummEngine_v3old::resetRoomObjects() {
 		if (_dumpScripts) {
 			char buf[32];
 			sprintf(buf, "roomobj-%d-", _roomResource);
+			if (_game.version == 0)
+				sprintf(buf + 11, "%d-", od->flags);
+
 			dumpResource(buf, od->obj_nr, room + od->OBCDoffset);
 		}
 	}
@@ -1031,6 +1061,10 @@ void ScummEngine::updateObjectStates() {
 	int i;
 	ObjectData *od = &_objs[1];
 	for (i = 1; i < _numLocalObjects; i++, od++) {
+		// V0 MM, Room objects with Flag == 1 are objects with 'no-state' (room specific objects, non-pickup)
+		if (_game.version == 0 && od->flags == 1)
+			continue;
+
 		if (od->obj_nr > 0)
 			od->state = getState(od->obj_nr);
 	}
@@ -1153,7 +1187,7 @@ const byte *ScummEngine::getObjOrActorName(int obj) {
 void ScummEngine::setObjectName(int obj) {
 	int i;
 
-	if (obj < _numActors)
+	if (obj < _numActors && _game.version != 0)
 		error("Can't set actor %d name with new-name-of", obj);
 
 	for (i = 0; i < _numNewNames; i++) {
@@ -1179,8 +1213,13 @@ void ScummEngine::setObjectName(int obj) {
 uint32 ScummEngine::getOBCDOffs(int object) const {
 	int i;
 
-	if (_objectOwnerTable[object] != OF_OWNER_ROOM)
+	if ((_objectOwnerTable[object] != OF_OWNER_ROOM && (_game.version != 0))  || _v0ObjectInInventory)
 		return 0;
+
+	// V0 MM Return by Index
+	if (_v0ObjectIndex)
+		return _objs[object].OBCDoffset;
+
 	for (i = (_numLocalObjects-1); i > 0; i--) {
 		if (_objs[i].obj_nr == object) {
 			if (_objs[i].fl_object_index != 0)
@@ -1192,17 +1231,20 @@ uint32 ScummEngine::getOBCDOffs(int object) const {
 }
 
 byte *ScummEngine::getOBCDFromObject(int obj) {
+	bool useInventory = _v0ObjectInInventory;
 	int i;
 	byte *ptr;
 
-	if (_objectOwnerTable[obj] != OF_OWNER_ROOM) {
+	_v0ObjectInInventory = false;
+
+	if ((_objectOwnerTable[obj] != OF_OWNER_ROOM && (_game.version != 0)) || useInventory) {
 		for (i = 0; i < _numInventory; i++) {
 			if (_inventory[i] == obj)
 				return getResourceAddress(rtInventory, i);
 		}
 	} else {
 		for (i = (_numLocalObjects-1); i > 0; --i) {
-			if (_objs[i].obj_nr == obj) {
+			if ((_objs[i].obj_nr == obj && !_v0ObjectIndex) || (_v0ObjectIndex && i == obj)) {
 				if (_objs[i].fl_object_index) {
 					assert(_objs[i].OBCDoffset == 8);
 					ptr = getResourceAddress(rtFlObject, _objs[i].fl_object_index);
@@ -1220,10 +1262,6 @@ byte *ScummEngine::getOBCDFromObject(int obj) {
 
 const byte *ScummEngine::getOBIMFromObjectData(const ObjectData &od) {
 	const byte *ptr;
-
-	// For objects without image in C64 version of Maniac Mansion
-	if (_game.version == 0 && od.OBIMoffset == 0)
-		return NULL;
 
 	if (od.fl_object_index) {
 		ptr = getResourceAddress(rtFlObject, od.fl_object_index);
@@ -1818,9 +1856,8 @@ void ScummEngine::loadFlObject(uint object, uint room) {
 	assert(flob);
 
 	// Copy object code + object image to floating object
-	((uint32 *)flob)[0] = MKID_BE('FLOB');
-	((uint32 *)flob)[1] = TO_BE_32(flob_size);
-
+	WRITE_UINT32(flob, MKID_BE('FLOB'));
+	WRITE_BE_UINT32(flob + 4, flob_size);
 	memcpy(flob + 8, foir.obcd, obcd_size);
 	memcpy(flob + 8 + obcd_size, foir.obim, obim_size);
 

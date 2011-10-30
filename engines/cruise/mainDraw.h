@@ -29,8 +29,8 @@
 namespace Cruise {
 
 extern int currentTransparent;
-extern int16 polyBuffer2[512];
-extern int16 XMIN_XMAX[404];
+extern int16 *polyBuffer2;
+extern int16 *XMIN_XMAX;
 extern int m_color;
 
 int upscaleValue(int value, int scale);
@@ -39,12 +39,14 @@ void pixel(int x, int y, char color);
 void mainDraw(int16 param);
 void flipScreen(void);
 void buildPolyModel(int X, int Y, int scale, char *ptr2, char *destBuffer, char *dataPtr);
-void drawSprite(int objX1, int var_6, cellStruct * currentObjPtr, char *data1, int objY2, int objX2, char *output, char *data2);
+void drawSprite(int width, int height, cellStruct *currentObjPtr, const uint8 *dataIn, int ys, int xs, uint8 *output, const uint8 *dataBuf);
 void flipPoly(int fileId, int16 *dataPtr, int scale, char** newFrame, int X, int Y, int *outX, int *outY, int *outScale);
 void getPolySize(int positionX, int positionY, int scale, int sizeTable[4], unsigned char *dataPtr);
 bool findPoly(char* dataPtr, int x, int y, int zoom, int mouseX, int mouseY);
 unsigned char *drawPolyMode2(unsigned char *dataPointer, int linesToDraw);
 void calcRGB(uint8* pColorSrc, uint8* pColorDst, int* offsetTable);
+void drawMessage(const gfxEntryStruct *pGfxPtr, int globalX, int globalY, int width, int newColor, uint8 *ouputPtr);
+
 } // End of namespace Cruise
 
 #endif

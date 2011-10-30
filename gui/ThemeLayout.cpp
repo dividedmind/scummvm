@@ -70,6 +70,22 @@ bool ThemeLayout::getWidgetData(const Common::String &name, int16 &x, int16 &y, 
 	return false;
 }
 
+Graphics::TextAlign ThemeLayout::getWidgetTextHAlign(const Common::String &name) {
+	if (name.empty()) {
+		assert(getLayoutType() == kLayoutMain);
+		return _textHAlign;
+	}
+
+	Graphics::TextAlign res;
+
+	for (uint i = 0; i < _children.size(); ++i) {
+		if ((res = _children[i]->getWidgetTextHAlign(name)) != Graphics::kTextAlignInvalid)
+			return res;
+	}
+
+	return Graphics::kTextAlignInvalid;
+}
+
 int16 ThemeLayoutStacked::getParentWidth() {
 	ThemeLayout *p = _parent;
 	int width = 0;
@@ -135,6 +151,14 @@ bool ThemeLayoutWidget::getWidgetData(const Common::String &name, int16 &x, int1
 	return false;
 }
 
+Graphics::TextAlign ThemeLayoutWidget::getWidgetTextHAlign(const Common::String &name) {
+	if (name == _name) {
+		return _textHAlign;
+	}
+
+	return Graphics::kTextAlignInvalid;
+}
+
 void ThemeLayoutMain::reflowLayout() {
 	assert(_children.size() <= 1);
 
@@ -192,7 +216,7 @@ void ThemeLayoutStacked::reflowLayoutVertical() {
 		// Advance the vertical offset by the height of the newest item, plus
 		// the item spacing value.
 		curY += _children[i]->getHeight() + _spacing;
-		
+
 		// Update width and height of this stack layout
 		_w = MAX(_w, (int16)(_children[i]->getWidth() + _padding.left + _padding.right));
 		_h += _children[i]->getHeight() + _spacing;
@@ -205,7 +229,7 @@ void ThemeLayoutStacked::reflowLayoutVertical() {
 
 	// If there were any items with undetermined height, then compute and set
 	// their height now. We do so by determining how much space is left, and
-	// then distributing this equally over all items which need auto-resizing. 
+	// then distributing this equally over all items which need auto-resizing.
 	if (rescount) {
 		int newh = (getParentHeight() - _h - _padding.bottom) / rescount;
 
@@ -268,7 +292,7 @@ void ThemeLayoutStacked::reflowLayoutHorizontal() {
 
 	// If there were any items with undetermined width, then compute and set
 	// their width now. We do so by determining how much space is left, and
-	// then distributing this equally over all items which need auto-resizing. 
+	// then distributing this equally over all items which need auto-resizing.
 	if (rescount) {
 		int neww = (getParentWidth() - _w - _padding.right) / rescount;
 

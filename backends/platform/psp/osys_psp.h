@@ -30,8 +30,9 @@
 #include "backends/base-backend.h"
 #include "backends/fs/psp/psp-fs-factory.h"
 
-
 #include <SDL.h>
+
+#include <pspctrl.h>
 
 enum GraphicModeID {
 	CENTERED_320X200,
@@ -109,7 +110,7 @@ public:
 	virtual int16 getOverlayHeight();
 	virtual int16 getOverlayWidth();
 	virtual void grabPalette(byte *colors, uint start, uint num);
-	virtual Graphics::PixelFormat getOverlayFormat() const { return Graphics::createPixelFormat<1555>(); }
+	virtual Graphics::PixelFormat getOverlayFormat() const { return Graphics::createPixelFormat<4444>(); }
 
 	virtual bool showMouse(bool visible);
 
@@ -138,10 +139,6 @@ public:
 	void getTimeAndDate(struct tm &t) const;
 
 	virtual void quit();
-
-	virtual void setWindowCaption(const char *caption);
-
-	virtual void displayMessageOnOSD(const char *msg);
 
 	virtual Common::SeekableReadStream *createConfigReadStream();
 	virtual Common::WriteStream *createConfigWriteStream();

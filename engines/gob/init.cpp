@@ -32,10 +32,13 @@
 #include "gob/dataio.h"
 #include "gob/draw.h"
 #include "gob/game.h"
+#include "gob/script.h"
 #include "gob/palanim.h"
 #include "gob/inter.h"
 #include "gob/video.h"
 #include "gob/videoplayer.h"
+#include "gob/demos/scnplayer.h"
+#include "gob/demos/batplayer.h"
 #include "gob/sound/sound.h"
 
 namespace Gob {
@@ -46,39 +49,52 @@ Init::Init(GobEngine *vm) : _vm(vm) {
 	_palDesc = 0;
 }
 
-void Init::cleanup(void) {
+Init::~Init() {
+}
+
+void Init::cleanup() {
 	_vm->_video->freeDriver();
-	_vm->_global->_primarySurfDesc = 0;
+	_vm->_global->_primarySurfDesc.reset();
 
 	_vm->_sound->speakerOff();
 	_vm->_sound->blasterStop(0);
 	_vm->_dataIO->closeDataFile();
 }
 
-void Init::initGame(const char *totName) {
-	int16 handle2;
-	int16 handle;
-	int16 imdHandle;
+void Init::doDemo() {
+	if (_vm->isSCNDemo()) {
+		// This is a non-interactive demo with a SCN script and VMD videos
+
+		_vm->_video->setPrePalette();
+
+		SCNPlayer scnPlayer(_vm);
+
+		if (_vm->_demoIndex > 0)
+			scnPlayer.play(_vm->_demoIndex - 1);
+	}
+
+	if (_vm->isBATDemo()) {
+		// This is a non-interactive demo with a BAT script and videos
+
+		BATPlayer batPlayer(_vm);
+
+		if (_vm->_demoIndex > 0)
+			batPlayer.play(_vm->_demoIndex - 1);
+	}
+}
+
+void Init::initGame() {
 	byte *infBuf;
 	char *infPtr;
 	char *infEnd;
 	char buffer[128];
 
 	initVideo();
+	updateConfig();
 
-	// The Lost In Time demo uses different file prefix
-	if (_vm->getGameType() == kGameTypeLostInTime) {
-		handle2 = _vm->_dataIO->openData("demo.stk");
-		if (handle2 >= 0) {
-			_vm->_dataIO->closeData(handle2);
-			_vm->_dataIO->openDataFile("demo.stk");
-		}
-	}
-
-	handle2 = _vm->_dataIO->openData("intro.stk");
-	if (handle2 >= 0) {
-		_vm->_dataIO->closeData(handle2);
-		_vm->_dataIO->openDataFile("intro.stk");
+	if (!_vm->isDemo()) {
+		if (_vm->_dataIO->existData(_vm->_startStk.c_str()))
+			_vm->_dataIO->openDataFile(_vm->_startStk.c_str());
 	}
 
 	_vm->_util->initInput();
@@ -87,8 +103,6 @@ void Init::initGame(const char *totName) {
 	_vm->_global->_mouseXShift = 1;
 	_vm->_global->_mouseYShift = 1;
 
-	_vm->_game->_totTextData = 0;
-	_vm->_game->_totFileData = 0;
 	_palDesc = new Video::PalDesc;
 
 	_vm->validateVideoMode(_vm->_global->_videoMode);
@@ -102,19 +116,20 @@ void Init::initGame(const char *totName) {
 	for (int i = 0; i < 8; i++)
 		_vm->_draw->_fonts[i] = 0;
 
-	handle = _vm->_dataIO->openData("intro.inf");
+	if (_vm->isDemo()) {
+		doDemo();
+		delete _palDesc;
+		_vm->_video->initPrimary(-1);
+		cleanup();
+		return;
+	}
 
-	if (handle < 0) {
-		for (int i = 0; i < 4; i++) {
-			handle2 = _vm->_dataIO->openData(_fontNames[i]);
-			if (handle2 >= 0) {
-				_vm->_dataIO->closeData(handle2);
-				_vm->_draw->_fonts[i] = _vm->_util->loadFont(_fontNames[i]);
-			}
-		}
+	if (!_vm->_dataIO->existData("intro.inf")) {
+
+		for (int i = 0; i < 4; i++)
+			_vm->_draw->loadFont(i, _fontNames[i]);
+
 	} else {
-		_vm->_dataIO->closeData(handle);
-
 		infBuf = _vm->_dataIO->getData("intro.inf");
 		infPtr = (char *) infBuf;
 
@@ -128,11 +143,8 @@ void Init::initGame(const char *totName) {
 			buffer[j] = 0;
 
 			strcat(buffer, ".let");
-			handle2 = _vm->_dataIO->openData(buffer);
-			if (handle2 >= 0) {
-				_vm->_dataIO->closeData(handle2);
-				_vm->_draw->_fonts[i] = _vm->_util->loadFont(buffer);
-			}
+
+			_vm->_draw->loadFont(i, buffer);
 
 			if ((infPtr + 1) >= infEnd)
 				break;
@@ -142,31 +154,16 @@ void Init::initGame(const char *totName) {
 		delete[] infBuf;
 	}
 
-	if (totName) {
-		strncpy0(buffer, totName, 15);
-		strcat(buffer, ".tot");
-	} else
-		strncpy0(buffer, _vm->_startTot, 19);
+	if (_vm->_dataIO->existData(_vm->_startTot.c_str())) {
+		_vm->_inter->allocateVars(Script::getVariablesCount(_vm->_startTot.c_str(), _vm));
 
-	handle = _vm->_dataIO->openData(buffer);
-
-	if (handle >= 0) {
-		DataStream *stream = _vm->_dataIO->openAsStream(handle, true);
-
-		stream->seek(0x2C);
-		_vm->_inter->allocateVars(stream->readUint16LE());
-
-		delete stream;
-
-		strcpy(_vm->_game->_curTotFile, buffer);
+		strcpy(_vm->_game->_curTotFile, _vm->_startTot.c_str());
 
 		_vm->_sound->cdTest(1, "GOB");
 		_vm->_sound->cdLoadLIC("gob.lic");
 
 		// Search for a Coktel logo animation or image to display
-		imdHandle = _vm->_dataIO->openData("coktel.imd");
-		if (imdHandle >= 0) {
-			_vm->_dataIO->closeData(imdHandle);
+		if (_vm->_dataIO->existData("coktel.imd")) {
 			_vm->_draw->initScreen();
 			_vm->_draw->_cursorIndex = -1;
 
@@ -178,22 +175,20 @@ void Init::initGame(const char *totName) {
 			}
 
 			_vm->_draw->closeScreen();
-		} else if ((imdHandle = _vm->_dataIO->openData("coktel.clt")) >= 0) {
+		} else if (_vm->_dataIO->existData("coktel.clt")) {
 			_vm->_draw->initScreen();
-
-			stream = _vm->_dataIO->openAsStream(imdHandle, true);
 			_vm->_util->clearPalette();
+
+			DataStream *stream = _vm->_dataIO->getDataStream("coktel.clt");
 			stream->read((byte *) _vm->_draw->_vgaPalette, 768);
 			delete stream;
 
-			imdHandle = _vm->_dataIO->openData("coktel.ims");
-			if (imdHandle >= 0) {
+			if (_vm->_dataIO->existData("coktel.ims")) {
 				byte *sprBuf;
 
-				_vm->_dataIO->closeData(imdHandle);
 				sprBuf = _vm->_dataIO->getData("coktel.ims");
 				_vm->_video->drawPackedSprite(sprBuf, 320, 200, 0, 0, 0,
-						_vm->_draw->_frontSurface);
+						*_vm->_draw->_frontSurface);
 				_vm->_palAnim->fade(_palDesc, 0, 0);
 				_vm->_util->delay(500);
 
@@ -213,6 +208,9 @@ void Init::initGame(const char *totName) {
 	_vm->_dataIO->closeDataFile();
 	_vm->_video->initPrimary(-1);
 	cleanup();
+}
+
+void Init::updateConfig() {
 }
 
 } // End of namespace Gob

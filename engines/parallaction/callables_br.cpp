@@ -27,6 +27,9 @@
 
 namespace Parallaction {
 
+void Parallaction_br::_c_null(void*) {
+	// do nothing :)
+}
 
 void Parallaction_br::_c_blufade(void*) {
 	warning("Parallaction_br::_c_blufade() not yet implemented");
@@ -41,7 +44,7 @@ void Parallaction_br::_c_ferrcycle(void*) {
 }
 
 void Parallaction_br::_c_lipsinc(void*) {
-	warning("Unexpected lipsinc routine call! Please notify the team!");
+	warning("Unexpected lipsinc routine call! Please notify the team");
 }
 
 void Parallaction_br::_c_albcycle(void*) {

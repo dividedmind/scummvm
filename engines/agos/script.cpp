@@ -110,7 +110,7 @@ void AGOSEngine::o_eq() {
 #ifdef __DS__
 	// HACK: Skip attempt to read Calypso's letter manually,
 	// due to speech segment been too large to fit into memory
-	if (getGameType() == GType_SIMON1 && _currentTable) {
+	if (getGameType() == GType_SIMON1 && (getFeatures() & GF_TALKIE) && _currentTable) {
 		if (_currentTable->id == 71 && tmp == 1 && tmp2 == 1) {
 			setScriptCondition(false);
 			return;
@@ -248,7 +248,17 @@ void AGOSEngine::o_clear() {
 void AGOSEngine::o_let() {
 	// 42: set var
 	uint var = getVarWrapper();
-	writeVariable(var, getVarOrWord());
+	uint value = getVarOrWord();
+
+	if (getGameType() == GType_FF && _currentTable) {
+		// WORKAROUND: When the repair man comes to fix the car, the game doesn't
+		// wait long enough for the screen to completely scroll to the left side.
+		if (_currentTable->id == 20438 && var == 103 && value == 60) {
+			value = 71;
+		}
+	}
+
+	writeVariable(var, value);
 }
 
 void AGOSEngine::o_add() {
@@ -434,7 +444,7 @@ void AGOSEngine::o_process() {
 #ifdef __DS__
 		// HACK: Skip scene of Simon reading letter from Calypso
 		// due to speech segment been too large to fit into memory
-		if (getGameType() == GType_SIMON1 && sub->id == 2922) {
+		if (getGameType() == GType_SIMON1 && (getFeatures() & GF_TALKIE) && sub->id == 2922) {
 			// set parent special
 			_noParentNotify = true;
 			setItemParent(derefItem(16), me());
@@ -495,7 +505,7 @@ void AGOSEngine::o_comment() {
 
 void AGOSEngine::o_haltAnimation() {
 	// 88: stop animation
-	_lockWord |= 0x10;
+	_videoLockOut |= 0x10;
 
 	if (getGameType() == GType_SIMON1 || getGameType() == GType_SIMON2) {
 		VgaTimerEntry *vte = _vgaTimerList;
@@ -512,7 +522,7 @@ void AGOSEngine::o_haltAnimation() {
 
 void AGOSEngine::o_restartAnimation() {
 	// 89: restart animation
-	_lockWord &= ~0x10;
+	_videoLockOut &= ~0x10;
 }
 
 void AGOSEngine::o_getParent() {
@@ -570,7 +580,7 @@ void AGOSEngine::o_loadZone() {
 	// 97: load zone
 	uint vga_res = getVarOrWord();
 
-	_lockWord |= 0x80;
+	_videoLockOut |= 0x80;
 
 	if (getGameType() == GType_ELVIRA1 || getGameType() == GType_ELVIRA2 ||
 		getGameType() == GType_WW) {
@@ -586,14 +596,14 @@ void AGOSEngine::o_loadZone() {
 		_vgaSpriteChanged = 0;
 	}
 
-	_lockWord &= ~0x80;
+	_videoLockOut &= ~0x80;
 }
 
 void AGOSEngine::o_killAnimate() {
 	// 100: kill animations
-	_lockWord |= 0x8000;
+	_videoLockOut |= 0x8000;
 	vc27_resetSprite();
-	_lockWord &= ~0x8000;
+	_videoLockOut &= ~0x8000;
 }
 
 void AGOSEngine::o_defWindow() {
@@ -1044,18 +1054,18 @@ void AGOSEngine::synchChain(Item *i) {
 
 void AGOSEngine::sendSync(uint a) {
 	uint16 id = to16Wrapper(a);
-	_lockWord |= 0x8000;
+	_videoLockOut |= 0x8000;
 	_vcPtr = (byte *)&id;
 	vc15_sync();
-	_lockWord &= ~0x8000;
+	_videoLockOut &= ~0x8000;
 }
 
 void AGOSEngine::stopAnimate(uint16 a) {
 	uint16 b = to16Wrapper(a);
-	_lockWord |= 0x8000;
+	_videoLockOut |= 0x8000;
 	_vcPtr = (byte *)&b;
 	vc60_stopAnimation();
-	_lockWord &= ~0x8000;
+	_videoLockOut &= ~0x8000;
 }
 
 void AGOSEngine::waitForSync(uint a) {

@@ -8,31 +8,15 @@
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
  * of the License, or (at your option) any later version.
-
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * LGPL License
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
-
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
-
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  * $URL$
  * $Id$
@@ -45,13 +29,9 @@
 #include "kyra/kyra_v1.h"
 
 #include "common/scummsys.h"
-#include "common/file.h"
-#include "common/mutex.h"
-#include "common/ptr.h"
+#include "common/str.h"
 
-#include "sound/midiparser.h"
 #include "sound/mixer.h"
-#include "sound/softsynth/ym2612.h"
 
 namespace Audio {
 class AudioStream;
@@ -74,7 +54,8 @@ public:
 		kMidiMT32,
 		kMidiGM,
 		kTowns,
-		kPC98
+		kPC98,
+		kPCSpkr
 	};
 
 	virtual kType getMusicType() const = 0;
@@ -181,62 +162,71 @@ public:
 	virtual bool voiceFileIsPresent(const char *file);
 
 	/**
+	 * Checks whether a voice file with the given name is present
+	 *
+	 * @param file		file name
+	 * @return true if available, false otherwise
+	 */
+	bool isVoicePresent(const char *file);
+
+	/**
 	 * Plays the specified voice file.
 	 *
 	 * Also before starting to play the
 	 * specified voice file, it stops the
 	 * current voice.
 	 *
-	 * TODO: add support for queueing voice
-	 * files
-	 *
 	 * @param file		file to be played
 	 * @param volume	volume of the voice file
 	 * @param isSfx		marks file as sfx instead of voice
+	 * @param handle	store a copy of the sound handle
 	 * @return playtime of the voice file (-1 marks unknown playtime)
 	 */
-	virtual int32 voicePlay(const char *file, uint8 volume = 255, bool isSfx = false);
+	virtual int32 voicePlay(const char *file, Audio::SoundHandle *handle = 0, uint8 volume = 255, bool isSfx = false);
 
-	/**
-	 * Queues the specified voice files in an AppendableAudioStream
-	 * and plays them.
-	 *
-	 * @param fileList:	files to be played
-	 */
-	virtual void voicePlayFromList(Common::List<const char*> fileList);
+	Audio::AudioStream *getVoiceStream(const char *file);
+
+	bool playVoiceStream(Audio::AudioStream *stream, Audio::SoundHandle *handle = 0, uint8 volume = 255, bool isSfx = false);
 
 	/**
 	 * Checks if a voice is being played.
 	 *
 	 * @return true when playing, else false
 	 */
-	bool voiceIsPlaying(const char *file = 0);
+	bool voiceIsPlaying(const Audio::SoundHandle *handle = 0);
+
+	/**
+	 * Checks if all voice handles are used.
+	 *
+	 * @return false when a handle is free, else true
+	 */
+	bool allVoiceChannelsPlaying();
 
 	/**
 	 * Checks how long a voice has been playing
 	 *
 	 * @return time in milliseconds
 	 */
-	uint32 voicePlayedTime(const char *file);
+	uint32 voicePlayedTime(const Audio::SoundHandle &handle) {
+		return _mixer->getSoundElapsedTime(handle);
+	}
 
 	/**
 	 * Stops playback of the current voice.
 	 */
-	void voiceStop(const char *file = 0);
+	void voiceStop(const Audio::SoundHandle *handle = 0);
 protected:
-	const char *fileListEntry(int file) const { return (_soundDataList != 0 && file >= 0 && file < _soundDataList->_fileListLen) ? _soundDataList->_fileList[file] : ""; }
-	const void *cdaData() const { return _soundDataList != 0 ? _soundDataList->_cdaTracks : 0; }
-	int cdaTrackNum() const { return _soundDataList != 0 ? _soundDataList->_cdaNumTracks : 0; }
+	const char *fileListEntry(int file) const { return (_soundDataList != 0 && file >= 0 && file < _soundDataList->fileListLen) ? _soundDataList->fileList[file] : ""; }
+	int fileListLen() const { return _soundDataList->fileListLen; }
+	const void *cdaData() const { return _soundDataList != 0 ? _soundDataList->cdaTracks : 0; }
+	int cdaTrackNum() const { return _soundDataList != 0 ? _soundDataList->cdaNumTracks : 0; }
+	int extraOffset() const { return _soundDataList != 0 ? _soundDataList->extraOffset : 0; }
 
 	enum {
 		kNumChannelHandles = 4
 	};
 
-	struct SoundChannel {
-		Common::String file;
-		Audio::SoundHandle channelHandle;
-	};
-	SoundChannel _soundChannels[kNumChannelHandles];
+	Audio::SoundHandle _soundChannels[kNumChannelHandles];
 
 	int _musicEnabled;
 	bool _sfxEnabled;
@@ -260,242 +250,6 @@ private:
 	static const SpeechCodecs _supportedCodecs[];
 };
 
-class AdlibDriver;
-
-/**
- * AdLib implementation of the sound output device.
- *
- * It uses a special sound file format special to
- * Dune II, Kyrandia 1 and 2. While Dune II and
- * Kyrandia 1 are using exact the same format, the
- * one of Kyrandia 2 slightly differs.
- *
- * See AdlibDriver for more information.
- * @see AdlibDriver
- */
-class SoundAdlibPC : public Sound {
-public:
-	SoundAdlibPC(KyraEngine_v1 *vm, Audio::Mixer *mixer);
-	~SoundAdlibPC();
-
-	kType getMusicType() const { return kAdlib; }
-
-	bool init();
-	void process();
-
-	void loadSoundFile(uint file);
-	void loadSoundFile(Common::String file);
-
-	void playTrack(uint8 track);
-	void haltTrack();
-	bool isPlaying();
-
-	void playSoundEffect(uint8 track);
-
-	void beginFadeOut();
-private:
-	void internalLoadFile(Common::String file);
-
-	void play(uint8 track);
-
-	void unk1();
-	void unk2();
-
-	AdlibDriver *_driver;
-
-	bool _v2;
-	uint8 _trackEntries[500];
-	uint8 *_soundDataPtr;
-	int _sfxPlayingSound;
-
-	Common::String _soundFileLoaded;
-
-	uint8 _sfxPriority;
-	uint8 _sfxFourthByteOfSong;
-
-	int _numSoundTriggers;
-	const int *_soundTriggers;
-
-	static const int _kyra1NumSoundTriggers;
-	static const int _kyra1SoundTriggers[];
-};
-
-class MidiOutput;
-
-/**
- * MIDI output device.
- *
- * This device supports both MT-32 MIDI, as used in
- * Kyrandia 1 and 2, and GM MIDI, as used in Kyrandia 2.
- */
-class SoundMidiPC : public Sound {
-public:
-	SoundMidiPC(KyraEngine_v1 *vm, Audio::Mixer *mixer, MidiDriver *driver);
-	~SoundMidiPC();
-
-	kType getMusicType() const { return _nativeMT32 ? kMidiMT32 : kMidiGM; }
-
-	bool init();
-
-	void updateVolumeSettings();
-
-	void loadSoundFile(uint file);
-	void loadSoundFile(Common::String file);
-	void loadSfxFile(Common::String file);
-
-	void playTrack(uint8 track);
-	void haltTrack();
-	bool isPlaying();
-
-	void playSoundEffect(uint8 track);
-	void stopAllSoundEffects();
-
-	void beginFadeOut();
-
-	void hasNativeMT32(bool nativeMT32);
-private:
-	static void onTimer(void *data);
-
-	// Our channel handling
-	int _musicVolume, _sfxVolume;
-
-	uint32 _fadeStartTime;
-	bool _fadeMusicOut;
-
-	// Midi file related
-	Common::String _mFileName, _sFileName;
-	byte *_musicFile, *_sfxFile;
-
-	MidiParser *_music;
-	MidiParser *_sfx[3];
-
-	// misc
-	bool _nativeMT32;
-	bool _useC55;
-	MidiDriver *_driver;
-	MidiOutput *_output;
-
-	Common::Mutex _mutex;
-};
-
-class Towns_EuphonyDriver;
-class TownsPC98_OpnDriver;
-
-class SoundTowns : public MidiDriver, public Sound {
-public:
-	SoundTowns(KyraEngine_v1 *vm, Audio::Mixer *mixer);
-	~SoundTowns();
-
-	kType getMusicType() const { return kTowns; }
-
-	bool init();
-	void process();
-
-	void loadSoundFile(uint file);
-	void loadSoundFile(Common::String) {}
-
-	void playTrack(uint8 track);
-	void haltTrack();
-
-	void playSoundEffect(uint8);
-
-	void beginFadeOut();
-
-	//MidiDriver interface implementation
-	int open();
-	void close();
-	void send(uint32 b);
-	void metaEvent(byte type, byte *data, uint16 length) {}
-
-	void setTimerCallback(void *timerParam, void (*timerProc)(void *)) { }
-	uint32 getBaseTempo(void);
-
-	//Channel allocation functions
-	MidiChannel *allocateChannel()		{ return 0; }
-	MidiChannel *getPercussionChannel()	{ return 0; }
-
-	static float calculatePhaseStep(int8 semiTone, int8 semiToneRootkey,
-		uint32 sampleRate, uint32 outputRate, int32 pitchWheel);
-
-private:
-	bool loadInstruments();
-	void playEuphonyTrack(uint32 offset, int loop);
-
-	static void onTimer(void *data);
-
-	int _lastTrack;
-	Audio::AudioStream *_currentSFX;
-	Audio::SoundHandle _sfxHandle;
-
-	uint _sfxFileIndex;
-	uint8 *_sfxFileData;
-
-	Towns_EuphonyDriver * _driver;
-	MidiParser * _parser;
-
-	Common::Mutex _mutex;
-
-	const uint8 *_sfxBTTable;
-	const uint8 *_sfxWDTable;
-};
-
-class SoundPC98 : public Sound {
-public:
-	SoundPC98(KyraEngine_v1 *vm, Audio::Mixer *mixer);
-	~SoundPC98();
-
-	virtual kType getMusicType() const { return kPC98; }
-
-	bool init();
-
-	void process() {}
-	void loadSoundFile(uint file) {}
-	void loadSoundFile(Common::String) {}
-
-	void playTrack(uint8 track);
-	void haltTrack();
-	void beginFadeOut();
-
-	int32 voicePlay(const char *file, uint8 volume = 255, bool isSfx = false) { return -1; }
-	void playSoundEffect(uint8);
-
-protected:
-	int _lastTrack;
-	uint8 *_musicTrackData;
-	uint8 *_sfxTrackData;
-	TownsPC98_OpnDriver *_driver;
-};
-
-class SoundTownsPC98_v2 : public Sound {
-public:
-	SoundTownsPC98_v2(KyraEngine_v1 *vm, Audio::Mixer *mixer);
-	~SoundTownsPC98_v2();
-
-	kType getMusicType() const { return _vm->gameFlags().platform == Common::kPlatformFMTowns ? kTowns : kPC98; }
-
-	bool init();
-	void process();
-
-	void loadSoundFile(uint file) {}
-	void loadSoundFile(Common::String file);
-
-	void playTrack(uint8 track);
-	void haltTrack();
-	void beginFadeOut();
-
-	int32 voicePlay(const char *file, uint8 volume = 255, bool isSfx = false);
-	void playSoundEffect(uint8 track);
-
-protected:
-	Audio::AudioStream *_currentSFX;
-	int _lastTrack;
-	bool _useFmSfx;
-
-	uint8 *_musicTrackData;
-	uint8 *_sfxTrackData;
-	TownsPC98_OpnDriver *_driver;
-};
-
 class MixedSoundDriver : public Sound {
 public:
 	MixedSoundDriver(KyraEngine_v1 *vm, Audio::Mixer *mixer, Sound *music, Sound *sfx) : Sound(vm, mixer), _music(music), _sfx(sfx) {}
@@ -514,11 +268,15 @@ public:
 	void loadSoundFile(uint file) { _music->loadSoundFile(file); _sfx->loadSoundFile(file); }
 	void loadSoundFile(Common::String file) { _music->loadSoundFile(file); _sfx->loadSoundFile(file); }
 
+	void loadSfxFile(Common::String file) { _sfx->loadSoundFile(file); }
+
 	void playTrack(uint8 track) { _music->playTrack(track); }
 	void haltTrack() { _music->haltTrack(); }
 	bool isPlaying() const { return _music->isPlaying() | _sfx->isPlaying(); }
 
 	void playSoundEffect(uint8 track) { _sfx->playSoundEffect(track); }
+
+	void stopAllSoundEffects() { _sfx->stopAllSoundEffects(); }
 
 	void beginFadeOut() { _music->beginFadeOut(); }
 private:

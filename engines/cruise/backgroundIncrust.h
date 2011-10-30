@@ -35,9 +35,9 @@ struct backgroundIncrustStruct {
 	uint16 objectIdx;
 	int16 type;
 	uint16 overlayIdx;
-	uint16 X;
-	uint16 Y;
-	uint16 field_E;
+	int16 X;
+	int16 Y;
+	uint16 frame;
 	uint16 scale;
 	uint16 backgroundIdx;
 	uint16 scriptNumber;
@@ -56,8 +56,6 @@ extern backgroundIncrustStruct backgroundIncrustHead;
 
 void resetBackgroundIncrustList(backgroundIncrustStruct * pHead);
 backgroundIncrustStruct *addBackgroundIncrust(int16 overlayIdx, int16 param2, backgroundIncrustStruct * pHead, int16 scriptNumber, int16 scriptOverlay, int16 backgroundIdx, int16 param4);
-void saveIncrust(Common::OutSaveFile& currentSaveFile);
-void loadBackgroundIncrustFromSave(Common::InSaveFile& currentSaveFile);
 void regenerateBackgroundIncrust(backgroundIncrustStruct * pHead);
 void freeBackgroundIncrustList(backgroundIncrustStruct * pHead);
 void removeBackgroundIncrust(int overlay, int idx, backgroundIncrustStruct * pHead);

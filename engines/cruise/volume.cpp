@@ -27,7 +27,7 @@
 
 namespace Cruise {
 
-FILE *PAL_fileHandle = NULL;
+Common::File PAL_file;
 uint8 *PAL_ptr = NULL;
 
 int16 numLoadedPal;
@@ -38,30 +38,27 @@ char currentBaseName[15] = "";
 void loadPal(volumeDataStruct *entry) {
 	char name[20];
 
+	// This code isn't currently being used, so return
 	return;
 
-	if (PAL_fileHandle) {
-		fclose(PAL_fileHandle);
-	}
+	if (PAL_file.isOpen())
+		PAL_file.close();
 
 	removeExtention(entry->ident, name);
 	strcat(name, ".PAL");
 
-	// FIXME: using fopen/fread is not portable. Use Common::File instead
-	PAL_fileHandle = fopen(name, "rb");
+	if (!PAL_file.open(name))
+		return;
 
-	fread(&numLoadedPal, 2, 1, PAL_fileHandle);
-	fread(&fileData2, 2, 1, PAL_fileHandle);
+	numLoadedPal = PAL_file.readSint16BE();
+	fileData2 = PAL_file.readSint16BE();
 
-	flipShort(&numLoadedPal);
-	flipShort(&fileData2);
-
-	PAL_ptr = (uint8 *) malloc(numLoadedPal * fileData2);
+	PAL_ptr = (uint8 *)malloc(numLoadedPal * fileData2);
 }
 
 void closePal(void) {
-	if (PAL_fileHandle) {
-		fclose(PAL_fileHandle);
+	if (PAL_file.isOpen()) {
+		PAL_file.close();
 
 		free(PAL_ptr);
 		PAL_ptr = NULL;
@@ -80,7 +77,7 @@ int closeBase(void) {
 		strcpy(currentBaseName, "");
 	}
 
-	if (PAL_fileHandle) {
+	if (PAL_file.isOpen()) {
 		closePal();
 	}
 
@@ -110,11 +107,8 @@ int getVolumeDataEntry(volumeDataStruct *entry) {
 
 	changeCursor(CURSOR_DISK);
 
-	currentVolumeFile.read(&volumeNumberOfEntry, 2);
-	currentVolumeFile.read(&volumeSizeOfEntry, 2);
-
-	flipShort(&volumeNumberOfEntry);
-	flipShort(&volumeSizeOfEntry);
+	volumeNumberOfEntry = currentVolumeFile.readSint16BE();
+	volumeSizeOfEntry = currentVolumeFile.readSint16BE();
 
 	volumeNumEntry = volumeNumberOfEntry;
 
@@ -132,16 +126,10 @@ int getVolumeDataEntry(volumeDataStruct *entry) {
 
 	for (i = 0; i < volumeNumEntry; i++) {
 		currentVolumeFile.read(&volumePtrToFileDescriptor[i].name, 14);
-		currentVolumeFile.read(&volumePtrToFileDescriptor[i].offset, 4);
-		currentVolumeFile.read(&volumePtrToFileDescriptor[i].size, 4);
-		currentVolumeFile.read(&volumePtrToFileDescriptor[i].extSize, 4);
-		currentVolumeFile.read(&volumePtrToFileDescriptor[i].unk3, 4);
-	}
-
-	for (i = 0; i < volumeNumEntry; i++) {
-		flipLong(&volumePtrToFileDescriptor[i].offset);
-		flipLong(&volumePtrToFileDescriptor[i].size);
-		flipLong(&volumePtrToFileDescriptor[i].extSize);
+		volumePtrToFileDescriptor[i].offset = currentVolumeFile.readSint32BE();
+		volumePtrToFileDescriptor[i].size = currentVolumeFile.readSint32BE();
+		volumePtrToFileDescriptor[i].extSize = currentVolumeFile.readSint32BE();
+		volumePtrToFileDescriptor[i].unk3 = currentVolumeFile.readSint32BE();
 	}
 
 	strcpy(currentBaseName, entry->ident);
@@ -187,22 +175,6 @@ int32 findFileInDisksSub1(const char *fileName) {
 	}
 
 	return (foundDisk);
-}
-
-void strToUpper(char *fileName) {
-	char character;
-
-	do {
-		character = *fileName;
-
-		if (character >= 'a' && character <= 'z') {
-			character &= 0xDF;
-			*fileName = character;
-		}
-
-		fileName++;
-
-	} while (character);
 }
 
 void freeDisk(void) {
@@ -266,14 +238,16 @@ void askDisk(int16 discNumber) {
 	changeCursor(currentCursor);
 }
 
-int16 findFileInDisks(char *fileName) {
+int16 findFileInDisks(const char *name) {
+	char fileName[50];
 	int disk;
 	int fileIdx;
 
+	strcpy(fileName, name);
 	strToUpper(fileName);
 
 	if (!volumeDataLoaded) {
-		printf("CNF wasn't loaded, reading now...\n");
+		debug(1, "CNF wasn't loaded, reading now...");
 		if (currentVolumeFile.isOpen()) {
 			askDisk(-1);
 			freeDisk();
@@ -298,7 +272,7 @@ int16 findFileInDisks(char *fileName) {
 	if (disk >= 0) {
 		int temp;
 
-		printf("File found on disk %d\n", disk);
+		debug(1, "File found on disk %d", disk);
 
 		if (currentVolumeFile.isOpen()) {
 			askDisk(-1);
@@ -372,29 +346,23 @@ int16 readVolCnf(void) {
 		return (0);
 	}
 
-	fileHandle.read(&numOfDisks, 2);
-	flipShort(&numOfDisks);
-
-	fileHandle.read(&sizeHEntry, 2);
-	flipShort(&sizeHEntry);	// size of one header entry - 20 bytes
+	numOfDisks = fileHandle.readSint16BE();
+	sizeHEntry = fileHandle.readSint16BE();		// size of one header entry - 20 bytes
 
 	for (i = 0; i < numOfDisks; i++) {
 		//      fread(&volumeData[i],20,1,fileHandle);
 		fileHandle.read(&volumeData[i].ident, 10);
 		fileHandle.read(&volumeData[i].ptr, 4);
-		fileHandle.read(&volumeData[i].diskNumber, 2);
-		fileHandle.read(&volumeData[i].size, 4);
+		volumeData[i].diskNumber = fileHandle.readSint16BE();
+		volumeData[i].size = fileHandle.readSint32BE();
 
-		flipShort(&volumeData[i].diskNumber);
-		printf("Disk number: %d\n", volumeData[i].diskNumber);
-		flipLong(&volumeData[i].size);
+		debug(1, "Disk number: %d", volumeData[i].diskNumber);
 	}
 
 	for (i = 0; i < numOfDisks; i++) {
 		dataFileName *ptr;
 
-		fileHandle.read(&volumeData[i].size, 4);
-		flipLong(&volumeData[i].size);
+		volumeData[i].size = fileHandle.readSint32BE();
 
 		ptr = (dataFileName *) mallocAndZero(volumeData[i].size);
 
@@ -481,6 +449,17 @@ int16 readVolCnf(void) {
 }
 
 ///////////////////////////::
+
+// This code used to rely on "strupr", which is non existant on my system,
+// thus I just implemented this function instead. - LordHoto
+//
+// TODO: This might be code duplication, please check this out.
+void strToUpper(char *string) {
+	while (*string) {
+		*string = toupper(*string);
+		++string;
+	}
+}
 
 void drawMsgString(const char *string) {
 	//printf("%s\n",string);

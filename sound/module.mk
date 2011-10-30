@@ -5,7 +5,7 @@ MODULE_OBJS := \
 	aiff.o \
 	audiocd.o \
 	audiostream.o \
-	iff.o \
+	iff_sound.o \
 	flac.o \
 	fmopl.o \
 	mididrv.o \
@@ -18,6 +18,8 @@ MODULE_OBJS := \
 	musicplugin.o \
 	null.o \
 	shorten.o \
+	timestamp.o \
+	vag.o \
 	voc.o \
 	vorbis.o \
 	wave.o \
@@ -28,6 +30,8 @@ MODULE_OBJS := \
 	mods/rjp1.o \
 	mods/soundfx.o \
 	softsynth/adlib.o \
+	softsynth/opl/dosbox.o \
+	softsynth/opl/mame.o \
 	softsynth/ym2612.o \
 	softsynth/fluidsynth.o \
 	softsynth/mt32.o \

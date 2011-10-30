@@ -26,6 +26,7 @@
 
 #include "common/config-manager.h"
 #include "common/events.h"
+#include "common/EventRecorder.h"
 #include "common/system.h"
 
 #include "graphics/cursorman.h"
@@ -73,7 +74,7 @@ ToucheEngine::ToucheEngine(OSystem *system, Common::Language language)
 	Common::addDebugChannel(kDebugOpcodes,  "Opcodes",  "Opcodes debug level");
 	Common::addDebugChannel(kDebugMenu,     "Menu",     "Menu debug level");
 
-	_eventMan->registerRandomSource(_rnd, "touche");
+	g_eventRec.registerRandomSource(_rnd, "touche");
 }
 
 ToucheEngine::~ToucheEngine() {
@@ -81,7 +82,7 @@ ToucheEngine::~ToucheEngine() {
 	delete _midiPlayer;
 }
 
-Common::Error ToucheEngine::init() {
+Common::Error ToucheEngine::run() {
 	initGraphics(kScreenWidth, kScreenHeight, true);
 
 	Graphics::setupFont(_language);
@@ -93,10 +94,7 @@ Common::Error ToucheEngine::init() {
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, ConfMan.getInt("speech_volume"));
 	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, ConfMan.getInt("music_volume"));
-	return Common::kNoError;
-}
 
-Common::Error ToucheEngine::go() {
 	res_openDataFile();
 	res_allocateTables();
 	res_loadSpriteImage(18, _menuKitData);

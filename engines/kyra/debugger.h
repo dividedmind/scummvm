@@ -66,7 +66,7 @@ protected:
 	virtual void postEnter();
 
 	bool cmd_enterRoom(int argc, const char **argv);
-	bool cmd_listRooms(int argc, const char **argv);
+	bool cmd_listScenes(int argc, const char **argv);
 	bool cmd_giveItem(int argc, const char **argv);
 	bool cmd_listBirthstones(int argc, const char **argv);
 };
@@ -96,6 +96,18 @@ protected:
 
 	bool cmd_passcodes(int argc, const char **argv);
 };
+
+#ifdef ENABLE_LOL
+class LoLEngine;
+
+class Debugger_LoL : public Debugger {
+public:
+	Debugger_LoL(LoLEngine *vm);
+
+protected:
+	LoLEngine *_vm;
+};
+#endif // ENABLE_LOL
 
 } // End of namespace Kyra
 

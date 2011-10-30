@@ -23,9 +23,9 @@
  *
  */
 
-
 #include "common/md5.h"
 #include "common/events.h"
+#include "common/EventRecorder.h"
 #include "common/file.h"
 #include "common/savefile.h"
 #include "common/config-manager.h"
@@ -73,6 +73,9 @@ void AgiEngine::processEvents() {
 					newInputMode(INPUT_NORMAL);
 					_gfx->printCharacter(_stringdata.x + strlen(_game.strings[_stringdata.str]) + 1,
 							_stringdata.y, ' ', _game.colorFg, _game.colorBg);
+				} else if (_game.inputMode == INPUT_NONE) {
+					for (int n = 0; _predictiveResult[n]; n++)
+						keyEnqueue(_predictiveResult[n]);
 				}
 			}
 			break;
@@ -101,6 +104,20 @@ void AgiEngine::processEvents() {
 		case Common::EVENT_MOUSEMOVE:
 			g_mouse.x = event.mouse.x;
 			g_mouse.y = event.mouse.y;
+
+			if (!_game.mouseFence.isEmpty()) {
+				if (g_mouse.x < _game.mouseFence.left)
+					g_mouse.x = _game.mouseFence.left;
+				if (g_mouse.x > _game.mouseFence.right)
+					g_mouse.x = _game.mouseFence.right;
+				if (g_mouse.y < _game.mouseFence.top)
+					g_mouse.y = _game.mouseFence.top;
+				if (g_mouse.y > _game.mouseFence.bottom)
+					g_mouse.y = _game.mouseFence.bottom;
+
+				g_system->warpMouse(g_mouse.x, g_mouse.y);
+			}
+
 			break;
 		case Common::EVENT_LBUTTONUP:
 		case Common::EVENT_RBUTTONUP:
@@ -244,31 +261,18 @@ void AgiEngine::processEvents() {
 			if (key)
 				keyEnqueue(key);
 			break;
+
+		case Common::EVENT_KEYUP:
+			if (_egoHoldKey)	
+				_game.viewTable[0].direction = 0;
+
 		default:
 			break;
 		}
 	}
 }
 
-void AgiEngine::checkQuickLoad() {
-	if (ConfMan.hasKey("save_slot")) {
-		char saveNameBuffer[256];
-
-		snprintf (saveNameBuffer, 256, "%s.%03d", _targetName.c_str(), ConfMan.getInt("save_slot"));
-
-		if (loadGame(saveNameBuffer, false) == errOK) {	 // Do not check game id
-			_game.exitAllLogics = 1;
-			_menu->enableAll();
-		}
-	}
-}
-
-int AgiEngine::agiIsKeypressLow() {
-	processEvents();
-	return _keyQueueStart != _keyQueueEnd;
-}
-
-void AgiEngine::agiTimerLow() {
+void AgiEngine::pollTimer(void) {
 	static uint32 m = 0;
 	uint32 dm;
 
@@ -285,58 +289,21 @@ void AgiEngine::agiTimerLow() {
 	m = g_tickTimer;
 }
 
-int AgiEngine::agiGetKeypressLow() {
-	int k;
-
-	while (_keyQueueStart == _keyQueueEnd)	/* block */
-		agiTimerLow();
-	keyDequeue(k);
-
-	return k;
-}
-
 void AgiEngine::agiTimerFunctionLow(void *refCon) {
 	g_tickTimer++;
 }
 
-void AgiEngine::clearImageStack(void) {
-	_imageStack.clear();
-}
+void AgiEngine::pause(uint32 msec) {
+	uint32 endTime = _system->getMillis() + msec;
 
-void AgiEngine::releaseImageStack(void) {
-	_imageStack.clear();
-}
+	_gfx->setCursor(_renderMode == Common::kRenderAmiga, true);
 
-void AgiEngine::recordImageStackCall(uint8 type, int16 p1, int16 p2, int16 p3,
-		int16 p4, int16 p5, int16 p6, int16 p7) {
-	ImageStackElement pnew;
-
-	pnew.type = type;
-	pnew.pad = 0;
-	pnew.parm1 = p1;
-	pnew.parm2 = p2;
-	pnew.parm3 = p3;
-	pnew.parm4 = p4;
-	pnew.parm5 = p5;
-	pnew.parm6 = p6;
-	pnew.parm7 = p7;
-
-	_imageStack.push(pnew);
-}
-
-void AgiEngine::replayImageStackCall(uint8 type, int16 p1, int16 p2, int16 p3,
-		int16 p4, int16 p5, int16 p6, int16 p7) {
-	switch (type) {
-	case ADD_PIC:
-		debugC(8, kDebugLevelMain, "--- decoding picture %d ---", p1);
-		agiLoadResource(rPICTURE, p1);
-		_picture->decodePicture(p1, p2, p3 != 0);
-		break;
-	case ADD_VIEW:
-		agiLoadResource(rVIEW, p1);
-		_sprites->addToPic(p1, p2, p3, p4, p5, p6, p7);
-		break;
+	while (_system->getMillis() < endTime) {
+		processEvents();
+		_system->updateScreen();
+		_system->delayMillis(10);
 	}
+	_gfx->setCursor(_renderMode == Common::kRenderAmiga);
 }
 
 void AgiEngine::initPriTable() {
@@ -353,18 +320,18 @@ int AgiEngine::agiInit() {
 	int ec, i;
 
 	debug(2, "initializing");
-	debug(2, "game.ver = 0x%x", _game.ver);
+	debug(2, "game version = 0x%x", getVersion());
 
-	/* initialize with adj.ego.move.to.x.y(0, 0) so to speak */
+	// initialize with adj.ego.move.to.x.y(0, 0) so to speak
 	_game.adjMouseX = _game.adjMouseY = 0;
 
-	/* reset all flags to false and all variables to 0 */
+	// reset all flags to false and all variables to 0
 	for (i = 0; i < MAX_FLAGS; i++)
 		_game.flags[i] = 0;
 	for (i = 0; i < MAX_VARS; i++)
 		_game.vars[i] = 0;
 
-	/* clear all resources and events */
+	// clear all resources and events
 	for (i = 0; i < MAX_DIRS; i++) {
 		memset(&_game.views[i], 0, sizeof(struct AgiView));
 		memset(&_game.pictures[i], 0, sizeof(struct AgiPicture));
@@ -376,7 +343,7 @@ int AgiEngine::agiInit() {
 		memset(&_game.dirSound[i], 0, sizeof(struct AgiDir));
 	}
 
-	/* clear view table */
+	// clear view table
 	for (i = 0; i < MAX_VIEWTABLE; i++)
 		memset(&_game.viewTable[i], 0, sizeof(VtEntry));
 
@@ -387,22 +354,22 @@ int AgiEngine::agiInit() {
 
 	initPriTable();
 
-	/* clear string buffer */
+	// clear string buffer
 	for (i = 0; i < MAX_STRINGS; i++)
 		_game.strings[i][0] = 0;
 
-	/* setup emulation */
+	// setup emulation
 
-	switch (_loader->getIntVersion() >> 12) {
+	switch (getVersion() >> 12) {
 	case 2:
 		report("Emulating Sierra AGI v%x.%03x\n",
-				(int)(agiGetRelease() >> 12) & 0xF,
-				(int)(agiGetRelease()) & 0xFFF);
+				(int)(getVersion() >> 12) & 0xF,
+				(int)(getVersion()) & 0xFFF);
 		break;
 	case 3:
 		report("Emulating Sierra AGI v%x.002.%03x\n",
-				(int)(agiGetRelease() >> 12) & 0xF,
-				(int)(agiGetRelease()) & 0xFFF);
+				(int)(getVersion() >> 12) & 0xF,
+				(int)(getVersion()) & 0xFFF);
 		break;
 	}
 
@@ -422,19 +389,19 @@ int AgiEngine::agiInit() {
 	if (_game.gameFlags & ID_AGDS)
 		report("AGDS mode enabled.\n");
 
-	ec = _loader->init();	/* load vol files, etc */
+	ec = _loader->init();	// load vol files, etc
 
 	if (ec == errOK)
 		ec = _loader->loadObjects(OBJECTS);
 
-	/* note: demogs has no words.tok */
+	// note: demogs has no words.tok
 	if (ec == errOK)
 		ec = _loader->loadWords(WORDS);
 
-	/* FIXME: load IIgs instruments and samples */
-	/* load_instruments("kq.sys16"); */
+	// FIXME: load IIgs instruments and samples
+	// load_instruments("kq.sys16");
 
-	/* Load logic 0 into memory */
+	// Load logic 0 into memory
 	if (ec == errOK)
 		ec = _loader->loadResource(rLOGIC, 0);
 
@@ -443,6 +410,10 @@ int AgiEngine::agiInit() {
 	// is shown.  On the DS version, the word completion feature needs the dictionary too.
 	loadDict();
 #endif
+
+	_egoHoldKey = false;
+
+	_game.mouseFence.setWidth(0); // Reset
 
 	return ec;
 }
@@ -454,7 +425,7 @@ int AgiEngine::agiInit() {
 void AgiEngine::agiUnloadResources() {
 	int i;
 
-	/* Make sure logic 0 is always loaded */
+	// Make sure logic 0 is always loaded
 	for (i = 1; i < MAX_DIRS; i++) {
 		_loader->unloadResource(rLOGIC, i);
 	}
@@ -468,8 +439,8 @@ void AgiEngine::agiUnloadResources() {
 int AgiEngine::agiDeinit() {
 	int ec;
 
-	cleanInput();		/* remove all words from memory */
-	agiUnloadResources();	/* unload resources in memory */
+	cleanInput();		// remove all words from memory
+	agiUnloadResources();	// unload resources in memory
 	_loader->unloadResource(rLOGIC, 0);
 	ec = _loader->deinit();
 	unloadObjects();
@@ -478,33 +449,6 @@ int AgiEngine::agiDeinit() {
 	clearImageStack();
 
 	return ec;
-}
-
-int AgiEngine::agiDetectGame() {
-	int ec = errOK;
-
-	assert(_gameDescription != NULL);
-
-	if (getVersion() <= 0x2999) {
-		_loader = new AgiLoader_v2(this);
-	} else {
-		_loader = new AgiLoader_v3(this);
-	}
-	ec = _loader->detectGame();
-
-	return ec;
-}
-
-int AgiEngine::agiVersion() {
-	return _loader->version();
-}
-
-int AgiEngine::agiGetRelease() {
-	return _loader->getIntVersion();
-}
-
-void AgiEngine::agiSetRelease(int n) {
-	_loader->setIntVersion(n);
 }
 
 int AgiEngine::agiLoadResource(int r, int n) {
@@ -549,69 +493,11 @@ static const GameSettings agiSettings[] = {
 	{NULL, NULL, 0, 0, NULL}
 };
 
-AgiTextColor AgiButtonStyle::getColor(bool hasFocus, bool pressed, bool positive) const {
-	if (_amigaStyle) {
-		if (positive) {
-			if (pressed) { // Positive pressed Amiga-style button
-				if (_olderAgi) {
-					return AgiTextColor(amigaBlack, amigaOrange);
-				} else {
-					return AgiTextColor(amigaBlack, amigaPurple);
-				}
-			} else { // Positive unpressed Amiga-style button
-				return AgiTextColor(amigaWhite, amigaGreen);
-			}
-		} else { // _amigaStyle && !positive
-			if (pressed) { // Negative pressed Amiga-style button
-				return AgiTextColor(amigaBlack, amigaCyan);
-			} else { // Negative unpressed Amiga-style button
-				return AgiTextColor(amigaWhite, amigaRed);
-			}
-		}
-	} else { // PC-style button
-		if (hasFocus || pressed) { // A pressed or in focus PC-style button
-			return AgiTextColor(pcWhite, pcBlack);
-		} else { // An unpressed PC-style button without focus
-			return AgiTextColor(pcBlack, pcWhite);
-		}
-	}
-}
-
-AgiTextColor AgiButtonStyle::getColor(bool hasFocus, bool pressed, int baseFgColor, int baseBgColor) const {
-	return getColor(hasFocus, pressed, AgiTextColor(baseFgColor, baseBgColor));
-}
-
-AgiTextColor AgiButtonStyle::getColor(bool hasFocus, bool pressed, const AgiTextColor &baseColor) const {
-	if (hasFocus || pressed)
-		return baseColor.swap();
-	else
-		return baseColor;
-}
-
-int AgiButtonStyle::getTextOffset(bool hasFocus, bool pressed) const {
-	return (pressed && !_amigaStyle) ? 1 : 0;
-}
-
-bool AgiButtonStyle::getBorder(bool hasFocus, bool pressed) const {
-	return _amigaStyle && !_authenticAmiga && (hasFocus || pressed);
-}
-
-void AgiButtonStyle::setAmigaStyle(bool amigaStyle, bool olderAgi, bool authenticAmiga) {
-	_amigaStyle		= amigaStyle;
-	_olderAgi		= olderAgi;
-	_authenticAmiga	= authenticAmiga;
-}
-
-void AgiButtonStyle::setPcStyle(bool pcStyle) {
-	setAmigaStyle(!pcStyle);
-}
-
-AgiButtonStyle::AgiButtonStyle(Common::RenderMode renderMode) {
-	setAmigaStyle(renderMode == Common::kRenderAmiga);
-}
-
 AgiBase::AgiBase(OSystem *syst, const AGIGameDescription *gameDesc) : Engine(syst), _gameDescription(gameDesc) {
+	_noSaveLoadAllowed = false;
 
+	initFeatures();
+	initVersion();
 }
 
 AgiEngine::AgiEngine(OSystem *syst, const AGIGameDescription *gameDesc) : AgiBase(syst, gameDesc) {
@@ -627,8 +513,10 @@ AgiEngine::AgiEngine(OSystem *syst, const AGIGameDescription *gameDesc) : AgiBas
 		if (!scumm_stricmp(g->gameid, gameid))
 			_gameId = g->id;
 
+	parseFeatures();
+
 	_rnd = new Common::RandomSource();
-	syst->getEventManager()->registerRandomSource(*_rnd, "agi");
+	g_eventRec.registerRandomSource(*_rnd, "agi");
 
 	Common::addDebugChannel(kDebugLevelMain, "Main", "Generic debug level");
 	Common::addDebugChannel(kDebugLevelResources, "Resources", "Resources debugging");
@@ -659,11 +547,14 @@ AgiEngine::AgiEngine(OSystem *syst, const AGIGameDescription *gameDesc) : AgiBas
 	_intobj = NULL;
 
 	_menu = NULL;
+	_menuSelected = false;
 
 	_lastSentence[0] = 0;
 	memset(&_stringdata, 0, sizeof(struct StringData));
 
 	_objects = NULL;
+
+	_restartGame = false;
 
 	_oldMode = -1;
 
@@ -672,6 +563,12 @@ AgiEngine::AgiEngine(OSystem *syst, const AGIGameDescription *gameDesc) : AgiBas
 	_predictiveDictLine = NULL;
 	_predictiveDictLineCount = 0;
 	_firstSlot = 0;
+
+	// NOTE: On game reload the keys do not get set again,
+	// thus it is incorrect to reset it in agiInit(). Fixes bug #2823762
+	_game.lastController = 0;
+	for (int i = 0; i < MAX_DIRS; i++)
+		_game.controllerOccured[i] = false;
 }
 
 void AgiEngine::initialize() {
@@ -683,6 +580,8 @@ void AgiEngine::initialize() {
 	// because Apple IIGS AGI games use only Apple IIGS specific sound resources.
 	if (getPlatform() == Common::kPlatformApple2GS) {
 		_soundemu = SOUND_EMU_APPLE2GS;
+	} else if (getPlatform() == Common::kPlatformCoCo3) {
+		_soundemu = SOUND_EMU_COCO3;
 	} else {
 		switch (MidiDriver::detectMusicDriver(MDT_PCSPK)) {
 		case MD_PCSPK:
@@ -738,8 +637,6 @@ void AgiEngine::initialize() {
 	_lastSaveTime = 0;
 
 	_timer->installTimerProc(agiTimerFunctionLow, 10 * 1000, NULL);
-
-	_game.ver = -1;		/* Don't display the conf file warning */
 
 	debugC(2, kDebugLevelMain, "Detect game");
 
@@ -799,8 +696,6 @@ Common::Error AgiEngine::go() {
 		do {
 			mainCycle();
 		} while (_game.state < STATE_RUNNING);
-		if (_game.ver < 0)
-			_game.ver = 0;	/* Enable conf file warning */
 	}
 
 	runGame();
@@ -809,6 +704,8 @@ Common::Error AgiEngine::go() {
 }
 
 void AgiEngine::syncSoundSettings() {
+	// FIXME/TODO: Please explain why we are using "music_volume" for all
+	// three different entries here.
 	int soundVolumeMusic = ConfMan.getInt("music_volume");
 	int soundVolumeSFX = ConfMan.getInt("music_volume");
 	int soundVolumeSpeech = ConfMan.getInt("music_volume");
@@ -816,6 +713,47 @@ void AgiEngine::syncSoundSettings() {
 	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, soundVolumeMusic);
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, soundVolumeSFX);
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, soundVolumeSpeech);
+}
+
+void AgiEngine::parseFeatures(void) {
+	if (!ConfMan.hasKey("features"))
+		return;
+
+	char *features = strdup(ConfMan.get("features").c_str());
+	const char *feature[100];
+	int numFeatures = 0;
+
+	char *tok = strtok(features, " ");
+	if (tok) {
+		do {
+			feature[numFeatures++] = tok;
+		} while ((tok = strtok(NULL, " ")) != NULL);
+	} else {
+		feature[numFeatures++] = features;
+	}
+
+	const struct Flags {
+		const char *name;
+		uint32 flag;
+	} flags[] = {
+		{ "agimouse", GF_AGIMOUSE },
+		{ "agds", GF_AGDS },
+		{ "agi256", GF_AGI256 },
+		{ "agi256-2", GF_AGI256_2 },
+		{ "agipal", GF_AGIPAL },
+		{ 0, 0 }
+	};
+
+	for (int i = 0; i < numFeatures; i++) {
+		for (const Flags *flag = flags; flag->name; flag++) {
+			if (!scumm_stricmp(feature[i], flag->name)) {
+				debug(0, "Added feature: %s", flag->name);
+
+				setFeature(flag->flag);
+				break;
+			}
+		}
+	}
 }
 
 } // End of namespace Agi

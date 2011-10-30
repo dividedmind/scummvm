@@ -25,6 +25,7 @@
 
 #include "cruise/cruise_main.h"
 #include "cruise/polys.h"
+#include "common/endian.h"
 #include "common/util.h"
 
 namespace Cruise {
@@ -163,19 +164,19 @@ void flipPoly(int fileId, int16 *dataPtr, int scale, char** newFrame, int X, int
 
 		dataPtr ++;
 
-		offset = *(dataPtr++);
-		flipShort(&offset);
+		offset = (int16)READ_BE_UINT16(dataPtr);
+		dataPtr++;
 
-		newX = *(dataPtr++);
-		flipShort(&newX);
+		newX = (int16)READ_BE_UINT16(dataPtr);
+		dataPtr++;
 
-		newY = *(dataPtr++);
-		flipShort(&newY);
+		newY = (int16)READ_BE_UINT16(dataPtr);
+		dataPtr++;
 
 		offset += fileId;
 
 		if (offset >= 0) {
-			if (filesDatabase[offset].resType == 0 && filesDatabase[offset].subData.ptr) {
+			if (filesDatabase[offset].resType == OBJ_TYPE_LINE && filesDatabase[offset].subData.ptr) {
 				dataPtr = (int16 *)filesDatabase[offset].subData.ptr;
 			}
 		}
@@ -205,10 +206,34 @@ int m_first_Y;
 int m_scaleValue;
 int m_color;
 
-int16 DIST_3D[512];
-int16 polyBuffer2[512];
-int16 XMIN_XMAX[404];
-int16 polyBuffer4[512];
+/* 
+   FIXME: Whether intentional or not, the game often seems to use negative indexing
+   of one or more of the arrays below and expects(?) to end up in the preceding one.
+   This "worked" on many platforms so far, but on OSX apparently the buffers don't
+   occupy contiguous memory, and this causes severe corruption and subsequent crashes.
+   Since I'm not really familiar with how the strange drawing code is supposed to work,
+   or whether this behaviour is intentional or not, the short-term fix is to allocate a big
+   buffer and setup pointers within it.  This fixes the crashes I'm seeing without causing any
+   (visual) side-effects.
+   If anyone wants to look, this is easily reproduced by starting the game and examining the rug.
+   drawPolyMode1() will then (indirectly) negatively index polyBuffer4.   Good luck!
+*/
+
+//int16 DIST_3D[512];
+//int16 polyBuffer2[512];
+//int16 XMIN_XMAX[404];
+//int16 polyBuffer4[512];
+
+int16 bigPolyBuf[512 + 512 + 404 + 512];	/* consolidates the 4 separate buffers above */
+
+//set up the replacement index pointers.
+int16 *DIST_3D = &bigPolyBuf[0];
+int16 *polyBuffer2 = &bigPolyBuf[512];
+int16 *XMIN_XMAX = &bigPolyBuf[512 + 512];
+int16 *polyBuffer4 = &bigPolyBuf[512 + 512 + 404];
+
+
+
 
 // this function fills the sizeTable for the poly (OLD: mainDrawSub1Sub2)
 void getPolySize(int positionX, int positionY, int scale, int sizeTable[4], unsigned char *dataPtr) {
@@ -828,10 +853,8 @@ void buildPolyModel(int positionX, int positionY, int scale, char *pMask, char *
 			m_color = *dataPointer;	// color
 			dataPointer += 2;
 
-			minimumScale = *(uint16 *)(dataPointer);
+			minimumScale = READ_BE_UINT16(dataPointer);
 			dataPointer += 2;
-
-			flipShort(&minimumScale);
 
 			if ((minimumScale <= scale)) {
 				if (m_flipLeftRight) {
@@ -989,10 +1012,8 @@ bool findPoly(char* dataPtr, int positionX, int positionY, int scale, int mouseX
 			m_color = *dataPointer;	// color
 			dataPointer += 2;
 
-			minimumScale = *(uint16 *)(dataPointer);
+			minimumScale = READ_BE_UINT16(dataPointer);
 			dataPointer += 2;
-
-			flipShort(&minimumScale);
 
 			if ((minimumScale <= scale)) {
 				if (m_flipLeftRight) {
@@ -1107,7 +1128,7 @@ void mainDrawPolygons(int fileIndex, cellStruct *plWork, int X, int scale, int Y
 	int numPasses = 0;
 
 	while (plWork) {
-		if (plWork->type == OBJ_TYPE_BGMK && plWork->freeze == 0) {
+		if (plWork->type == OBJ_TYPE_BGMASK && plWork->freeze == 0) {
 			objectParamsQuery params;
 
 			getMultipleObjectParam(plWork->overlay, plWork->idx, &params);
@@ -1116,7 +1137,7 @@ void mainDrawPolygons(int fileIndex, cellStruct *plWork, int X, int scale, int Y
 			int maskY = params.Y;
 			int maskFrame = params.fileIdx;
 
-			if (filesDatabase[maskFrame].subData.resourceType == OBJ_TYPE_BGMK && filesDatabase[maskFrame].subData.ptrMask) {
+			if (filesDatabase[maskFrame].subData.resourceType == OBJ_TYPE_BGMASK && filesDatabase[maskFrame].subData.ptrMask) {
 				drawMask(polygonMask, 40, 200, filesDatabase[maskFrame].subData.ptrMask, filesDatabase[maskFrame].width / 8, filesDatabase[maskFrame].height, maskX, maskY, numPasses++);
 			} else
 				if (filesDatabase[maskFrame].subData.resourceType == OBJ_TYPE_SPRITE && filesDatabase[maskFrame].subData.ptrMask) {
@@ -1132,17 +1153,15 @@ void mainDrawPolygons(int fileIndex, cellStruct *plWork, int X, int scale, int Y
 	buildPolyModel(newX, newY, newScale, (char*)polygonMask, destBuffer, newFrame);
 }
 
-void drawMessage(gfxEntryStruct *pGfxPtr, int globalX, int globalY, int width, int newColor, uint8 *ouputPtr) {
+void drawMessage(const gfxEntryStruct *pGfxPtr, int globalX, int globalY, int width, int newColor, uint8 *ouputPtr) {
 	// this is used for font only
 
 	if (pGfxPtr) {
 		uint8 *initialOuput;
 		uint8 *output;
-		int i;
-		int j;
-		int x;
-		int y;
-		uint8 *ptr = pGfxPtr->imagePtr;
+		int xp, yp;
+		int x, y;
+		const uint8 *ptr = pGfxPtr->imagePtr;
 		int height = pGfxPtr->height;
 
 		if (width > 310)
@@ -1160,13 +1179,12 @@ void drawMessage(gfxEntryStruct *pGfxPtr, int globalX, int globalY, int width, i
 
 		initialOuput = ouputPtr + (globalY * 320) + globalX;
 
-		y = globalY;
-		x = globalX;
+		for (yp = 0; yp < height; yp++) {
+			output = initialOuput + 320 * yp;
+			y = globalY + yp;
 
-		for (i = 0; i < height; i++) {
-			output = initialOuput + 320 * i;
-
-			for (j = 0; j < pGfxPtr->width; j++) {
+			for (xp = 0; xp < pGfxPtr->width; xp++) {
+				x = globalX + xp;
 				uint8 color = *(ptr++);
 
 				if (color) {
@@ -1184,20 +1202,20 @@ void drawMessage(gfxEntryStruct *pGfxPtr, int globalX, int globalY, int width, i
 	}
 }
 
-void drawSprite(int objX1, int var_6, cellStruct *currentObjPtr, char *data1, int objY2, int objX2, char *output, char *data2) {
+void drawSprite(int width, int height, cellStruct *currentObjPtr, const uint8 *dataIn, int ys, int xs, uint8 *output, const uint8 *dataBuf) {
 	int x = 0;
 	int y = 0;
 
 	cellStruct* plWork = currentObjPtr;
-	int workBufferSize = var_6 * (objX1 / 8);
+	int workBufferSize = height * (width / 8);
 
 	unsigned char* workBuf = (unsigned char*)malloc(workBufferSize);
-	memcpy(workBuf, data2, workBufferSize);
+	memcpy(workBuf, dataBuf, workBufferSize);
 
 	int numPasses = 0;
 
 	while (plWork) {
-		if (plWork->type == OBJ_TYPE_BGMK && plWork->freeze == 0) {
+		if (plWork->type == OBJ_TYPE_BGMASK && plWork->freeze == 0) {
 			objectParamsQuery params;
 
 			getMultipleObjectParam(plWork->overlay, plWork->idx, &params);
@@ -1206,11 +1224,11 @@ void drawSprite(int objX1, int var_6, cellStruct *currentObjPtr, char *data1, in
 			int maskY = params.Y;
 			int maskFrame = params.fileIdx;
 
-			if (filesDatabase[maskFrame].subData.resourceType == OBJ_TYPE_BGMK && filesDatabase[maskFrame].subData.ptrMask) {
-				drawMask(workBuf, objX1 / 8, var_6, filesDatabase[maskFrame].subData.ptrMask, filesDatabase[maskFrame].width / 8, filesDatabase[maskFrame].height, maskX - objX2, maskY - objY2, numPasses++);
+			if (filesDatabase[maskFrame].subData.resourceType == OBJ_TYPE_BGMASK && filesDatabase[maskFrame].subData.ptrMask) {
+				drawMask(workBuf, width / 8, height, filesDatabase[maskFrame].subData.ptrMask, filesDatabase[maskFrame].width / 8, filesDatabase[maskFrame].height, maskX - xs, maskY - ys, numPasses++);
 			} else
 				if (filesDatabase[maskFrame].subData.resourceType == OBJ_TYPE_SPRITE && filesDatabase[maskFrame].subData.ptrMask) {
-					drawMask(workBuf, objX1 / 8, var_6, filesDatabase[maskFrame].subData.ptrMask, filesDatabase[maskFrame].width / 8, filesDatabase[maskFrame].height, maskX - objX2, maskY - objY2, numPasses++);
+					drawMask(workBuf, width / 8, height, filesDatabase[maskFrame].subData.ptrMask, filesDatabase[maskFrame].width / 8, filesDatabase[maskFrame].height, maskX - xs, maskY - ys, numPasses++);
 				}
 
 		}
@@ -1218,14 +1236,13 @@ void drawSprite(int objX1, int var_6, cellStruct *currentObjPtr, char *data1, in
 		plWork = plWork->next;
 	}
 
-	for (y = 0; y < var_6; y++) {
-		for (x = 0; x < (objX1); x++) {
-			uint8 color = (data1[0]);
-			data1++;
+	for (y = 0; y < height; y++) {
+		for (x = 0; x < (width); x++) {
+			uint8 color = *dataIn++;
 
-			if ((x + objX2) >= 0 && (x + objX2) < 320 && (y + objY2) >= 0 && (y + objY2) < 200) {
-				if (testMask(x, y, workBuf, objX1 / 8)) {
-					output[320 * (y + objY2) + x + objX2] = color;
+			if ((x + xs) >= 0 && (x + xs) < 320 && (y + ys) >= 0 && (y + ys) < 200) {
+				if (testMask(x, y, workBuf, width / 8)) {
+					output[320 * (y + ys) + x + xs] = color;
 				}
 			}
 		}
@@ -1317,7 +1334,7 @@ void drawMenu(menuStruct *pMenu) {
 
 		int color;
 
-		if (p1->varC) {
+		if (p1->selected) {
 			color = selectColor;
 		} else {
 			if (p1->color != 255) {
@@ -1385,10 +1402,10 @@ void mainDraw(int16 param) {
 		return;
 	}*/
 
-	bgPtr = backgroundPtrtable[masterScreen];
+	bgPtr = backgroundScreens[masterScreen];
 
 	if (bgPtr) {
-		gfxModuleData_gfxCopyScreen((char *)bgPtr, (char *)gfxModuleData.pPage10);
+		gfxModuleData_gfxCopyScreen(bgPtr, gfxModuleData.pPage10);
 	}
 
 	autoCellHead.next = NULL;
@@ -1436,14 +1453,14 @@ void mainDraw(int16 param) {
 			if ((params.state >= 0) && (objZ2 >= 0) && filesDatabase[objZ2].subData.ptr) {
 				if (filesDatabase[objZ2].subData.resourceType == 8) {	// Poly
 					mainDrawPolygons(objZ2, currentObjPtr, objX2, params.scale, objY2, (char *)gfxModuleData.pPage10, (char *)filesDatabase[objZ2].subData.ptr);	// poly
-				} else if (filesDatabase[objZ2].subData.resourceType == 6) {	// sound
-				} else if (filesDatabase[objZ2].resType == 1) {	//(num plan == 1)
-				} else if (filesDatabase[objZ2].subData.resourceType == 4) {
+				} else if (filesDatabase[objZ2].subData.resourceType == OBJ_TYPE_SOUND) {
+				} else if (filesDatabase[objZ2].resType == OBJ_TYPE_MASK) {
+				} else if (filesDatabase[objZ2].subData.resourceType == OBJ_TYPE_SPRITE) {
 					objX1 = filesDatabase[objZ2].width;	// width
 					spriteHeight = filesDatabase[objZ2].height;	// height
 
 					if (filesDatabase[objZ2].subData.ptr) {
-						drawSprite(objX1, spriteHeight, currentObjPtr, (char *)filesDatabase[objZ2].subData.ptr, objY2, objX2, (char *)gfxModuleData.pPage10, (char *)filesDatabase[objZ2].subData.ptrMask);
+						drawSprite(objX1, spriteHeight, currentObjPtr, filesDatabase[objZ2].subData.ptr, objY2, objX2, gfxModuleData.pPage10, filesDatabase[objZ2].subData.ptrMask);
 					}
 				}
 			}
@@ -1538,7 +1555,7 @@ void mainDraw(int16 param) {
 	currentObjPtr = cellHead.next;
 
 	while (currentObjPtr) {
-		if (currentObjPtr->type == OBJ_TYPE_MSG && currentObjPtr->freeze == 0) {
+		if (currentObjPtr->type == OBJ_TYPE_MESSAGE && currentObjPtr->freeze == 0) {
 			drawMessage(currentObjPtr->gfxPtr, currentObjPtr->x, currentObjPtr->field_C, currentObjPtr->spriteIdx, currentObjPtr->color, gfxModuleData.pPage10);
 			isMessage = 1;
 		}

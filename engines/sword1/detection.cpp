@@ -37,35 +37,46 @@
 #include "engines/metaengine.h"
 
 /* Broken Sword 1 */
-static const PlainGameDescriptor sword1FullSettings =
-	{"sword1", "Broken Sword 1: The Shadow of the Templars"};
-static const PlainGameDescriptor sword1DemoSettings =
-	{"sword1demo", "Broken Sword 1: The Shadow of the Templars (Demo)"};
-static const PlainGameDescriptor sword1MacFullSettings =
-	{"sword1mac", "Broken Sword 1: The Shadow of the Templars (Mac)"};
-static const PlainGameDescriptor sword1MacDemoSettings =
-	{"sword1macdemo", "Broken Sword 1: The Shadow of the Templars (Mac demo)"};
+static const PlainGameDescriptorGUIOpts sword1FullSettings =
+	{"sword1", "Broken Sword 1: The Shadow of the Templars", Common::GUIO_NOMIDI};
+static const PlainGameDescriptorGUIOpts sword1DemoSettings =
+	{"sword1demo", "Broken Sword 1: The Shadow of the Templars (Demo)", Common::GUIO_NOMIDI};
+static const PlainGameDescriptorGUIOpts sword1MacFullSettings =
+	{"sword1mac", "Broken Sword 1: The Shadow of the Templars (Mac)", Common::GUIO_NOMIDI};
+static const PlainGameDescriptorGUIOpts sword1MacDemoSettings =
+	{"sword1macdemo", "Broken Sword 1: The Shadow of the Templars (Mac demo)", Common::GUIO_NOMIDI};
+static const PlainGameDescriptorGUIOpts sword1PSXSettings =
+	{"sword1psx", "Broken Sword 1: The Shadow of the Templars (PlayStation)", Common::GUIO_NOMIDI};
+static const PlainGameDescriptorGUIOpts sword1PSXDemoSettings =
+	{"sword1psxdemo", "Broken Sword 1: The Shadow of the Templars (PlayStation demo)", Common::GUIO_NOMIDI};
+ 
 
 // check these subdirectories (if present)
-static const char *g_dirNames[] = {	"clusters",	"speech" };
+static const char *g_dirNames[] = {	"clusters",	"speech", "english", "italian"};
 
 #define NUM_COMMON_FILES_TO_CHECK 1
 #define NUM_PC_FILES_TO_CHECK 3
 #define NUM_MAC_FILES_TO_CHECK 4
+#define NUM_PSX_FILES_TO_CHECK 1 
+#define NUM_PSX_DEMO_FILES_TO_CHECK 2
 #define NUM_DEMO_FILES_TO_CHECK 1
 #define NUM_MAC_DEMO_FILES_TO_CHECK 1
-#define NUM_FILES_TO_CHECK NUM_COMMON_FILES_TO_CHECK + NUM_PC_FILES_TO_CHECK + NUM_MAC_FILES_TO_CHECK + NUM_DEMO_FILES_TO_CHECK + NUM_MAC_DEMO_FILES_TO_CHECK
+
+#define NUM_FILES_TO_CHECK NUM_COMMON_FILES_TO_CHECK + NUM_PC_FILES_TO_CHECK + NUM_MAC_FILES_TO_CHECK + NUM_PSX_FILES_TO_CHECK + NUM_DEMO_FILES_TO_CHECK + NUM_MAC_DEMO_FILES_TO_CHECK + NUM_PSX_DEMO_FILES_TO_CHECK
 static const char *g_filesToCheck[NUM_FILES_TO_CHECK] = { // these files have to be found
-	"swordres.rif", // Mac and PC version
-	"general.clu", // PC version only
-	"compacts.clu", // PC version only
-	"scripts.clu", // PC version only
+	"swordres.rif", // Mac, PC and PSX version
+	"general.clu", // PC and PSX version
+	"compacts.clu", // PC and PSX version
+	"scripts.clu", // PC and PSX version
 	"general.clm", // Mac version only
 	"compacts.clm", // Mac version only
 	"scripts.clm", // Mac version only
 	"paris2.clm", // Mac version (full game only)
 	"cows.mad",	// this one should only exist in the demo version
 	"scripts.clm", // Mac version both demo and full game
+	"train.plx", // PSX version only
+	"speech.dat", // PSX version only
+	"tunes.dat", // PSX version only
 	// the engine needs several more files to work, but checking these should be sufficient
 };
 
@@ -74,7 +85,7 @@ public:
 	virtual const char *getName() const {
 		return "Broken Sword";
 	}
-	virtual const char *getCopyright() const {
+	virtual const char *getOriginalCopyright() const {
 		return "Broken Sword Games (C) Revolution";
 	}
 
@@ -97,12 +108,15 @@ bool SwordMetaEngine::hasFeature(MetaEngineFeature f) const {
 		(f == kSupportsDeleteSave) ||
 		(f == kSavesSupportMetaInfo) ||
 		(f == kSavesSupportThumbnail) ||
-		(f == kSavesSupportCreationDate);
+		(f == kSavesSupportCreationDate) ||
+		(f == kSavesSupportPlayTime);
 }
 
 bool Sword1::SwordEngine::hasFeature(EngineFeature f) const {
 	return
-		(f == kSupportsRTL);
+		(f == kSupportsRTL) ||
+		(f == kSupportsSavingDuringRuntime) ||
+		(f == kSupportsLoadingDuringRuntime);
 }
 
 GameList SwordMetaEngine::getSupportedGames() const {
@@ -111,6 +125,8 @@ GameList SwordMetaEngine::getSupportedGames() const {
 	games.push_back(sword1DemoSettings);
 	games.push_back(sword1MacFullSettings);
 	games.push_back(sword1MacDemoSettings);
+	games.push_back(sword1PSXSettings);
+	games.push_back(sword1PSXDemoSettings);
 	return games;
 }
 
@@ -123,6 +139,10 @@ GameDescriptor SwordMetaEngine::findGame(const char *gameid) const {
 		return sword1MacFullSettings;
 	if (0 == scumm_stricmp(gameid, sword1MacDemoSettings.gameid))
 		return sword1MacDemoSettings;
+	if (0 == scumm_stricmp(gameid, sword1PSXSettings.gameid))
+		return sword1PSXSettings;
+	if (0 == scumm_stricmp(gameid, sword1PSXDemoSettings.gameid))
+		return sword1PSXDemoSettings;
 	return GameDescriptor();
 }
 
@@ -157,6 +177,8 @@ GameList SwordMetaEngine::detectGames(const Common::FSList &fslist) const {
 	bool macFilesFound = true;
 	bool demoFilesFound = true;
 	bool macDemoFilesFound = true;
+	bool psxFilesFound = true;
+	bool psxDemoFilesFound = true;
 	for (i = 0; i < NUM_COMMON_FILES_TO_CHECK; i++)
 		if (!filesFound[i])
 			mainFilesFound = false;
@@ -172,10 +194,20 @@ GameList SwordMetaEngine::detectGames(const Common::FSList &fslist) const {
 	for (j = 0; j < NUM_DEMO_FILES_TO_CHECK; i++, j++)
 		if (!filesFound[i])
 			macDemoFilesFound = false;
+	for (j = 0; j < NUM_PSX_FILES_TO_CHECK; i++, j++)
+		if (!filesFound[i])
+			psxFilesFound = false;
+	for (j = 0; j < NUM_PSX_DEMO_FILES_TO_CHECK; i++, j++)
+		if (!filesFound[i] || psxFilesFound)
+			psxDemoFilesFound = false;
 
 	if (mainFilesFound && pcFilesFound && demoFilesFound)
 		detectedGames.push_back(sword1DemoSettings);
-	else if (mainFilesFound && pcFilesFound)
+	else if (mainFilesFound && pcFilesFound && psxFilesFound)
+		detectedGames.push_back(sword1PSXSettings);
+	else if (mainFilesFound && pcFilesFound && psxDemoFilesFound)
+		detectedGames.push_back(sword1PSXDemoSettings);
+	else if (mainFilesFound && pcFilesFound && !psxFilesFound)
 		detectedGames.push_back(sword1FullSettings);
 	else if (mainFilesFound && macFilesFound)
 		detectedGames.push_back(sword1MacFullSettings);
@@ -205,7 +237,7 @@ SaveStateList SwordMetaEngine::listSaves(const char *target) const {
 		slotNum = atoi(file->c_str() + file->size() - 3);
 
 		if (slotNum >= 0 && slotNum <= 999) {
-			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
+			Common::InSaveFile *in = saveFileMan->openForLoading(*file);
 			if (in) {
 				in->readUint32LE();	// header
 				in->read(saveName, 40);
@@ -231,21 +263,25 @@ SaveStateDescriptor SwordMetaEngine::querySaveMetaInfos(const char *target, int 
 	char fileName[12];
 	snprintf(fileName, 12, "sword1.%03d", slot);
 	char name[40];
+	uint32 playTime = 0;
+	byte versionSave;
 
 	Common::InSaveFile *in = g_system->getSavefileManager()->openForLoading(fileName);
 
 	if (in) {
 		in->skip(4);		// header
 		in->read(name, sizeof(name));
-		in->skip(1);		// version
+		in->read(&versionSave, 1);		// version
 
 		SaveStateDescriptor desc(slot, name);
 
 		desc.setDeletableFlag(true);
 		desc.setWriteProtectedFlag(false);
 
-		bool hasThumbnail = in->readByte();
-		if (hasThumbnail) {
+		if (versionSave < 2) // These older version of the savegames used a flag to signal presence of thumbnail
+			in->skip(1);
+
+		if (Graphics::checkThumbnailHeader(*in)) {
 			Graphics::Surface *thumbnail = new Graphics::Surface();
 			assert(thumbnail);
 			if (!Graphics::loadThumbnail(*in, *thumbnail)) {
@@ -258,6 +294,8 @@ SaveStateDescriptor SwordMetaEngine::querySaveMetaInfos(const char *target, int 
 
 		uint32 saveDate = in->readUint32BE();
 		uint16 saveTime = in->readUint16BE();
+		if (versionSave > 1) // Previous versions did not have playtime data
+			playTime = in->readUint32BE();
 
 		int day = (saveDate >> 24) & 0xFF;
 		int month = (saveDate >> 16) & 0xFF;
@@ -270,7 +308,14 @@ SaveStateDescriptor SwordMetaEngine::querySaveMetaInfos(const char *target, int 
 
 		desc.setSaveTime(hour, minutes);
 
-		// TODO: played time
+		if (versionSave > 1) {
+			minutes = playTime / 60;
+			hour = minutes / 60;
+			minutes %= 60;
+			desc.setPlayTime(hour, minutes);
+		} else { //We have no playtime data
+			desc.setPlayTime(0, 0);
+		}
 
 		delete in;
 
@@ -288,15 +333,18 @@ SaveStateDescriptor SwordMetaEngine::querySaveMetaInfos(const char *target, int 
 
 namespace Sword1 {
 
-// FIXME: Loading a game through the GMM crashes the game
-#if 0
 Common::Error SwordEngine::loadGameState(int slot) {
 	_systemVars.forceRestart = false;
 	_systemVars.controlPanelMode = CP_NORMAL;
 	_control->restoreGameFromFile(slot);
 	reinitialize();
 	_control->doRestore();
+	reinitRes();
 	return Common::kNoError;	// TODO: return success/failure
+}
+
+bool SwordEngine::canLoadGameStateCurrently() {
+	return (mouseIsActive() && !_control->isPanelShown()); // Disable GMM loading when game panel is shown
 }
 
 Common::Error SwordEngine::saveGameState(int slot, const char *desc) {
@@ -305,13 +353,8 @@ Common::Error SwordEngine::saveGameState(int slot, const char *desc) {
 	return Common::kNoError;	// TODO: return success/failure
 }
 
-bool SwordEngine::canLoadGameStateCurrently() {
-	return mouseIsActive();
-}
-
 bool SwordEngine::canSaveGameStateCurrently() {
-	return mouseIsActive();
+	return (mouseIsActive() && !_control->isPanelShown());
 }
-#endif
 
 } // End of namespace Sword1

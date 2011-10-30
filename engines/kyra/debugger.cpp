@@ -33,6 +33,7 @@
 #include "kyra/screen.h"
 #include "kyra/timer.h"
 #include "kyra/resource.h"
+#include "kyra/lol.h"
 
 namespace Kyra {
 
@@ -68,7 +69,7 @@ bool Debugger::cmd_setScreenDebug(int argc, const char **argv) {
 }
 
 bool Debugger::cmd_loadPalette(int argc, const char **argv) {
-	uint8 palette[768];
+	Palette palette(_vm->screen()->getPalette(0).getNumColors());
 
 	if (argc <= 1) {
 		DebugPrintf("Use load_palette <file> [start_col] [end_col]\n");
@@ -79,7 +80,7 @@ bool Debugger::cmd_loadPalette(int argc, const char **argv) {
 		uint8 buffer[320*200];
 		_vm->screen()->copyRegionToBuffer(5, 0, 0, 320, 200, buffer);
 		_vm->screen()->loadBitmap(argv[1], 5, 5, 0);
-		memcpy(palette, _vm->screen()->getCPagePtr(5), 768);
+		palette.copy(_vm->screen()->getCPagePtr(5), 0, 256);
 		_vm->screen()->copyBlockToPage(5, 0, 0, 320, 200, buffer);
 	} else if (!_vm->screen()->loadPalette(argv[1], palette)) {
 		DebugPrintf("ERROR: Palette '%s' not found!\n", argv[1]);
@@ -87,16 +88,16 @@ bool Debugger::cmd_loadPalette(int argc, const char **argv) {
 	}
 
 	int startCol = 0;
-	int endCol = 255;
+	int endCol = palette.getNumColors();
 	if (argc > 2)
-		startCol = MIN(255, MAX(0, atoi(argv[2])));
+		startCol = MIN(palette.getNumColors(), MAX(0, atoi(argv[2])));
 	if (argc > 3)
-		endCol = MIN(255, MAX(0, atoi(argv[3])));
+		endCol = MIN(palette.getNumColors(), MAX(0, atoi(argv[3])));
 
 	if (startCol > 0)
-		memcpy(palette, _vm->screen()->getScreenPalette(), startCol*3);
-	if (endCol < 255)
-		memcpy(palette + endCol * 3, _vm->screen()->getScreenPalette() + endCol * 3, (255-endCol)*3);
+		palette.copy(_vm->screen()->getPalette(0), 0, startCol);
+	if (endCol < palette.getNumColors())
+		palette.copy(_vm->screen()->getPalette(0), endCol);
 
 	_vm->screen()->setScreenPalette(palette);
 	_vm->screen()->updateScreen();
@@ -132,10 +133,12 @@ bool Debugger::cmd_gameSpeed(int argc, const char **argv) {
 }
 
 bool Debugger::cmd_listFlags(int argc, const char **argv) {
-	for (int i = 0; i < (int)sizeof(_vm->_flagsTable)*8; i++) {
-		DebugPrintf("(%-3i): %-5i", i, _vm->queryGameFlag(i));
-		if (!(i % 10))
+	for (int i = 0, p = 0; i < (int)sizeof(_vm->_flagsTable)*8; i++, ++p) {
+		DebugPrintf("(%-3i): %-2i", i, _vm->queryGameFlag(i));
+		if (p == 5) {
 			DebugPrintf("\n");
+			p -= 6;
+		}
 	}
 	DebugPrintf("\n");
 	return true;
@@ -193,7 +196,7 @@ bool Debugger::cmd_setTimerCountdown(int argc, const char **argv) {
 Debugger_LoK::Debugger_LoK(KyraEngine_LoK *vm)
 	: Debugger(vm), _vm(vm) {
 	DCmd_Register("enter",				WRAP_METHOD(Debugger_LoK, cmd_enterRoom));
-	DCmd_Register("rooms",				WRAP_METHOD(Debugger_LoK, cmd_listRooms));
+	DCmd_Register("scenes",				WRAP_METHOD(Debugger_LoK, cmd_listScenes));
 	DCmd_Register("give",				WRAP_METHOD(Debugger_LoK, cmd_giveItem));
 	DCmd_Register("birthstones",		WRAP_METHOD(Debugger_LoK, cmd_listBirthstones));
 }
@@ -245,7 +248,7 @@ bool Debugger_LoK::cmd_enterRoom(int argc, const char **argv) {
 	return true;
 }
 
-bool Debugger_LoK::cmd_listRooms(int argc, const char **argv) {
+bool Debugger_LoK::cmd_listScenes(int argc, const char **argv) {
 	for (int i = 0; i < _vm->_roomTableSize; i++) {
 		DebugPrintf("%-3i: %-10s", i, _vm->_roomFilenameTable[_vm->_roomTable[i].nameIndex]);
 		if (!(i % 8))
@@ -262,7 +265,7 @@ bool Debugger_LoK::cmd_giveItem(int argc, const char **argv) {
 
 		// Kyrandia 1 has only 108 items (-1 to 106), otherwise it will crash
 		if (item < -1 || item > 106) {
-			DebugPrintf("itemid must be any value between (including) -1 and 106\n");
+			DebugPrintf("'itemid' must be any value between (including) -1 and 106\n");
 			return true;
 		}
 
@@ -276,9 +279,9 @@ bool Debugger_LoK::cmd_giveItem(int argc, const char **argv) {
 }
 
 bool Debugger_LoK::cmd_listBirthstones(int argc, const char **argv) {
-	DebugPrintf("Needed Birthstone gems:\n");
+	DebugPrintf("Needed birthstone gems:\n");
 	for (int i = 0; i < ARRAYSIZE(_vm->_birthstoneGemTable); ++i)
-		DebugPrintf("%-2d '%s'\n", _vm->_birthstoneGemTable[i], _vm->_itemList[_vm->_birthstoneGemTable[i]]);
+		DebugPrintf("%-3d '%s'\n", _vm->_birthstoneGemTable[i], _vm->_itemList[_vm->_birthstoneGemTable[i]]);
 	return true;
 }
 
@@ -287,7 +290,6 @@ bool Debugger_LoK::cmd_listBirthstones(int argc, const char **argv) {
 Debugger_v2::Debugger_v2(KyraEngine_v2 *vm) : Debugger(vm), _vm(vm) {
 	DCmd_Register("character_info",		WRAP_METHOD(Debugger_v2, cmd_characterInfo));
 	DCmd_Register("enter",				WRAP_METHOD(Debugger_v2, cmd_enterScene));
-	DCmd_Register("rooms",				WRAP_METHOD(Debugger_v2, cmd_listScenes));	// for consistency with kyra_v1
 	DCmd_Register("scenes",				WRAP_METHOD(Debugger_v2, cmd_listScenes));
 	DCmd_Register("scene_info",			WRAP_METHOD(Debugger_v2, cmd_sceneInfo));
 	DCmd_Register("scene_to_facing",	WRAP_METHOD(Debugger_v2, cmd_sceneToFacing));
@@ -457,6 +459,13 @@ bool Debugger_HoF::cmd_passcodes(int argc, const char **argv) {
 
 	return true;
 }
+
+#pragma mark -
+
+#ifdef ENABLE_LOL
+Debugger_LoL::Debugger_LoL(LoLEngine *vm) : Debugger(vm), _vm(vm) {
+}
+#endif // ENABLE_LOL
 
 } // End of namespace Kyra
 

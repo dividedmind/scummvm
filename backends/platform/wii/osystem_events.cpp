@@ -22,13 +22,16 @@
 #include <unistd.h>
 #include <malloc.h>
 
+#include "osystem.h"
+
 #ifndef GAMECUBE
 #include <wiiuse/wpad.h>
 #endif
+#ifdef USE_WII_KBD
+#include <wiikeyboard/keyboard.h>
+#endif
 
 #include <ogc/lwp_watchdog.h>
-
-#include "osystem.h"
 
 #define TIMER_THREAD_STACKSIZE (1024 * 32)
 #define TIMER_THREAD_PRIO 64
@@ -59,6 +62,77 @@
 #define PADS_RIGHT PAD_BUTTON_RIGHT
 #endif
 
+#ifdef USE_WII_KBD
+static int keymap[][2] = {
+	{ KS_Return, Common::KEYCODE_RETURN },
+	{ KS_Up, Common::KEYCODE_UP },
+	{ KS_Down, Common::KEYCODE_DOWN },
+	{ KS_Left, Common::KEYCODE_LEFT },
+	{ KS_Right, Common::KEYCODE_RIGHT },
+	{ KS_Shift_L, Common::KEYCODE_LSHIFT },
+	{ KS_Shift_R, Common::KEYCODE_RSHIFT },
+	{ KS_Control_L, Common::KEYCODE_LCTRL },
+	{ KS_Control_R, Common::KEYCODE_RCTRL },
+	{ KS_Alt_L, Common::KEYCODE_LALT },
+	{ KS_Alt_R, Common::KEYCODE_RALT },
+	{ KS_Meta_L, Common::KEYCODE_LMETA },
+	{ KS_Meta_R, Common::KEYCODE_RMETA },
+	{ KS_KP_0, Common::KEYCODE_KP0 },
+	{ KS_KP_1, Common::KEYCODE_KP1 },
+	{ KS_KP_2, Common::KEYCODE_KP2 },
+	{ KS_KP_3, Common::KEYCODE_KP3 },
+	{ KS_KP_4, Common::KEYCODE_KP4 },
+	{ KS_KP_5, Common::KEYCODE_KP5 },
+	{ KS_KP_6, Common::KEYCODE_KP6 },
+	{ KS_KP_7, Common::KEYCODE_KP7 },
+	{ KS_KP_8, Common::KEYCODE_KP8 },
+	{ KS_KP_9, Common::KEYCODE_KP9 },
+	{ KS_Home, Common::KEYCODE_HOME },
+	{ KS_Insert, Common::KEYCODE_INSERT },
+	{ KS_End, Common::KEYCODE_END },
+	{ KS_Prior, Common::KEYCODE_PAGEUP },
+	{ KS_Next, Common::KEYCODE_PAGEDOWN },
+	{ KS_f1, Common::KEYCODE_F1 },
+	{ KS_f2, Common::KEYCODE_F2 },
+	{ KS_f3, Common::KEYCODE_F3 },
+	{ KS_f4, Common::KEYCODE_F4 },
+	{ KS_f5, Common::KEYCODE_F5 },
+	{ KS_f6, Common::KEYCODE_F6 },
+	{ KS_f7, Common::KEYCODE_F7 },
+	{ KS_f8, Common::KEYCODE_F8 },
+	{ KS_f9, Common::KEYCODE_F9 },
+	{ KS_f10, Common::KEYCODE_F10 },
+	{ KS_f11, Common::KEYCODE_F11 },
+	{ KS_f12, Common::KEYCODE_F12 },
+	{ KS_f13, Common::KEYCODE_F13 },
+	{ KS_f14, Common::KEYCODE_F14 },
+	{ KS_f15, Common::KEYCODE_F15 },
+	{ KS_F1, Common::KEYCODE_F1 },
+	{ KS_F2, Common::KEYCODE_F2 },
+	{ KS_F3, Common::KEYCODE_F3 },
+	{ KS_F4, Common::KEYCODE_F4 },
+	{ KS_F5, Common::KEYCODE_F5 },
+	{ KS_F6, Common::KEYCODE_F6 },
+	{ KS_F7, Common::KEYCODE_F7 },
+	{ KS_F8, Common::KEYCODE_F8 },
+	{ KS_F9, Common::KEYCODE_F9 },
+	{ KS_F10, Common::KEYCODE_F10 },
+	{ KS_F11, Common::KEYCODE_F11 },
+	{ KS_F12, Common::KEYCODE_F12 },
+	{ KS_F13, Common::KEYCODE_F13 },
+	{ KS_F14, Common::KEYCODE_F14 },
+	{ KS_F15, Common::KEYCODE_F15 },
+	{ KS_KP_Separator, Common::KEYCODE_KP_PERIOD },
+	{ KS_KP_Subtract, Common::KEYCODE_KP_DIVIDE },
+	{ KS_KP_Multiply, Common::KEYCODE_KP_MULTIPLY },
+	{ KS_KP_Add, Common::KEYCODE_KP_PLUS },
+	{ KS_KP_Subtract, Common::KEYCODE_KP_MINUS },
+	{ KS_KP_Equal, Common::KEYCODE_KP_EQUALS },
+	{ KS_KP_Enter, Common::KEYCODE_KP_ENTER },
+	{ 0, 0 }
+};
+#endif
+
 static lwpq_t timer_queue;
 static lwp_t timer_thread;
 static u8 *timer_stack;
@@ -81,25 +155,31 @@ void OSystem_Wii::initEvents() {
 	timer_thread_quit = false;
 
 	timer_stack = (u8 *) memalign(32, TIMER_THREAD_STACKSIZE);
-	memset(timer_stack, 0, TIMER_THREAD_STACKSIZE);
+	if (timer_stack) {
+		memset(timer_stack, 0, TIMER_THREAD_STACKSIZE);
 
-	LWP_InitQueue(&timer_queue);
+		LWP_InitQueue(&timer_queue);
 
-	s32 res = LWP_CreateThread(&timer_thread, timer_thread_func, NULL,
-								timer_stack, TIMER_THREAD_STACKSIZE,
-								TIMER_THREAD_PRIO);
+		s32 res = LWP_CreateThread(&timer_thread, timer_thread_func, NULL,
+									timer_stack, TIMER_THREAD_STACKSIZE,
+									TIMER_THREAD_PRIO);
 
-	if (res) {
-		printf("ERROR creating timer thread: %d\n", res);
-		LWP_CloseQueue(timer_queue);
+		if (res) {
+			printf("ERROR creating timer thread: %d\n", res);
+			LWP_CloseQueue(timer_queue);
+		}
+
+		timer_thread_running = res == 0;
 	}
-
-	timer_thread_running = res == 0;
 
 #ifndef GAMECUBE
 	WPAD_Init();
 	WPAD_SetDataFormat(WPAD_CHAN_0, WPAD_FMT_BTNS_ACC_IR);
 	WPAD_SetIdleTimeout(120);
+#endif
+
+#ifdef USE_WII_KBD
+	_kbd_active = KEYBOARD_Init() >= 0;
 #endif
 }
 
@@ -111,8 +191,14 @@ void OSystem_Wii::deinitEvents() {
 		LWP_JoinThread(timer_thread, NULL);
 		LWP_CloseQueue(timer_queue);
 
+		free(timer_stack);
 		timer_thread_running = false;
 	}
+
+#ifdef USE_WII_KBD
+	if (_kbd_active)
+		KEYBOARD_Deinit();
+#endif
 
 #ifndef GAMECUBE
 	WPAD_Shutdown();
@@ -126,7 +212,65 @@ void OSystem_Wii::updateEventScreenResolution() {
 #endif
 }
 
-#define KBD_EVENT(pad_button, kbd_keycode, kbd_ascii) \
+#ifdef USE_WII_KBD
+bool OSystem_Wii::pollKeyboard(Common::Event &event) {
+	int i;
+	keyboard_event kbdEvent;
+
+	if (!KEYBOARD_GetEvent(&kbdEvent) > 0)
+		return false;
+
+	switch (kbdEvent.type) {
+	case KEYBOARD_PRESSED:
+		event.type = Common::EVENT_KEYDOWN;
+		break;
+
+	case KEYBOARD_RELEASED:
+		event.type = Common::EVENT_KEYUP;
+		break;
+
+	case KEYBOARD_CONNECTED:
+		printf("keyboard connected\n");
+		return false;
+
+	case KEYBOARD_DISCONNECTED:
+		printf("keyboard disconnected\n");
+		return false;
+
+	default:
+		return false;
+	}
+
+	if (MOD_ONESET(kbdEvent.modifiers, MOD_ANYSHIFT))
+		event.kbd.flags |= Common::KBD_SHIFT;
+	if (MOD_ONESET(kbdEvent.modifiers, MOD_ANYCONTROL))
+		event.kbd.flags |= Common::KBD_CTRL;
+	if (MOD_ONESET(kbdEvent.modifiers, MOD_ANYMETA))
+		event.kbd.flags |= Common::KBD_ALT;
+
+	i = 0;
+	while (keymap[i][0] != 0) {
+		if (keymap[i][0] == kbdEvent.symbol) {
+			event.kbd.keycode = static_cast<Common::KeyCode>(keymap[i][1]);
+			event.kbd.ascii = 0;
+			return true;
+		}
+
+		i++;
+	}
+
+	// skip unmapped special keys
+	if (kbdEvent.symbol > 0xff)
+		return false;
+
+	event.kbd.keycode = static_cast<Common::KeyCode>(kbdEvent.symbol);
+	event.kbd.ascii = kbdEvent.symbol;
+
+	return true;
+}
+#endif
+
+#define PAD_EVENT(pad_button, kbd_keycode, kbd_ascii, modifier) \
 	do { \
 		if ((bd | bu) & pad_button) { \
 			if (bd & pad_button) \
@@ -135,6 +279,7 @@ void OSystem_Wii::updateEventScreenResolution() {
 				event.type = Common::EVENT_KEYUP; \
 			event.kbd.keycode = kbd_keycode; \
 			event.kbd.ascii = kbd_ascii; \
+			event.kbd.flags = modifier; \
 			return true; \
 		} \
 	} while (0)
@@ -149,13 +294,13 @@ bool OSystem_Wii::pollEvent(Common::Event &event) {
 		return true;
 	}
 
-	u32 bd, bh, bu;
+	u32 bd = 0, bh = 0, bu = 0;
 
-	PAD_ScanPads();
-
-	bd = PAD_ButtonsDown(0);
-	bh = PAD_ButtonsHeld(0);
-	bu = PAD_ButtonsUp(0);
+	if (PAD_ScanPads() & 1) {
+		bd = PAD_ButtonsDown(0);
+		bh = PAD_ButtonsHeld(0);
+		bu = PAD_ButtonsUp(0);
+	}
 
 #ifndef GAMECUBE
 	WPAD_ScanPads();
@@ -171,17 +316,19 @@ bool OSystem_Wii::pollEvent(Common::Event &event) {
 #endif
 
 	if (bd || bu) {
-		if (bh & PADS_UP)
-			event.kbd.flags = Common::KBD_SHIFT;
+		PAD_EVENT(PADS_Z, Common::KEYCODE_RETURN, Common::ASCII_RETURN, 0);
+		PAD_EVENT(PADS_X, Common::KEYCODE_ESCAPE, Common::ASCII_ESCAPE, 0);
+		PAD_EVENT(PADS_Y, Common::KEYCODE_PERIOD, '.', 0);
+		PAD_EVENT(PADS_START, Common::KEYCODE_F5, Common::ASCII_F5, 0);
+		PAD_EVENT(PADS_UP, Common::KEYCODE_F5, Common::ASCII_F5, Common::KBD_CTRL);
+		PAD_EVENT(PADS_DOWN, Common::KEYCODE_F7, Common::ASCII_F7, 0);
+		//PAD_EVENT(PADS_LEFT, Common::KEYCODE_F8, Common::ASCII_F8, 0);
 
-		KBD_EVENT(PADS_Z, Common::KEYCODE_RETURN, Common::ASCII_RETURN);
-		KBD_EVENT(PADS_X, Common::KEYCODE_ESCAPE, Common::ASCII_ESCAPE);
-		KBD_EVENT(PADS_Y, Common::KEYCODE_PERIOD, '.');
-		KBD_EVENT(PADS_START, Common::KEYCODE_F5, Common::ASCII_F5);
-		KBD_EVENT(PADS_UP, Common::KEYCODE_LSHIFT, 0);
-		KBD_EVENT(PADS_DOWN, Common::KEYCODE_0, '0');
-		KBD_EVENT(PADS_LEFT, Common::KEYCODE_y, 'y');
-		KBD_EVENT(PADS_RIGHT, Common::KEYCODE_n, 'n');
+		if (bd & PADS_RIGHT) {
+			event.type = Common::EVENT_PREDICTIVE_DIALOG;
+
+			return true;
+		}
 
 		if ((bd | bu) & (PADS_A | PADS_B)) {
 			if (bd & PADS_A)
@@ -210,8 +357,8 @@ bool OSystem_Wii::pollEvent(Common::Event &event) {
 		WPAD_IR(0, &ir);
 
 		if (ir.valid) {
-			mx = ir.x - _currentWidth / 10;
-			my = ir.y - _currentHeight / 10;
+			mx = s32(ir.x) - _currentWidth / 10;
+			my = s32(ir.y) - _currentHeight / 10;
 
 			if (mx < 0)
 				mx = 0;
@@ -265,6 +412,11 @@ bool OSystem_Wii::pollEvent(Common::Event &event) {
 			return true;
 		}
 	}
+
+#ifdef USE_WII_KBD
+	if (_kbd_active && pollKeyboard(event))
+		return true;
+#endif
 
 	return false;
 }

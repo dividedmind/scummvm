@@ -30,12 +30,14 @@
 #include "tinsel/dw.h"
 #include "tinsel/rince.h"
 #include "tinsel/savescn.h"
-#include "tinsel/serializer.h"
 #include "tinsel/timers.h"
 #include "tinsel/tinlib.h"
 #include "tinsel/tinsel.h"
 
+#include "common/serializer.h"
 #include "common/savefile.h"
+
+#include "gui/message.h"
 
 namespace Tinsel {
 
@@ -73,16 +75,18 @@ SRSTATE SRstate = SR_IDLE;
 //----------------- EXTERN FUNCTIONS --------------------
 
 // in DOS_DW.C
-extern void syncSCdata(Serializer &s);
+extern void syncSCdata(Common::Serializer &s);
 
 // in DOS_MAIN.C
 //char HardDriveLetter(void);
 
 // in PCODE.C
-extern void syncGlobInfo(Serializer &s);
+extern void syncGlobInfo(Common::Serializer &s);
 
 // in POLYGONS.C
-extern void syncPolyInfo(Serializer &s);
+extern void syncPolyInfo(Common::Serializer &s);
+
+extern int sceneCtr;
 
 //----------------- LOCAL DEFINES --------------------
 
@@ -120,7 +124,7 @@ static char *SaveSceneSsData = 0;	// points to 'SAVED_DATA ssdata[MAX_NEST]'
 
 void setNeedLoad() { NeedLoad = true; }
 
-static void syncTime(Serializer &s, struct tm &t) {
+static void syncTime(Common::Serializer &s, struct tm &t) {
 	s.syncAsUint16LE(t.tm_year);
 	s.syncAsByte(t.tm_mon);
 	s.syncAsByte(t.tm_mday);
@@ -134,7 +138,7 @@ static void syncTime(Serializer &s, struct tm &t) {
 	}
 }
 
-static bool syncSaveGameHeader(Serializer &s, SaveGameHeader &hdr) {
+static bool syncSaveGameHeader(Common::Serializer &s, SaveGameHeader &hdr) {
 	s.syncAsUint32LE(hdr.id);
 	s.syncAsUint32LE(hdr.size);
 	s.syncAsUint32LE(hdr.ver);
@@ -149,14 +153,11 @@ static bool syncSaveGameHeader(Serializer &s, SaveGameHeader &hdr) {
 	if (tmp < 0 || hdr.id != SAVEGAME_ID || hdr.ver > CURRENT_VER || hdr.size > 1024)
 		return false;
 	// Skip over any extra bytes
-	while (tmp-- > 0) {
-		byte b = 0;
-		s.syncAsByte(b);
-	}
+	s.skip(tmp);
 	return true;
 }
 
-static void syncSavedMover(Serializer &s, SAVED_MOVER &sm) {
+static void syncSavedMover(Common::Serializer &s, SAVED_MOVER &sm) {
 	SCNHANDLE *pList[3] = { (SCNHANDLE *)&sm.walkReels,
 		(SCNHANDLE *)&sm.standReels, (SCNHANDLE *)&sm.talkReels };
 
@@ -181,7 +182,7 @@ static void syncSavedMover(Serializer &s, SAVED_MOVER &sm) {
 	}
 }
 
-static void syncSavedActor(Serializer &s, SAVED_ACTOR &sa) {
+static void syncSavedActor(Common::Serializer &s, SAVED_ACTOR &sa) {
 	s.syncAsUint16LE(sa.actorID);
 	s.syncAsUint16LE(sa.zFactor);
 	s.syncAsUint32LE(sa.bAlive);
@@ -191,33 +192,33 @@ static void syncSavedActor(Serializer &s, SAVED_ACTOR &sa) {
 	s.syncAsUint16LE(sa.presPlayY);
 }
 
-extern void syncAllActorsAlive(Serializer &s);
+extern void syncAllActorsAlive(Common::Serializer &s);
 
-static void syncNoScrollB(Serializer &s, NOSCROLLB &ns) {
+static void syncNoScrollB(Common::Serializer &s, NOSCROLLB &ns) {
 	s.syncAsSint32LE(ns.ln);
 	s.syncAsSint32LE(ns.c1);
 	s.syncAsSint32LE(ns.c2);
 }
 
-static void syncZPosition(Serializer &s, Z_POSITIONS &zp) {
+static void syncZPosition(Common::Serializer &s, Z_POSITIONS &zp) {
 	s.syncAsSint16LE(zp.actor);
 	s.syncAsSint16LE(zp.column);
 	s.syncAsSint32LE(zp.z);
 }
 
-static void syncPolyVolatile(Serializer &s, POLY_VOLATILE &p) {
+static void syncPolyVolatile(Common::Serializer &s, POLY_VOLATILE &p) {
 	s.syncAsByte(p.bDead);
 	s.syncAsSint16LE(p.xoff);
 	s.syncAsSint16LE(p.yoff);
 }
 
-static void syncSoundReel(Serializer &s, SOUNDREELS &sr) {
+static void syncSoundReel(Common::Serializer &s, SOUNDREELS &sr) {
 	s.syncAsUint32LE(sr.hFilm);
 	s.syncAsSint32LE(sr.column);
 	s.syncAsSint32LE(sr.actorCol);
 }
 
-static void syncSavedData(Serializer &s, SAVED_DATA &sd) {
+static void syncSavedData(Common::Serializer &s, SAVED_DATA &sd) {
 	s.syncAsUint32LE(sd.SavedSceneHandle);
 	s.syncAsUint32LE(sd.SavedBgroundHandle);
 	for (int i = 0; i < MAX_MOVERS; ++i)
@@ -312,7 +313,7 @@ int getList(Common::SaveFileManager *saveFileMan, const Common::String &target) 
 	int i;
 
 	const Common::String pattern = target +  ".???";
-	Common::StringList files = saveFileMan->listSavefiles(pattern.c_str());
+	Common::StringList files = saveFileMan->listSavefiles(pattern);
 
 	numSfiles = 0;
 
@@ -321,13 +322,13 @@ int getList(Common::SaveFileManager *saveFileMan, const Common::String &target) 
 			break;
 
 		const Common::String &fname = *file;
-		Common::InSaveFile *f = saveFileMan->openForLoading(fname.c_str());
+		Common::InSaveFile *f = saveFileMan->openForLoading(fname);
 		if (f == NULL) {
 			continue;
 		}
 
 		// Try to load save game header
-		Serializer s(f, 0);
+		Common::Serializer s(f, 0);
 		SaveGameHeader hdr;
 		bool validHeader = syncSaveGameHeader(s, hdr);
 		delete f;
@@ -382,7 +383,7 @@ char *ListEntry(int i, letype which) {
 		return NULL;
 }
 
-static void DoSync(Serializer &s) {
+static void DoSync(Common::Serializer &s) {
 	int	sg = 0;
 
 	if (TinselV2) {
@@ -436,7 +437,7 @@ static bool DoRestore() {
 		return false;
 	}
 
-	Serializer s(f, 0);
+	Common::Serializer s(f, 0);
 	SaveGameHeader hdr;
 	if (!syncSaveGameHeader(s, hdr)) {
 		delete f;	// Invalid header, or savegame too new -> skip it
@@ -452,6 +453,11 @@ static bool DoRestore() {
 	bool failed = f->ioFailed();
 
 	delete f;
+
+	if (failed) {
+		GUI::MessageDialog dialog("Failed to load game state from file.");
+		dialog.runModal();
+	}
 
 	return !failed;
 }
@@ -474,10 +480,10 @@ static void DoSave(void) {
 	fname = SaveSceneName;
 
 	f = _vm->getSaveFileMan()->openForSaving(fname);
-	if (f == NULL)
-		return;
+	Common::Serializer s(0, f);
 
-	Serializer s(0, f);
+	if (f == NULL)
+		goto save_failure;
 
 	// Write out a savegame header
 	SaveGameHeader hdr;
@@ -487,7 +493,7 @@ static void DoSave(void) {
 	memcpy(hdr.desc, SaveSceneDesc, SG_DESC_LEN);
 	hdr.desc[SG_DESC_LEN - 1] = 0;
 	g_system->getTimeAndDate(hdr.dateTime);
-	if (!syncSaveGameHeader(s, hdr) || f->ioFailed()) {
+	if (!syncSaveGameHeader(s, hdr) || f->err()) {
 		goto save_failure;
 	}
 
@@ -495,7 +501,7 @@ static void DoSave(void) {
 
 	// Write out the special Id for Discworld savegames
 	f->writeUint32LE(0xFEEDFACE);
-	if (f->ioFailed())
+	if (f->err())
 		goto save_failure;
 
 	f->finalize();
@@ -503,8 +509,12 @@ static void DoSave(void) {
 	return;
 
 save_failure:
-	delete f;
-	_vm->getSaveFileMan()->removeSavefile(fname);
+	if (f) {
+		delete f;
+		_vm->getSaveFileMan()->removeSavefile(fname);
+	}
+	GUI::MessageDialog dialog("Failed to save game state to file.");
+	dialog.runModal();
 }
 
 /**
@@ -513,6 +523,10 @@ save_failure:
 void ProcessSRQueue(void) {
 	switch (SRstate) {
 	case SR_DORESTORE:
+		// If a load has been done directly from title screens, set a larger value for scene ctr so the
+		// code used to skip the title screens in Discworld 1 gets properly disabled
+		if (sceneCtr < 10) sceneCtr = 10;
+
 		if (DoRestore()) {
 			DoRestoreScene(srsd, false);
 		}

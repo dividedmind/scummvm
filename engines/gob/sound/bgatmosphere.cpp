@@ -25,8 +25,10 @@
 
 #include "common/system.h"
 #include "common/events.h"
+#include "common/EventRecorder.h"
 
 #include "gob/sound/bgatmosphere.h"
+#include "gob/sound/sounddesc.h"
 
 namespace Gob {
 
@@ -38,7 +40,7 @@ BackgroundAtmosphere::BackgroundAtmosphere(Audio::Mixer &mixer) :
 	_shaded = false;
 	_shadable = true;
 
-	g_system->getEventManager()->registerRandomSource(_rnd, "gobBA");
+	g_eventRec.registerRandomSource(_rnd, "gobBA");
 }
 
 BackgroundAtmosphere::~BackgroundAtmosphere() {

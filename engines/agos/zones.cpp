@@ -63,29 +63,35 @@ static const uint8 zoneTable[160] = {
 	2,  2,  2,  2,  2,  0,  0,  0,  0,  0,
 };
 
-void AGOSEngine::loadZone(uint16 zoneNum) {
+void AGOSEngine::loadZone(uint16 zoneNum, bool useError) {
 	VgaPointersEntry *vpe;
 
 	CHECK_BOUNDS(zoneNum, _vgaBufferPointers);
 
-	vpe = _vgaBufferPointers + zoneNum;
-	if (vpe->vgaFile1 != NULL)
-		return;
+	if (getGameType() == GType_PN) {
+		// Only a single zone is used in Personal Nightmare
+		vpe = _vgaBufferPointers;
+		vc27_resetSprite();
+		_vgaMemPtr = _vgaMemBase;
+	} else {
+		vpe = _vgaBufferPointers + zoneNum;
+		if (vpe->vgaFile1 != NULL)
+			return;
+	}
 
-	// Loading order is important
-	// due to resource managment
+	// Loading order is important due to resource managment
 
 	if (getPlatform() == Common::kPlatformAmiga && getGameType() == GType_WW &&
 		zoneTable[zoneNum] == 3) {
 		uint8 num = (zoneNum >= 85) ? 94 : 18;
-		loadVGAVideoFile(num, 2);
+		loadVGAVideoFile(num, 2, useError);
 	} else {
-		loadVGAVideoFile(zoneNum, 2);
+		loadVGAVideoFile(zoneNum, 2, useError);
 	}
 	vpe->vgaFile2 = _block;
 	vpe->vgaFile2End = _blockEnd;
 
-	loadVGAVideoFile(zoneNum, 1);
+	loadVGAVideoFile(zoneNum, 1, useError);
 	vpe->vgaFile1 = _block;
 	vpe->vgaFile1End = _blockEnd;
 
@@ -139,12 +145,12 @@ byte *AGOSEngine::allocBlock(uint32 size) {
 }
 
 void AGOSEngine::checkRunningAnims() {
-	VgaSprite *vsp;
-	if (getGameType() != GType_FF && getGameType() != GType_PP &&
-		(_lockWord & 0x20)) {
+	if ((getGameType() == GType_SIMON1 || getGameType() == GType_SIMON2) &&
+		(_videoLockOut & 0x20)) {
 		return;
 	}
 
+	VgaSprite *vsp;
 	for (vsp = _vgaSprites; vsp->id; vsp++) {
 		checkAnims(vsp->zoneNum);
 		if (_rejectBlock == true)
@@ -152,7 +158,7 @@ void AGOSEngine::checkRunningAnims() {
 	}
 }
 
-void AGOSEngine_Feeble::checkNoOverWrite() {
+void AGOSEngine::checkNoOverWrite() {
 	VgaPointersEntry *vpe;
 
 	if (_noOverWrite == 0xFFFF)
@@ -174,7 +180,7 @@ void AGOSEngine_Feeble::checkNoOverWrite() {
 	}
 }
 
-void AGOSEngine_Feeble::checkAnims(uint a) {
+void AGOSEngine::checkAnims(uint a) {
 	VgaPointersEntry *vpe;
 
 	vpe = &_vgaBufferPointers[a];
@@ -193,7 +199,7 @@ void AGOSEngine_Feeble::checkAnims(uint a) {
 	}
 }
 
-void AGOSEngine_Feeble::checkZonePtrs() {
+void AGOSEngine::checkZonePtrs() {
 	uint count = ARRAYSIZE(_vgaBufferPointers);
 	VgaPointersEntry *vpe = _vgaBufferPointers;
 	do {
@@ -206,49 +212,6 @@ void AGOSEngine_Feeble::checkZonePtrs() {
 			vpe->vgaFile2End = NULL;
 			vpe->sfxFile = NULL;
 			vpe->sfxFileEnd = NULL;
-		}
-	} while (++vpe, --count);
-}
-
-void AGOSEngine::checkNoOverWrite() {
-	VgaPointersEntry *vpe;
-
-	if (_noOverWrite == 0xFFFF)
-		return;
-
-	vpe = &_vgaBufferPointers[_noOverWrite];
-
-	if (((_block <= vpe->vgaFile1) && (_blockEnd >= vpe->vgaFile1)) ||
-		((_vgaMemPtr <= vpe->vgaFile2) && (_blockEnd >= vpe->vgaFile2))) {
-		_rejectBlock = true;
-		_vgaMemPtr = vpe->vgaFile1 + 0x5000;
-	} else {
-		_rejectBlock = false;
-	}
-}
-
-void AGOSEngine::checkAnims(uint a) {
-	VgaPointersEntry *vpe;
-
-	vpe = &_vgaBufferPointers[a];
-
-	if (((_block <= vpe->vgaFile1) && (_blockEnd >= vpe->vgaFile1)) ||
-			((_block <= vpe->vgaFile2) && (_blockEnd >= vpe->vgaFile2))) {
-		_rejectBlock = true;
-		_vgaMemPtr = vpe->vgaFile1 + 0x5000;
-	} else {
-		_rejectBlock = false;
-	}
-}
-
-void AGOSEngine::checkZonePtrs() {
-	uint count = ARRAYSIZE(_vgaBufferPointers);
-	VgaPointersEntry *vpe = _vgaBufferPointers;
-	do {
-		if (((_block <= vpe->vgaFile1) && (_blockEnd >= vpe->vgaFile1)) ||
-			((_block <= vpe->vgaFile2) && (_blockEnd >= vpe->vgaFile2))) {
-			vpe->vgaFile1 = NULL;
-			vpe->vgaFile2 = NULL;
 		}
 	} while (++vpe, --count);
 }

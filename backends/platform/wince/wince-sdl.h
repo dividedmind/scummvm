@@ -84,7 +84,7 @@ public:
 	// Overloaded from SDL backend (master volume and sample rate subtleties)
 	void setupMixer();
 	// Overloaded from OSystem
-	//void engineInit();
+	void engineInit();
 	void getTimeAndDate(struct tm &t) const;
 	virtual Common::SeekableReadStream *createConfigReadStream();
 	virtual Common::WriteStream *createConfigWriteStream();
@@ -94,6 +94,7 @@ public:
 	void setMouseCursor(const byte *buf, uint w, uint h, int hotspot_x, int hotspot_y, byte keycolor, int cursorTargetScale); // overloaded by CE backend
 	void undrawMouse();
 	void blitCursor();
+	bool showMouse(bool visible);
 	void setMousePos(int x, int y);
 	void copyRectToScreen(const byte *src, int pitch, int x, int y, int w, int h); // overloaded by CE backend (FIXME)
 	void copyRectToOverlay(const OverlayColor *buf, int pitch, int x, int y, int w, int h);
@@ -145,7 +146,6 @@ protected:
 	//int getGraphicsMode() const;
 	int getDefaultGraphicsMode() const;
 
-	void setWindowCaption(const char *caption);
 	bool openCD(int drive);
 	int getOutputSampleRate() const;
 
@@ -208,6 +208,8 @@ private:
 	bool _closeClick;		// flag when taps are spatially close together
 
 	bool _usesEmulatedMouse;	// emulated mousemove ever been used in this session
+
+	bool _canBeAspectScaled;	// game screen size allows for aspect scaling
 
 	int _scaleFactorXm;		// scaler X *
 	int _scaleFactorXd;		// scaler X /

@@ -120,12 +120,23 @@ private:
 	bool _useSubtitles;
 	int _gameSpeed;
 
+	// Used to trigger GMM Loading
+	int _gmmLoadSlot;
+
 	StartUp _startList[MAX_starts];
+
+	// We need these to fetch data from SCREENS.CLU, which is
+	// a resource file with custom format keeping background and
+	// parallax data (which is removed from multiscreen files).
+	byte *fetchPsxBackground(uint32 location);
+	byte *fetchPsxParallax(uint32 location, uint8 level); // level: 0 -> bg, 1 -> fg
+
+	// Original game platform (PC/PSX)
+	static Common::Platform _platform;
 
 protected:
 	// Engine APIs
-	virtual Common::Error init();
-	virtual Common::Error go();
+	virtual Common::Error run();
 	virtual GUI::Debugger *getDebugger();
 	virtual bool hasFeature(EngineFeature f) const;
 	virtual void syncSoundSettings();
@@ -147,6 +158,12 @@ public:
 
 	bool getSubtitles() { return _useSubtitles; }
 	void setSubtitles(bool b) { _useSubtitles = b; }
+
+	// GMM Loading/Saving
+	Common::Error saveGameState(int slot, const char *desc);
+	bool canSaveGameStateCurrently();
+	Common::Error loadGameState(int slot);
+	bool canLoadGameStateCurrently();
 
 	uint32 _features;
 
@@ -202,7 +219,7 @@ public:
 	bool checkTextLine(byte *file, uint32 text_line);
 	byte *fetchPaletteMatchTable(byte *screenFile);
 
-	uint32 saveGame(uint16 slotNo, byte *description);
+	uint32 saveGame(uint16 slotNo, const byte *description);
 	uint32 restoreGame(uint16 slotNo);
 	uint32 getSaveDescription(uint16 slotNo, byte *description);
 	bool saveExists();
@@ -234,6 +251,9 @@ public:
 	// Convenience alias for OSystem::getMillis().
 	// This is a bit hackish, of course :-).
 	uint32 getMillis();
+
+	//Used to check wether we are running PSX version
+	static bool isPsx() { return _platform == Common::kPlatformPSX; }
 };
 
 } // End of namespace Sword2

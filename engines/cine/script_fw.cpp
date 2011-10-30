@@ -48,164 +48,172 @@ ScriptVars globalVars(NUM_MAX_VAR + 1);
 
 uint16 compareVars(int16 a, int16 b);
 
-const Opcode FWScript::_opcodeTable[] = {
-	/* 00 */
-	{ &FWScript::o1_modifyObjectParam, "bbw" },
-	{ &FWScript::o1_getObjectParam, "bbb" },
-	{ &FWScript::o1_addObjectParam, "bbw" },
-	{ &FWScript::o1_subObjectParam, "bbw" },
-	/* 04 */
-	{ &FWScript::o1_mulObjectParam, "bbw" },
-	{ &FWScript::o1_divObjectParam, "bbw" },
-	{ &FWScript::o1_compareObjectParam, "bbw" },
-	{ &FWScript::o1_setupObject, "bwwww" },
-	/* 08 */
-	{ &FWScript::o1_checkCollision, "bwwww" },
-	{ &FWScript::o1_loadVar, "bc" },
-	{ &FWScript::o1_addVar, "bc" },
-	{ &FWScript::o1_subVar, "bc" },
-	/* 0C */
-	{ &FWScript::o1_mulVar, "bc" },
-	{ &FWScript::o1_divVar, "bc" },
-	{ &FWScript::o1_compareVar, "bc" },
-	{ &FWScript::o1_modifyObjectParam2, "bbb" },
-	/* 10 */
-	{ 0, 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	{ &FWScript::o1_loadMask0, "b" },
-	/* 14 */
-	{ &FWScript::o1_unloadMask0, "b" },
-	{ &FWScript::o1_addToBgList, "b" },
-	{ &FWScript::o1_loadMask1, "b" },
-	{ &FWScript::o1_unloadMask1, "b" },
-	/* 18 */
-	{ &FWScript::o1_loadMask4, "b" },
-	{ &FWScript::o1_unloadMask4, "b" },
-	{ &FWScript::o1_addSpriteFilledToBgList, "b" },
-	{ &FWScript::o1_op1B, "" },
-	/* 1C */
-	{ 0, 0 },
-	{ &FWScript::o1_label, "l" },
-	{ &FWScript::o1_goto, "b" },
-	{ &FWScript::o1_gotoIfSup, "b" },
-	/* 20 */
-	{ &FWScript::o1_gotoIfSupEqu, "b" },
-	{ &FWScript::o1_gotoIfInf, "b" },
-	{ &FWScript::o1_gotoIfInfEqu, "b" },
-	{ &FWScript::o1_gotoIfEqu, "b" },
-	/* 24 */
-	{ &FWScript::o1_gotoIfDiff, "b" },
-	{ &FWScript::o1_removeLabel, "b" },
-	{ &FWScript::o1_loop, "bb" },
-	{ 0, 0 },
-	/* 28 */
-	{ 0, 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	/* 2C */
-	{ 0, 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	/* 30 */
-	{ 0, 0 },
-	{ &FWScript::o1_startGlobalScript, "b" },
-	{ &FWScript::o1_endGlobalScript, "b" },
-	{ 0, 0 },
-	/* 34 */
-	{ 0, 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	/* 38 */
-	{ 0, 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	{ &FWScript::o1_loadAnim, "s" },
-	/* 3C */
-	{ &FWScript::o1_loadBg, "s" },
-	{ &FWScript::o1_loadCt, "s" },
-	{ 0, 0 },
-	{ &FWScript::o1_loadPart, "s" },
-	/* 40 */
-	{ &FWScript::o1_closePart, "" },
-	{ &FWScript::o1_loadNewPrcName, "bs" },
-	{ &FWScript::o1_requestCheckPendingDataLoad, "" },
-	{ 0, 0 },
-	/* 44 */
-	{ 0, 0 },
-	{ &FWScript::o1_blitAndFade, "" },
-	{ &FWScript::o1_fadeToBlack, "" },
-	{ &FWScript::o1_transformPaletteRange, "bbwww" },
-	/* 48 */
-	{ 0, 0 },
-	{ &FWScript::o1_setDefaultMenuBgColor, "b" },
-	{ &FWScript::o1_palRotate, "bbb" },
-	{ 0, 0 },
-	/* 4C */
-	{ 0, 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	{ &FWScript::o1_break, "" },
-	/* 50 */
-	{ &FWScript::o1_endScript, "x" },
-	{ &FWScript::o1_message, "bwwww" },
-	{ &FWScript::o1_loadGlobalVar, "bc" },
-	{ &FWScript::o1_compareGlobalVar, "bc" },
-	/* 54 */
-	{ 0, 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	/* 58 */
-	{ 0, 0 },
-	{ &FWScript::o1_declareFunctionName, "s" },
-	{ &FWScript::o1_freePartRange, "bb" },
-	{ &FWScript::o1_unloadAllMasks, "" },
-	/* 5C */
-	{ 0, 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	/* 60 */
-	{ 0, 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	{ &FWScript::o1_setScreenDimensions, "wwww" },
-	/* 64 */
-	{ &FWScript::o1_displayBackground, "" },
-	{ &FWScript::o1_initializeZoneData, "" },
-	{ &FWScript::o1_setZoneDataEntry, "bw" },
-	{ &FWScript::o1_getZoneDataEntry, "bb" },
-	/* 68 */
-	{ &FWScript::o1_setPlayerCommandPosY, "b" },
-	{ &FWScript::o1_allowPlayerInput, "" },
-	{ &FWScript::o1_disallowPlayerInput, "" },
-	{ &FWScript::o1_changeDataDisk, "b" },
-	/* 6C */
-	{ 0, 0 },
-	{ &FWScript::o1_loadMusic, "s" },
-	{ &FWScript::o1_playMusic, "" },
-	{ &FWScript::o1_fadeOutMusic, "" },
-	/* 70 */
-	{ &FWScript::o1_stopSample, "" },
-	{ &FWScript::o1_op71, "bw" },
-	{ &FWScript::o1_op72, "wbw" },
-	{ &FWScript::o1_op73, "wbw" },
-	/* 74 */
-	{ 0, 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	{ &FWScript::o1_playSample, "bbwbww" },
-	/* 78 */
-	{ &FWScript::o1_playSample, "bbwbww" },
-	{ &FWScript::o1_disableSystemMenu, "b" },
-	{ &FWScript::o1_loadMask5, "b" },
-	{ &FWScript::o1_unloadMask5, "b" }
-};
-const unsigned int FWScript::_numOpcodes = ARRAYSIZE(FWScript::_opcodeTable);
+
+const Opcode *FWScript::_opcodeTable = 0;
+unsigned int FWScript::_numOpcodes = 0;
+
+void FWScript::setupTable() {
+	static const Opcode opcodeTable[] = {
+		/* 00 */
+		{ &FWScript::o1_modifyObjectParam, "bbw" },
+		{ &FWScript::o1_getObjectParam, "bbb" },
+		{ &FWScript::o1_addObjectParam, "bbw" },
+		{ &FWScript::o1_subObjectParam, "bbw" },
+		/* 04 */
+		{ &FWScript::o1_mulObjectParam, "bbw" },
+		{ &FWScript::o1_divObjectParam, "bbw" },
+		{ &FWScript::o1_compareObjectParam, "bbw" },
+		{ &FWScript::o1_setupObject, "bwwww" },
+		/* 08 */
+		{ &FWScript::o1_checkCollision, "bwwww" },
+		{ &FWScript::o1_loadVar, "bc" },
+		{ &FWScript::o1_addVar, "bc" },
+		{ &FWScript::o1_subVar, "bc" },
+		/* 0C */
+		{ &FWScript::o1_mulVar, "bc" },
+		{ &FWScript::o1_divVar, "bc" },
+		{ &FWScript::o1_compareVar, "bc" },
+		{ &FWScript::o1_modifyObjectParam2, "bbb" },
+		/* 10 */
+		{ 0, 0 },
+		{ 0, 0 },
+		{ 0, 0 },
+		{ &FWScript::o1_loadMask0, "b" },
+		/* 14 */
+		{ &FWScript::o1_unloadMask0, "b" },
+		{ &FWScript::o1_addToBgList, "b" },
+		{ &FWScript::o1_loadMask1, "b" },
+		{ &FWScript::o1_unloadMask1, "b" },
+		/* 18 */
+		{ &FWScript::o1_loadMask4, "b" },
+		{ &FWScript::o1_unloadMask4, "b" },
+		{ &FWScript::o1_addSpriteFilledToBgList, "b" },
+		{ &FWScript::o1_op1B, "" },
+		/* 1C */
+		{ 0, 0 },
+		{ &FWScript::o1_label, "l" },
+		{ &FWScript::o1_goto, "b" },
+		{ &FWScript::o1_gotoIfSup, "b" },
+		/* 20 */
+		{ &FWScript::o1_gotoIfSupEqu, "b" },
+		{ &FWScript::o1_gotoIfInf, "b" },
+		{ &FWScript::o1_gotoIfInfEqu, "b" },
+		{ &FWScript::o1_gotoIfEqu, "b" },
+		/* 24 */
+		{ &FWScript::o1_gotoIfDiff, "b" },
+		{ &FWScript::o1_removeLabel, "b" },
+		{ &FWScript::o1_loop, "bb" },
+		{ 0, 0 },
+		/* 28 */
+		{ 0, 0 },
+		{ 0, 0 },
+		{ 0, 0 },
+		{ 0, 0 },
+		/* 2C */
+		{ 0, 0 },
+		{ 0, 0 },
+		{ 0, 0 },
+		{ 0, 0 },
+		/* 30 */
+		{ 0, 0 },
+		{ &FWScript::o1_startGlobalScript, "b" },
+		{ &FWScript::o1_endGlobalScript, "b" },
+		{ 0, 0 },
+		/* 34 */
+		{ 0, 0 },
+		{ 0, 0 },
+		{ 0, 0 },
+		{ 0, 0 },
+		/* 38 */
+		{ 0, 0 },
+		{ 0, 0 },
+		{ 0, 0 },
+		{ &FWScript::o1_loadAnim, "s" },
+		/* 3C */
+		{ &FWScript::o1_loadBg, "s" },
+		{ &FWScript::o1_loadCt, "s" },
+		{ 0, 0 },
+		{ &FWScript::o1_loadPart, "s" },
+		/* 40 */
+		{ &FWScript::o1_closePart, "" },
+		{ &FWScript::o1_loadNewPrcName, "bs" },
+		{ &FWScript::o1_requestCheckPendingDataLoad, "" },
+		{ 0, 0 },
+		/* 44 */
+		{ 0, 0 },
+		{ &FWScript::o1_blitAndFade, "" },
+		{ &FWScript::o1_fadeToBlack, "" },
+		{ &FWScript::o1_transformPaletteRange, "bbwww" },
+		/* 48 */
+		{ 0, 0 },
+		{ &FWScript::o1_setDefaultMenuBgColor, "b" },
+		{ &FWScript::o1_palRotate, "bbb" },
+		{ 0, 0 },
+		/* 4C */
+		{ 0, 0 },
+		{ 0, 0 },
+		{ 0, 0 },
+		{ &FWScript::o1_break, "" },
+		/* 50 */
+		{ &FWScript::o1_endScript, "x" },
+		{ &FWScript::o1_message, "bwwww" },
+		{ &FWScript::o1_loadGlobalVar, "bc" },
+		{ &FWScript::o1_compareGlobalVar, "bc" },
+		/* 54 */
+		{ 0, 0 },
+		{ 0, 0 },
+		{ 0, 0 },
+		{ 0, 0 },
+		/* 58 */
+		{ 0, 0 },
+		{ &FWScript::o1_declareFunctionName, "s" },
+		{ &FWScript::o1_freePartRange, "bb" },
+		{ &FWScript::o1_unloadAllMasks, "" },
+		/* 5C */
+		{ 0, 0 },
+		{ 0, 0 },
+		{ 0, 0 },
+		{ 0, 0 },
+		/* 60 */
+		{ 0, 0 },
+		{ 0, 0 },
+		{ 0, 0 },
+		{ &FWScript::o1_setScreenDimensions, "wwww" },
+		/* 64 */
+		{ &FWScript::o1_displayBackground, "" },
+		{ &FWScript::o1_initializeZoneData, "" },
+		{ &FWScript::o1_setZoneDataEntry, "bw" },
+		{ &FWScript::o1_getZoneDataEntry, "bb" },
+		/* 68 */
+		{ &FWScript::o1_setPlayerCommandPosY, "b" },
+		{ &FWScript::o1_allowPlayerInput, "" },
+		{ &FWScript::o1_disallowPlayerInput, "" },
+		{ &FWScript::o1_changeDataDisk, "b" },
+		/* 6C */
+		{ 0, 0 },
+		{ &FWScript::o1_loadMusic, "s" },
+		{ &FWScript::o1_playMusic, "" },
+		{ &FWScript::o1_fadeOutMusic, "" },
+		/* 70 */
+		{ &FWScript::o1_stopSample, "" },
+		{ &FWScript::o1_op71, "bw" },
+		{ &FWScript::o1_op72, "wbw" },
+		{ &FWScript::o1_op73, "wbw" },
+		/* 74 */
+		{ 0, 0 },
+		{ 0, 0 },
+		{ 0, 0 },
+		{ &FWScript::o1_playSample, "bbwbww" },
+		/* 78 */
+		{ &FWScript::o1_playSample, "bbwbww" },
+		{ &FWScript::o1_disableSystemMenu, "b" },
+		{ &FWScript::o1_loadMask5, "b" },
+		{ &FWScript::o1_unloadMask5, "b" }
+	};
+
+	FWScript::_opcodeTable = (const Opcode *)opcodeTable;
+	FWScript::_numOpcodes = ARRAYSIZE(opcodeTable);
+}
 
 FWScriptInfo *scriptInfo; ///< Script factory
 RawScriptArray scriptTable; ///< Table of script bytecode
@@ -216,8 +224,10 @@ void setupOpcodes() {
 	static FWScriptInfo fw;
 	static OSScriptInfo os;
 	if (g_cine->getGameType() == Cine::GType_FW) {
+		FWScript::setupTable();
 		scriptInfo = &fw;
 	} else {
+		OSScript::setupTable();
 		scriptInfo = &os;
 	}
 }
@@ -1433,6 +1443,38 @@ int FWScript::o1_palRotate() {
 int FWScript::o1_break() {
 	debugC(5, kCineDebugScript, "Line: %d: break", _line);
 
+	// WORKAROUND for bug #2669415 ("FW: half walking speed in a screen").
+	// The problem was that in Amiga/Atari ST versions of Future Wars the
+	// walking speed has halved in a forest scene where a monk's robe hangs
+	// on a tree branch (Up and to the left from the medieval castle's front).
+	//
+	// Initialization script for the scene is PART02.PRC's 26th script (011_INIT)
+	// and the background used in the scene is L11.PI1. The difference between
+	// the PC version and the Amiga/Atari ST version of the script is that the
+	// PC version calls scripts 37 and 36 for handling movement of the character
+	// when Amiga/Atari ST version calls scripts 22 and 21 for the same purpose
+	// (Scripts 37 and 22 handle vertical movement, 36 and 21 the horizontal).
+	//
+	// The called scripts only differ functionally so that all BREAK opcodes have been
+	// doubled in the Amiga/Atari ST versions (i.e. one BREAK has become two BREAKs)
+	// and in script 21 after LABEL_25 there's an extra opcode that isn't in script 36:
+	// SET globalvars[251], 0.
+	//
+	// As a BREAK opcode stops the execution of a script it causes a pause and
+	// with the BREAKs doubled the pause is twice as long in the Amiga/Atari ST versions.
+	// Thus the longer pause is eliminated by running only one BREAK when several
+	// are designated (i.e. ignoring a BREAK if there's another BREAK after it).
+	//
+	// TODO: Check whether the speed is halved in any other scenes in Amiga/Atari ST versions under ScummVM
+	// TODO: Check whether the speed is halved when running the original executable under an emulator
+	if (g_cine->getGameType() == Cine::GType_FW &&
+		(g_cine->getPlatform() == Common::kPlatformAmiga || g_cine->getPlatform() == Common::kPlatformAtariST) &&
+		_pos < _script._size && _script.getByte(_pos) == (0x4F + 1) && // Is the next opcode a BREAK too?
+		scumm_stricmp(currentPrcName, "PART02.PRC") == 0 &&
+		scumm_stricmp(renderer->getBgName(), "L11.PI1") == 0) {
+		return 0;
+	}
+
 	return 1;
 }
 
@@ -1622,24 +1664,37 @@ int FWScript::o1_loadMusic() {
 
 	debugC(5, kCineDebugScript, "Line: %d: loadMusic(%s)", _line, param);
 	g_sound->loadMusic(param);
+
+	strncpy(currentDatName, param, 30);
+	musicIsPlaying = 0;
+
 	return 0;
 }
 
 int FWScript::o1_playMusic() {
 	debugC(5, kCineDebugScript, "Line: %d: playMusic()", _line);
 	g_sound->playMusic();
+
+	musicIsPlaying = 1;
+
 	return 0;
 }
 
 int FWScript::o1_fadeOutMusic() {
 	debugC(5, kCineDebugScript, "Line: %d: fadeOutMusic()", _line);
 	g_sound->fadeOutMusic();
+
+	musicIsPlaying = 0;
+
 	return 0;
 }
 
 int FWScript::o1_stopSample() {
 	debugC(5, kCineDebugScript, "Line: %d: stopSample()", _line);
 	g_sound->stopMusic();
+
+	musicIsPlaying = 0;
+
 	return 0;
 }
 

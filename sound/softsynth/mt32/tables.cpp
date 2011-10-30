@@ -25,16 +25,19 @@
 
 #include "mt32emu.h"
 
-#if defined(MACOSX) || defined(SOLARIS)
+#if defined(MACOSX) || defined(SOLARIS) || defined(__MINGW32__)
 // Older versions of Mac OS X didn't supply a powf function, so using it
 // will cause a binary incompatibility when trying to run a binary built
 // on a newer OS X release on an olderr one. And Solaris 8 doesn't provide
 // powf, floorf, fabsf etc. at all.
+// Cross-compiled MinGW32 toolchains suffer from a cross-compile bug in
+// libstdc++. math/stubs.o should be empty, but it comes with a symbol for
+// powf, resulting in a linker error because of multiple definitions.
 // Hence we re-define them here. The only potential drawback is that it
 // might be a little bit slower this way.
-#define powf pow
-#define floorf floor
-#define fabsf fabs
+#define powf(x,y)	((float)pow(x,y))
+#define floorf(x)	((float)floor(x))
+#define fabsf(x)	((float)fabs(x))
 #endif
 
 #define FIXEDPOINT_MAKE(x, point) ((Bit32u)((1 << point) * x))
@@ -607,7 +610,7 @@ bool Tables::initNotes(Synth *synth, PCMWaveEntry *pcmWaves, float rate, float m
 	char filename[64];
 	int intRate = (int)rate;
 	char version[4] = {0, 0, 0, 5};
-	sprintf(filename, "waveformcache-%d-%.2f.raw", intRate, masterTune);
+	sprintf(filename, "waveformcache-%d-%.2f.raw", intRate, (double)masterTune);
 
 	File *file = NULL;
 	char header[20];
@@ -727,7 +730,7 @@ Tables::Tables() {
 
 bool Tables::init(Synth *synth, PCMWaveEntry *pcmWaves, float sampleRate, float masterTune) {
 	if (sampleRate <= 0.0f) {
-		synth->printDebug("Bad sampleRate (%d <= 0.0f)", sampleRate);
+		synth->printDebug("Bad sampleRate (%f <= 0.0f)", sampleRate);
 		return false;
 	}
 	if (initialisedSampleRate == 0.0f) {

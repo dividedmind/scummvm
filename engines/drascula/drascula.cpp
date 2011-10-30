@@ -24,6 +24,7 @@
  */
 
 #include "common/events.h"
+#include "common/EventRecorder.h"
 #include "common/keyboard.h"
 #include "common/file.h"
 #include "common/savefile.h"
@@ -54,12 +55,45 @@ static const GameSettings drasculaSettings[] = {
 
 DrasculaEngine::DrasculaEngine(OSystem *syst, const DrasculaGameDescription *gameDesc) : Engine(syst), _gameDescription(gameDesc) {
 
-	// Setup mixer
-	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, ConfMan.getInt("speech_volume"));
-	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, ConfMan.getInt("music_volume"));
+	_charMap = 0;
+	_itemLocations = 0;
+	_polX = 0;
+	_polY = 0;
+	_verbBarX = 0;
+	_x1d_menu = 0;
+	_y1d_menu = 0;
+	_frameX = 0;
+	_candleX = 0;
+	_candleY = 0;
+	_pianistX = 0;
+	_drunkX = 0;
+	_roomPreUpdates = 0;
+	_roomUpdates = 0;
+	_roomActions = 0;
+	_text = 0;
+	_textd = 0;
+	_textb = 0;
+	_textbj = 0;
+	_texte = 0;
+	_texti = 0;
+	_textl = 0;
+	_textp = 0;
+	_textt = 0;
+	_textvb = 0;
+	_textsys = 0;
+	_texthis = 0;
+	_textverbs = 0;
+	_textmisc = 0;
+	_textd1 = 0;
+
+	_color = 0;
+	blinking = 0;
+	leftMouseButton = 0;
+	rightMouseButton = 0;
+	*textName = 0;
 
 	_rnd = new Common::RandomSource();
-	syst->getEventManager()->registerRandomSource(*_rnd, "drascula");
+	g_eventRec.registerRandomSource(*_rnd, "drascula");
 
 	int cd_num = ConfMan.getInt("cdrom");
 	if (cd_num >= 0)
@@ -106,7 +140,7 @@ DrasculaEngine::~DrasculaEngine() {
 	freeTexts(_textd1);
 }
 
-Common::Error DrasculaEngine::init() {
+Common::Error DrasculaEngine::run() {
 	// Initialize backend
 	initGraphics(320, 200, false);
 
@@ -131,53 +165,16 @@ Common::Error DrasculaEngine::init() {
 		_lang = kEnglish;
 	}
 
-	_charMap = 0;
-	_itemLocations = 0;
-	_polX = 0;
-	_polY = 0;
-	_verbBarX = 0;
-	_x1d_menu = 0;
-	_y1d_menu = 0;
-	_frameX = 0;
-	_candleX = 0;
-	_candleY = 0;
-	_pianistX = 0;
-	_drunkX = 0;
-	_roomPreUpdates = 0;
-	_roomUpdates = 0;
-	_roomActions = 0;
-	_text = 0;
-	_textd = 0;
-	_textb = 0;
-	_textbj = 0;
-	_texte = 0;
-	_texti = 0;
-	_textl = 0;
-	_textp = 0;
-	_textt = 0;
-	_textvb = 0;
-	_textsys = 0;
-	_texthis = 0;
-	_textverbs = 0;
-	_textmisc = 0;
-	_textd1 = 0;
-
-	_color = 0;
-	blinking = 0;
-	leftMouseButton = 0;
-	rightMouseButton = 0;
-	*textName = 0;
-
 	if (!loadDrasculaDat())
 		return Common::kUnknownError;
 
 	setupRoomsTable();
 	loadArchives();
 
-	return Common::kNoError;
-}
+	// Setup mixer
+	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, ConfMan.getInt("speech_volume"));
+	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, ConfMan.getInt("music_volume"));
 
-Common::Error DrasculaEngine::go() {
 	currentChapter = 1; // values from 1 to 6 will start each part of game
 	loadedDifferentChapter = 0;
 
@@ -185,29 +182,41 @@ Common::Error DrasculaEngine::go() {
 
 	for (;;) {
 		int i;
-
-		VGA = (byte *)malloc(320 * 200);
-		memset(VGA, 0, 64000);
-
 		takeObject = 0;
-		menuBar = 0; menuScreen = 0; hasName = 0;
+		_menuBar = false;
+		_menuScreen = false;
+		_hasName = false;
 		frame_y = 0;
-		curX = -1; characterMoved = 0; trackProtagonist = 3; num_frame = 0; hare_se_ve = 1;
+		curX = -1;
+		characterMoved = 0;
+		trackProtagonist = 3;
+		num_frame = 0;
+		hare_se_ve = 1;
 		checkFlags = 1;
 		doBreak = 0;
 		walkToObject = 0;
-		stepX = STEP_X; stepY = STEP_Y;
-		curHeight = CHARACTER_HEIGHT; curWidth = CHARACTER_WIDTH; feetHeight = FEET_HEIGHT;
-		talkHeight = TALK_HEIGHT; talkWidth = TALK_WIDTH;
+
+		stepX = STEP_X;
+		stepY = STEP_Y;
+
+		curHeight = CHARACTER_HEIGHT;
+		curWidth = CHARACTER_WIDTH;
+		feetHeight = FEET_HEIGHT;
+
+		talkHeight = TALK_HEIGHT;
+		talkWidth = TALK_WIDTH;
+
 		hasAnswer = 0;
 		savedTime = 0;
 		breakOut = 0;
-		vonBraunX = 120; trackVonBraun = 1; vonBraunHasMoved = 0;
+		vonBraunX = 120;
+		trackVonBraun = 1;
+		vonBraunHasMoved = 0;
 		framesWithoutAction = 0;
 		term_int = 0;
 		musicStopped = 0;
 		selectionMade = 0;
-		UsingMem = 0;
+		_useMemForArj = false;
 		globalSpeed = 0;
 		curExcuseLook = 0;
 		curExcuseAction = 0;
@@ -283,7 +292,6 @@ void DrasculaEngine::endChapter() {
 	MusicFadeout();
 	stopMusic();
 	freeMemory();
-	free(VGA);
 }
 
 bool DrasculaEngine::runCurrentChapter() {
@@ -322,7 +330,7 @@ bool DrasculaEngine::runCurrentChapter() {
 		if (loadedDifferentChapter == 0)
 			animation_1_1();
 
-		selectVerb(0);
+		selectVerb(kVerbNone);
 		loadPic("2aux62.alg", drawSurface2);
 		trackProtagonist = 1;
 		objExit = 104;
@@ -471,14 +479,14 @@ bool DrasculaEngine::runCurrentChapter() {
 		updateEvents();
 #endif
 
-		if (menuScreen == 0 && takeObject == 1)
+		if (!_menuScreen && takeObject == 1)
 			checkObjects();
 
 #ifdef _WIN32_WCE
 		if (rightMouseButton)
-			if (menuScreen) {
+			if (_menuScreen) {
 #else
-		if (rightMouseButton == 1 && menuScreen == 1) {
+		if (rightMouseButton == 1 && _menuScreen) {
 #endif
 			delay(100);
 			if (currentChapter == 2)
@@ -486,7 +494,7 @@ bool DrasculaEngine::runCurrentChapter() {
 			else
 				loadPic(99, backSurface);
 			setPalette((byte *)&gamePalette);
-			menuScreen = 0;
+			_menuScreen = false;
 #ifndef _WIN32_WCE
 			// FIXME: This call here is in hope that it will catch the rightmouseup event so the
 			// next if block won't be executed. This too is not a good coding practice. I've recoded it
@@ -502,7 +510,7 @@ bool DrasculaEngine::runCurrentChapter() {
 		// Do not show the inventory screen in chapter 5, if the right mouse button is clicked
 		// while the plug (object 16) is held
 		// Fixes bug #2059621 - "DRASCULA: Plug bug"
-		if (rightMouseButton == 1 && menuScreen == 0 &&
+		if (rightMouseButton == 1 && !_menuScreen &&
 			!(currentChapter == 5 && pickedObject == 16)) {
 #endif
 			delay(100);
@@ -517,14 +525,14 @@ bool DrasculaEngine::runCurrentChapter() {
 				loadPic("iconsp.alg", backSurface);
 			else
 				loadPic("icons.alg", backSurface);
-			menuScreen = 1;
+			_menuScreen = true;
 #ifndef _WIN32_WCE
 			updateEvents();
 #endif
-			selectVerb(0);
+			selectVerb(kVerbNone);
 		}
 
-		if (leftMouseButton == 1 && menuBar == 1) {
+		if (leftMouseButton == 1 && _menuBar) {
 			delay(100);
 			selectVerbFromBar();
 		} else if (leftMouseButton == 1 && takeObject == 0) {
@@ -536,28 +544,28 @@ bool DrasculaEngine::runCurrentChapter() {
 				return true;
 		}
 
-		menuBar = (mouseY < 24 && menuScreen == 0) ? 1 : 0;
+		_menuBar = (mouseY < 24 && !_menuScreen) ? true : false;
 
 		Common::KeyCode key = getScan();
-		if (key == Common::KEYCODE_F1 && menuScreen == 0) {
-			selectVerb(1);
-		} else if (key == Common::KEYCODE_F2 && menuScreen == 0) {
-			selectVerb(2);
-		} else if (key == Common::KEYCODE_F3 && menuScreen == 0) {
-			selectVerb(3);
-		} else if (key == Common::KEYCODE_F4 && menuScreen == 0) {
-			selectVerb(4);
-		} else if (key == Common::KEYCODE_F5 && menuScreen == 0) {
-			selectVerb(5);
-		} else if (key == Common::KEYCODE_F6 && menuScreen == 0) {
-			selectVerb(6);
+		if (key == Common::KEYCODE_F1 && !_menuScreen) {
+			selectVerb(kVerbLook);
+		} else if (key == Common::KEYCODE_F2 && !_menuScreen) {
+			selectVerb(kVerbPick);
+		} else if (key == Common::KEYCODE_F3 && !_menuScreen) {
+			selectVerb(kVerbOpen);
+		} else if (key == Common::KEYCODE_F4 && !_menuScreen) {
+			selectVerb(kVerbClose);
+		} else if (key == Common::KEYCODE_F5 && !_menuScreen) {
+			selectVerb(kVerbTalk);
+		} else if (key == Common::KEYCODE_F6 && !_menuScreen) {
+			selectVerb(kVerbMove);
 		} else if (key == Common::KEYCODE_F9) {
 			volumeControls();
 		} else if (key == Common::KEYCODE_F10) {
 			if (!saveLoadScreen())
 				return true;
 		} else if (key == Common::KEYCODE_F8) {
-			selectVerb(0);
+			selectVerb(kVerbNone);
 		} else if (key == Common::KEYCODE_v) {
 			_subtitlesDisabled = true;
 			ConfMan.setBool("subtitles", !_subtitlesDisabled);
@@ -633,7 +641,7 @@ void DrasculaEngine::getStringFromLine(char *buf, int len, char* result) {
 bool DrasculaEngine::verify1() {
 	int l;
 
-	if (menuScreen == 1)
+	if (_menuScreen)
 		removeObject();
 	else {
 		for (l = 0; l < numRoomObjs; l++) {
@@ -676,11 +684,11 @@ bool DrasculaEngine::verify1() {
 bool DrasculaEngine::verify2() {
 	int l;
 
-	if (menuScreen == 1) {
+	if (_menuScreen) {
 		if (pickupObject())
 			return true;
 	} else {
-		if (!strcmp(textName, "hacker") && hasName == 1) {
+		if (!strcmp(textName, "hacker") && _hasName) {
 			if (checkAction(50))
 				return true;
 		} else {
@@ -704,7 +712,8 @@ bool DrasculaEngine::verify2() {
 
 Common::KeyCode DrasculaEngine::getScan() {
 	updateEvents();
-	if (_keyBufferHead == _keyBufferTail) return Common::KEYCODE_INVALID;
+	if (_keyBufferHead == _keyBufferTail)
+		return Common::KEYCODE_INVALID;
 
 	Common::KeyCode key = _keyBuffer[_keyBufferTail].keycode;
 	_keyBufferTail = (_keyBufferTail + 1) % KEYBUFSIZE;

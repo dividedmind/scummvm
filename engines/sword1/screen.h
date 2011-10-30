@@ -51,6 +51,11 @@ struct RoomDef {
 	uint32	parallax[2];
 };
 
+struct PSXDataCache { // Cache for PSX screen, to avoid decompressing background at every screen update
+	uint8 *decodedBackground;
+	uint8 *extPlxCache; // If this screen requires an external parallax, save it here
+};
+
 #define SCRNGRID_X 16
 #define SCRNGRID_Y 8
 #define SHRINK_BUFFER_SIZE 50000
@@ -96,9 +101,7 @@ public:
 	void fnFlash(uint8 color);
 	void fnBorder(uint8 color);
 
-#ifdef BACKEND_8BIT
-	void plotYUV(byte *lut, int width, int height, byte *const *dat);
-#endif
+	static void decompressHIF(uint8 *src, uint8 *dest);
 
 private:
 	// for router debugging
@@ -116,12 +119,20 @@ private:
 	void processImage(uint32 id);
 	void spriteClipAndSet(uint16 *pSprX, uint16 *pSprY, uint16 *sprWidth, uint16 *sprHeight, uint16 *incr);
 	void drawSprite(uint8 *sprData, uint16 sprX, uint16 sprY, uint16 sprWidth, uint16 sprHeight, uint16 sprPitch);
+	void drawPsxHalfShrinkedSprite(uint8 *sprData, uint16 sprX, uint16 sprY, uint16 sprWidth, uint16 sprHeight, uint16 sprPitch);
+	void drawPsxFullShrinkedSprite(uint8 *sprData, uint16 sprX, uint16 sprY, uint16 sprWidth, uint16 sprHeight, uint16 sprPitch);
+	uint8* psxBackgroundToIndexed(uint8 *psxBackground, uint32 bakXres, uint32 bakYres);
+	uint8* psxShrinkedBackgroundToIndexed(uint8 *psxBackground, uint32 bakXres, uint32 bakYres);
+	void fetchPsxParallaxSize(uint8 *psxParallax, uint16 *paraSizeX, uint16 *paraSizeY);
+	void drawPsxParallax(uint8 *psxParallax, uint16 paraScrlX, uint16 scrnScrlX, uint16 scrnWidth);
 	void decompressRLE7(uint8 *src, uint32 compSize, uint8 *dest);
 	void decompressRLE0(uint8 *src, uint32 compSize, uint8 *dest);
 	void decompressTony(uint8 *src, uint32 compSize, uint8 *dest);
 	void fastShrink(uint8 *src, uint32 width, uint32 height, uint32 scale, uint8 *dest);
 	int32 inRange(int32 a, int32 b, int32 c);
 	void fadePalette(void);
+
+	void flushPsxCache(void);
 
 	OSystem *_system;
 	ResMan *_resMan;
@@ -137,7 +148,10 @@ private:
 	uint8  _rleBuffer[RLE_BUFFER_SIZE];
 	uint8  _shrinkBuffer[SHRINK_BUFFER_SIZE];
 	bool   _fullRefresh;
+	bool   _updatePalette;
 	uint16 _oldScrollX, _oldScrollY; // for drawing additional frames
+
+	PSXDataCache _psxCache; // Cache used for PSX backgrounds
 
 	uint32  _foreList[MAX_FORE];
 	uint32  _backList[MAX_BACK];
@@ -158,4 +172,6 @@ private:
 } // End of namespace Sword1
 
 #endif //BSSCREEN_H
+
+
 

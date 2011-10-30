@@ -144,18 +144,10 @@ public:
 	virtual ~Engine();
 
 	/**
-	 * Init the engine.
+	 * Init the engine and start its main loop.
 	 * @return returns kNoError on success, else an error code.
 	 */
-	virtual Common::Error init() = 0;
-
-	/**
-	 * Start the main engine loop.
-	 * The return value is not yet used, but could indicate whether the user
-	 * wants to return to the launch or to fully quit ScummVM.
-	 * @return returns kNoError on success, else an error code.
-	 */
-	virtual Common::Error go() = 0;
+	virtual Common::Error run() = 0;
 
 	/**
 	 * Prepare an error string, which is printed by the error() function.
@@ -182,6 +174,11 @@ public:
 	 * @todo find a better name for this
 	 */
 	virtual void syncSoundSettings();
+
+	/**
+	 * Flip mute all sound option.
+	 */
+	virtual void flipMute();
 
 	/**
 	 * Load a game state.

@@ -41,7 +41,7 @@ Child *AGOSEngine::allocateChildBlock(Item *i, uint type, uint size) {
 	return child;
 }
 
-byte *AGOSEngine::allocateItem(uint size) {
+void *AGOSEngine::allocateItem(uint size) {
 	byte *item = new byte[size];
 
 	memset(item, 0, size);
@@ -130,7 +130,8 @@ int AGOSEngine::getUserFlag(Item *item, int a) {
 	if (subUserFlag == NULL)
 		return 0;
 
-	if (a < 0 || a > 7)
+	int max = (getGameType() == GType_ELVIRA1) ? 7 : 3;
+	if (a < 0 || a > max)
 		return 0;
 
 	return subUserFlag->userFlags[a];
@@ -373,9 +374,13 @@ void AGOSEngine::linkItem(Item *item, Item *parent) {
 }
 
 int AGOSEngine::wordMatch(Item *item, int16 a, int16 n) {
-	if ((a == -1) && (n == item->noun))
+	if (getGameType() == GType_ELVIRA2 || getGameType() == GType_WW) {
+		if (a == -1 && n == -1)
+			return 1;
+	}
+	if (a == -1 && n == item->noun)
 		return 1;
-	if ((a == item->adjective) && (n == item->noun))
+	if (a == item->adjective && n == item->noun)
 		return 1 ;
 
 	return 0;

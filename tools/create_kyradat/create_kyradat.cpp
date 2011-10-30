@@ -31,7 +31,7 @@
 #include "md5.h"
 
 enum {
-	kKyraDatVersion = 35,
+	kKyraDatVersion = 48,
 	kIndexSize = 12
 };
 
@@ -74,6 +74,8 @@ bool extractPaddedStrings(PAKFile &out, const Game *g, const byte *data, const u
 bool extractRaw16to8(PAKFile &out, const Game *g, const byte *data, const uint32 size, const char *filename, int fmtPatch = 0);
 bool extractMrShapeAnimData(PAKFile &out, const Game *g, const byte *data, const uint32 size, const char *filename, int fmtPatch = 0);
 bool extractRaw16(PAKFile &out, const Game *g, const byte *data, const uint32 size, const char *filename, int fmtPatch = 0);
+bool extractRaw32(PAKFile &out, const Game *g, const byte *data, const uint32 size, const char *filename, int fmtPatch = 0);
+bool extractLolButtonDefs(PAKFile &out, const Game *g, const byte *data, const uint32 size, const char *filename, int fmtPatch = 0);
 
 int extractHofSeqData_checkString(const void *ptr, uint8 checkSize);
 int extractHofSeqData_isSequence(const void *ptr, const Game *g, uint32 maxCheckSize);
@@ -99,6 +101,8 @@ const ExtractType extractTypeTable[] = {
 	{ k3TypeShpData, extractMrShapeAnimData, createFilename },
 
 	{ lolTypeRaw16, extractRaw16, createFilename },
+	{ lolTypeRaw32, extractRaw32, createFilename },
+	{ lolTypeButtonDef, extractLolButtonDefs, createFilename },
 
 	{ -1, 0, 0}
 };
@@ -269,11 +273,31 @@ const ExtractFilename extractFilenames[] = {
 	{ lolMusicTrackMap, kTypeRawData, "MUSIC.MAP" },
 	{ lolGMSfxIndex, kTypeRawData, "SFX_GM.MAP" },
 	{ lolMT32SfxIndex, kTypeRawData, "SFX_MT32.MAP" },
+	//{ lolADLSfxIndex, kTypeRawData, "SFX_ADL.MAP" },
 	{ lolSpellProperties, kTypeRawData, "SPELLS.DEF" },
 	{ lolGameShapeMap, kTypeRawData, "GAMESHP.MAP" },
+	{ lolSceneItemOffs, kTypeRawData, "ITEMOFFS.DEF" },
+	{ lolCharInvIndex, k3TypeRaw16to8, "CHARINV.MAP" },
+	{ lolCharInvDefs, kTypeRawData, "CHARINV.DEF" },
+	{ lolCharDefsMan, lolTypeRaw16, "CHMAN.DEF" },
+	{ lolCharDefsWoman, lolTypeRaw16, "CHWOMAN.DEF" },
+	{ lolCharDefsKieran, lolTypeRaw16, "CHKIERAN.DEF" },
+	//{ lolCharDefsUnk, lolTypeRaw16, "CHUNK.DEF" },
+	{ lolCharDefsAkshel, lolTypeRaw16, "CHAKSHEL.DEF" },
+	{ lolExpRequirements, lolTypeRaw32, "EXPERIENCE.DEF" },
+	{ lolMonsterModifiers, lolTypeRaw16, "MONSTMOD.DEF" },
+	{ lolMonsterLevelOffsets, kTypeRawData, "MONSTLVL.DEF" },
+	{ lolMonsterDirFlags, kTypeRawData, "MONSTDIR.DEF" },
+	{ lolMonsterScaleY, kTypeRawData, "MONSTZY.DEF" },
+	{ lolMonsterScaleX, kTypeRawData, "MONSTZX.DEF" },
+	{ lolMonsterScaleWH, lolTypeRaw16, "MONSTSCL.DEF" },
+	{ lolFlyingItemShp, k3TypeRaw16to8, "THRWNSHP.DEF" },
+	{ lolInventoryDesc, lolTypeRaw16, "INVDESC.DEF" },
 	{ lolLevelShpList, kTypeStringList, "SHPFILES.TXT" },
 	{ lolLevelDatList, kTypeStringList, "DATFILES.TXT" },
 	{ lolCompassDefs, k3TypeRaw16to8, "COMPASS.DEF" },
+	{ lolItemPrices, lolTypeRaw16, "ITEMCOST.DEF" },
+	{ lolStashSetup, kTypeRawData, "MONEYSTS.DEF" },
 
 	{ lolDscUnk1, kTypeRawData, "DSCSHPU1.DEF" },
 	{ lolDscShapeIndex1, kTypeRawData, "DSCSHPI1.DEF" },
@@ -296,6 +320,32 @@ const ExtractFilename extractFilenames[] = {
 	{ lolDscDoor1, kTypeRawData, "DSCDOOR1.DEF" },
 	{ lolDscDoorX, lolTypeRaw16, "DSCDOORX.DEF" },
 	{ lolDscDoorY, lolTypeRaw16, "DSCDOORY.DEF" },
+
+	{ lolScrollXTop, k3TypeRaw16to8, "SCROLLXT.DEF" },
+	{ lolScrollYTop, k3TypeRaw16to8, "SCROLLYT.DEF" },
+	{ lolScrollXBottom, k3TypeRaw16to8, "SCROLLXB.DEF" },
+	{ lolScrollYBottom, k3TypeRaw16to8, "SCROLLYB.DEF" },
+
+	{ lolButtonDefs, lolTypeButtonDef, "BUTTONS.DEF" },
+	{ lolButtonList1, lolTypeRaw16, "BUTTON1.LST" },
+	{ lolButtonList2, lolTypeRaw16, "BUTTON2.LST" },
+	{ lolButtonList3, lolTypeRaw16, "BUTTON3.LST" },
+	{ lolButtonList4, lolTypeRaw16, "BUTTON4.LST" },
+	{ lolButtonList5, lolTypeRaw16, "BUTTON5.LST" },
+	{ lolButtonList6, lolTypeRaw16, "BUTTON6.LST" },
+	{ lolButtonList7, lolTypeRaw16, "BUTTON7.LST" },
+	{ lolButtonList8, lolTypeRaw16, "BUTTON84.LST" },
+
+	{ lolLegendData, kTypeRawData, "MAPLGND.DEF" },
+	{ lolMapCursorOvl, kTypeRawData, "MAPCURSOR.PAL" },
+	{ lolMapStringId, lolTypeRaw16, "MAPSTRID.LST" },
+	//{ lolMapPal, kTypeRawData, "MAP.PAL" },
+
+	{ lolSpellbookAnim, k3TypeRaw16to8, "MBOOKA.DEF" },
+	{ lolSpellbookCoords, k3TypeRaw16to8, "MBOOKC.DEF" },
+	{ lolHealShapeFrames, kTypeRawData, "MHEAL.SHP" },
+	{ lolLightningDefs, kTypeRawData, "MLGHTNG.DEF" },
+	{ lolFireballCoords, lolTypeRaw16, "MFIREBLL.DEF" },
 
 	{ -1, 0, 0 }
 };
@@ -457,14 +507,14 @@ bool extractStrings(PAKFile &out, const Game *g, const byte *data, const uint32 
 			if (g->special == kFMTownsVersionE || g->special == kFMTownsVersionJ ||
 				g->special == k2TownsFile1E || g->special == k2TownsFile1J ||
 				g->special == k2TownsFile2E || g->special == k2TownsFile2J || fmtPatch == 5) {
-				// prevents creation of empty entries (which we have mostly between all strings in the fm-towns version)
+				// prevents creation of empty entries (which we have mostly between all strings in the FM-TOWNS version)
 				while (!data[++i]) {
 					if (i == size)
 						break;
 					targetsize--;
 				}
 				if (fmtPatch == 1) {
-					// Here is the first step of the extra treatment for all fm-towns string arrays that
+					// Here is the first step of the extra treatment for all FM-TOWNS string arrays that
 					// contain more than one string and which the original code
 					// addresses via stringname[boolJapanese].
 					// We simply skip every other string
@@ -543,7 +593,7 @@ bool extractStrings(PAKFile &out, const Game *g, const byte *data, const uint32 
 			}
 
 			if (fmtPatch == 1) {
-				// Here is the extra treatment for all fm-towns string arrays that
+				// Here is the extra treatment for all FM-TOWNS string arrays that
 				// contain more than one string and which the original code
 				// addresses via stringname[boolJapanese].
 				// We simply skip every other string
@@ -587,7 +637,7 @@ bool extractStrings(PAKFile &out, const Game *g, const byte *data, const uint32 
 }
 
 bool extractRooms(PAKFile &out, const Game *g, const byte *data, const uint32 size, const char *filename, int fmtPatch) {
-	// different entry size for the fm-towns version
+	// different entry size for the FM-TOWNS version
 	const int roomEntrySize = (g->special == kFMTownsVersionE || g->special == kFMTownsVersionJ) ? (0x69) : ((g->special == kAmigaVersion) ? 0x52 : 0x51);
 	const int countRooms = size / roomEntrySize;
 
@@ -1056,13 +1106,58 @@ bool extractRaw16(PAKFile &out, const Game *g, const byte *data, const uint32 si
 	const uint8 *src = data;
 	uint8 *dst = buffer;
 
-	for (int i = 0; i < (size >> 1); i++) {
+	for (uint32 i = 0; i < (size >> 1); i++) {
 		WRITE_BE_UINT16(dst, READ_LE_UINT16(src));
 		src += 2;
 		dst += 2;
 	}
 
 	return out.addFile(filename, buffer, size);
+}
+
+bool extractRaw32(PAKFile &out, const Game *g, const byte *data, const uint32 size, const char *filename, int fmtPatch) {
+	uint8 *buffer = new uint8[size];
+	const uint8 *src = data;
+	uint8 *dst = buffer;
+
+	for (uint32 i = 0; i < (size >> 2); i++) {
+		WRITE_BE_UINT32(dst, READ_LE_UINT32(src));
+		src += 4;
+		dst += 4;
+	}
+
+	return out.addFile(filename, buffer, size);
+}
+
+bool extractLolButtonDefs(PAKFile &out, const Game *g, const byte *data, const uint32 size, const char *filename, int fmtPatch) {
+	int num = size / 22;
+	uint8 *buffer = new uint8[size];
+	uint32 outsize = num * 18;
+	const uint8 *src = data;
+	uint8 *dst = buffer;
+
+	for (int i = 0; i < num; i++) {
+		WRITE_BE_UINT16(dst, READ_LE_UINT16(src));
+		src += 2; dst += 2;
+		WRITE_BE_UINT16(dst, READ_LE_UINT16(src));
+		src += 2; dst += 2;
+		WRITE_BE_UINT16(dst, READ_LE_UINT16(src));
+		src += 6; dst += 2;
+		WRITE_BE_UINT16(dst, READ_LE_UINT16(src));
+		src += 2; dst += 2;
+		WRITE_BE_UINT16(dst, READ_LE_UINT16(src));
+		src += 2; dst += 2;
+		WRITE_BE_UINT16(dst, READ_LE_UINT16(src));
+		src += 2; dst += 2;
+		WRITE_BE_UINT16(dst, READ_LE_UINT16(src));
+		src += 2; dst += 2;
+		WRITE_BE_UINT16(dst, READ_LE_UINT16(src));
+		src += 2; dst += 2;
+		WRITE_BE_UINT16(dst, READ_LE_UINT16(src));
+		src += 2; dst += 2;
+	}
+
+	return out.addFile(filename, buffer, outsize);
 }
 
 bool extractMrShapeAnimData(PAKFile &out, const Game *g, const byte *data, const uint32 size, const char *filename, int fmtPatch) {

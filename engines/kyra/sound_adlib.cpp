@@ -43,7 +43,7 @@
 #include "common/system.h"
 #include "common/mutex.h"
 #include "kyra/resource.h"
-#include "kyra/sound.h"
+#include "kyra/sound_intern.h"
 
 #include "sound/mixer.h"
 #include "sound/fmopl.h"
@@ -846,7 +846,7 @@ void AdlibDriver::writeOPL(byte reg, byte val) {
 
 void AdlibDriver::initChannel(Channel &channel) {
 	debugC(9, kDebugLevelSound, "initChannel(%lu)", (long)(&channel - _channels));
-	memset(&channel.dataptr, 0, sizeof(Channel) - ((char*)&channel.dataptr - (char*)&channel));
+	memset(&channel.dataptr, 0, sizeof(Channel) - ((char *)&channel.dataptr - (char *)&channel));
 
 	channel.tempo = 0xFF;
 	channel.priority = 0;
@@ -2220,7 +2220,7 @@ const int SoundAdlibPC::_kyra1NumSoundTriggers = ARRAYSIZE(SoundAdlibPC::_kyra1S
 SoundAdlibPC::SoundAdlibPC(KyraEngine_v1 *vm, Audio::Mixer *mixer)
 	: Sound(vm, mixer), _driver(0), _trackEntries(), _soundDataPtr(0) {
 	memset(_trackEntries, 0, sizeof(_trackEntries));
-	_v2 = (_vm->gameFlags().gameID == GI_KYRA2) || (_vm->gameFlags().gameID == GI_LOL);
+	_v2 = (_vm->gameFlags().gameID == GI_KYRA2) || (_vm->gameFlags().gameID == GI_LOL && !_vm->gameFlags().isDemo);
 	_driver = new AdlibDriver(mixer, _v2);
 	assert(_driver);
 
@@ -2375,10 +2375,10 @@ void SoundAdlibPC::internalLoadFile(Common::String file) {
 	if (_soundDataPtr)
 		haltTrack();
 
-	uint8 *file_data = 0; uint32 file_size = 0;
+	uint8 *fileData = 0; uint32 fileSize = 0;
 
-	file_data = _vm->resource()->fileData(file.c_str(), &file_size);
-	if (!file_data) {
+	fileData = _vm->resource()->fileData(file.c_str(), &fileSize);
+	if (!fileData) {
 		warning("Couldn't find music file: '%s'", file.c_str());
 		return;
 	}
@@ -2389,8 +2389,8 @@ void SoundAdlibPC::internalLoadFile(Common::String file) {
 	_driver->callback(8, int(-1));
 	_soundDataPtr = 0;
 
-	int soundDataSize = file_size;
-	uint8 *p = file_data;
+	int soundDataSize = fileSize;
+	uint8 *p = fileData;
 
 	if (_v2) {
 		memcpy(_trackEntries, p, 500);
@@ -2407,9 +2407,9 @@ void SoundAdlibPC::internalLoadFile(Common::String file) {
 
 	memcpy(_soundDataPtr, p, soundDataSize*sizeof(uint8));
 
-	delete[] file_data;
-	file_data = p = 0;
-	file_size = 0;
+	delete[] fileData;
+	fileData = p = 0;
+	fileSize = 0;
 
 	_driver->callback(4, _soundDataPtr);
 

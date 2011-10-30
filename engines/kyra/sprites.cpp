@@ -28,6 +28,8 @@
 #include "common/stream.h"
 #include "common/util.h"
 #include "common/system.h"
+#include "common/EventRecorder.h"
+
 #include "kyra/screen.h"
 #include "kyra/kyra_lok.h"
 #include "kyra/sprites.h"
@@ -47,7 +49,7 @@ Sprites::Sprites(KyraEngine_LoK *vm, OSystem *system) {
 	_spriteDefStart = 0;
 	memset(_drawLayerTable, 0, sizeof(_drawLayerTable));
 	_sceneAnimatorBeaconFlag = 0;
-	system->getEventManager()->registerRandomSource(_rnd, "kyraSprites");
+	g_eventRec.registerRandomSource(_rnd, "kyraSprites");
 }
 
 Sprites::~Sprites() {
@@ -60,7 +62,6 @@ Sprites::~Sprites() {
 }
 
 void Sprites::setupSceneAnims() {
-	debugC(9, kDebugLevelSprites, "Sprites::setupSceneAnims()");
 	uint8 *data;
 
 	for (int i = 0; i < MAX_NUM_ANIMS; i++) {
@@ -130,7 +131,6 @@ void Sprites::setupSceneAnims() {
 }
 
 void Sprites::updateSceneAnims() {
-	debugC(9, kDebugLevelSprites,  "Sprites::updateSceneAnims()");
 	uint32 currTime = _system->getMillis();
 	bool update;
 	uint8 *data;
@@ -171,7 +171,6 @@ void Sprites::updateSceneAnims() {
 			debugC(6, kDebugLevelSprites, "Sprite index %i", READ_LE_UINT16(data));
 			_anims[i].sprite = READ_LE_UINT16(data);
 			data += 2;
-			//debugC(9, kDebugLevelSprites,  "Unused %i", READ_LE_UINT16(data));
 			data += 2;
 			debugC(6, kDebugLevelSprites, "X %i", READ_LE_UINT16(data));
 			_anims[i].x = READ_LE_UINT16(data);
@@ -390,7 +389,6 @@ void Sprites::updateSceneAnims() {
 		default:
 			warning("Unsupported anim command %X in script %i", READ_LE_UINT16(data), i);
 			data += 2;
-			break;
 		}
 
 		if (update)
@@ -401,7 +399,6 @@ void Sprites::updateSceneAnims() {
 }
 
 void Sprites::loadDat(const char *filename, SceneExits &exits) {
-	debugC(9, kDebugLevelSprites,  "Sprites::loadDat('%s')", filename);
 	uint32 fileSize;
 
 	delete[] _dat;
@@ -425,16 +422,16 @@ void Sprites::loadDat(const char *filename, SceneExits &exits) {
 
 	if (_vm->gameFlags().platform == Common::kPlatformAmiga) {
 		if (_vm->queryGameFlag(0xA0))
-			memcpy(_screen->getPalette(3), _screen->getPalette(4), 32*3);
+			_screen->copyPalette(3, 4);
 		else
-			memcpy(_screen->getPalette(3), _screen->getPalette(0), 32*3);
+			_screen->copyPalette(3, 0);
 	} else {
 		if (_vm->queryGameFlag(0xA0))
-			memcpy(_screen->getPalette(1), _screen->getPalette(3), 768);
+			_screen->copyPalette(1, 3);
 		else
-			memcpy(_screen->getPalette(1), _screen->getPalette(0), 768);
+			_screen->copyPalette(1, 0);
 
-		_screen->loadPalette(_dat + 0x17, _screen->getPalette(1) + 684, 60);
+		_screen->getPalette(1).copy(_dat + 0x17, 0, 20, 228);
 	}
 	uint8 *data = _dat + 0x6B;
 
@@ -492,7 +489,6 @@ void Sprites::loadDat(const char *filename, SceneExits &exits) {
 			default:
 				warning("Unknown code in DAT file '%s' offset %d: %x", filename, int(data - _dat), READ_LE_UINT16(data));
 				data += 2;
-				break;
 			}
 		}
 	} else {
@@ -512,7 +508,6 @@ void Sprites::loadDat(const char *filename, SceneExits &exits) {
 }
 
 void Sprites::freeSceneShapes() {
-	debugC(9, kDebugLevelSprites,  "Sprites::freeSceneShapes()");
 	for (int i = 0; i < ARRAYSIZE(_sceneShapes); i++ ) {
 		delete[] _sceneShapes[i];
 		_sceneShapes[i] = 0;
@@ -520,7 +515,6 @@ void Sprites::freeSceneShapes() {
 }
 
 void Sprites::loadSceneShapes() {
-	debugC(9, kDebugLevelSprites,  "Sprites::loadSceneShapes()");
 	uint8 *data = _spriteDefStart;
 	int spriteNum, x, y, width, height;
 
@@ -546,13 +540,11 @@ void Sprites::loadSceneShapes() {
 		height = READ_LE_UINT16(data);
 		data += 2;
 		_sceneShapes[spriteNum] = _screen->encodeShape(x, y, width, height, 2);
-		debugC(9, kDebugLevelSprites,  "Sprite %i is at (%i, %i), width %i, height %i", spriteNum, x, y, width, height);
 	}
 	_screen->_curPage = bakPage;
 }
 
 void Sprites::refreshSceneAnimObject(uint8 animNum, uint8 shapeNum, uint16 x, uint16 y, bool flipX, bool unkFlag) {
-	debugC(9, kDebugLevelSprites,  "Sprites::refreshSceneAnimObject(%i, %i, %i, %i, %i, %i", animNum, shapeNum, x, y, flipX, unkFlag);
 	Animator_LoK::AnimObject &anim = _vm->animator()->sprites()[animNum];
 	anim.refreshFlag = 1;
 	anim.bkgdChangeFlag = 1;
@@ -574,7 +566,6 @@ void Sprites::refreshSceneAnimObject(uint8 animNum, uint8 shapeNum, uint16 x, ui
 }
 
 int Sprites::getDrawLayer(int y) {
-	debugC(9, kDebugLevelSprites,  "getDrawLayer(%d)", y);
 	uint8 returnValue = 0;
 	for (int i = 0; i < ARRAYSIZE(_drawLayerTable); ++i) {
 		uint8 temp = _drawLayerTable[i];

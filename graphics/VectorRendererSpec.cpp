@@ -26,6 +26,7 @@
 #include "common/util.h"
 #include "common/system.h"
 #include "common/events.h"
+#include "common/frac.h"
 
 #include "graphics/surface.h"
 #include "graphics/colormasks.h"
@@ -37,12 +38,27 @@
 #define VECTOR_RENDERER_FAST_TRIANGLES
 
 /** Fixed point SQUARE ROOT **/
-inline uint32 fp_sqroot(uint32 x) {
+inline frac_t fp_sqroot(uint32 x) {
+#if 0
+	// Use the FPU to compute the square root and then convert it to fixed
+	// point data. On systems with a fast FPU, this can be a lot faster than
+	// the integer based code below - on my system roughly 50x! However, on
+	// systems without an FPU, the converse might be true.
+	// For now, we only use the integer based code.
+	return doubleToFrac(sqrt((double)x));
+#else
+	// The code below wants to use a lot of registers, which is not good on
+	// x86 processors. By taking advantage of the fact the the input value is
+	// an integer, it might be possible to improve this. Furthermore, we could
+	// take advantage of the fact that we call this function several times on
+	// decreasing values. By feeding it the sqrt of the previous old x, as well
+	// as the old x, it should be possible to compute the correct sqrt with far
+	// fewer than 23 iterations.
 	register uint32 root, remHI, remLO, testDIV, count;
 
 	root = 0;
 	remHI = 0;
-	remLO = x;
+	remLO = x << 16;
 	count = 23;
 
 	do {
@@ -58,6 +74,7 @@ inline uint32 fp_sqroot(uint32 x) {
 	} while (count--);
 
 	return root;
+#endif
 }
 
 /*
@@ -141,7 +158,7 @@ inline uint32 fp_sqroot(uint32 x) {
 // optimized Wu's algorithm
 #define __WU_ALGORITHM() { \
 	oldT = T; \
-	T = fp_sqroot(rsq - ((y * y) << 16)) ^ 0xFFFF; \
+	T = fp_sqroot(rsq - y*y) ^ 0xFFFF; \
 	py += pitch; \
 	if (T < oldT) { \
 		x--; px -= pitch; \
@@ -169,7 +186,7 @@ namespace Graphics {
  * @param last Pointer to the last pixel to fill.
  * @param color Color of the pixel
  */
-template <typename PixelType>
+template<typename PixelType>
 void colorFill(PixelType *first, PixelType *last, PixelType color) {
 	register int count = (last - first);
 	if (!count)
@@ -193,57 +210,48 @@ void colorFill(PixelType *first, PixelType *last, PixelType color) {
 VectorRenderer *createRenderer(int mode) {
 #ifdef DISABLE_FANCY_THEMES
 	assert(mode == GUI::ThemeEngine::kGfxStandard16bit);
-	return new VectorRendererSpec<uint16, ColorMasks<VECTOR_RENDERER_FORMAT> >;
-#else
-#define CREATE_RENDERER_16(bitFormat) \
-	switch (mode) { \
-	case GUI::ThemeEngine::kGfxStandard16bit: \
-		return new VectorRendererSpec<uint16, ColorMasks<bitFormat> >; \
-	\
-	case GUI::ThemeEngine::kGfxAntialias16bit: \
-		return new VectorRendererAA<uint16, ColorMasks<bitFormat> >; \
-	\
-	default: \
-		return 0; \
-	}
+#endif
 
-
-	// FIXME/TODO: This looks like a real gross hack.
-	// It might be fine to assume that '1555' only happens for PSP
-	// so it could maybe be handled via DISABLE_FANCY_THEMES,
-	// same goes for 4444, which is only used by DC port.
 	PixelFormat format = g_system->getOverlayFormat();
-	if (format == createPixelFormat<1555>()) {
-		CREATE_RENDERER_16(1555)
-	} else if (format == createPixelFormat<4444>()) {
-		CREATE_RENDERER_16(4444)
-	} else if (format == createPixelFormat<555>()) {
-		CREATE_RENDERER_16(555)
-	} else if (format == createPixelFormat<565>()) {
-		CREATE_RENDERER_16(565)
-	} else {
-		error("createRenderer(): PixelFormat not supported");
+	switch (mode) {
+	case GUI::ThemeEngine::kGfxStandard16bit:
+		return new VectorRendererSpec<OverlayColor>(format);
+#ifndef DISABLE_FANCY_THEMES
+	case GUI::ThemeEngine::kGfxAntialias16bit:
+		return new VectorRendererAA<OverlayColor>(format);
+#endif
+	default:
+		break;
 	}
 
 	return 0;
-
-#undef CREATE_RENDERER_16
-#endif
 }
 
-template <typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 setGradientColors(uint8 r1, uint8 g1, uint8 b1, uint8 r2, uint8 g2, uint8 b2) {
-	_gradientEnd = RGBToColor<PixelFormat>(r2, g2, b2);
-	_gradientStart = RGBToColor<PixelFormat>(r1, g1, b1);
+	_gradientEnd = _format.RGBToColor(r2, g2, b2);
+	_gradientStart = _format.RGBToColor(r1, g1, b1);
 
-	Base::_gradientBytes[0] = (_gradientEnd & PixelFormat::kRedMask) - (_gradientStart & PixelFormat::kRedMask);
-	Base::_gradientBytes[1] = (_gradientEnd & PixelFormat::kGreenMask) - (_gradientStart & PixelFormat::kGreenMask);
-	Base::_gradientBytes[2] = (_gradientEnd & PixelFormat::kBlueMask) - (_gradientStart & PixelFormat::kBlueMask);
+	Base::_gradientBytes[0] = (_gradientEnd & _redMask) - (_gradientStart & _redMask);
+	Base::_gradientBytes[1] = (_gradientEnd & _greenMask) - (_gradientStart & _greenMask);
+	Base::_gradientBytes[2] = (_gradientEnd & _blueMask) - (_gradientStart & _blueMask);
 }
 
-template <typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+VectorRendererSpec<PixelType>::
+VectorRendererSpec(PixelFormat format) :
+	_format(format),
+	_redMask((0xFF >> format.rLoss) << format.rShift),
+	_greenMask((0xFF >> format.gLoss) << format.gShift),
+	_blueMask((0xFF >> format.bLoss) << format.bShift),
+	_alphaMask((0xFF >> format.aLoss) << format.aShift) {
+
+	_bitmapAlphaColor = _format.RGBToColor(255, 0, 255);
+}
+
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 fillSurface() {
 	byte *ptr = (byte *)_activeSurface->getBasePtr(0, 0);
 
@@ -263,8 +271,8 @@ fillSurface() {
 	}
 }
 
-template <typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 copyFrame(OSystem *sys, const Common::Rect &r) {
 
 	sys->copyRectToOverlay(
@@ -274,13 +282,13 @@ copyFrame(OSystem *sys, const Common::Rect &r) {
 	);
 }
 
-template <typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 blitSurface(const Graphics::Surface *source, const Common::Rect &r) {
 	assert(source->w == _activeSurface->w && source->h == _activeSurface->h);
 
 	byte *dst_ptr = (byte *)_activeSurface->getBasePtr(r.left, r.top);
-	byte *src_ptr = (byte *)source->getBasePtr(r.left, r.top);
+	const byte *src_ptr = (const byte *)source->getBasePtr(r.left, r.top);
 
 	const int dst_pitch = _activeSurface->pitch;
 	const int src_pitch = source->pitch;
@@ -295,11 +303,11 @@ blitSurface(const Graphics::Surface *source, const Common::Rect &r) {
 	}
 }
 
-template <typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 blitSubSurface(const Graphics::Surface *source, const Common::Rect &r) {
 	byte *dst_ptr = (byte *)_activeSurface->getBasePtr(r.left, r.top);
-	byte *src_ptr = (byte *)source->getBasePtr(0, 0);
+	const byte *src_ptr = (const byte *)source->getBasePtr(0, 0);
 
 	const int dst_pitch = _activeSurface->pitch;
 	const int src_pitch = source->pitch;
@@ -314,8 +322,8 @@ blitSubSurface(const Graphics::Surface *source, const Common::Rect &r) {
 	}
 }
 
-template <typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 blitAlphaBitmap(const Graphics::Surface *source, const Common::Rect &r) {
 	int16 x = r.left;
 	int16 y = r.top;
@@ -327,7 +335,7 @@ blitAlphaBitmap(const Graphics::Surface *source, const Common::Rect &r) {
 		y = y + (r.height() >> 1) - (source->h >> 1);
 
 	PixelType *dst_ptr = (PixelType *)_activeSurface->getBasePtr(x, y);
-	PixelType *src_ptr = (PixelType *)source->getBasePtr(0, 0);
+	const PixelType *src_ptr = (const PixelType *)source->getBasePtr(0, 0);
 
 	int dst_pitch = _activeSurface->pitch / _activeSurface->bytesPerPixel;
 	int src_pitch = source->pitch / source->bytesPerPixel;
@@ -350,76 +358,75 @@ blitAlphaBitmap(const Graphics::Surface *source, const Common::Rect &r) {
 	}
 }
 
-template <typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 applyScreenShading(GUI::ThemeEngine::ShadingStyle shadingStyle) {
 	int pixels = _activeSurface->w * _activeSurface->h;
 	PixelType *ptr = (PixelType *)_activeSurface->getBasePtr(0, 0);
 	uint8 r, g, b;
 	uint lum;
 
-	const uint32 shiftMask = (uint32)~(
-		(1 << PixelFormat::kGreenShift) |
-		(1 << PixelFormat::kRedShift) |
-		(1 << PixelFormat::kBlueShift)) >> 1;
+	// Mask to clear the last bit of every color component and all unused bits
+	const uint32 colorMask = ~((1 << _format.rShift) | (1 << _format.gShift) | (1 << _format.bShift) // R/G/B components
+			| (_format.aLoss == 8 ? 0 : (1 << _format.aShift)) // Alpha component
+			| ~(_alphaMask | _redMask | _greenMask | _blueMask)); // All unused bits
 
 	if (shadingStyle == GUI::ThemeEngine::kShadingDim) {
 
 		int n = (pixels + 7) >> 3;
 		switch (pixels % 8) {
 		case 0: do {
-					*ptr = (*ptr >> 1) & shiftMask; ++ptr;
-		case 7:		*ptr = (*ptr >> 1) & shiftMask; ++ptr;
-		case 6:		*ptr = (*ptr >> 1) & shiftMask; ++ptr;
-		case 5:		*ptr = (*ptr >> 1) & shiftMask; ++ptr;
-		case 4:		*ptr = (*ptr >> 1) & shiftMask; ++ptr;
-		case 3:		*ptr = (*ptr >> 1) & shiftMask; ++ptr;
-		case 2:		*ptr = (*ptr >> 1) & shiftMask; ++ptr;
-		case 1:		*ptr = (*ptr >> 1) & shiftMask; ++ptr;
+					*ptr = (*ptr & colorMask) >> 1; ++ptr;
+		case 7:		*ptr = (*ptr & colorMask) >> 1; ++ptr;
+		case 6:		*ptr = (*ptr & colorMask) >> 1; ++ptr;
+		case 5:		*ptr = (*ptr & colorMask) >> 1; ++ptr;
+		case 4:		*ptr = (*ptr & colorMask) >> 1; ++ptr;
+		case 3:		*ptr = (*ptr & colorMask) >> 1; ++ptr;
+		case 2:		*ptr = (*ptr & colorMask) >> 1; ++ptr;
+		case 1:		*ptr = (*ptr & colorMask) >> 1; ++ptr;
 				} while (--n > 0);
 		}
 
 	} else if (shadingStyle == GUI::ThemeEngine::kShadingLuminance) {
 		while (pixels--) {
-			colorToRGB<PixelFormat>(*ptr, r, g, b);
+			_format.colorToRGB(*ptr, r, g, b);
 			lum = (r >> 2) + (g >> 1) + (b >> 3);
-			*ptr++ = RGBToColor<PixelFormat>(lum, lum, lum);
+			*ptr++ = _format.RGBToColor(lum, lum, lum);
 		}
 	}
 }
 
-template <typename PixelType, typename PixelFormat>
-inline void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+inline void VectorRendererSpec<PixelType>::
 blendPixelPtr(PixelType *ptr, PixelType color, uint8 alpha)	{
 	register int idst = *ptr;
 	register int isrc = color;
-	int rightShift = 8 - PixelFormat::kAlphaBits;
 
 	*ptr = (PixelType)(
-		(PixelFormat::kRedMask & ((idst & PixelFormat::kRedMask) +
-		((int)(((int)(isrc & PixelFormat::kRedMask) -
-		(int)(idst & PixelFormat::kRedMask)) * alpha) >> 8))) |
-		(PixelFormat::kGreenMask & ((idst & PixelFormat::kGreenMask) +
-		((int)(((int)(isrc & PixelFormat::kGreenMask) -
-		(int)(idst & PixelFormat::kGreenMask)) * alpha) >> 8))) |
-		(PixelFormat::kBlueMask & ((idst & PixelFormat::kBlueMask) +
-		((int)(((int)(isrc & PixelFormat::kBlueMask) -
-		(int)(idst & PixelFormat::kBlueMask)) * alpha) >> 8))) |
-		(PixelFormat::kAlphaMask & ((idst & PixelFormat::kAlphaMask) +
-                ((alpha >> rightShift) << PixelFormat::kAlphaShift) -
-                (((int)(idst & PixelFormat::kAlphaMask) * alpha) >> 8))));
+		(_redMask & ((idst & _redMask) +
+		((int)(((int)(isrc & _redMask) -
+		(int)(idst & _redMask)) * alpha) >> 8))) |
+		(_greenMask & ((idst & _greenMask) +
+		((int)(((int)(isrc & _greenMask) -
+		(int)(idst & _greenMask)) * alpha) >> 8))) |
+		(_blueMask & ((idst & _blueMask) +
+		((int)(((int)(isrc & _blueMask) -
+		(int)(idst & _blueMask)) * alpha) >> 8))) |
+		(_alphaMask & ((idst & _alphaMask) +
+                ((alpha >> _format.aLoss) << _format.aShift) -
+                (((int)(idst & _alphaMask) * alpha) >> 8))));
 }
 
-template <typename PixelType, typename PixelFormat>
-inline PixelType VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+inline PixelType VectorRendererSpec<PixelType>::
 calcGradient(uint32 pos, uint32 max) {
 	PixelType output = 0;
 	pos = (MIN(pos * Base::_gradientFactor, max) << 12) / max;
 
-	output |= (_gradientStart + ((Base::_gradientBytes[0] * pos) >> 12)) & PixelFormat::kRedMask;
-	output |= (_gradientStart + ((Base::_gradientBytes[1] * pos) >> 12)) & PixelFormat::kGreenMask;
-	output |= (_gradientStart + ((Base::_gradientBytes[2] * pos) >> 12)) & PixelFormat::kBlueMask;
-	output |= ~(PixelFormat::kRedMask | PixelFormat::kGreenMask | PixelFormat::kBlueMask);
+	output |= ((_gradientStart & _redMask) + ((Base::_gradientBytes[0] * pos) >> 12)) & _redMask;
+	output |= ((_gradientStart & _greenMask) + ((Base::_gradientBytes[1] * pos) >> 12)) & _greenMask;
+	output |= ((_gradientStart & _blueMask) + ((Base::_gradientBytes[2] * pos) >> 12)) & _blueMask;
+	output |= _alphaMask;
 
 	return output;
 }
@@ -429,8 +436,8 @@ calcGradient(uint32 pos, uint32 max) {
  * Primitive shapes drawing - Public API calls - VectorRendererSpec *
  ********************************************************************
  ********************************************************************/
-template <typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawString(const Graphics::Font *font, const Common::String &text, const Common::Rect &area,
 			Graphics::TextAlign alignH, GUI::ThemeEngine::TextAlignVertical alignV, int deltax, bool ellipsis) {
 
@@ -449,12 +456,12 @@ drawString(const Graphics::Font *font, const Common::String &text, const Common:
 		}
 	}
 
-	font->drawString(_activeSurface, text, area.left, offset, area.width(), _fgColor, alignH, deltax, ellipsis);
+	font->drawString(_activeSurface, text, area.left, offset, area.width() - deltax, _fgColor, alignH, deltax, ellipsis);
 }
 
 /** LINES **/
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawLine(int x1, int y1, int x2, int y2) {
 	x1 = CLIP(x1, 0, (int)Base::_activeSurface->w);
 	x2 = CLIP(x2, 0, (int)Base::_activeSurface->w);
@@ -512,8 +519,8 @@ drawLine(int x1, int y1, int x2, int y2) {
 }
 
 /** CIRCLES **/
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawCircle(int x, int y, int r) {
 	if (x + r > Base::_activeSurface->w || y + r > Base::_activeSurface->h ||
 		x - r < 0 || y - r < 0 || x == 0 || y == 0 || r <= 0)
@@ -551,8 +558,8 @@ drawCircle(int x, int y, int r) {
 }
 
 /** SQUARES **/
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawSquare(int x, int y, int w, int h) {
 	if (x + w > Base::_activeSurface->w || y + h > Base::_activeSurface->h ||
 		w <= 0 || h <= 0 || x < 0 || y < 0)
@@ -588,19 +595,19 @@ drawSquare(int x, int y, int w, int h) {
 }
 
 /** ROUNDED SQUARES **/
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawRoundedSquare(int x, int y, int r, int w, int h) {
 	if (x + w > Base::_activeSurface->w || y + h > Base::_activeSurface->h ||
 		w <= 0 || h <= 0 || x < 0 || y < 0 || r <= 0)
 		return;
 
-	if ((r << 1) > w || (r << 1) > h)
-		r = MIN(w >> 1, h >> 1);
+	if ((r * 2) > w || (r * 2) > h)
+		r = MIN(w /2, h / 2);
 
 	if (Base::_fillMode != kFillDisabled && Base::_shadowOffset
-		&& x + w + Base::_shadowOffset < Base::_activeSurface->w
-		&& y + h + Base::_shadowOffset < Base::_activeSurface->h) {
+		&& x + w + Base::_shadowOffset + 1 < Base::_activeSurface->w
+		&& y + h + Base::_shadowOffset + 1 < Base::_activeSurface->h) {
 		drawRoundedSquareShadow(x, y, r, w, h, Base::_shadowOffset);
 	}
 
@@ -636,8 +643,8 @@ drawRoundedSquare(int x, int y, int r, int w, int h) {
 		drawRoundedSquareFakeBevel(x, y, r, w, h, Base::_bevel);
 }
 
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawTab(int x, int y, int r, int w, int h) {
 	if (x + w > Base::_activeSurface->w || y + h > Base::_activeSurface->h ||
 		w <= 0 || h <= 0 || x < 0 || y < 0 || r > w || r > h)
@@ -667,8 +674,8 @@ drawTab(int x, int y, int r, int w, int h) {
 	}
 }
 
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawTriangle(int x, int y, int w, int h, TriangleOrientation orient) {
 
 	if (x + w > Base::_activeSurface->w || y + h > Base::_activeSurface->h)
@@ -721,8 +728,8 @@ drawTriangle(int x, int y, int w, int h, TriangleOrientation orient) {
  ********************************************************************
  ********************************************************************/
 /** TAB ALGORITHM - NON AA */
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawTabAlg(int x1, int y1, int w, int h, int r, PixelType color, VectorRenderer::FillMode fill_m, int baseLeft, int baseRight) {
 	int f, ddF_x, ddF_y;
 	int x, y, px, py;
@@ -821,8 +828,8 @@ drawTabAlg(int x1, int y1, int w, int h, int r, PixelType color, VectorRenderer:
 
 
 /** BEVELED TABS FOR CLASSIC THEME **/
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawBevelTabAlg(int x, int y, int w, int h, int bevel, PixelType top_color, PixelType bottom_color, int baseLeft, int baseRight) {
 	int pitch = _activeSurface->pitch / _activeSurface->bytesPerPixel;
 	int i, j;
@@ -865,8 +872,8 @@ drawBevelTabAlg(int x, int y, int w, int h, int bevel, PixelType top_color, Pixe
 }
 
 /** SQUARE ALGORITHM **/
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawSquareAlg(int x, int y, int w, int h, PixelType color, VectorRenderer::FillMode fill_m) {
 	PixelType *ptr = (PixelType *)_activeSurface->getBasePtr(x, y);
 	int pitch = _activeSurface->pitch / _activeSurface->bytesPerPixel;
@@ -898,8 +905,8 @@ drawSquareAlg(int x, int y, int w, int h, PixelType color, VectorRenderer::FillM
 }
 
 /** SQUARE ALGORITHM **/
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawBevelSquareAlg(int x, int y, int w, int h, int bevel, PixelType top_color, PixelType bottom_color, bool fill) {
 	int pitch = _activeSurface->pitch / _activeSurface->bytesPerPixel;
 
@@ -914,10 +921,12 @@ drawBevelSquareAlg(int x, int y, int w, int h, int bevel, PixelType top_color, P
 	}
 
 	int i, j;
+
 	x = MAX(x - bevel, 0);
 	y = MAX(y - bevel, 0);
-	h += bevel << 1;
-	w += bevel << 1;
+
+	w = MIN(w + (bevel * 2), (int)_activeSurface->w);
+	h = MIN(h + (bevel * 2), (int)_activeSurface->h);
 
 	PixelType *ptr_left = (PixelType *)_activeSurface->getBasePtr(x, y);
 
@@ -952,8 +961,8 @@ drawBevelSquareAlg(int x, int y, int w, int h, int bevel, PixelType top_color, P
 }
 
 /** GENERIC LINE ALGORITHM **/
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType,PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawLineAlg(int x1, int y1, int x2, int y2, int dx, int dy, PixelType color) {
 	PixelType *ptr = (PixelType *)_activeSurface->getBasePtr(x1, y1);
 	int pitch = _activeSurface->pitch / _activeSurface->bytesPerPixel;
@@ -1000,8 +1009,8 @@ drawLineAlg(int x1, int y1, int x2, int y2, int dx, int dy, PixelType color) {
 }
 
 /** VERTICAL TRIANGLE DRAWING ALGORITHM **/
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType,PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawTriangleVertAlg(int x1, int y1, int w, int h, bool inverted, PixelType color, VectorRenderer::FillMode fill_m) {
 	int dx = w >> 1, dy = h, gradient_h = 0;
 	int pitch = _activeSurface->pitch / _activeSurface->bytesPerPixel;
@@ -1082,14 +1091,18 @@ drawTriangleVertAlg(int x1, int y1, int w, int h, bool inverted, PixelType color
 
 
 /** VERTICAL TRIANGLE DRAWING - FAST VERSION FOR SQUARED TRIANGLES */
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType,PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawTriangleFast(int x1, int y1, int size, bool inverted, PixelType color, VectorRenderer::FillMode fill_m) {
 	int pitch = _activeSurface->pitch / _activeSurface->bytesPerPixel;
 	int hstep = 0, dy = size;
 	bool grad = (fill_m == kFillGradient);
 
 	PixelType *ptr_right = 0, *ptr_left = 0;
+
+	if (x1 + size > Base::_activeSurface->w || x1 < 0 ||
+		y1 + size > Base::_activeSurface->h || y1 < 0)
+		return;
 
 	if (inverted) {
 		ptr_left = (PixelType *)_activeSurface->getBasePtr(x1, y1);
@@ -1125,8 +1138,8 @@ drawTriangleFast(int x1, int y1, int size, bool inverted, PixelType color, Vecto
 }
 
 /** ROUNDED SQUARE ALGORITHM **/
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawRoundedSquareAlg(int x1, int y1, int r, int w, int h, PixelType color, VectorRenderer::FillMode fill_m) {
 	int f, ddF_x, ddF_y;
 	int x, y, px, py;
@@ -1216,8 +1229,8 @@ drawRoundedSquareAlg(int x1, int y1, int r, int w, int h, PixelType color, Vecto
 }
 
 /** CIRCLE ALGORITHM **/
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawCircleAlg(int x1, int y1, int r, PixelType color, VectorRenderer::FillMode fill_m) {
 	int f, ddF_x, ddF_y;
 	int x, y, px, py, sw = 0;
@@ -1267,8 +1280,8 @@ drawCircleAlg(int x1, int y1, int r, PixelType color, VectorRenderer::FillMode f
  * SHADOW drawing algorithms - VectorRendererSpec *******************
  ********************************************************************
  ********************************************************************/
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawSquareShadow(int x, int y, int w, int h, int blur) {
 	PixelType *ptr = (PixelType *)_activeSurface->getBasePtr(x + w - 1, y + blur);
 	int pitch = _activeSurface->pitch / _activeSurface->bytesPerPixel;
@@ -1303,8 +1316,8 @@ drawSquareShadow(int x, int y, int w, int h, int blur) {
 	}
 }
 
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawRoundedSquareShadow(int x1, int y1, int r, int w, int h, int blur) {
 	int f, ddF_x, ddF_y;
 	int x, y, px, py;
@@ -1351,19 +1364,19 @@ drawRoundedSquareShadow(int x1, int y1, int r, int w, int h, int blur) {
 	}
 }
 
-template<typename PixelType, typename PixelFormat>
-void VectorRendererSpec<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererSpec<PixelType>::
 drawRoundedSquareFakeBevel(int x1, int y1, int r, int w, int h, int amount) {
 	int x, y;
 	const int pitch = _activeSurface->pitch / _activeSurface->bytesPerPixel;
 	int px, py;
 	int sw = 0, sp = 0;
 
-	uint32 rsq = (r * r) << 16;
-	uint32 T = 0, oldT;
+	uint32 rsq = r*r;
+	frac_t T = 0, oldT;
 	uint8 a1, a2;
 
-	PixelType color = _bevelColor; //RGBToColor<PixelFormat>(63, 60, 17);
+	PixelType color = _bevelColor; //_format.RGBToColor(63, 60, 17);
 
 	PixelType *ptr_tl = (PixelType *)Base::_activeSurface->getBasePtr(x1 + r, y1 + r);
 	PixelType *ptr_tr = (PixelType *)Base::_activeSurface->getBasePtr(x1 + w - r, y1 + r);
@@ -1420,8 +1433,8 @@ drawRoundedSquareFakeBevel(int x1, int y1, int r, int w, int h, int amount) {
  * ANTIALIASED PRIMITIVES drawing algorithms - VectorRendererAA
  ********************************************************************/
 /** LINES **/
-template<typename PixelType, typename PixelFormat>
-void VectorRendererAA<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererAA<PixelType>::
 drawLineAlg(int x1, int y1, int x2, int y2, int dx, int dy, PixelType color) {
 
 	PixelType *ptr = (PixelType *)Base::_activeSurface->getBasePtr(x1, y1);
@@ -1472,16 +1485,16 @@ drawLineAlg(int x1, int y1, int x2, int y2, int dx, int dy, PixelType color) {
 }
 
 /** ROUNDED SQUARES **/
-template<typename PixelType, typename PixelFormat>
-void VectorRendererAA<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererAA<PixelType>::
 drawRoundedSquareAlg(int x1, int y1, int r, int w, int h, PixelType color, VectorRenderer::FillMode fill_m) {
 	int x, y;
 	const int pitch = Base::_activeSurface->pitch / Base::_activeSurface->bytesPerPixel;
 	int px, py;
 	int sw = 0, sp = 0, hp = h * pitch;
 
-	uint32 rsq = (r * r) << 16;
-	uint32 T = 0, oldT;
+	uint32 rsq = r*r;
+	frac_t T = 0, oldT;
 	uint8 a1, a2;
 
 	PixelType *ptr_tl = (PixelType *)Base::_activeSurface->getBasePtr(x1 + r, y1 + r);
@@ -1498,8 +1511,11 @@ drawRoundedSquareAlg(int x1, int y1, int r, int w, int h, PixelType color, Vecto
 			colorFill<PixelType>(ptr_fill + hp - sp + r, ptr_fill + w + hp + 1 - sp - r, color);
 			sp += pitch;
 
-			x = r - (sw - 1); y = 0; T = 0;
-			px = pitch * x; py = 0;
+			x = r - (sw - 1);
+			y = 0;
+			T = 0;
+			px = pitch * x;
+			py = 0;
 
 			while (x > y++) {
 				__WU_ALGORITHM();
@@ -1519,7 +1535,9 @@ drawRoundedSquareAlg(int x1, int y1, int r, int w, int h, PixelType color, Vecto
 			ptr_fill += pitch;
 		}
 	} else {
-		x = r; y = 0; T = 0;
+		x = r;
+		y = 0;
+		T = 0;
 		px = pitch * x;
 		py = 0;
 
@@ -1544,22 +1562,24 @@ drawRoundedSquareAlg(int x1, int y1, int r, int w, int h, PixelType color, Vecto
 }
 
 /** CIRCLES **/
-template<typename PixelType, typename PixelFormat>
-void VectorRendererAA<PixelType, PixelFormat>::
+template<typename PixelType>
+void VectorRendererAA<PixelType>::
 drawCircleAlg(int x1, int y1, int r, PixelType color, VectorRenderer::FillMode fill_m) {
 	int x, y, sw = 0;
 	const int pitch = Base::_activeSurface->pitch / Base::_activeSurface->bytesPerPixel;
 	int px, py;
 
-	uint32 rsq = (r * r) << 16;
-	uint32 T = 0, oldT;
+	uint32 rsq = r*r;
+	frac_t T = 0, oldT;
 	uint8 a1, a2;
 
 	PixelType *ptr = (PixelType *)Base::_activeSurface->getBasePtr(x1, y1);
 
 	if (fill_m == VectorRenderer::kFillDisabled) {
 		while (sw++ < Base::_strokeWidth) {
-			x = r - (sw - 1); y = 0; T = 0;
+			x = r - (sw - 1);
+			y = 0;
+			T = 0;
 			px = pitch * x;
 			py = 0;
 
@@ -1580,8 +1600,11 @@ drawCircleAlg(int x1, int y1, int r, PixelType color, VectorRenderer::FillMode f
 		}
 	} else {
 		colorFill<PixelType>(ptr - r, ptr + r + 1, color);
-		x = r; y = 0; T = 0;
-		px = pitch * x; py = 0;
+		x = r;
+		y = 0;
+		T = 0;
+		px = pitch * x;
+		py = 0;
 
 		while (x > y++) {
 			__WU_ALGORITHM();

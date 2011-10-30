@@ -33,6 +33,7 @@
 #include "common/file.h"
 #include "common/fs.h"
 #include "common/events.h"
+#include "common/EventRecorder.h"
 #include "common/savefile.h"
 #include "common/system.h"
 
@@ -51,8 +52,11 @@
 #include "sword2/router.h"
 #include "sword2/screen.h"
 #include "sword2/sound.h"
+#include "sword2/saveload.h"
 
 namespace Sword2 {
+
+Common::Platform Sword2Engine::_platform;
 
 struct GameSettings {
 	const char *gameid;
@@ -65,6 +69,8 @@ static const GameSettings sword2_settings[] = {
 	/* Broken Sword 2 */
 	{"sword2", "Broken Sword 2: The Smoking Mirror", 0, "players.clu" },
 	{"sword2alt", "Broken Sword 2: The Smoking Mirror (alt)", 0, "r2ctlns.ocx" },
+	{"sword2psx", "Broken Sword 2: The Smoking Mirror (PlayStation)", 0, "screens.clu"},
+	{"sword2psxdemo", "Broken Sword 2: The Smoking Mirror (PlayStation/Demo)", Sword2::GF_DEMO, "screens.clu"},
 	{"sword2demo", "Broken Sword 2: The Smoking Mirror (Demo)", Sword2::GF_DEMO, "players.clu" },
 	{NULL, NULL, 0, NULL}
 };
@@ -76,7 +82,7 @@ public:
 	virtual const char *getName() const {
 		return "Broken Sword 2";
 	}
-	virtual const char *getCopyright() const {
+	virtual const char *getOriginalCopyright() const {
 		return "Broken Sword Games (C) Revolution";
 	}
 
@@ -101,7 +107,9 @@ bool Sword2MetaEngine::hasFeature(MetaEngineFeature f) const {
 bool Sword2::Sword2Engine::hasFeature(EngineFeature f) const {
 	return
 		(f == kSupportsRTL) ||
-		(f == kSupportsSubtitleOptions);
+		(f == kSupportsSubtitleOptions) ||
+		(f == kSupportsSavingDuringRuntime) ||
+		(f == kSupportsLoadingDuringRuntime);
 }
 
 GameList Sword2MetaEngine::getSupportedGames() const {
@@ -141,7 +149,7 @@ GameList Sword2MetaEngine::detectGames(const Common::FSList &fslist) const {
 
 				if (0 == scumm_stricmp(g->detectname, fileName)) {
 					// Match found, add to list of candidates, then abort inner loop.
-					detectedGames.push_back(GameDescriptor(g->gameid, g->description));
+					detectedGames.push_back(GameDescriptor(g->gameid, g->description, Common::UNK_LANG, Common::kPlatformUnknown, Common::GUIO_NOMIDI));
 					break;
 				}
 			}
@@ -181,7 +189,7 @@ SaveStateList Sword2MetaEngine::listSaves(const char *target) const {
 	Common::String pattern = target;
 	pattern += ".???";
 
-	filenames = saveFileMan->listSavefiles(pattern.c_str());
+	filenames = saveFileMan->listSavefiles(pattern);
 	sort(filenames.begin(), filenames.end());	// Sort (hopefully ensuring we are sorted numerically..)
 
 	SaveStateList saveList;
@@ -190,7 +198,7 @@ SaveStateList Sword2MetaEngine::listSaves(const char *target) const {
 		int slotNum = atoi(file->c_str() + file->size() - 3);
 
 		if (slotNum >= 0 && slotNum <= 999) {
-			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
+			Common::InSaveFile *in = saveFileMan->openForLoading(*file);
 			if (in) {
 				in->readUint32LE();
 				in->read(saveDesc, SAVE_DESCRIPTION_LEN);
@@ -212,7 +220,7 @@ void Sword2MetaEngine::removeSaveState(const char *target, int slot) const {
 	Common::String filename = target;
 	filename += extension;
 
-	g_system->getSavefileManager()->removeSavefile(filename.c_str());
+	g_system->getSavefileManager()->removeSavefile(filename);
 }
 
 Common::Error Sword2MetaEngine::createInstance(OSystem *syst, Engine **engine) const {
@@ -252,14 +260,22 @@ Sword2Engine::Sword2Engine(OSystem *syst) : Engine(syst) {
 	Common::File::addDefaultDirectory(_gameDataDir.getChild("CLUSTERS"));
 	Common::File::addDefaultDirectory(_gameDataDir.getChild("SWORD2"));
 	Common::File::addDefaultDirectory(_gameDataDir.getChild("VIDEO"));
+	Common::File::addDefaultDirectory(_gameDataDir.getChild("SMACKS"));
 	Common::File::addDefaultDirectory(_gameDataDir.getChild("clusters"));
 	Common::File::addDefaultDirectory(_gameDataDir.getChild("sword2"));
 	Common::File::addDefaultDirectory(_gameDataDir.getChild("video"));
+	Common::File::addDefaultDirectory(_gameDataDir.getChild("smacks"));
 
-	if (0 == scumm_stricmp(ConfMan.get("gameid").c_str(), "sword2demo"))
+	if (!scumm_stricmp(ConfMan.get("gameid").c_str(), "sword2demo") || !scumm_stricmp(ConfMan.get("gameid").c_str(), "sword2psxdemo"))
 		_features = GF_DEMO;
 	else
 		_features = 0;
+
+	// Check if we are running PC or PSX version.
+	if (!scumm_stricmp(ConfMan.get("gameid").c_str(), "sword2psx") || !scumm_stricmp(ConfMan.get("gameid").c_str(), "sword2psxdemo"))
+		Sword2Engine::_platform = Common::kPlatformPSX;
+	else
+		Sword2Engine::_platform = Common::kPlatformPC;
 
 	_bootParam = ConfMan.getInt("boot_param");
 	_saveSlot = ConfMan.getInt("save_slot");
@@ -288,7 +304,9 @@ Sword2Engine::Sword2Engine(OSystem *syst) : Engine(syst) {
 	_gameCycle = 0;
 	_gameSpeed = 1;
 
-	syst->getEventManager()->registerRandomSource(_rnd, "sword2");
+	_gmmLoadSlot = -1; // Used to manage GMM Loading
+
+	g_eventRec.registerRandomSource(_rnd, "sword2");
 }
 
 Sword2Engine::~Sword2Engine() {
@@ -359,7 +377,7 @@ void Sword2Engine::setupPersistentResources() {
 	_resman->openResource(CUR_PLAYER_ID);
 }
 
-Common::Error Sword2Engine::init() {
+Common::Error Sword2Engine::run() {
 	// Get some falling RAM and put it in your pocket, never let it slip
 	// away
 
@@ -418,8 +436,8 @@ Common::Error Sword2Engine::init() {
 			if (!dialog.runModal())
 				startGame();
 		}
-	} else if (!_bootParam && saveExists()) {
-		int32 pars[2] = { 221, FX_LOOP };
+	} else if (!_bootParam && saveExists() && !isPsx()) { // Initial load/restart panel disabled in PSX
+		int32 pars[2] = { 221, FX_LOOP };                 // version because of missing panel resources
 		bool result;
 
 		_mouse->setMouse(NORMAL_MOUSE_ID);
@@ -443,10 +461,6 @@ Common::Error Sword2Engine::init() {
 
 	_screen->initialiseRenderCycle();
 
-	return Common::kNoError;
-}
-
-Common::Error Sword2Engine::go() {
 	while (1) {
 		if (_debugger->isAttached())
 			_debugger->onFrame();
@@ -457,6 +471,26 @@ Common::Error Sword2Engine::go() {
 			_stepOneCycle = false;
 		}
 #endif
+
+		// Handle GMM Loading
+		if (_gmmLoadSlot != -1) {
+
+			// Hide mouse cursor and fade screen
+			_mouse->hideMouse();
+			_screen->fadeDown();
+
+			// Clean up and load game
+			_logic->_router->freeAllRouteMem();
+
+			// TODO: manage error handling
+			restoreGame(_gmmLoadSlot);
+
+			// Reset load slot
+			_gmmLoadSlot = -1;
+
+			// Show mouse
+			_mouse->addHuman();
+		}
 
 		KeyboardEvent *ke = keyboardEvent();
 
@@ -796,6 +830,67 @@ void Sword2Engine::pauseEngineIntern(bool pause) {
 
 uint32 Sword2Engine::getMillis() {
 	return _system->getMillis();
+}
+
+Common::Error Sword2Engine::saveGameState(int slot, const char *desc) {
+	uint32 saveVal = saveGame(slot, (const byte *)desc);
+
+	if (saveVal == SR_OK)
+		return Common::kNoError;
+	else if (saveVal == SR_ERR_WRITEFAIL || saveVal == SR_ERR_FILEOPEN)
+		return Common::kWritingFailed;
+	else
+		return Common::kUnknownError;
+}
+
+bool Sword2Engine::canSaveGameStateCurrently() {
+	bool canSave = true;
+
+	// No save if dead
+	if (_logic->readVar(DEAD))
+		canSave = false;
+
+	// No save if mouse not shown
+	else if (_mouse->getMouseStatus())
+		canSave = false;
+	// No save if inside a menu
+	else if (_mouse->getMouseMode() == MOUSE_system_menu)
+		canSave = false;
+
+	// No save if fading
+	else if (_screen->getFadeStatus())
+		canSave = false;
+
+	return canSave;
+}
+
+Common::Error Sword2Engine::loadGameState(int slot) {
+
+	// Prepare the game to load through GMM
+	_gmmLoadSlot = slot;
+
+	// TODO: error handling.
+	return Common::kNoError;
+}
+
+bool Sword2Engine::canLoadGameStateCurrently() {
+	bool canLoad = true;
+
+	// No load if mouse is disabled
+	if (_mouse->getMouseStatus())
+		canLoad = false;
+	// No load if mouse is in system menu
+	else if (_mouse->getMouseMode() == MOUSE_system_menu)
+		canLoad = false;
+	// No load if we are fading
+	else if (_screen->getFadeStatus())
+		canLoad = false;
+
+	// But if we are dead, ignore previous conditions
+	if (_logic->readVar(DEAD))
+		canLoad = true;
+
+	return canLoad;
 }
 
 } // End of namespace Sword2

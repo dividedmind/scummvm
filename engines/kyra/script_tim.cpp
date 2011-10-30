@@ -28,9 +28,13 @@
 #include "kyra/resource.h"
 #include "kyra/sound.h"
 #include "kyra/wsamovie.h"
+
+#ifdef ENABLE_LOL
 #include "kyra/lol.h"
 #include "kyra/screen_lol.h"
+#endif // ENABLE_LOL
 
+#include "common/iff_container.h"
 #include "common/endian.h"
 
 namespace Kyra {
@@ -49,7 +53,7 @@ TIMInterpreter::TIMInterpreter(KyraEngine_v1 *engine, Screen_v2 *screen_v2, OSys
 		COMMAND(cmd_initFunc),
 		COMMAND(cmd_stopFunc),
 		COMMAND(cmd_wsaDisplayFrame),
-		COMMAND_UNIMPL(),
+		COMMAND(cmd_displayText),
 		// 0x08
 		COMMAND(cmd_loadVocFile),
 		COMMAND(cmd_unloadVocFile),
@@ -79,75 +83,110 @@ TIMInterpreter::TIMInterpreter(KyraEngine_v1 *engine, Screen_v2 *screen_v2, OSys
 		COMMAND(cmd_return(1)),
 		COMMAND(cmd_return(1)),
 		COMMAND(cmd_return(n1))
-	};	
+	};
 #undef cmd_return
 #undef COMMAND_UNIMPL
 #undef COMMAND
 
-	_commands = commandProcs ;
+	_commands = commandProcs;
 	_commandsSize = ARRAYSIZE(commandProcs);
 
-	memset(&_animations, 0, sizeof(_animations));
+	_animations = new Animation[TIM::kWSASlots];
+	memset(_animations, 0, TIM::kWSASlots * sizeof(Animation));
+
 	_langData = 0;
 	_textDisplayed = false;
 	_textAreaBuffer = new uint8[320*40];
 	assert(_textAreaBuffer);
-	_drawPage2 = 8;
+	if ((_vm->gameFlags().platform == Common::kPlatformPC98 || _vm->gameFlags().isDemo) && _vm->gameFlags().gameID == GI_LOL)
+		_drawPage2 = 0;
+	else
+		_drawPage2 = 8;
 
 	_palDelayInc = _palDiff = _palDelayAcc = 0;
-	_dialogueComplete = 0;
+	_abortFlag = 0;
 }
 
 TIMInterpreter::~TIMInterpreter() {
 	delete[] _langData;
 	delete[] _textAreaBuffer;
+
+	for (int i = 0; i < TIM::kWSASlots; i++) {
+		delete _animations[i].wsa;
+		delete[] _animations[i].parts;
+	}
+
+	delete[] _animations;
 }
 
-TIM *TIMInterpreter::load(const char *filename, const Common::Array<const TIMOpcode*> *opcodes) {
-	if (!vm()->resource()->exists(filename))
+bool TIMInterpreter::callback(Common::IFFChunk &chunk) {
+	switch (chunk._type) {
+	case MKID_BE('TEXT'):
+		_tim->text = new byte[chunk._size];
+		assert(_tim->text);
+		if (chunk._stream->read(_tim->text, chunk._size) != chunk._size)
+			error("Couldn't read TEXT chunk from file '%s'", _filename);
+		break;
+
+	case MKID_BE('AVTL'):
+		_avtlChunkSize = chunk._size >> 1;
+		_tim->avtl = new uint16[_avtlChunkSize];
+		assert(_tim->avtl);
+		if (chunk._stream->read(_tim->avtl, chunk._size) != chunk._size)
+			error("Couldn't read AVTL chunk from file '%s'", _filename);
+
+		for (int i = _avtlChunkSize - 1; i >= 0; --i)
+			_tim->avtl[i] = READ_LE_UINT16(&_tim->avtl[i]);
+		break;
+
+	default:
+		warning("Unexpected chunk '%s' of size %d found in file '%s'", Common::ID2string(chunk._type), chunk._size, _filename);
+	}
+
+	return false;
+}
+
+TIM *TIMInterpreter::load(const char *filename, const Common::Array<const TIMOpcode *> *opcodes) {
+	if (!_vm->resource()->exists(filename))
 		return 0;
 
-	ScriptFileParser file(filename, vm()->resource());
-	if (!file)
+	Common::SeekableReadStream *stream = _vm->resource()->createReadStream(filename);
+	if (!stream)
 		error("Couldn't open TIM file '%s'", filename);
 
-	uint32 formBlockSize = file.getFORMBlockSize();
-	if (formBlockSize == 0xFFFFFFFF)
-		error("No FORM chunk found in TIM file '%s'", filename);
+	_avtlChunkSize = 0;
+	_filename = filename;
 
-	if (formBlockSize < 20)
-		error("TIM file '%s' FORM chunk size smaller than 20", filename);
+	_tim = new TIM;
+	assert(_tim);
+	memset(_tim, 0, sizeof(TIM));
 
-	TIM *tim = new TIM;
-	assert(tim);
-	memset(tim, 0, sizeof(TIM));
+	_tim->procFunc = -1;
+	_tim->opcodes = opcodes;
 
-	tim->procFunc = -1;
-	tim->opcodes = opcodes;
+	IFFParser iff(*stream);
+	Common::Functor1Mem< Common::IFFChunk &, bool, TIMInterpreter > c(this, &TIMInterpreter::callback);
+	iff.parse(c);
 
-	uint32 avtlChunkSize = file.getIFFBlockSize(AVTL_CHUNK);
-	uint32 textChunkSize = file.getIFFBlockSize(TEXT_CHUNK);
+	if (!_tim->avtl)
+		error("No AVTL chunk found in file: '%s'", filename);
 
-	tim->avtl = new uint16[avtlChunkSize/2];
-	if (textChunkSize != 0xFFFFFFFF)
-		tim->text = new byte[textChunkSize];
+	if (stream->err())
+		error("Read error while parsing file '%s'", filename);
 
-	if (!file.loadIFFBlock(AVTL_CHUNK, tim->avtl, avtlChunkSize))
-		error("Couldn't read AVTL chunk in TIM file '%s'", filename);
-	if (textChunkSize != 0xFFFFFFFF && !file.loadIFFBlock(TEXT_CHUNK, tim->text, textChunkSize))
-		error("Couldn't read TEXT chunk in TIM file '%s'", filename);
+	delete stream;
 
-	avtlChunkSize >>= 1;
-	for (uint i = 0; i < avtlChunkSize; ++i)
-		tim->avtl[i] = READ_LE_UINT16(tim->avtl + i);
-
-	int num = (avtlChunkSize < TIM::kCountFuncs) ? avtlChunkSize : (int)TIM::kCountFuncs;
+	int num = (_avtlChunkSize < TIM::kCountFuncs) ? _avtlChunkSize : (int)TIM::kCountFuncs;
 	for (int i = 0; i < num; ++i)
-		tim->func[i].avtl = tim->avtl + tim->avtl[i];
+		_tim->func[i].avtl = _tim->avtl + _tim->avtl[i];
 
-	strncpy(tim->filename, filename, 13);
+	strncpy(_tim->filename, filename, 13);
+	_tim->filename[12] = 0;
 
-	return tim;
+	_tim->isLoLOutro = (_vm->gameFlags().gameID == GI_LOL) && !scumm_stricmp(filename, "LOLFINAL.TIM");
+	_tim->lolCharacter = 0;
+
+	return _tim;
 }
 
 void TIMInterpreter::unload(TIM *&tim) const {
@@ -162,7 +201,7 @@ void TIMInterpreter::unload(TIM *&tim) const {
 
 void TIMInterpreter::setLangData(const char *filename) {
 	delete[] _langData;
-	_langData = vm()->resource()->fileData(filename, 0);
+	_langData = _vm->resource()->fileData(filename, 0);
 }
 
 int TIMInterpreter::exec(TIM *tim, bool loop) {
@@ -187,13 +226,12 @@ int TIMInterpreter::exec(TIM *tim, bool loop) {
 			update();
 			checkSpeechProgress();
 
-			bool running = true;			
+			bool running = true;
 			int cnt = 0;
 			while (cur.ip && cur.nextTime <= _system->getMillis() && running) {
 				if (cnt++ > 0) {
 					if (_currentTim->procFunc != -1)
 						execCommand(28, &_currentTim->procParam);
-
 					update();
 				}
 
@@ -226,11 +264,11 @@ int TIMInterpreter::exec(TIM *tim, bool loop) {
 				if (cur.ip) {
 					cur.ip += cur.ip[0];
 					cur.lastTime = cur.nextTime;
-					cur.nextTime += (cur.ip[1] ) * vm()->tickLength();
+					cur.nextTime += (cur.ip[1] ) * _vm->tickLength();
 				}
 			}
 		}
-	} while (loop && !vm()->shouldQuit());
+	} while (loop && !_vm->shouldQuit());
 
 	return _currentTim->clickedButton;
 }
@@ -251,7 +289,7 @@ void TIMInterpreter::displayText(uint16 textId, int16 flags) {
 	char *text = getTableEntry(textId);
 
 	if (_textDisplayed) {
-		screen()->copyBlockToPage(0, 0, 160, 320, 40, _textAreaBuffer);
+		_screen->copyBlockToPage(0, 0, 160, 320, 40, _textAreaBuffer);
 		_textDisplayed = false;
 	}
 
@@ -269,29 +307,99 @@ void TIMInterpreter::displayText(uint16 textId, int16 flags) {
 			memcpy(filename, text+1, end-1-text);
 	}
 
-	if (filename[0])
-		vm()->sound()->voicePlay(filename);
+	const bool isPC98 = (_vm->gameFlags().platform == Common::kPlatformPC98);
+	if (filename[0] && (_vm->speechEnabled() || isPC98))
+		_vm->sound()->voicePlay(filename);
 
 	if (text[0] == '$')
 		text = strchr(text + 1, '$') + 1;
 
-	setupTextPalette((flags < 0) ? 1 : flags, 0);
+	if (!isPC98)
+		setupTextPalette((flags < 0) ? 1 : flags, 0);
 
 	if (flags < 0) {
 		static const uint8 colorMap[] = { 0x00, 0xF0, 0xFE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
-		screen()->setFont(Screen::FID_8_FNT);
-		screen()->setTextColorMap(colorMap);
-		screen()->_charWidth = -2;
+		_screen->setFont(Screen::FID_8_FNT);
+		_screen->setTextColorMap(colorMap);
+		_screen->_charWidth = -2;
 	}
 
-	screen()->_charOffset = -4;
-	screen()->copyRegionToBuffer(0, 0, 160, 320, 40, _textAreaBuffer);
+	_screen->_charOffset = -4;
+	_screen->copyRegionToBuffer(0, 0, 160, 320, 40, _textAreaBuffer);
 	_textDisplayed = true;
 
 	char backupChar = 0;
 	char *str = text;
 	int heightAdd = 0;
+
+	while (str[0] && _vm->textEnabled()) {
+		char *nextLine = strchr(str, '\r');
+
+		backupChar = 0;
+		if (nextLine) {
+			backupChar = nextLine[0];
+			nextLine[0] = '\0';
+		}
+
+		int width = _screen->getTextWidth(str);
+
+		if (flags >= 0) {
+			if (isPC98) {
+				static const uint8 colorMap[] = { 0xE1, 0xE1, 0xC1, 0xA1, 0x81, 0x61 };
+				_screen->printText(str, (320 - width) >> 1, 160 + heightAdd, colorMap[flags], 0x00);
+			} else {
+				_screen->printText(str, (320 - width) >> 1, 160 + heightAdd, 0xF0, 0x00);
+			}
+		} else {
+			_screen->printText(str, (320 - width) >> 1, 188, 0xF0, 0x00);
+		}
+
+		heightAdd += _screen->getFontHeight();
+		str += strlen(str);
+
+		if (backupChar) {
+			nextLine[0] = backupChar;
+			++str;
+		}
+	}
+
+	_screen->_charOffset = 0;
+
+	if (flags < 0) {
+		static const uint8 colorMap[] = { 0x00, 0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0x00, 0x00, 0x00, 0x00 };
+
+		_screen->setFont(Screen::FID_INTRO_FNT);
+		_screen->setTextColorMap(colorMap);
+		_screen->_charWidth = 0;
+	}
+}
+
+void TIMInterpreter::displayText(uint16 textId, int16 flags, uint8 color) {
+	if (!_vm->textEnabled() && !(textId & 0x8000))
+		return;
+
+	char *text = getTableEntry(textId & 0x7FFF);
+
+	if (flags > 0)
+		_screen->copyBlockToPage(0, 0, 0, 320, 40, _textAreaBuffer);
+
+	if (flags == 255)
+		return;
+
+	_screen->setFont(Screen::FID_INTRO_FNT);
+
+	static const uint8 colorMap[] = { 0x00, 0xA0, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+	_screen->setTextColorMap(colorMap);
+	_screen->_charWidth = 0;
+	_screen->_charOffset = -4;
+
+	if (!flags)
+		_screen->copyRegionToBuffer(0, 0, 0, 320, 40, _textAreaBuffer);
+
+	char backupChar = 0;
+	char *str = text;
+	int y = 0;
 
 	while (str[0]) {
 		char *nextLine = strchr(str, '\r');
@@ -302,30 +410,20 @@ void TIMInterpreter::displayText(uint16 textId, int16 flags) {
 			nextLine[0] = '\0';
 		}
 
-		int width = screen()->getTextWidth(str);
+		int width = _screen->getTextWidth(str);
 
 		if (flags >= 0)
-			screen()->printText(str, (320 - width) >> 1, 160 + heightAdd, 0xF0, 0x00);
+			_screen->printText(str, (320 - width) >> 1, y, color, 0x00);
 		else
-			screen()->printText(str, (320 - width) >> 1, 188, 0xF0, 0x00);
+			_screen->printText(str, 0, y, color, 0x00);
 
-		heightAdd += screen()->getFontHeight();
+		y += _screen->getFontHeight() - 4;
 		str += strlen(str);
 
 		if (backupChar) {
 			nextLine[0] = backupChar;
 			++str;
 		}
-	}
-
-	screen()->_charOffset = 0;
-
-	if (flags < 0) {
-		static const uint8 colorMap[] = { 0x00, 0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0x00, 0x00, 0x00, 0x00 };
-
-		screen()->setFont(Screen::FID_INTRO_FNT);
-		screen()->setTextColorMap(colorMap);
-		screen()->_charWidth = 0;
 	}
 }
 
@@ -340,7 +438,7 @@ void TIMInterpreter::setupTextPalette(uint index, int fadePalette) {
 	};
 
 	for (int i = 0; i < 15; ++i) {
-		uint8 *palette = screen()->getPalette(0) + (240 + i) * 3;
+		uint8 *palette = _screen->getPalette(0).getData() + (240 + i) * 3;
 
 		uint8 c1 = (((15 - i) << 2) * palTable[index*3+0]) / 100;
 		uint8 c2 = (((15 - i) << 2) * palTable[index*3+1]) / 100;
@@ -352,19 +450,11 @@ void TIMInterpreter::setupTextPalette(uint index, int fadePalette) {
 	}
 
 	if (!fadePalette && !_palDiff) {
-		screen()->setScreenPalette(screen()->getPalette(0));
+		_screen->setScreenPalette(_screen->getPalette(0));
 	} else {
-		screen()->getFadeParams(screen()->getPalette(0), fadePalette, _palDelayInc, _palDiff);
+		_screen->getFadeParams(_screen->getPalette(0), fadePalette, _palDelayInc, _palDiff);
 		_palDelayAcc = 0;
 	}
-}
-
-KyraEngine_v1 *TIMInterpreter::vm() {
-	return _vm;
-}
-
-Screen_v2 *TIMInterpreter::screen() {
-	return _screen;
 }
 
 TIMInterpreter::Animation *TIMInterpreter::initAnimStruct(int index, const char *filename, int x, int y, int, int offscreenBuffer, uint16 wsaFlags) {
@@ -372,70 +462,106 @@ TIMInterpreter::Animation *TIMInterpreter::initAnimStruct(int index, const char 
 	anim->x = x;
 	anim->y = y;
 	anim->wsaCopyParams = wsaFlags;
-	_drawPage2 = 8;
+	const bool isLoLDemo = _vm->gameFlags().isDemo && _vm->gameFlags().gameID == GI_LOL;
 
-	uint16 wsaOpenFlags = ((wsaFlags & 0x10) != 0) ? 2 : 0;
+	if (isLoLDemo || _vm->gameFlags().platform == Common::kPlatformPC98 || _currentTim->isLoLOutro)
+		_drawPage2 = 0;
+	else
+		_drawPage2 = 8;
+
+	uint16 wsaOpenFlags = 0;
+	if (isLoLDemo) {
+		if (!(wsaFlags & 0x10))
+			wsaOpenFlags |= 1;
+	} else {
+		if (wsaFlags & 0x10)
+			wsaOpenFlags |= 2;
+		wsaOpenFlags |= 1;
+
+		if (offscreenBuffer == 2)
+			wsaOpenFlags = 1;
+	}
 
 	char file[32];
 	snprintf(file, 32, "%s.WSA", filename);
 
-	if (vm()->resource()->exists(file)) {
-		anim->wsa = new WSAMovie_v2(_vm, _screen);
+	if (_vm->resource()->exists(file)) {
+		if (isLoLDemo)
+			anim->wsa = new WSAMovie_v1(_vm);
+		else
+			anim->wsa = new WSAMovie_v2(_vm);
 		assert(anim->wsa);
 
-		anim->wsa->open(file, wsaOpenFlags, (index == 1) ? screen()->getPalette(0) : 0);
+		anim->wsa->open(file, wsaOpenFlags, (index == 1) ? &_screen->getPalette(0) : 0);
 	}
 
 	if (anim->wsa && anim->wsa->opened()) {
-		if (x == -1)
-			anim->x = x = 0;
-		if (y == -1)
-			anim->y = y = 0;
+		if (isLoLDemo) {
+			if (x == -1) {
+				int16 t = int8(320 - anim->wsa->width());
+				uint8 v = int8(t & 0x00FF) - int8((t & 0xFF00) >> 8);
+				v >>= 1;
+				anim->x = x = v;
+			}
+
+			if (y == -1) {
+				int16 t = int8(200 - anim->wsa->height());
+				uint8 v = int8(t & 0x00FF) - int8((t & 0xFF00) >> 8);
+				v >>= 1;
+				anim->y = y = v;
+			}
+		} else {
+			if (x == -1)
+				anim->x = x = 0;
+			if (y == -1)
+				anim->y = y = 0;
+		}
 
 		if (wsaFlags & 2) {
-			screen()->fadePalette(screen()->getPalette(1), 15, 0);
-			screen()->clearPage(8);
-			screen()->checkedPageUpdate(8, 4);
-			screen()->updateScreen();
+			_screen->fadePalette(_screen->getPalette(1), 15, 0);
+			_screen->clearPage(_drawPage2);
+			if (_drawPage2)
+				_screen->checkedPageUpdate(8, 4);
+			_screen->updateScreen();
 		}
-		
+
 		if (wsaFlags & 4) {
 			snprintf(file, 32, "%s.CPS", filename);
 
-			if (vm()->resource()->exists(file)) {
-				screen()->loadBitmap(file, 3, 3, screen()->getPalette(0));
-				screen()->copyRegion(0, 0, 0, 0, 320, 200, 2, 8, Screen::CR_NO_P_CHECK);
-				screen()->checkedPageUpdate(8, 4);
-				screen()->updateScreen();
+			if (_vm->resource()->exists(file)) {
+				_screen->loadBitmap(file, 3, 3, &_screen->getPalette(0));
+				_screen->copyRegion(0, 0, 0, 0, 320, 200, 2, _drawPage2, Screen::CR_NO_P_CHECK);
+				if (_drawPage2)
+					_screen->checkedPageUpdate(8, 4);
+				_screen->updateScreen();
 			}
 
-			anim->wsa->setX(x);
-			anim->wsa->setY(y);
-			anim->wsa->setDrawPage(0);
-			anim->wsa->displayFrame(0, 0, 0, 0);
+			anim->wsa->displayFrame(0, 0, x, y, 0, 0, 0);
 		}
 
 		if (wsaFlags & 2)
-			screen()->fadePalette(screen()->getPalette(0), 30, 0);
+			_screen->fadePalette(_screen->getPalette(0), 30, 0);
 	} else {
 		if (wsaFlags & 2) {
-			screen()->fadePalette(screen()->getPalette(1), 15, 0);
-			screen()->clearPage(8);
-			screen()->checkedPageUpdate(8, 4);
-			screen()->updateScreen();
+			_screen->fadePalette(_screen->getPalette(1), 15, 0);
+			_screen->clearPage(_drawPage2);
+			if (_drawPage2)
+				_screen->checkedPageUpdate(8, 4);
+			_screen->updateScreen();
 		}
 
 		snprintf(file, 32, "%s.CPS", filename);
 
-		if (vm()->resource()->exists(file)) {
-			screen()->loadBitmap(file, 3, 3, screen()->getPalette(0));
-			screen()->copyRegion(0, 0, 0, 0, 320, 200, 2, 8, Screen::CR_NO_P_CHECK);
-			screen()->checkedPageUpdate(8, 4);
-			screen()->updateScreen();
+		if (_vm->resource()->exists(file)) {
+			_screen->loadBitmap(file, 3, 3, &_screen->getPalette(0));
+			_screen->copyRegion(0, 0, 0, 0, 320, 200, 2, _drawPage2, Screen::CR_NO_P_CHECK);
+			if (_drawPage2)
+				_screen->checkedPageUpdate(8, 4);
+			_screen->updateScreen();
 		}
 
 		if (wsaFlags & 2)
-			screen()->fadePalette(screen()->getPalette(0), 30, 0);
+			_screen->fadePalette(_screen->getPalette(0), 30, 0);
 	}
 
 	return anim;
@@ -448,7 +574,6 @@ int TIMInterpreter::freeAnimStruct(int index) {
 
 	delete anim->wsa;
 	memset(anim, 0, sizeof(Animation));
-
 	return 1;
 }
 
@@ -536,8 +661,16 @@ int TIMInterpreter::cmd_uninitWSA(const uint16 *param) {
 		//XXX
 
 		delete anim.wsa;
+		bool hasParts = anim.parts ? true : false;
+		delete[] anim.parts;
+
 		memset(&anim, 0, sizeof(Animation));
 		memset(&slot, 0, sizeof(TIM::WSASlot));
+
+		if (hasParts) {
+			anim.parts = new AnimPart[TIM::kAnimParts];
+			memset(anim.parts, 0, TIM::kAnimParts * sizeof(AnimPart));
+		}
 	}
 
 	return 1;
@@ -563,18 +696,20 @@ int TIMInterpreter::cmd_stopFunc(const uint16 *param) {
 int TIMInterpreter::cmd_wsaDisplayFrame(const uint16 *param) {
 	Animation &anim = _animations[param[0]];
 	const int frame = param[1];
-
-	anim.wsa->setX(anim.x);
-	anim.wsa->setY(anim.y);
-	anim.wsa->setDrawPage((anim.wsaCopyParams & 0x4000) != 0 ? 2 : _drawPage2);
-	anim.wsa->displayFrame(frame, anim.wsaCopyParams & 0xF0FF, 0, 0);
-	if (!_drawPage2)
-		screen()->updateScreen();
+	int page = (anim.wsaCopyParams & 0x4000) != 0 ? 2 : _drawPage2;
+	// WORKAROUND for some bugged scripts that will try to display frames of non-existent animations
+	if (anim.wsa)
+		anim.wsa->displayFrame(frame, page, anim.x, anim.y, anim.wsaCopyParams & 0xF0FF, 0, 0);
+	if (!page)
+		_screen->updateScreen();
 	return 1;
 }
 
 int TIMInterpreter::cmd_displayText(const uint16 *param) {
-	displayText(param[0], param[1]);
+	if (_currentTim->isLoLOutro)
+		displayText(param[0], param[1], 0xF2);
+	else
+		displayText(param[0], param[1]);
 	return 1;
 }
 
@@ -583,6 +718,32 @@ int TIMInterpreter::cmd_loadVocFile(const uint16 *param) {
 	const int index = param[1];
 
 	_vocFiles[index] = (const char *)(_currentTim->text + READ_LE_UINT16(_currentTim->text + (stringId << 1)));
+
+	if (index == 2 && _currentTim->isLoLOutro) {
+		_vocFiles[index] = "CONGRATA.VOC";
+
+		switch (_currentTim->lolCharacter) {
+		case 0:
+			_vocFiles[index].setChar('K', 7);
+			break;
+
+		case 1:
+			_vocFiles[index].setChar('A', 7);
+			break;
+
+		case 2:
+			_vocFiles[index].setChar('M', 7);
+			break;
+
+		case 3:
+			_vocFiles[index].setChar('C', 7);
+			break;
+
+		default:
+			break;
+		}
+	}
+
 	for (int i = 0; i < 4; ++i)
 		_vocFiles[index].deleteLastChar();
 	return 1;
@@ -599,9 +760,11 @@ int TIMInterpreter::cmd_playVocFile(const uint16 *param) {
 	const int volume = (param[1] * 255) / 100;
 
 	if (index < ARRAYSIZE(_vocFiles) && !_vocFiles[index].empty())
-		vm()->sound()->voicePlay(_vocFiles[index].c_str(), volume, true);
+		_vm->sound()->voicePlay(_vocFiles[index].c_str(), 0, volume, true);
+	else if (index == 7 && !_vm->gameFlags().isTalkie)
+		_vm->sound()->playTrack(index);
 	else
-		vm()->snd_playSoundEffect(index, volume);
+		_vm->sound()->playSoundEffect(index);
 
 	return 1;
 }
@@ -609,15 +772,15 @@ int TIMInterpreter::cmd_playVocFile(const uint16 *param) {
 int TIMInterpreter::cmd_loadSoundFile(const uint16 *param) {
 	const char *file = (const char *)(_currentTim->text + READ_LE_UINT16(_currentTim->text + (param[0]<<1)));
 
-	vm()->sound()->loadSoundFile(file);
-	if (vm()->gameFlags().gameID == GI_LOL)
-		vm()->sound()->loadSfxFile(file);
+	_vm->sound()->loadSoundFile(file);
+	if (_vm->gameFlags().gameID == GI_LOL)
+		_vm->sound()->loadSfxFile(file);
 
 	return 1;
 }
 
 int TIMInterpreter::cmd_playMusicTrack(const uint16 *param) {
-	vm()->sound()->playTrack(param[0]);
+	_vm->sound()->playTrack(param[0]);
 	return 1;
 }
 
@@ -636,9 +799,9 @@ int TIMInterpreter::cmd_continueLoop(const uint16 *param) {
 
 	uint16 factor = param[0];
 	if (factor) {
-		const uint32 random = vm()->_rnd.getRandomNumberRng(0, 0x8000);
+		const uint32 random = _vm->_rnd.getRandomNumberRng(0, 0x8000);
 		uint32 waitTime = (random * factor) / 0x8000;
-		func.nextTime += waitTime * vm()->tickLength();
+		func.nextTime += waitTime * _vm->tickLength();
 	}
 
 	return -2;
@@ -695,7 +858,7 @@ int TIMInterpreter::cmd_stopFuncNow(const uint16 *param) {
 }
 
 int TIMInterpreter::cmd_stopAllFuncs(const uint16 *param) {
-	while (_currentTim->dlgFunc == -1 && _currentTim->clickedButton == 0 && vm()->shouldQuit()) {
+	while (_currentTim->dlgFunc == -1 && _currentTim->clickedButton == 0 && !_vm->shouldQuit()) {
 		update();
 		_currentTim->clickedButton = processDialogue();
 	}
@@ -706,6 +869,9 @@ int TIMInterpreter::cmd_stopAllFuncs(const uint16 *param) {
 	return -1;
 }
 
+// TODO: Consider moving to another file
+
+#ifdef ENABLE_LOL
 // LOL version of the TIM interpreter
 
 TIMInterpreter_LoL::TIMInterpreter_LoL(LoLEngine *engine, Screen_v2 *screen_v2, OSystem *system) :
@@ -762,18 +928,26 @@ TIMInterpreter_LoL::TIMInterpreter_LoL(LoLEngine *engine, Screen_v2 *screen_v2, 
 	_commandsSize = ARRAYSIZE(commandProcs);
 
 	_screen = engine->_screen;
-	
+
+	for (int i = 0; i < TIM::kWSASlots; i++) {
+		_animations[i].parts = new AnimPart[TIM::kAnimParts];
+		memset(_animations[i].parts, 0, TIM::kAnimParts * sizeof(AnimPart));
+	}
+
 	_drawPage2 = 0;
 
-	memset(_dialogueButtonString, 0, 3 * sizeof(const char*));
+	memset(_dialogueButtonString, 0, 3 * sizeof(const char *));
 	_dialogueButtonPosX = _dialogueButtonPosY = _dialogueNumButtons = _dialogueButtonXoffs = _dialogueHighlightedButton = 0;
 }
 
-TIMInterpreter::Animation *TIMInterpreter_LoL::initAnimStruct(int index, const char *filename, int x, int y, int copyPara, int, uint16 wsaFlags) {
+TIMInterpreter::Animation *TIMInterpreter_LoL::initAnimStruct(int index, const char *filename, int x, int y, int frameDelay, int, uint16 wsaFlags) {
 	Animation *anim = &_animations[index];
 	anim->x = x;
 	anim->y = y;
+	anim->frameDelay = frameDelay;
 	anim->wsaCopyParams = wsaFlags;
+	anim->enable = 0;
+	anim->lastPart = -1;
 
 	uint16 wsaOpenFlags = 0;
 	if (wsaFlags & 0x10)
@@ -785,30 +959,24 @@ TIMInterpreter::Animation *TIMInterpreter_LoL::initAnimStruct(int index, const c
 	snprintf(file, 32, "%s.WSA", filename);
 
 	if (_vm->resource()->exists(file)) {
-		anim->wsa = new WSAMovie_v2(_vm, TIMInterpreter::_screen);
+		anim->wsa = new WSAMovie_v2(_vm);
 		assert(anim->wsa);
-		anim->wsa->open(file, wsaOpenFlags, _screen->getPalette(3));
+		anim->wsa->open(file, wsaOpenFlags, &_screen->getPalette(3));
 	}
 
 	if (wsaFlags & 1) {
 		if (_screen->_fadeFlag != 1)
 			_screen->fadeClearSceneWindow(10);
-		memcpy(_screen->getPalette(3) + 384, _screen->_currentPalette + 384, 384);
+		_screen->getPalette(3).copy(_screen->getPalette(0), 128, 128);
 	} else if (wsaFlags & 2) {
 		_screen->fadeToBlack(10);
 	}
 
-	if (wsaFlags & 7) {
-		_screen->hideMouse();
-		anim->wsa->setDrawPage(0);
-		anim->wsa->setX(x);
-		anim->wsa->setY(y);
-		anim->wsa->displayFrame(0, 0);
-		_screen->showMouse();
-	}
+	if (wsaFlags & 7)
+		anim->wsa->displayFrame(0, 0, x, y, 0, 0, 0);
 
 	if (wsaFlags & 3) {
-		_screen->loadSpecialColours(_screen->getPalette(3));
+		_screen->loadSpecialColors(_screen->getPalette(3));
 		_screen->fadePalette(_screen->getPalette(3), 10);
 		_screen->_fadeFlag = 0;
 	}
@@ -816,12 +984,19 @@ TIMInterpreter::Animation *TIMInterpreter_LoL::initAnimStruct(int index, const c
 	return anim;
 }
 
-KyraEngine_v1 *TIMInterpreter_LoL::vm() {
-	return _vm;
-}
+int TIMInterpreter_LoL::freeAnimStruct(int index) {
+	Animation *anim = &_animations[index];
+	if (!anim)
+		return 0;
 
-Screen_v2 *TIMInterpreter_LoL::screen() {
-	return _screen;
+	delete anim->wsa;
+	delete[] anim->parts;
+	memset(anim, 0, sizeof(Animation));
+
+	anim->parts = new AnimPart[TIM::kAnimParts];
+	memset(anim->parts, 0, TIM::kAnimParts * sizeof(AnimPart));
+
+	return 1;
 }
 
 void TIMInterpreter_LoL::advanceToOpcode(int opcode) {
@@ -841,11 +1016,12 @@ void TIMInterpreter_LoL::advanceToOpcode(int opcode) {
 }
 
 void TIMInterpreter_LoL::drawDialogueBox(int numStr, const char *s1, const char *s2, const char *s3) {
-	if (numStr == 1 && _vm->_speechFlag) {
-		_screen->setScreenDim(5);
+	_screen->setScreenDim(5);
+
+	if (numStr == 1 && _vm->speechEnabled()) {
+		_dialogueNumButtons = 0;
 		_dialogueButtonString[0] = _dialogueButtonString[1] = _dialogueButtonString[2] = 0;
 	} else {
-		_screen->setScreenDim(5);
 		_dialogueNumButtons = numStr;
 		_dialogueButtonString[0] = s1;
 		_dialogueButtonString[1] = s2;
@@ -857,8 +1033,8 @@ void TIMInterpreter_LoL::drawDialogueBox(int numStr, const char *s1, const char 
 
 		if (numStr == 1) {
 			_dialogueButtonXoffs = 0;
-			_dialogueButtonPosX = d->sx + d->w - 77;			
-		} else {			
+			_dialogueButtonPosX = d->sx + d->w - 77;
+		} else {
 			_dialogueButtonXoffs = d->w / numStr;
 			_dialogueButtonPosX = d->sx + (_dialogueButtonXoffs >> 1) - 37;
 		}
@@ -868,6 +1044,120 @@ void TIMInterpreter_LoL::drawDialogueBox(int numStr, const char *s1, const char 
 
 	if (!_vm->shouldQuit())
 		_vm->removeInputTop();
+}
+
+void TIMInterpreter_LoL::setupBackgroundAnimationPart(int animIndex, int part, int firstFrame, int lastFrame, int cycles, int nextPart, int partDelay, int f, int sfxIndex, int sfxFrame) {
+	AnimPart *a = &_animations[animIndex].parts[part];
+	a->firstFrame = firstFrame;
+	a->lastFrame = lastFrame;
+	a->cycles = cycles;
+	a->nextPart = nextPart;
+	a->partDelay = partDelay;
+	a->field_A = f;
+	a->sfxIndex = sfxIndex;
+	a->sfxFrame = sfxFrame;
+}
+
+void TIMInterpreter_LoL::startBackgroundAnimation(int animIndex, int part) {
+	Animation *anim = &_animations[animIndex];
+	anim->curPart = part;
+	AnimPart *p = &anim->parts[part];
+	anim->enable = 1;
+	anim->nextFrame = _system->getMillis() + anim->frameDelay * _vm->_tickLength;
+	anim->curFrame = p->firstFrame;
+	anim->cyclesCompleted = 0;
+
+	// WORKAROUND for some bugged scripts that will try to display frames of non-existent animations
+	if (anim->wsa)
+		anim->wsa->displayFrame(anim->curFrame - 1, 0, anim->x, anim->y, 0, 0, 0);
+}
+
+void TIMInterpreter_LoL::stopBackgroundAnimation(int animIndex) {
+	Animation *anim = &_animations[animIndex];
+	anim->enable = 0;
+	anim->field_D = 0;
+	if (animIndex == 5) {
+		delete anim->wsa;
+		anim->wsa = 0;
+	}
+}
+
+void TIMInterpreter_LoL::updateBackgroundAnimation(int animIndex) {
+	Animation *anim = &_animations[animIndex];
+	if (!anim->enable || anim->nextFrame >= _system->getMillis())
+		return;
+
+	AnimPart *p = &anim->parts[anim->curPart];
+	anim->nextFrame = 0;
+
+	int step = 0;
+	if (p->lastFrame >= p->firstFrame) {
+		step = 1;
+		anim->curFrame++;
+	} else {
+		step = -1;
+		anim->curFrame--;
+	}
+
+	if (anim->curFrame == (p->lastFrame + step)) {
+		anim->cyclesCompleted++;
+
+		if ((anim->cyclesCompleted > p->cycles) || anim->field_D) {
+			anim->lastPart = anim->curPart;
+
+			if ((p->nextPart == -1) || (anim->field_D && p->field_A)) {
+				anim->enable = 0;
+				anim->field_D = 0;
+				return;
+			}
+
+			anim->nextFrame += (p->partDelay * _vm->_tickLength);
+			anim->curPart = p->nextPart;
+
+			p = &anim->parts[anim->curPart];
+			anim->curFrame = p->firstFrame;
+			anim->cyclesCompleted = 0;
+
+		} else {
+			anim->curFrame = p->firstFrame;
+		}
+	}
+
+	if (p->sfxIndex != -1 && p->sfxFrame == anim->curFrame)
+		_vm->snd_playSoundEffect(p->sfxIndex, -1);
+
+	anim->nextFrame += (anim->frameDelay * _vm->_tickLength);
+
+	anim->wsa->displayFrame(anim->curFrame - 1, 0, anim->x, anim->y, 0, 0, 0);
+	anim->nextFrame += _system->getMillis();
+}
+
+void TIMInterpreter_LoL::playAnimationPart(int animIndex, int firstFrame, int lastFrame, int delay) {
+	Animation *anim = &_animations[animIndex];
+
+	int step = (lastFrame >= firstFrame) ? 1 : -1;
+	for (int i = firstFrame; i != (lastFrame + step) ; i += step) {
+		uint32 next = _system->getMillis() + delay * _vm->_tickLength;
+		if (anim->wsaCopyParams & 0x4000) {
+			_screen->copyRegion(112, 0, 112, 0, 176, 120, 6, 2);
+			anim->wsa->displayFrame(i - 1, 2, anim->x, anim->y, anim->wsaCopyParams & 0x1000 ? 0x5000 : 0x4000, _vm->_trueLightTable1, _vm->_trueLightTable2);
+			_screen->copyRegion(112, 0, 112, 0, 176, 120, 2, 0);
+			_screen->updateScreen();
+		} else {
+			anim->wsa->displayFrame(i - 1, 0, anim->x, anim->y, 0, 0, 0);
+			_screen->updateScreen();
+		}
+		int32 del  = (int32)(next - _system->getMillis());
+		if (del > 0)
+			_vm->delay(del, true);
+	}
+}
+
+int TIMInterpreter_LoL::resetAnimationLastPart(int animIndex) {
+	Animation *anim = &_animations[animIndex];
+	int8 res = -1;
+	SWAP(res, anim->lastPart);
+	return res;
 }
 
 void TIMInterpreter_LoL::drawDialogueButtons() {
@@ -892,7 +1182,8 @@ uint16 TIMInterpreter_LoL::processDialogue() {
 	int x = _dialogueButtonPosX;
 
 	for (int i = 0; i < _dialogueNumButtons; i++) {
-		if (_vm->posWithinRect(_vm->_mouseX, _vm->_mouseY, x, _dialogueButtonPosY, x + 74, _dialogueButtonPosY + 9)) {
+		Common::Point p = _vm->getMousePos();
+		if (_vm->posWithinRect(p.x, p.y, x, _dialogueButtonPosY, x + 74, _dialogueButtonPosY + 9)) {
 			_dialogueHighlightedButton = i;
 			break;
 		}
@@ -900,90 +1191,103 @@ uint16 TIMInterpreter_LoL::processDialogue() {
 	}
 
 	if (_dialogueNumButtons == 0) {
-		int e = _vm->checkInput(0, false) & 0xCF;
+		int e = _vm->checkInput(0, false) & 0xFF;
 		_vm->removeInputTop();
-		
-		if (e == 200) {
-			_vm->snd_dialogueSpeechUpdate(1);
-			//_dlgTimer = 0;
+
+		if (e) {
+			_vm->gui_notifyButtonListChanged();
+
+			if (e == 43 || e == 61) {
+				_vm->snd_stopSpeech(true);
+				//_dlgTimer = 0;
+			}
 		}
 
-		if (_vm->snd_characterSpeaking() != 2) {
+		if (_vm->snd_updateCharacterSpeech() != 2) {
 			//if (_dlgTimer < _system->getMillis()) {
 				res = 1;
-				if (!_vm->shouldQuit())
+				if (!_vm->shouldQuit()) {
 					_vm->removeInputTop();
+					_vm->gui_notifyButtonListChanged();
+				}
 			//}
 		}
 	} else {
-		int e = _vm->checkInput(0, false);
+		int e = _vm->checkInput(0, false) & 0xFF;
 		_vm->removeInputTop();
+		if (e)
+			_vm->gui_notifyButtonListChanged();
+
 		switch (e) {
-			case 100:
-			case 101:
-				_vm->snd_dialogueSpeechUpdate(1);
-				//_dlgTimer = 0;
-				res = _dialogueHighlightedButton + 1;
-				break;
+		case 43:
+		case 61:
+			_vm->snd_stopSpeech(true);
+			//_dlgTimer = 0;
+			res = _dialogueHighlightedButton + 1;
+			break;
 
-			case 110:
-			case 111:
-				if (_dialogueNumButtons > 1 && _dialogueHighlightedButton > 0)
-					_dialogueHighlightedButton--;
-				break;
+		case 92:
+		case 97:
+			if (_dialogueNumButtons > 1 && _dialogueHighlightedButton > 0)
+				_dialogueHighlightedButton--;
+			break;
 
-			case 112:
-			case 113:
-				if (_dialogueNumButtons > 1 && _dialogueHighlightedButton < (_dialogueNumButtons - 1))
-					_dialogueHighlightedButton++;
-				break;
+		case 96:
+		case 102:
+			if (_dialogueNumButtons > 1 && _dialogueHighlightedButton < (_dialogueNumButtons - 1))
+				_dialogueHighlightedButton++;
+			break;
 
-			case 200:
-			case 300:
-				x = _dialogueButtonPosX;
-				
-				for (int i = 0; i < _dialogueNumButtons; i++) {
-					if (_vm->posWithinRect(_vm->_mouseX, _vm->_mouseY, x, _dialogueButtonPosY, x + 74, _dialogueButtonPosY + 9)) {
-						_dialogueHighlightedButton = i;
-						res = _dialogueHighlightedButton + 1;
-						break;
-					}
-					x += _dialogueButtonXoffs;
+		case 200:
+		case 202:
+			x = _dialogueButtonPosX;
+
+			for (int i = 0; i < _dialogueNumButtons; i++) {
+				Common::Point p = _vm->getMousePos();
+				if (_vm->posWithinRect(p.x, p.y, x, _dialogueButtonPosY, x + 74, _dialogueButtonPosY + 9)) {
+					_dialogueHighlightedButton = i;
+					res = _dialogueHighlightedButton + 1;
+					break;
 				}
+				x += _dialogueButtonXoffs;
+			}
+			break;
 
-				break;
-
-			default:
-				break;
+		default:
+			break;
 		}
 	}
 
 	if (df != _dialogueHighlightedButton)
 		drawDialogueButtons();
-	
+
 	if (res == 0)
 		return 0;
 
 	_vm->updatePortraits();
 
-	if (!_vm->textEnabled() && _vm->_hideControls) {
+	if (!_vm->textEnabled() && _vm->_currentControlMode) {
 		_screen->setScreenDim(5);
 		const ScreenDim *d = _screen->getScreenDim(5);
-		_screen->hideMouse();
 		_screen->fillRect(d->sx, d->sy + d->h - 9, d->sx + d->w - 1, d->sy + d->h - 1, d->unkA);
-		_screen->showMouse();
 	} else {
 		const ScreenDim *d = _screen->_curDim;
-		_screen->hideMouse();
 		_screen->fillRect(d->sx, d->sy, d->sx + d->w - 2, d->sy + d->h - 1, d->unkA);
-		_screen->clearDim(4);
-		_screen->setScreenDim(4);
-		_screen->showMouse();
-		//_screen->setDialogueColumn(8, 0);
-		//_screen->setDialogueLine(8, 0);
+		_vm->_txt->clearDim(4);
+		_vm->_txt->resetDimTextPositions(4);
 	}
 
 	return res;
+}
+
+void TIMInterpreter_LoL::resetDialogueState(TIM *tim) {
+	if (!tim)
+		return;
+
+	tim->procFunc = 0;
+	tim->procParam = _dialogueNumButtons ? _dialogueNumButtons : 1;
+	tim->clickedButton = 0;
+	tim->dlgFunc = -1;
 }
 
 void TIMInterpreter_LoL::update() {
@@ -992,15 +1296,19 @@ void TIMInterpreter_LoL::update() {
 
 void TIMInterpreter_LoL::checkSpeechProgress() {
 	if (_vm->speechEnabled() && _currentTim->procParam > 1 && _currentTim->func[_currentFunc].loopIp) {
-		if (_vm->snd_characterSpeaking() != 2) {
+		if (_vm->snd_updateCharacterSpeech() != 2) {
 			_currentTim->func[_currentFunc].loopIp = 0;
 			_currentTim->dlgFunc = _currentFunc;
 			advanceToOpcode(21);
 			_currentTim->dlgFunc = -1;
+			_animations[5].field_D = 0;
+			_animations[5].enable = 0;
+			delete _animations[5].wsa;
+			_animations[5].wsa = 0;
 		}
 	}
 }
-	
+
 char *TIMInterpreter_LoL::getTableString(int id) {
 	return _vm->getLangString(id);
 }
@@ -1022,7 +1330,7 @@ int TIMInterpreter_LoL::execCommand(int cmd, const uint16 *param) {
 
 int TIMInterpreter_LoL::cmd_setLoopIp(const uint16 *param) {
 	if (_vm->speechEnabled()) {
-		if (_vm->snd_characterSpeaking() == 2)
+		if (_vm->snd_updateCharacterSpeech() == 2)
 			_currentTim->func[_currentFunc].loopIp = _currentTim->func[_currentFunc].ip;
 		else
 			advanceToOpcode(21);
@@ -1040,7 +1348,7 @@ int TIMInterpreter_LoL::cmd_continueLoop(const uint16 *param) {
 
 	func.ip = func.loopIp;
 
-	if (_vm->snd_characterSpeaking() != 2) {
+	if (_vm->snd_updateCharacterSpeech() != 2) {
 		uint16 factor = param[0];
 		if (factor) {
 			const uint32 random = _vm->_rnd.getRandomNumberRng(0, 0x8000);
@@ -1054,18 +1362,23 @@ int TIMInterpreter_LoL::cmd_continueLoop(const uint16 *param) {
 
 int TIMInterpreter_LoL::cmd_processDialogue(const uint16 *param) {
 	int res = processDialogue();
-	if (!res ||!_currentTim->procParam)
-		return 0;
+	if (!res || !_currentTim->procParam)
+		return res;
 
-	_vm->snd_dialogueSpeechUpdate(0);
+	_vm->snd_stopSpeech(false);
 
 	_currentTim->func[_currentTim->procFunc].loopIp = 0;
 	_currentTim->dlgFunc = _currentTim->procFunc;
 	_currentTim->procFunc = -1;
 	_currentTim->clickedButton = res;
 
+	_animations[5].field_D = 0;
+	_animations[5].enable = 0;
+	delete _animations[5].wsa;
+	_animations[5].wsa = 0;
+
 	if (_currentTim->procParam)
-		advanceToOpcode(21);	
+		advanceToOpcode(21);
 
 	return res;
 }
@@ -1089,9 +1402,11 @@ int TIMInterpreter_LoL::cmd_dialogueBox(const uint16 *param) {
 	}
 
 	drawDialogueBox(cnt, tmpStr[0], tmpStr[1], tmpStr[2]);
+	_vm->gui_notifyButtonListChanged();
 
 	return -3;
 }
+#endif // ENABLE_LOL
 
 } // end of namespace Kyra
 

@@ -41,11 +41,14 @@
 #include "common/config-manager.h"
 #include "common/debug.h"
 #include "common/events.h"
+#include "common/EventRecorder.h"
 #include "common/file.h"
 #include "common/fs.h"
 #include "common/system.h"
 #include "gui/GuiManager.h"
 #include "gui/message.h"
+
+#include "backends/keymapper/keymapper.h"
 
 #if defined(_WIN32_WCE)
 #include "backends/platform/wince/CELauncherDialog.h"
@@ -79,8 +82,15 @@ static const EnginePlugin *detectPlugin() {
 	// Make sure the gameid is set in the config manager, and that it is lowercase.
 	Common::String gameid(ConfMan.getActiveDomainName());
 	assert(!gameid.empty());
-	if (ConfMan.hasKey("gameid"))
+	if (ConfMan.hasKey("gameid")) {
 		gameid = ConfMan.get("gameid");
+		
+		// Set last selected game, that the game will be highlighted
+		// on RTL
+		ConfMan.set("lastselectedgame", ConfMan.getActiveDomainName(), Common::ConfigManager::kApplicationDomain);
+		ConfMan.flushToDisk();
+	}
+
 	gameid.toLowercase();
 	ConfMan.set("gameid", gameid);
 
@@ -142,15 +152,26 @@ static Common::Error runGame(const EnginePlugin *plugin, OSystem &system, const 
 			ConfMan.getActiveDomainName().c_str(),
 			dir.getPath().c_str()
 			);
+
+		// Autoadded is set only when no path was provided and
+		// the game is run from command line.
+		//
+		// Thus, we remove this garbage entry
+		//
+		// Fixes bug #1544799
+		if (ConfMan.hasKey("autoadded")) {
+			ConfMan.removeGameDomain(ConfMan.getActiveDomainName().c_str());
+		}
+
 		return err;
 	}
 
 	// Set the window caption to the game name
 	Common::String caption(ConfMan.get("description"));
 
-	Common::String desc = EngineMan.findGame(ConfMan.get("gameid")).description();
-	if (caption.empty() && !desc.empty())
-		caption = desc;
+	if (caption.empty()) {
+		caption = EngineMan.findGame(ConfMan.get("gameid")).description();
+	}
 	if (caption.empty())
 		caption = ConfMan.getActiveDomainName();	// Use the domain (=target) name
 	if (!caption.empty())	{
@@ -188,16 +209,8 @@ static Common::Error runGame(const EnginePlugin *plugin, OSystem &system, const 
 	// Inform backend that the engine is about to be run
 	system.engineInit();
 
-	// Init the engine (this might change the screen parameters)
-	// TODO: We should specify what return values
-	Common::Error result = engine->init();
-
-	// Run the game engine if the initialization was successful.
-	if (result == Common::kNoError) {
-		result = engine->go();
-	} else {
-		// TODO: Set an error flag, notify user about the problem
-	}
+	// Run the engine
+	Common::Error result = engine->run();
 
 	// Inform backend that the engine finished
 	system.engineDone();
@@ -216,7 +229,7 @@ static Common::Error runGame(const EnginePlugin *plugin, OSystem &system, const 
 }
 
 static void setupGraphics(OSystem &system) {
-	
+
 	system.beginGFXTransaction();
 		// Set the user specified graphics mode (if any).
 		system.setGraphicsMode(ConfMan.get("gfx_mode").c_str());
@@ -239,11 +252,51 @@ static void setupGraphics(OSystem &system) {
 	system.setWindowCaption(gScummVMFullVersion);
 
 	// Clear the main screen
-	system.clearScreen();
+	system.fillScreen(0);
 }
 
+static void setupKeymapper(OSystem &system) {
 
-extern "C" int scummvm_main(int argc, char *argv[]) {
+#ifdef ENABLE_KEYMAPPER
+	using namespace Common;
+
+	Keymapper *mapper = system.getEventManager()->getKeymapper();
+	Keymap *globalMap = new Keymap("global");
+	Action *act;
+	HardwareKeySet *keySet;
+
+	keySet = system.getHardwareKeySet();
+
+	// Query backend for hardware keys and register them
+	mapper->registerHardwareKeySet(keySet);
+
+	// Now create the global keymap
+	act = new Action(globalMap, "MENU", "Menu", kGenericActionType, kSelectKeyType);
+	act->addKeyEvent(KeyState(KEYCODE_F5, ASCII_F5, 0));
+
+	act = new Action(globalMap, "SKCT", "Skip", kGenericActionType, kActionKeyType);
+	act->addKeyEvent(KeyState(KEYCODE_ESCAPE, ASCII_ESCAPE, 0));
+
+	act = new Action(globalMap, "PAUS", "Pause", kGenericActionType, kStartKeyType);
+	act->addKeyEvent(KeyState(KEYCODE_SPACE, ' ', 0));
+
+	act = new Action(globalMap, "SKLI", "Skip line", kGenericActionType, kActionKeyType);
+	act->addKeyEvent(KeyState(KEYCODE_PERIOD, '.', 0));
+
+	act = new Action(globalMap, "VIRT", "Display keyboard", kVirtualKeyboardActionType);
+	act->addKeyEvent(KeyState(KEYCODE_F7, ASCII_F7, 0));
+
+	act = new Action(globalMap, "REMP", "Remap keys", kKeyRemapActionType);
+	act->addKeyEvent(KeyState(KEYCODE_F8, ASCII_F8, 0));
+
+	mapper->addGlobalKeymap(globalMap);
+
+	mapper->pushKeymap("global");
+#endif
+
+}
+
+extern "C" int scummvm_main(int argc, const char * const argv[]) {
 	Common::String specialDebug;
 	Common::String command;
 
@@ -287,7 +340,6 @@ extern "C" int scummvm_main(int argc, char *argv[]) {
 
 	// Load the plugins.
 	PluginManager::instance().loadPlugins();
-	EngineMan.getPlugins();
 
 	// Process the remaining command line settings. Must be done after the
 	// config file and the plugins have been loaded.
@@ -300,9 +352,20 @@ extern "C" int scummvm_main(int argc, char *argv[]) {
 
 	setupGraphics(system);
 
-	// Init the event manager. As the virtual keyboard is loaded here, it must 
+	// Init the event manager. As the virtual keyboard is loaded here, it must
 	// take place after the backend is initiated and the screen has been setup
 	system.getEventManager()->init();
+
+	// Directly after initializing the event manager, we will initialize our
+	// event recorder.
+	//
+	// TODO: This is just to match the current behavior, when we further extend
+	// our event recorder, we might do this at another place. Or even change
+	// the whole API for that ;-).
+	g_eventRec.init();
+
+	// Now as the event manager is created, setup the keymapper
+	setupKeymapper(system);
 
 	// Unless a game was specified, show the launcher dialog
 	if (0 == ConfMan.getActiveDomain())
@@ -328,11 +391,15 @@ extern "C" int scummvm_main(int argc, char *argv[]) {
 			}
 
 			// Quit unless an error occurred, or Return to launcher was requested
+			#ifndef FORCE_RTL
 			if (result == 0 && !g_system->getEventManager()->shouldRTL())
 				break;
-
+			#endif
 			// Reset RTL flag in case we want to load another engine
 			g_system->getEventManager()->resetRTL();
+			#ifdef FORCE_RTL
+			g_system->getEventManager()->resetQuit();
+			#endif
 
 			// Discard any command line options. It's unlikely that the user
 			// wanted to apply them to *all* games ever launched.
@@ -348,7 +415,7 @@ extern "C" int scummvm_main(int argc, char *argv[]) {
 			// screen to draw on yet.
 			warning("Could not find any engine capable of running the selected game");
 		}
-		
+
 		// reset the graphics to default
 		setupGraphics(system);
 		launcherDialog();

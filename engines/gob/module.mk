@@ -7,11 +7,10 @@ MODULE_OBJS := \
 	draw_v1.o \
 	draw_v2.o \
 	draw_bargon.o \
+	draw_fascin.o \
 	driver_vga.o \
+	expression.o \
 	game.o \
-	game_v1.o \
-	game_v2.o \
-	game_v6.o \
 	global.o \
 	gob.o \
 	goblin.o \
@@ -19,17 +18,18 @@ MODULE_OBJS := \
 	goblin_v2.o \
 	goblin_v3.o \
 	goblin_v4.o \
-	indeo3.o \
-	coktelvideo.o \
-	videoplayer.o \
+	hotspots.o \
 	init.o \
 	init_v1.o \
 	init_v2.o \
 	init_v3.o \
+	init_v4.o \
+	init_v6.o \
 	inter.o \
 	inter_v1.o \
 	inter_v2.o \
 	inter_bargon.o \
+	inter_fascin.o \
 	inter_v3.o \
 	inter_v4.o \
 	inter_v5.o \
@@ -37,33 +37,45 @@ MODULE_OBJS := \
 	map.o \
 	map_v1.o \
 	map_v2.o \
-	map_v4.o \
 	mult.o \
 	mult_v1.o \
 	mult_v2.o \
 	palanim.o \
-	parse.o \
-	parse_v1.o \
-	parse_v2.o \
-	saveload.o \
-	saveload_v2.o \
-	saveload_v3.o \
-	saveload_v4.o \
-	saveload_v6.o \
+	resources.o \
 	scenery.o \
 	scenery_v1.o \
 	scenery_v2.o \
+	script.o \
+	totfile.o \
 	util.o \
 	variables.o \
 	video.o \
 	video_v1.o \
 	video_v2.o \
 	video_v6.o \
+	videoplayer.o \
+	demos/demoplayer.o \
+	demos/scnplayer.o \
+	demos/batplayer.o \
+	save/savefile.o \
+	save/savehandler.o \
+	save/saveload.o \
+	save/saveload_v2.o \
+	save/saveload_v3.o \
+	save/saveload_v4.o \
+	save/saveload_v6.o \
+	save/saveload_playtoons.o \
+	save/saveconverter.o \
+	save/saveconverter_v2.o \
+	save/saveconverter_v3.o \
+	save/saveconverter_v4.o \
+	save/saveconverter_v6.o \
 	sound/sound.o \
 	sound/sounddesc.o \
 	sound/pcspeaker.o \
 	sound/adlib.o \
 	sound/infogrames.o \
+	sound/protracker.o \
 	sound/soundmixer.o \
 	sound/soundblaster.o \
 	sound/cdrom.o \

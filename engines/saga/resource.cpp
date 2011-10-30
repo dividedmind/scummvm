@@ -197,8 +197,6 @@ bool Resource::loadContext(ResourceContext *context) {
 bool Resource::createContexts() {
 	int i;
 	ResourceContext *context;
-	char musicFileName[256];
-	char soundFileName[256];
 	int soundFileIndex = 0;
 	int voicesFileIndex = 0;
 	bool digitalMusic = false;
@@ -251,6 +249,10 @@ bool Resource::createContexts() {
 	SoundFileInfo sfxFilesFTA2[] = {
 		{	"ftasound.hrs",		false	}
 	};
+
+	SoundFileInfo sfxFilesDino[] = {
+		{	"dinosnd.hrs",		false	},
+	};
 #endif
 
 	if (!soundFileInArray) {
@@ -270,9 +272,8 @@ bool Resource::createContexts() {
 #endif
 #ifdef ENABLE_SAGA2
 			case GID_DINO:
-				// TODO
-				curSoundfiles = NULL;
-				maxFile = 0;
+				curSoundfiles = sfxFilesDino;
+				maxFile = 1;
 				break;
 			case GID_FTA2:
 				curSoundfiles = sfxFilesFTA2;
@@ -285,7 +286,7 @@ bool Resource::createContexts() {
 			if (Common::File::exists(curSoundfiles[i].fileName)) {
 				_contextsCount++;
 				soundFileIndex = _contextsCount - 1;
-				strcpy(soundFileName, curSoundfiles[i].fileName);
+				strcpy(_soundFileName, curSoundfiles[i].fileName);
 				compressedSounds = curSoundfiles[i].isCompressed;
 				fileFound = true;
 				break;
@@ -343,11 +344,13 @@ bool Resource::createContexts() {
 			break;
 #endif
 #ifdef ENABLE_SAGA2
+		/*
 		case GID_DINO:
 			// TODO
 			curSoundfiles = NULL;
 			maxFile = 0;
 			break;
+		*/
 		case GID_FTA2:
 			curSoundfiles = voiceFilesFTA2;
 			maxFile = 1;
@@ -426,7 +429,7 @@ bool Resource::createContexts() {
 				digitalMusic = true;
 				compressedMusic = musicFilesITE[i].isCompressed;
 				fileFound = true;
-				strcpy(musicFileName, musicFilesITE[i].fileName);
+				strcpy(_musicFileName, musicFilesITE[i].fileName);
 				break;
 			}
 		}
@@ -446,11 +449,11 @@ bool Resource::createContexts() {
 
 		// For ITE, add the digital music file and sfx file information here
 		if (_vm->getGameId() == GID_ITE && digitalMusic && i == _contextsCount - 1) {
-			context->fileName = musicFileName;
-			context->fileType = GAME_MUSICFILE;
+			context->fileName = _musicFileName;
+			context->fileType = GAME_DIGITALMUSICFILE;
 			context->isCompressed = compressedMusic;
 		} else if (!soundFileInArray && i == soundFileIndex) {
-			context->fileName = soundFileName;
+			context->fileName = _soundFileName;
 			context->fileType = GAME_SOUNDFILE;
 			context->isCompressed = compressedSounds;
 		} else if (_vm->_voiceFilesExist && i == voicesFileIndex && !(_vm->getGameId() == GID_IHNM && _vm->isMacResources())) {

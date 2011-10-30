@@ -277,6 +277,7 @@ ConfigDialog::ConfigDialog(bool subtitleControls)
 	//
 
 	addVolumeControls(this, "ScummConfig.");
+	setVolumeSettingsState(true); // could disable controls by GUI options
 
 	//
 	// Subtitle speed and toggle controllers
@@ -285,6 +286,7 @@ ConfigDialog::ConfigDialog(bool subtitleControls)
 	if (subtitleControls) {
 		// Global talkspeed range of 0-255
 		addSubtitleControls(this, "ScummConfig.", 255);
+		setSubtitleSettingsState(true); // could disable controls by GUI options
 	}
 
 	//
@@ -296,12 +298,7 @@ ConfigDialog::ConfigDialog(bool subtitleControls)
 
 #ifdef SMALL_SCREEN_DEVICE
 	new GUI::ButtonWidget(this, "ScummConfig.Keys", "Keys", kKeysCmd, 'K');
-
-	//
-	// Create the sub dialog(s)
-	//
-
-	_keysDialog = new GUI::KeysDialog();
+	_keysDialog = NULL;
 #endif
 }
 
@@ -316,7 +313,13 @@ void ConfigDialog::handleCommand(CommandSender *sender, uint32 cmd, uint32 data)
 	case kKeysCmd:
 
 #ifdef SMALL_SCREEN_DEVICE
-		_keysDialog->runModal();
+	//
+	// Create the sub dialog(s)
+	//
+	_keysDialog = new GUI::KeysDialog();
+	_keysDialog->runModal();
+	delete _keysDialog;
+	_keysDialog = NULL;
 #endif
 		break;
 	default:

@@ -23,7 +23,6 @@
  *
  */
 
-
 #include "engines/engine.h"
 #include "scumm/player_v2a.h"
 #include "scumm/scumm.h"
@@ -73,7 +72,7 @@ class V2A_Sound_Unsupported : public V2A_Sound {
 public:
 	V2A_Sound_Unsupported() { }
 	virtual void start(Player_MOD *mod, int id, const byte *data) {
-		warning("player_v2a - sound %i not supported!", id);
+		warning("player_v2a - sound %i not supported", id);
 	}
 	virtual bool update() { return false; }
 	virtual void stop() { }

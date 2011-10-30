@@ -45,7 +45,7 @@ struct menuElementStruct {
 	int x;
 	int y;
 	int varA;
-	int varC;
+	bool selected;
 	unsigned char color;
 	gfxEntryStruct *gfx;
 	menuElementSubStruct *ptrSub;
@@ -91,13 +91,13 @@ struct dataFileName {
 };
 
 struct setHeaderEntry {
-	int32 field_0;		// offset ptr
+	int32 offset;		// offset ptr
 	int16 width;
 	int16 height;
 	int16 type;		// resource type, ie. sprites 0,1,4,5 and 8
 	int16 transparency;
-	int16 field_C;
-	int16 field_E;
+	int16 hotspotY;
+	int16 hotspotX;
 };
 
 struct volumeDataStruct {
@@ -132,6 +132,13 @@ struct dataFileEntry {
 	uint16 height;
 	dataFileEntrySub subData;
 };
+
+struct SoundEntry {
+	int16 frameNum;
+	uint16 frequency;
+	int16 volume;
+};
+
 /*
 struct systemStringsStruct {
 	int8 param;
@@ -147,7 +154,6 @@ extern int32 volumeDataLoaded;
 
 extern int16 numOfDisks;
 
-extern char musicName[15];
 extern char lastOverlay[15];
 extern char nextOverlay[15];
 
@@ -177,12 +183,16 @@ extern int16 volumeNumberOfEntry;
 
 extern int16 displayOn;
 
+extern int16 protectionCode;
+
+#define NUM_FILE_ENTRIES 257
+
 extern int16 globalVars[2000];
-extern dataFileEntry filesDatabase[257];
+extern dataFileEntry filesDatabase[NUM_FILE_ENTRIES];
 
 extern int16 bootOverlayNumber;
 
-extern int16 initVar5[12];
+extern SoundEntry soundList[4];
 
 extern opcodeTypeFunction opcodeTypeTable[64];
 
@@ -218,8 +228,6 @@ extern int16 sysY;
 extern int16 automoveInc;
 extern int16 automoveMax;
 extern int16 isMessage;
-extern int16 playMusic;
-extern int16 playMusic2;
 extern int16 automaticMode;
 extern int16 aniX;
 extern int16 aniY;
@@ -227,7 +235,7 @@ extern bool animationStart;
 
 extern int16 autoOvl;
 extern int16 var39;
-extern int16 entrerMenuJoueur;
+extern int16 playerMenuEnabled;
 extern int16 var39;
 extern int16 var41;
 extern int16 var42;

@@ -26,6 +26,7 @@
 #include "graphics/scaler/intern.h"
 #include "graphics/scaler/scalebit.h"
 #include "common/util.h"
+#include "common/system.h"
 
 int gBitFormat = 565;
 
@@ -73,19 +74,17 @@ uint32 hqx_redBlueMask = 0;
 uint32 hqx_green_redBlue_Mask = 0;
 
 // FIXME/TODO: The RGBtoYUV table sucks up 256 KB. This is bad.
-// In addition we never free them...
+// In addition we never free it...
 //
 // Note: a memory lookup table is *not* necessarily faster than computing
-// these things on the fly, because of its size. Both tables together, plus
-// the code, plus the input/output GFX data, won't fit in the cache on many
+// these things on the fly, because of its size. The table together with
+// the code, plus the input/output GFX data, may not fit in the cache on some
 // systems, so main memory has to be accessed, which is about the worst thing
 // that can happen to code which tries to be fast...
 //
-// So we should think about ways to get these smaller / removed. Maybe we can
-// use the same technique which is employed by our MPEG code to reduce the
-// size of the lookup tables at the cost of some additional computations? That
-// might actually result in a speedup, too, if done right (and the code code
-// might actually be suitable for AltiVec/MMX/SSE speedup).
+// So we should think about ways to get this smaller / removed. Maybe we can
+// use the same technique employed by our MPEG code to reduce the size of the
+// lookup table at the cost of some additional computations?
 //
 // Of course, the above is largely a conjecture, and the actual speed
 // differences are likely to vary a lot between different architectures and
@@ -117,29 +116,48 @@ void InitLUT(Graphics::PixelFormat format) {
 	hqx_low3bits = (7 << format.rShift) | (7 << format.gShift) | (7 << format.bShift),
 
 	hqx_highbits = format.RGBToColor(255,255,255) ^ hqx_lowbits;
-	
+
 	// FIXME: The following code only does the right thing
 	// if the color order is RGB or BGR, i.e., green is in the middle.
 	hqx_greenMask = format.RGBToColor(0,255,0);
 	hqx_redBlueMask = format.RGBToColor(255,0,255);
-	
+
 	hqx_green_redBlue_Mask = (hqx_greenMask << 16) | hqx_redBlueMask;
 #endif
 }
 #endif
 
 
+/** Lookup table for the DotMatrix scaler. */
+uint16 g_dotmatrix[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+
+/** Init the scaler subsystem. */
 void InitScalers(uint32 BitFormat) {
 	gBitFormat = BitFormat;
 
-#ifndef DISABLE_HQ_SCALERS
+	// FIXME: The pixelformat should be param to this function, not the bitformat.
+	// Until then, determine the pixelformat in other ways. Unfortunately,
+	// calling OSystem::getOverlayFormat() here might not be safe on all ports.
+	Graphics::PixelFormat format;
 	if (gBitFormat == 555) {
-		InitLUT(Graphics::createPixelFormat<555>());
+		format = Graphics::createPixelFormat<555>();
+	} else if (gBitFormat == 565) {
+		format = Graphics::createPixelFormat<565>();
+	} else {
+		assert(g_system);
+		format = g_system->getOverlayFormat();
 	}
-	if (gBitFormat == 565) {
-		InitLUT(Graphics::createPixelFormat<565>());
-	}
+
+#ifndef DISABLE_HQ_SCALERS
+	InitLUT(format);
 #endif
+
+	// Build dotmatrix lookup table for the DotMatrix scaler.
+	g_dotmatrix[0] = g_dotmatrix[10] = format.RGBToColor(0, 63, 0);
+	g_dotmatrix[1] = g_dotmatrix[11] = format.RGBToColor(0, 0, 63);
+	g_dotmatrix[2] = g_dotmatrix[8] = format.RGBToColor(63, 0, 0);
+	g_dotmatrix[4] = g_dotmatrix[6] =
+		g_dotmatrix[12] = g_dotmatrix[14] = format.RGBToColor(63, 63, 63);
 }
 
 void DestroyScalers(){
@@ -152,23 +170,74 @@ void DestroyScalers(){
 
 /**
  * Trivial 'scaler' - in fact it doesn't do any scaling but just copies the
- * source to the destionation.
+ * source to the destination.
  */
 void Normal1x(const uint8 *srcPtr, uint32 srcPitch, uint8 *dstPtr, uint32 dstPitch,
 							int width, int height) {
 	// Spot the case when it can all be done in 1 hit
-	if (((int)srcPitch == 2 * width) && ((int)dstPitch == 2 * width)) {
-		width *= height;
-		height = 1;
+	if ((srcPitch == sizeof(OverlayColor) * (uint)width) && (dstPitch == sizeof(OverlayColor) * (uint)width)) {
+		memcpy(dstPtr, srcPtr, sizeof(OverlayColor) * width * height);
+		return;
 	}
 	while (height--) {
-		memcpy(dstPtr, srcPtr, 2 * width);
+		memcpy(dstPtr, srcPtr, sizeof(OverlayColor) * width);
 		srcPtr += srcPitch;
 		dstPtr += dstPitch;
 	}
 }
 
 #ifndef DISABLE_SCALERS
+#ifdef USE_ARM_SCALER_ASM
+extern "C" void Normal2xAspectMask(const uint8  *srcPtr,
+                                         uint32  srcPitch,
+                                         uint8  *dstPtr,
+                                         uint32  dstPitch,
+                                         int     width,
+                                         int     height,
+                                         uint32  mask);
+                                   
+void Normal2xAspect(const uint8  *srcPtr,
+                          uint32  srcPitch,
+                          uint8  *dstPtr,
+                          uint32  dstPitch,
+                          int     width,
+                          int     height) {
+	if (gBitFormat == 565) {
+		Normal2xAspectMask(srcPtr,
+		                   srcPitch,
+		                   dstPtr,
+		                   dstPitch,
+		                   width,
+		                   height,
+		                   0x07e0F81F);
+	} else {
+		Normal2xAspectMask(srcPtr,
+		                   srcPitch,
+		                   dstPtr,
+		                   dstPitch,
+		                   width,
+		                   height,
+		                   0x03e07C1F);
+	}
+}
+
+extern "C" void Normal2xARM(const uint8  *srcPtr,
+                                  uint32  srcPitch,
+                                  uint8  *dstPtr,
+                                  uint32  dstPitch,
+                                  int     width,
+                                  int     height);
+
+void Normal2x(const uint8  *srcPtr,
+                    uint32  srcPitch,
+                    uint8  *dstPtr,
+                    uint32  dstPitch,
+                    int     width,
+                    int     height) {
+	Normal2xARM(srcPtr, srcPitch, dstPtr, dstPitch, width, height);
+}
+
+#else
 /**
  * Trivial nearest-neighbour 2x scaler.
  */
@@ -176,11 +245,12 @@ void Normal2x(const uint8 *srcPtr, uint32 srcPitch, uint8 *dstPtr, uint32 dstPit
 							int width, int height) {
 	uint8 *r;
 
-	assert(((long)dstPtr & 3) == 0);
+	assert(IS_ALIGNED(dstPtr, 4));
+	assert(sizeof(OverlayColor) == 2);
 	while (height--) {
 		r = dstPtr;
 		for (int i = 0; i < width; ++i, r += 4) {
-			uint32 color = *(((const uint16 *)srcPtr) + i);
+			uint32 color = *(((const OverlayColor *)srcPtr) + i);
 
 			color |= color << 16;
 
@@ -191,6 +261,7 @@ void Normal2x(const uint8 *srcPtr, uint32 srcPitch, uint8 *dstPtr, uint32 dstPit
 		dstPtr += dstPitch << 1;
 	}
 }
+#endif
 
 /**
  * Trivial nearest-neighbour 3x scaler.
@@ -201,7 +272,7 @@ void Normal3x(const uint8 *srcPtr, uint32 srcPitch, uint8 *dstPtr, uint32 dstPit
 	const uint32 dstPitch2 = dstPitch * 2;
 	const uint32 dstPitch3 = dstPitch * 3;
 
-	assert(((long)dstPtr & 1) == 0);
+	assert(IS_ALIGNED(dstPtr, 2));
 	while (height--) {
 		r = dstPtr;
 		for (int i = 0; i < width; ++i, r += 6) {
@@ -236,7 +307,7 @@ void Normal1o5xTemplate(const uint8 *srcPtr, uint32 srcPitch, uint8 *dstPtr, uin
 	const uint32 dstPitch3 = dstPitch * 3;
 	const uint32 srcPitch2 = srcPitch * 2;
 
-	assert(((long)dstPtr & 1) == 0);
+	assert(IS_ALIGNED(dstPtr, 2));
 	while (height > 0) {
 		r = dstPtr;
 		for (int i = 0; i < width; i += 2, r += 6) {
@@ -308,22 +379,10 @@ void TV2xTemplate(const uint8 *srcPtr, uint32 srcPitch, uint8 *dstPtr, uint32 ds
 }
 MAKE_WRAPPER(TV2x)
 
-static const uint16 dotmatrix_565[16] = {
-	0x01E0, 0x0007, 0x3800, 0x0000,
-	0x39E7, 0x0000, 0x39E7, 0x0000,
-	0x3800, 0x0000, 0x01E0, 0x0007,
-	0x39E7, 0x0000, 0x39E7, 0x0000
-};
-static const uint16 dotmatrix_555[16] = {
-	0x00E0, 0x0007, 0x1C00, 0x0000,
-	0x1CE7, 0x0000, 0x1CE7, 0x0000,
-	0x1C00, 0x0000, 0x00E0, 0x0007,
-	0x1CE7, 0x0000, 0x1CE7, 0x0000
-};
-
 static inline uint16 DOT_16(const uint16 *dotmatrix, uint16 c, int j, int i) {
-	return c - ((c >> 2) & *(dotmatrix + ((j & 3) << 2) + (i & 3)));
+	return c - ((c >> 2) & dotmatrix[((j & 3) << 2) + (i & 3)]);
 }
+
 
 // FIXME: This scaler doesn't quite work. Either it needs to know where on the
 // screen it's drawing, or the dirty rects will have to be adjusted so that
@@ -334,14 +393,7 @@ static inline uint16 DOT_16(const uint16 *dotmatrix, uint16 c, int j, int i) {
 void DotMatrix(const uint8 *srcPtr, uint32 srcPitch, uint8 *dstPtr, uint32 dstPitch,
 					int width, int height) {
 
-	const uint16 *dotmatrix;
-	if (gBitFormat == 565) {
-		dotmatrix = dotmatrix_565;
-	} else if (gBitFormat == 555) {
-		dotmatrix = dotmatrix_555;
-	} else {
-		error("Unknown bit format %d", gBitFormat);
-	}
+	const uint16 *dotmatrix = g_dotmatrix;
 
 	const uint32 nextlineSrc = srcPitch / sizeof(uint16);
 	const uint16 *p = (const uint16 *)srcPtr;

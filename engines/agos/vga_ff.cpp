@@ -70,7 +70,7 @@ int AGOSEngine::getScale(int16 y, int16 x) {
 
 void AGOSEngine::vc75_setScale() {
 	_baseY = vcReadNextWord();
-	_scale = (float)vcReadNextWord() / 1000000.;
+	_scale = vcReadNextWord() / 1000000.0f;
 }
 
 void AGOSEngine::vc76_setScaleXOffs() {
@@ -205,7 +205,7 @@ void AGOSEngine::vc83_playSoundLoop() {
 	int16 vol = vcReadNextWord();
 	int16 pan = vcReadNextWord();
 
-	loadSound(sound, pan, vol, 3);
+	loadSound(sound, pan, vol, Sound::TYPE_SFX5);
 }
 
 void AGOSEngine::vc84_stopSoundLoop() {

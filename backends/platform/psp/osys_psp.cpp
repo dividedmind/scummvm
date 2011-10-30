@@ -37,6 +37,9 @@
 #include "sound/mixer_intern.h"
 
 #include <pspgu.h>
+#include <pspdisplay.h>
+
+#include <time.h>
 
 #include "./trace.h"
 
@@ -85,9 +88,6 @@ OSystem_PSP::OSystem_PSP() : _screenWidth(0), _screenHeight(0), _overlayWidth(0)
 	sceDisplaySetMode(0, SCREEN_WIDTH, SCREEN_HEIGHT);
 	sceDisplaySetFrameBuf((char *)DisplayBuffer, 512, 1, 1);
 	sceDisplayWaitVblankStart();
-
-	// Correct pixel format ABBBBBGGGGGRRRRR
-	InitScalers(1555);
 }
 
 OSystem_PSP::~OSystem_PSP() {
@@ -117,7 +117,7 @@ void OSystem_PSP::setFeatureState(Feature f, bool enable) {
 }
 
 bool OSystem_PSP::getFeatureState(Feature f) {
-	return false;
+	return (f == kFeatureOverlaySupportsAlpha);
 }
 
 const OSystem::GraphicsMode* OSystem_PSP::getSupportedGraphicsModes() const {
@@ -633,12 +633,6 @@ void OSystem_PSP::quit() {
 void OSystem_PSP::getTimeAndDate(struct tm &t) const {
 	time_t curTime = time(0);
 	t = *localtime(&curTime);
-}
-
-void OSystem_PSP::setWindowCaption(const char *caption) {
-}
-
-void OSystem_PSP::displayMessageOnOSD(const char *msg) {
 }
 
 #define PSP_CONFIG_FILE "ms0:/scummvm.ini"

@@ -92,7 +92,7 @@ static void bitplaneToChunkyText(uint16 *w, uint8 colorDepth, uint8 *&dst) {
 	}
 }
 
-static void convertCompressedImage(const byte *src, byte *dst, uint8 colorDepth, int height, int width) {
+static void convertCompressedImage(const byte *src, byte *dst, uint8 colorDepth, int height, int width, bool horizontal = true) {
 	const byte *plane[kMaxColorDepth];
 	byte *uncptr[kMaxColorDepth];
 	int length, i, j;
@@ -119,10 +119,19 @@ static void convertCompressedImage(const byte *src, byte *dst, uint8 colorDepth,
 
 	uncbfroutptr = uncbfrout;
 	const int chunkSize = colorDepth > 4 ? 16 : 8;
-	for (i = 0; i < width / 16; ++i) {
+	if (horizontal)  {
 		for (j = 0; j < height; ++j) {
-			memcpy(dst + width * chunkSize / 16 * j + chunkSize * i, uncbfroutptr, chunkSize);
-			uncbfroutptr += chunkSize;
+			for (i = 0; i < width / 16; ++i) {
+				memcpy(dst + width * chunkSize / 16 * j + chunkSize * i, uncbfroutptr, chunkSize);
+				uncbfroutptr += chunkSize;
+			}
+		}
+	} else {
+		for (i = 0; i < width / 16; ++i) {
+			for (j = 0; j < height; ++j) {
+				memcpy(dst + width * chunkSize / 16 * j + chunkSize * i, uncbfroutptr, chunkSize);
+				uncbfroutptr += chunkSize;
+			}
 		}
 	}
 
@@ -137,7 +146,7 @@ byte *AGOSEngine::convertImage(VC10_state *state, bool compressed) {
 
 	uint8 colorDepth = 4;
 	if (getGameType() == GType_SIMON1) {
-		if (((_lockWord & 0x20) && !state->palette) || ((getFeatures() & GF_32COLOR) &&
+		if (((_videoLockOut & 0x20) && !state->palette) || ((getFeatures() & GF_32COLOR) &&
 			state->palette != 0xC0)) {
 			colorDepth = 5;
 		}
@@ -152,7 +161,7 @@ byte *AGOSEngine::convertImage(VC10_state *state, bool compressed) {
 	byte *dst = _planarBuf;
 
 	if (compressed) {
-		convertCompressedImage(src, dst, colorDepth, height, width);
+		convertCompressedImage(src, dst, colorDepth, height, width, (getGameType() == GType_PN));
 	} else {
 		length = (width + 15) / 16 * height;
 		for (i = 0; i < length; i++) {

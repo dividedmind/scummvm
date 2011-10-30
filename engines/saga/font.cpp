@@ -143,10 +143,7 @@ void Font::createOutline(FontData *font) {
 	int i;
 	int row;
 	int newByteWidth;
-	int oldByteWidth;
 	int newRowLength = 0;
-	size_t indexOffset = 0;
-	int index;
 	int currentByte;
 	unsigned char *basePointer;
 	unsigned char *srcPointer;
@@ -155,31 +152,20 @@ void Font::createOutline(FontData *font) {
 	unsigned char *destPointer3;
 	unsigned char charRep;
 
-
 	// Populate new font style character data
 	for (i = 0; i < FONT_CHARCOUNT; i++) {
 		newByteWidth = 0;
-		oldByteWidth = 0;
-		index = font->normal.fontCharEntry[i].index;
-		if ((index > 0) || (i == FONT_FIRSTCHAR)) {
-			index += indexOffset;
-		}
 
-		font->outline.fontCharEntry[i].index = index;
+		font->outline.fontCharEntry[i].index = newRowLength;
 		font->outline.fontCharEntry[i].tracking = font->normal.fontCharEntry[i].tracking;
 		font->outline.fontCharEntry[i].flag = font->normal.fontCharEntry[i].flag;
 
-		if (font->normal.fontCharEntry[i].width != 0) {
+		if (font->normal.fontCharEntry[i].width != 0)
 			newByteWidth = getByteLen(font->normal.fontCharEntry[i].width + 2);
-			oldByteWidth = getByteLen(font->normal.fontCharEntry[i].width);
-
-			if (newByteWidth > oldByteWidth) {
-				indexOffset++;
-			}
-		}
 
 		font->outline.fontCharEntry[i].width = font->normal.fontCharEntry[i].width + 2;
 		font->outline.fontCharEntry[i].byteWidth = newByteWidth;
+
 		newRowLength += newByteWidth;
 	}
 

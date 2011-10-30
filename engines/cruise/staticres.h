@@ -26,13 +26,39 @@
 #ifndef CRUISE_STATICRES_H
 #define CRUISE_STATICRES_H
 
+#include "common/scummsys.h"
+#include "cruise/cruise.h"
+
 namespace Cruise {
 
-enum MenuConstants {
-	SL_MENU, SL_SAVE, SL_LOAD, SL_RESTART, SL_QUIT, SL_INVENTORY
-};
+extern int actor_move[][13];
 
-const char **getStringList();
+extern int actor_end[][13];
+
+extern int actor_stat[][13];
+
+extern int actor_invstat[][13];
+
+extern short int english_fontCharacterTable[256];
+extern short int german_fontCharacterTable[256];
+extern short int spanish_fontCharacterTable[256];
+
+#define fontCharacterTable (_vm->getLanguage() == Common::DE_DEU ? \
+	german_fontCharacterTable : (_vm->getLanguage() == Common::ES_ESP ? \
+	spanish_fontCharacterTable : english_fontCharacterTable))
+
+// Mouse cursor data
+extern const byte mouseCursorNormal[];
+extern const byte mouseCursorDisk[];
+extern const byte mouseCursorCross[];
+extern const byte mouseCursorNoMouse[];
+extern const byte mouseCursorWalk[];
+extern const byte mouseCursorExit[];
+extern const byte mouseCursorMagnifyingGlass[];
+
+// Language strings
+extern const char *englishLanguageStrings[13];
+extern const char *frenchLanguageStrings[13];
 
 } // End of namespace Cruise
 

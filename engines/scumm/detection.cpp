@@ -35,9 +35,9 @@
 
 #include "scumm/detection.h"
 #include "scumm/detection_tables.h"
-#include "scumm/scumm.h"
-#include "scumm/intern.h"
 #include "scumm/he/intern_he.h"
+#include "scumm/scumm_v0.h"
+#include "scumm/scumm_v8.h"
 
 #include "engines/metaengine.h"
 
@@ -681,7 +681,7 @@ using namespace Scumm;
 class ScummMetaEngine : public MetaEngine {
 public:
 	virtual const char *getName() const;
-	virtual const char *getCopyright() const;
+	virtual const char *getOriginalCopyright() const;
 
 	virtual bool hasFeature(MetaEngineFeature f) const;
 	virtual GameList getSupportedGames() const;
@@ -723,6 +723,32 @@ GameDescriptor ScummMetaEngine::findGame(const char *gameid) const {
 	return AdvancedDetector::findGameID(gameid, gameDescriptions, obsoleteGameIDsTable);
 }
 
+static Common::String generatePreferredTarget(const DetectorResult &x) {
+	Common::String res(x.game.gameid);
+
+	if (x.game.preferredTag) {
+		res = res + "-" + x.game.preferredTag;
+	}
+
+	if (x.game.features & GF_DEMO) {
+		res = res + "-demo";
+	}
+
+	// Append the platform, if a non-standard one has been specified.
+	if (x.game.platform != Common::kPlatformPC && x.game.platform != Common::kPlatformUnknown) {
+		// HACK: For CoMI, it's pointless to encode the fact that it's for Windows
+		if (x.game.id != GID_CMI)
+			res = res + "-" + Common::getPlatformAbbrev(x.game.platform);
+	}
+
+	// Append the language, if a non-standard one has been specified
+	if (x.language != Common::EN_ANY && x.language != Common::UNK_LANG) {
+		res = res + "-" + Common::getLanguageCode(x.language);
+	}
+
+	return res;
+}
+
 GameList ScummMetaEngine::detectGames(const Common::FSList &fslist) const {
 	GameList detectedGames;
 	Common::List<DetectorResult> results;
@@ -737,33 +763,35 @@ GameList ScummMetaEngine::detectGames(const Common::FSList &fslist) const {
 		const PlainGameDescriptor *g = findPlainGameDescriptor(x->game.gameid, gameDescriptions);
 		assert(g);
 		GameDescriptor dg(x->game.gameid, g->description, x->language, x->game.platform);
-		dg.updateDesc(x->extra);	// Append additional information, if set, to the description.
+
+		// Append additional information, if set, to the description.
+		dg.updateDesc(x->extra);
 
 		// Compute and set the preferred target name for this game.
 		// Based on generateComplexID() in advancedDetector.cpp.
-		Common::String res(x->game.gameid);
+		dg["preferredtarget"] = generatePreferredTarget(*x);
 
-		if (x->game.preferredTag) {
-			res = res + "-" + x->game.preferredTag;
+		// HACK: Detect and distinguish the FM-TOWNS demos
+		if (x->game.platform == Common::kPlatformFMTowns && (x->game.features & GF_DEMO)) {
+			if (x->md5 == "2d388339d6050d8ccaa757b64633954e") {
+				// Indy + Loom demo
+				dg.description() = "Indiana Jones and the Last Crusade & Loom";
+				dg.updateDesc(x->extra);
+				dg["preferredtarget"] = "indyloom";
+			} else if (x->md5 == "77f5c9cc0986eb729c1a6b4c8823bbae") {
+				// Zak + Loom demo
+				dg.description() = "Zak McKracken & Loom";
+				dg.updateDesc(x->extra);
+				dg["preferredtarget"] = "zakloom";
+			} else if (x->md5 == "3938ee1aa4433fca9d9308c9891172b1") {
+				// Indy + Zak demo
+				dg.description() = "Indiana Jones and the Last Crusade & Zak McKracken";
+				dg.updateDesc(x->extra);
+				dg["preferredtarget"] = "indyzak";
+			}
 		}
 
-		if (x->game.features & GF_DEMO) {
-			res = res + "-demo";
-		}
-
-		// Append the platform, if a non-standard one has been specified.
-		if (x->game.platform != Common::kPlatformPC && x->game.platform != Common::kPlatformUnknown) {
-			// HACK: For CoMI, it's pointless to encode the fact that it's for Windows
-			if (x->game.id != GID_CMI)
-				res = res + "-" + Common::getPlatformAbbrev(x->game.platform);
-		}
-
-		// Append the language, if a non-standard one has been specified
-		if (x->language != Common::EN_ANY && x->language != Common::UNK_LANG) {
-			res = res + "-" + Common::getLanguageCode(x->language);
-		}
-
-		dg["preferredtarget"] = res;
+		dg.setGUIOptions(x->game.guioptions);
 
 		detectedGames.push_back(dg);
 	}
@@ -880,6 +908,10 @@ Common::Error ScummMetaEngine::createInstance(OSystem *syst, Engine **engine) co
 	if (res.game.platform == Common::kPlatformFMTowns && res.game.version == 3)
 		res.game.midi = MDT_TOWNS;
 
+	// If the GUI options were updated, we catch this here and update them in the users config
+	// file transparently.
+	Common::updateGameGUIOptions(res.game.guioptions);
+
 	// Finally, we have massaged the GameDescriptor to our satisfaction, and can
 	// instantiate the appropriate game engine. Hooray!
 	switch (res.game.version) {
@@ -976,7 +1008,7 @@ const char *ScummMetaEngine::getName() const {
 		"]";
 }
 
-const char *ScummMetaEngine::getCopyright() const {
+const char *ScummMetaEngine::getOriginalCopyright() const {
 	return "LucasArts SCUMM Games (C) LucasArts\n"
 	       "Humongous SCUMM Games (C) Humongous";
 }
@@ -994,7 +1026,7 @@ SaveStateList ScummMetaEngine::listSaves(const char *target) const {
 	Common::String pattern = target;
 	pattern += ".s??";
 
-	filenames = saveFileMan->listSavefiles(pattern.c_str());
+	filenames = saveFileMan->listSavefiles(pattern);
 	sort(filenames.begin(), filenames.end());	// Sort (hopefully ensuring we are sorted numerically..)
 
 	SaveStateList saveList;
@@ -1003,7 +1035,7 @@ SaveStateList ScummMetaEngine::listSaves(const char *target) const {
 		int slotNum = atoi(file->c_str() + file->size() - 2);
 
 		if (slotNum >= 0 && slotNum <= 99) {
-			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
+			Common::InSaveFile *in = saveFileMan->openForLoading(*file);
 			if (in) {
 				Scumm::getSavegameName(in, saveDesc, 0);	// FIXME: heversion?!?
 				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc));
@@ -1017,12 +1049,12 @@ SaveStateList ScummMetaEngine::listSaves(const char *target) const {
 
 void ScummMetaEngine::removeSaveState(const char *target, int slot) const {
 	Common::String filename = ScummEngine::makeSavegameName(target, slot, false);
-	g_system->getSavefileManager()->removeSavefile(filename.c_str());
+	g_system->getSavefileManager()->removeSavefile(filename);
 }
 
 SaveStateDescriptor ScummMetaEngine::querySaveMetaInfos(const char *target, int slot) const {
 	Common::String filename = ScummEngine::makeSavegameName(target, slot, false);
-	Common::InSaveFile *in = g_system->getSavefileManager()->openForLoading(filename.c_str());
+	Common::InSaveFile *in = g_system->getSavefileManager()->openForLoading(filename);
 
 	if (!in)
 		return SaveStateDescriptor();

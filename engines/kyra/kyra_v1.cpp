@@ -24,12 +24,13 @@
  */
 
 #include "common/config-manager.h"
+#include "common/EventRecorder.h"
 
 #include "sound/mididrv.h"
 #include "sound/mixer.h"
 
 #include "kyra/kyra_v1.h"
-#include "kyra/sound.h"
+#include "kyra/sound_intern.h"
 #include "kyra/resource.h"
 #include "kyra/screen.h"
 #include "kyra/text.h"
@@ -52,7 +53,6 @@ KyraEngine_v1::KyraEngine_v1(OSystem *system, const GameFlags &flags)
 	_gameSpeed = 60;
 	_tickLength = (uint8)(1000.0 / _gameSpeed);
 
-	_speechFile = "";
 	_trackMap = 0;
 	_trackMapSize = 0;
 	_lastMusicCommand = -1;
@@ -82,7 +82,7 @@ KyraEngine_v1::KyraEngine_v1(OSystem *system, const GameFlags &flags)
 	Common::addDebugChannel(kDebugLevelMovie, "Movie", "Movie debug level");
 	Common::addDebugChannel(kDebugLevelTimer, "Timer", "Timer debug level");
 
-	system->getEventManager()->registerRandomSource(_rnd, "kyra");
+	g_eventRec.registerRandomSource(_rnd, "kyra");
 }
 
 ::GUI::Debugger *KyraEngine_v1::getDebugger() {
@@ -95,19 +95,14 @@ void KyraEngine_v1::pauseEngineIntern(bool pause) {
 }
 
 Common::Error KyraEngine_v1::init() {
-	registerDefaultSettings();
-
 	// Setup mixer
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));
 	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, ConfMan.getInt("music_volume"));
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, ConfMan.getInt("speech_volume"));
 
 	if (!_flags.useDigSound) {
-		// We prefer AdLib over native MIDI, since our AdLib playback code is much
-		// more mature than our MIDI player. For example we are missing MT-32 support
-		// and it seems our MIDI playback code has threading issues (see bug #1506583
-		// "KYRA1: Crash on exceeded polyphony" for more information).
-		int midiDriver = MidiDriver::detectMusicDriver(MDT_MIDI | MDT_ADLIB/* | MDT_PREFER_MIDI*/);
+		// We prefer AdLib over MIDI, since generally AdLib is better supported
+		int midiDriver = MidiDriver::detectMusicDriver(MDT_PCSPK | MDT_MIDI | MDT_ADLIB);
 
 		if (_flags.platform == Common::kPlatformFMTowns) {
 			if (_flags.gameID == GI_KYRA1)
@@ -121,19 +116,31 @@ Common::Error KyraEngine_v1::init() {
 				_sound = new SoundTownsPC98_v2(this, _mixer);
 		} else if (midiDriver == MD_ADLIB) {
 			_sound = new SoundAdlibPC(this, _mixer);
-			assert(_sound);
 		} else {
-			bool native_mt32 = ((midiDriver == MD_MT32) || ConfMan.getBool("native_mt32"));
+			Sound::kType type;
 
-			MidiDriver *driver = MidiDriver::createMidi(midiDriver);
+			if (midiDriver == MD_PCSPK)
+				type = Sound::kPCSpkr;
+			else if (midiDriver == MD_MT32 || ConfMan.getBool("native_mt32"))
+				type = Sound::kMidiMT32;
+			else
+				type = Sound::kMidiGM;
+
+			MidiDriver *driver = 0;
+
+			if (midiDriver == MD_PCSPK) {
+				driver = new MidiDriver_PCSpeaker(_mixer);
+			} else {
+				driver = MidiDriver::createMidi(midiDriver);
+				if (type == Sound::kMidiMT32)
+					driver->property(MidiDriver::PROP_CHANNEL_MASK, 0x03FE);
+			}
+
 			assert(driver);
-			if (native_mt32)
-				driver->property(MidiDriver::PROP_CHANNEL_MASK, 0x03FE);
 
-			SoundMidiPC *soundMidiPc = new SoundMidiPC(this, _mixer, driver);
+			SoundMidiPC *soundMidiPc = new SoundMidiPC(this, _mixer, driver, type);
 			_sound = soundMidiPc;
 			assert(_sound);
-			soundMidiPc->hasNativeMT32(native_mt32);
 
 			// Unlike some SCUMM games, it's not that the MIDI sounds are
 			// missing. It's just that at least at the time of writing they
@@ -143,9 +150,10 @@ Common::Error KyraEngine_v1::init() {
 				assert(adlib);
 
 				_sound = new MixedSoundDriver(this, _mixer, soundMidiPc, adlib);
-				assert(_sound);
 			}
 		}
+
+		assert(_sound);
 	}
 
 	if (_sound)
@@ -161,7 +169,11 @@ Common::Error KyraEngine_v1::init() {
 		// but the static resource loader and the sequence player will
 		// need correct IDs.
 		if (_res->exists("scene1.cps"))
+#ifdef ENABLE_LOL
 			_flags.gameID = GI_LOL;
+#else
+			error("Lands of Lore demo is not supported in this build.");
+#endif // !ENABLE_LOL
 	}
 
 	_staticres = new StaticResource(this);
@@ -224,11 +236,13 @@ void KyraEngine_v1::setMousePos(int x, int y) {
 	_system->warpMouse(x, y);
 }
 
-int KyraEngine_v1::checkInput(Button *buttonList, bool mainLoop) {
-	debugC(9, kDebugLevelMain, "KyraEngine_v1::checkInput(%p, %d)", (const void*)buttonList, mainLoop);
+int KyraEngine_v1::checkInput(Button *buttonList, bool mainLoop, int eventFlag) {
 	_isSaveAllowed = mainLoop;
 	updateInput();
 	_isSaveAllowed = false;
+
+	if (mainLoop)
+		checkAutosave();
 
 	int keys = 0;
 	int8 mouseWheel = 0;
@@ -253,57 +267,97 @@ int KyraEngine_v1::checkInput(Button *buttonList, bool mainLoop) {
 					saveGameState(saveLoadSlot, savegameName, 0);
 				}
 			} else if (event.kbd.flags == Common::KBD_CTRL) {
-				if (event.kbd.keycode == 'd')
-					_debugger->attach();
-				else if (event.kbd.keycode == 'q')
+				if (event.kbd.keycode == 'd') {
+					if (_debugger)
+						_debugger->attach();
+				} else if (event.kbd.keycode == 'q') {
 					quitGame();
+				}
 			} else {
 				switch(event.kbd.keycode) {
-					case Common::KEYCODE_SPACE:
-						keys = 100;
-						break;
-					case Common::KEYCODE_RETURN:
-						keys = 101;
-						break;
-					case Common::KEYCODE_UP:
-						keys = 110;
-						break;
-					case Common::KEYCODE_RIGHT:
-						keys = 111;
-						break;
-					case Common::KEYCODE_DOWN:
-						keys = 112;
-						break;
-					case Common::KEYCODE_LEFT:
-						keys = 113;
-						break;
-					default:
-						break;
+				case Common::KEYCODE_SPACE:
+					keys = 61;
+					break;
+				case Common::KEYCODE_RETURN:
+					keys = 43;
+					break;
+				case Common::KEYCODE_UP:
+				case Common::KEYCODE_KP8:
+					keys = 96;
+					break;
+				case Common::KEYCODE_RIGHT:
+				case Common::KEYCODE_KP6:
+					keys = 102;
+					break;
+				case Common::KEYCODE_DOWN:
+				case Common::KEYCODE_KP2:
+					keys = 97;
+					break;
+				case Common::KEYCODE_LEFT:
+				case Common::KEYCODE_KP4:
+					keys = 92;
+					break;
+				case Common::KEYCODE_HOME:
+				case Common::KEYCODE_KP7:
+					keys = 91;
+					break;
+				case Common::KEYCODE_PAGEUP:
+				case Common::KEYCODE_KP9:
+					keys = 101;
+					break;
+				case Common::KEYCODE_F1:
+					keys = 112;
+					break;
+				case Common::KEYCODE_F2:
+					keys = 113;
+					break;
+				case Common::KEYCODE_F3:
+					keys = 114;
+					break;
+				case Common::KEYCODE_o:
+					keys = 25;
+					break;
+				case Common::KEYCODE_r:
+					keys = 20;
+					break;
+				case Common::KEYCODE_SLASH:
+					keys = 55;
+					break;
+				case Common::KEYCODE_ESCAPE:
+					keys = 110;
+					break;
+				default:
+					keys = 0;
 				}
+
+				// When we got an keypress, which we might need to handle,
+				// break the event loop and pass it to GUI code.
+				if (keys)
+					breakLoop = true;
 			}
 			break;
 
-		case Common::EVENT_MOUSEMOVE: {
-			Common::Point pos = getMousePos();
-			_mouseX = pos.x;
-			_mouseY = pos.y;
-			} break;
-
 		case Common::EVENT_LBUTTONDOWN:
 		case Common::EVENT_LBUTTONUP: {
-			Common::Point pos = getMousePos();
-			_mouseX = pos.x;
-			_mouseY = pos.y;
+			_mouseX = event.mouse.x;
+			_mouseY = event.mouse.y;
+			if (_flags.useHiResOverlay) {
+				_mouseX >>= 1;
+				_mouseY >>= 1;
+			}
 			keys = (event.type == Common::EVENT_LBUTTONDOWN ? 199 : (200 | 0x800));
 			breakLoop = true;
 			} break;
 
 		case Common::EVENT_RBUTTONDOWN:
 		case Common::EVENT_RBUTTONUP: {
-			Common::Point pos = getMousePos();
-			_mouseX = pos.x;
-			_mouseY = pos.y;
-			keys = (event.type == Common::EVENT_RBUTTONDOWN ? 299 : (300 | 0x800));
+			_mouseX = event.mouse.x;
+			_mouseY = event.mouse.y;
+			if (_flags.useHiResOverlay) {
+				_mouseX >>= 1;
+				_mouseY >>= 1;
+			}
+			keys = (event.type == Common::EVENT_RBUTTONDOWN ? 201 : (202 | 0x800));
 			breakLoop = true;
 			} break;
 
@@ -329,20 +383,29 @@ int KyraEngine_v1::checkInput(Button *buttonList, bool mainLoop) {
 	}
 
 	GUI *guiInstance = gui();
-	if (guiInstance)
-		return guiInstance->processButtonList(buttonList, keys | 0x8000, mouseWheel);
-	else
+	if (guiInstance) {
+		if (keys)
+			return guiInstance->processButtonList(buttonList, keys | eventFlag, mouseWheel);
+		else
+			return guiInstance->processButtonList(buttonList, 0, mouseWheel);
+	} else {
 		return keys;
+	}
 }
 
 void KyraEngine_v1::updateInput() {
 	Common::Event event;
 
+	bool updateScreen = false;
+
 	while (_eventMan->pollEvent(event)) {
 		switch (event.type) {
 		case Common::EVENT_KEYDOWN:
-			if (event.kbd.keycode == '.' || event.kbd.keycode == Common::KEYCODE_ESCAPE)
-				_eventList.push_back(Event(event, true));
+			if (event.kbd.keycode == '.' || event.kbd.keycode == Common::KEYCODE_ESCAPE ||
+				event.kbd.keycode == Common::KEYCODE_SPACE || event.kbd.keycode == Common::KEYCODE_RETURN ||
+				event.kbd.keycode == Common::KEYCODE_UP || event.kbd.keycode == Common::KEYCODE_RIGHT ||
+				event.kbd.keycode == Common::KEYCODE_DOWN || event.kbd.keycode == Common::KEYCODE_LEFT)
+					_eventList.push_back(Event(event, true));
 			else if (event.kbd.keycode == 'q' && event.kbd.flags == Common::KBD_CTRL)
 				quitGame();
 			else
@@ -350,14 +413,17 @@ void KyraEngine_v1::updateInput() {
 			break;
 
 		case Common::EVENT_LBUTTONDOWN:
+		case Common::EVENT_RBUTTONDOWN:
 			_eventList.push_back(Event(event, true));
 			break;
 
 		case Common::EVENT_MOUSEMOVE:
-			screen()->updateScreen();
-			// fall through
+			if (screen()->isMouseVisible())
+				updateScreen = true;
+			break;
 
 		case Common::EVENT_LBUTTONUP:
+		case Common::EVENT_RBUTTONUP:
 		case Common::EVENT_WHEELUP:
 		case Common::EVENT_WHEELDOWN:
 			_eventList.push_back(event);
@@ -367,6 +433,12 @@ void KyraEngine_v1::updateInput() {
 			break;
 		}
 	}
+
+	// TODO: Check whether we should really call Screen::updateScreen here.
+	// We might simply want to call OSystem::updateScreen instead, since Screen::updateScreen
+	// copies changed screen parts to the screen buffer, which might not be desired.
+	if (updateScreen)
+		screen()->updateScreen();
 }
 
 void KyraEngine_v1::removeInputTop() {
@@ -396,23 +468,32 @@ void KyraEngine_v1::resetSkipFlag(bool removeEvent) {
 
 
 int KyraEngine_v1::setGameFlag(int flag) {
+	assert((flag >> 3) >= 0 && (flag >> 3) <= ARRAYSIZE(_flagsTable));
 	_flagsTable[flag >> 3] |= (1 << (flag & 7));
 	return 1;
 }
 
 int KyraEngine_v1::queryGameFlag(int flag) const {
+	assert((flag >> 3) >= 0 && (flag >> 3) <= ARRAYSIZE(_flagsTable));
 	return ((_flagsTable[flag >> 3] >> (flag & 7)) & 1);
 }
 
 int KyraEngine_v1::resetGameFlag(int flag) {
+	assert((flag >> 3) >= 0 && (flag >> 3) <= ARRAYSIZE(_flagsTable));
 	_flagsTable[flag >> 3] &= ~(1 << (flag & 7));
 	return 0;
 }
 
 void KyraEngine_v1::delayUntil(uint32 timestamp, bool updateTimers, bool update, bool isMainLoop) {
-	while (_system->getMillis() < timestamp && !shouldQuit()) {
-		if (timestamp - _system->getMillis() >= 10)
-			delay(10, update, isMainLoop);
+	const uint32 curTime = _system->getMillis();
+	if (curTime > timestamp)
+		return;
+
+	uint32 del = timestamp - curTime;
+	while (del && !shouldQuit()) {
+		uint32 step = MIN<uint32>(del, _tickLength);
+		delay(step, update, isMainLoop);
+		del -= step;
 	}
 }
 
@@ -425,7 +506,7 @@ void KyraEngine_v1::delayWithTicks(int ticks) {
 }
 
 void KyraEngine_v1::registerDefaultSettings() {
-	if (_flags.platform == Common::kPlatformFMTowns || _flags.platform == Common::kPlatformPC98)
+	if (_flags.platform == Common::kPlatformFMTowns)
 		ConfMan.registerDefault("cdaudio", true);
 	if (_flags.fanLang != Common::UNK_LANG) {
 		// HACK/WORKAROUND: Since we can't use registerDefault here to overwrite
@@ -442,7 +523,7 @@ void KyraEngine_v1::readSettings() {
 	_configMusic = 0;
 
 	if (!ConfMan.getBool("music_mute")) {
-		if (_flags.platform == Common::kPlatformFMTowns || _flags.platform == Common::kPlatformPC98)
+		if (_flags.platform == Common::kPlatformFMTowns)
 			_configMusic = ConfMan.getBool("cdaudio") ? 2 : 1;
 		else
 			_configMusic = 1;
@@ -472,7 +553,7 @@ void KyraEngine_v1::writeSettings() {
 
 	ConfMan.setInt("walkspeed", _configWalkspeed);
 	ConfMan.setBool("music_mute", _configMusic == 0);
-	if (_flags.gameID != GI_KYRA3)
+	if (_flags.platform == Common::kPlatformFMTowns)
 		ConfMan.setBool("cdaudio", _configMusic == 2);
 	ConfMan.setBool("sfx_mute", _configSounds == 0);
 
@@ -488,7 +569,6 @@ void KyraEngine_v1::writeSettings() {
 	default:	// Voice & Text
 		speechMute = false;
 		subtitles = true;
-		break;
 	}
 
 	if (_sound) {
@@ -512,27 +592,27 @@ bool KyraEngine_v1::textEnabled() {
 	return !_flags.isTalkie || (_configVoice == 0 || _configVoice == 2);
 }
 
-inline int convertValueToMixer(int value) {
+int KyraEngine_v1::convertVolumeToMixer(int value) {
 	value -= 2;
 	return (value * Audio::Mixer::kMaxMixerVolume) / 95;
 }
 
-inline int convertValueFromMixer(int value) {
+int KyraEngine_v1::convertVolumeFromMixer(int value) {
 	return (value * 95) / Audio::Mixer::kMaxMixerVolume + 2;
 }
 
 void KyraEngine_v1::setVolume(kVolumeEntry vol, uint8 value) {
 	switch (vol) {
 	case kVolumeMusic:
-		ConfMan.setInt("music_volume", convertValueToMixer(value));
+		ConfMan.setInt("music_volume", convertVolumeToMixer(value));
 		break;
 
 	case kVolumeSfx:
-		ConfMan.setInt("sfx_volume", convertValueToMixer(value));
+		ConfMan.setInt("sfx_volume", convertVolumeToMixer(value));
 		break;
 
 	case kVolumeSpeech:
-		ConfMan.setInt("speech_volume", convertValueToMixer(value));
+		ConfMan.setInt("speech_volume", convertVolumeToMixer(value));
 		break;
 	}
 
@@ -547,16 +627,16 @@ void KyraEngine_v1::setVolume(kVolumeEntry vol, uint8 value) {
 uint8 KyraEngine_v1::getVolume(kVolumeEntry vol) {
 	switch (vol) {
 	case kVolumeMusic:
-		return convertValueFromMixer(ConfMan.getInt("music_volume"));
+		return convertVolumeFromMixer(ConfMan.getInt("music_volume"));
 		break;
 
 	case kVolumeSfx:
-		return convertValueFromMixer(ConfMan.getInt("sfx_volume"));
+		return convertVolumeFromMixer(ConfMan.getInt("sfx_volume"));
 		break;
 
 	case kVolumeSpeech:
 		if (speechEnabled())
-			return convertValueFromMixer(ConfMan.getInt("speech_volume"));
+			return convertVolumeFromMixer(ConfMan.getInt("speech_volume"));
 		else
 			return 2;
 		break;

@@ -120,15 +120,40 @@ static const int IHNMTextStringIdsLUT[56] = {
 	31	// Both
 };
 
+#define buttonRes0 0x42544E00
+#define buttonRes1 0x42544E01
+
 Interface::Interface(SagaEngine *vm) : _vm(vm) {
 	byte *resource;
 	size_t resourceLength;
 	int i;
 
+#if 0
+	// FTA2 related test code
+
+	// TODO: this will probably have to be moved to a new class
+	// It's left here for now till the code differences are figured out
+	if (_vm->getGameId() == GID_FTA2) {
+		_interfaceContext = _vm->_resource->getContext(GAME_IMAGEFILE);
+		_vm->_resource->loadResource(_interfaceContext, 22, resource, resourceLength);	// Julian's portrait
+
+		_vm->decodeBGImage(resource, resourceLength, &_mainPanel.image,
+			&_mainPanel.imageLength, &_mainPanel.imageWidth, &_mainPanel.imageHeight);
+
+		free(resource);
+		return;
+	}
+#endif
+
 	// Load interface module resource file context
 	_interfaceContext = _vm->_resource->getContext(GAME_RESOURCEFILE);
 	if (_interfaceContext == NULL) {
 		error("Interface::Interface() resource context not found");
+	}
+
+	// Do nothing for SAGA2 games for now
+	if (_vm->isSaga2()) {
+		return;
 	}
 
 	// Main panel
@@ -137,11 +162,6 @@ Interface::Interface(SagaEngine *vm) : _vm(vm) {
 
 	for (i = 0; i < kVerbTypeIdsMax; i++) {
 		_verbTypeToPanelButton[i] = NULL;
-	}
-
-	// Do nothing for SAGA2 games for now
-	if (_vm->isSaga2()) {
-		return;
 	}
 
 	for (i = 0; i < _mainPanel.buttonsCount; i++) {
@@ -1417,6 +1437,8 @@ void Interface::handleOptionUpdate(const Point& mousePoint) {
 			_optionPanel.calcPanelButtonRect(_optionSaveFileSlider, rect);
 
 			mouseY = mousePoint.y - rect.top -_optionSaveFileMouseOff;
+			if (mouseY < 0)
+				mouseY = 0;
 
 			if (totalFiles - visibleFiles <= 0) {
 				_optionSaveFileTop = 0;
@@ -1425,7 +1447,7 @@ void Interface::handleOptionUpdate(const Point& mousePoint) {
 					(_optionSaveFileSlider->height - _optionSaveRectSlider.height());
 			}
 
-			_optionSaveFileTop = CLIP<uint>(_optionSaveFileTop, 0, _vm->getSaveFilesCount() - _vm->getDisplayInfo().optionSaveFileVisible);
+			_optionSaveFileTop = CLIP<uint>(_optionSaveFileTop, 0, totalFiles - visibleFiles);
 			calcOptionSaveSlider();
 		}
 	}
@@ -2186,10 +2208,10 @@ void Interface::drawButtonBox(const Rect& rect, ButtonKind kind, bool down) {
 	_vm->_gfx->setPixelColor(x, ye, cornerColor);
 	_vm->_gfx->setPixelColor(xe, y, cornerColor);
 	_vm->_gfx->setPixelColor(xe, ye, cornerColor);
- 	_vm->_gfx->hLine(x + 1, y, x + w - 2, frameColor);
- 	_vm->_gfx->hLine(x + 1, ye, x + w - 2, frameColor);
- 	_vm->_gfx->vLine(x, y + 1, y + h - 2, frameColor);
- 	_vm->_gfx->vLine(xe, y + 1, y + h - 2, frameColor);
+	_vm->_gfx->hLine(x + 1, y, x + w - 2, frameColor);
+	_vm->_gfx->hLine(x + 1, ye, x + w - 2, frameColor);
+	_vm->_gfx->vLine(x, y + 1, y + h - 2, frameColor);
+	_vm->_gfx->vLine(xe, y + 1, y + h - 2, frameColor);
 
 	x++;
 	y++;

@@ -303,20 +303,11 @@ void AGOSEngine::renderString(uint vgaSpriteId, uint color, uint width, uint hei
 	p = dst + vgaSpriteId * 8;
 
 	if (getGameType() == GType_FF || getGameType() == GType_PP) {
+		if (vgaSpriteId != 1)
+			WRITE_LE_UINT32(p, READ_LE_UINT32(p - 8) + READ_LE_UINT16(p - 4) * READ_LE_UINT16(p - 2));
+
 		WRITE_LE_UINT16(p + 4, height);
 		WRITE_LE_UINT16(p + 6, width);
-		// We need to adjust the offset to the next buffer to be right
-		// after this one. By default, each buffer is only 9000 bytes
-		// long. A two-line string can very well be more than twice
-		// that size!
-		//
-		// The original seems to make an exception for sprite id 1, but
-		// even the first conversation option can be a long line. For
-		// some reason, I cannot reproduce the text corruption with the
-		// original interpreter, though, so maybe we're missing some
-		// detail here. Let's hope it's safe to always adjust the
-		// buffer size anyway.
-		WRITE_LE_UINT16(p + 8, READ_LE_UINT32(p) + width * height);
 	} else {
 		WRITE_BE_UINT16(p + 4, height);
 		WRITE_BE_UINT16(p + 6, width);
@@ -493,6 +484,14 @@ void AGOSEngine::openTextWindow() {
 		_textWindow = openWindow(8, 144, 24, 6, 1, 0, 15);
 }
 
+#ifdef ENABLE_PN
+void AGOSEngine_PN::windowPutChar(WindowBlock *window, byte c, byte b) {
+	if (_mousePrintFG || _wiped)
+		return;
+	AGOSEngine::windowPutChar(window, c, b);
+}
+#endif
+
 void AGOSEngine::windowPutChar(WindowBlock *window, byte c, byte b) {
 	byte width = 6;
 
@@ -610,18 +609,26 @@ void AGOSEngine::windowNewLine(WindowBlock *window) {
 	window->textColumnOffset = (getGameType() == GType_ELVIRA2) ? 4 : 0;
 	window->textLength = 0;
 
-	if (window->textRow == window->height) {
-		if (getGameType() == GType_ELVIRA1 || getGameType() == GType_ELVIRA2 ||
-			getGameType() == GType_WW) {
+	if (getGameType() == GType_PN) {
+		window->textRow++;
+		if (window->textRow == window->height) {
 			windowScroll(window);
+			window->textRow--;
 		}
 	} else {
-		window->textRow++;
+		if (window->textRow == window->height) {
+			if (getGameType() == GType_ELVIRA1 || getGameType() == GType_ELVIRA2 ||
+				getGameType() == GType_WW) {
+				windowScroll(window);
+			}
+		} else {
+			window->textRow++;
+		}
 	}
 }
 
 void AGOSEngine::windowScroll(WindowBlock *window) {
-	_lockWord |= 0x8000;
+	_videoLockOut |= 0x8000;
 
 	if (window->height != 1) {
 		Graphics::Surface *screen = _system->lockScreen();
@@ -632,13 +639,13 @@ void AGOSEngine::windowScroll(WindowBlock *window) {
 		w = window->width * 8;
 		h = (window->height -1) * 8;
 
-		dst = (byte *)screen->pixels + window->y * _screenWidth + window->x * 8;
-		src = dst + 8 * _screenWidth;
+		dst = (byte *)screen->pixels + window->y * screen->pitch + window->x * 8;
+		src = dst + 8 * screen->pitch;
 
 		do {
 			memcpy(dst, src, w);
-			src += _screenWidth;
-			dst += _screenWidth;
+			src += screen->pitch;
+			dst += screen->pitch;
 		} while (--h);
 
 		_system->unlockScreen();
@@ -646,7 +653,7 @@ void AGOSEngine::windowScroll(WindowBlock *window) {
 
 	colorBlock(window, window->x * 8, (window->height - 1) * 8 + window->y, window->width * 8, 8);
 
-	_lockWord &= ~0x8000;
+	_videoLockOut &= ~0x8000;
 }
 } // End of namespace AGOS
 

@@ -71,8 +71,15 @@ public:
 	bool _saveLoadAllowed;
 
 	// Engine APIs
-	virtual Common::Error init();
-	virtual Common::Error go();
+	Common::Error init();
+	Common::Error go();
+	virtual Common::Error run() {
+		Common::Error err;
+		err = init();
+		if (err != Common::kNoError)
+			return err;
+		return go();
+	}
 	virtual bool hasFeature(EngineFeature f) const;
 	virtual void syncSoundSettings();
 	virtual void pauseEngineIntern(bool pause);
@@ -84,7 +91,7 @@ public:
 	bool saveGame(uint8 slotNumber, Common::String &caption);
 	Common::String *detectSave(int slotNumber);
 	uint8 saveVersion() { return _saveVersion; }
-	void GUIError(const char *msg, ...);
+	void GUIError(const char *msg, ...) GCC_PRINTF(2, 3);
 
 	uint32 getFeatures() const;
 	Common::Language getLanguage() const;
@@ -92,17 +99,17 @@ public:
 	virtual GUI::Debugger *getDebugger();
 	bool isEGA() const { return (getFeatures() & GF_EGA) != 0; }
 
-	virtual Common::Error loadGameState(int slot) { 
+	virtual Common::Error loadGameState(int slot) {
 		return loadGame(slot) ? Common::kReadingFailed : Common::kNoError;
 	}
 	virtual Common::Error saveGameState(int slot, const char *desc) {
 		String s(desc);
 		return saveGame(slot, s) ? Common::kReadingFailed : Common::kNoError;
 	}
-	virtual bool canLoadGameStateCurrently() { 
+	virtual bool canLoadGameStateCurrently() {
 		return _saveLoadAllowed && !Fights.isFighting();
 	}
-	virtual bool canSaveGameStateCurrently() { 
+	virtual bool canSaveGameStateCurrently() {
 		return _saveLoadAllowed && !Fights.isFighting();
 	}
 };

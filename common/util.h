@@ -28,6 +28,15 @@
 #include "common/scummsys.h"
 #include "common/str.h"
 
+
+/**
+ * Check whether a given pointer is aligned correctly.
+ * Note that 'alignment' must be a power of two!
+ */
+#define IS_ALIGNED(value, alignment) \
+          ((((size_t)value) & ((alignment) - 1)) == 0)
+
+
 #ifdef MIN
 #undef MIN
 #endif
@@ -47,6 +56,9 @@ template<typename T> inline T CLIP (T v, T amin, T amax)
  */
 template<typename T> inline void SWAP(T &a, T &b) { T tmp = a; a = b; b = tmp; }
 
+/**
+ * Macro which determines the number of entries in a fixed size array.
+ */
 #define ARRAYSIZE(x) ((int)(sizeof(x) / sizeof(x[0])))
 
 
@@ -84,8 +96,9 @@ private:
  * @param data	the data to be dumped
  * @param len	the lenght of that data
  * @param bytesPerLine	number of bytes to print per line (default: 16)
+ * @param startOffset	shift the shown offsets by the starting offset (default: 0)
  */
-extern void hexdump(const byte * data, int len, int bytesPerLine = 16);
+extern void hexdump(const byte * data, int len, int bytesPerLine = 16, int startOffset = 0);
 
 
 /**
@@ -159,6 +172,7 @@ enum Language {
 	RU_RUS,
 	ES_ESP,
 	SE_SWE,
+	HU_HUN,
 
 	UNK_LANG = -1	// Use default language (i.e. none specified)
 };
@@ -192,6 +206,7 @@ enum Platform {
 	kPlatformWindows,
 	kPlatformNES,
 	kPlatformC64,
+	kPlatformCoCo3,
 	kPlatformLinux,
 	kPlatformAcorn,
 	kPlatformSegaCD,
@@ -201,6 +216,7 @@ enum Platform {
 	kPlatformApple2GS,
 	kPlatformPC98,
 	kPlatformWii,
+	kPlatformPSX,
 
 	kPlatformUnknown = -1
 };
@@ -254,6 +270,26 @@ extern RenderMode parseRenderMode(const String &str);
 extern const char *getRenderModeCode(RenderMode id);
 extern const char *getRenderModeDescription(RenderMode id);
 
+enum GameGUIOption {
+	GUIO_NONE		= 0,
+	GUIO_NOSUBTITLES	= (1 << 0),
+	GUIO_NOMUSIC		= (1 << 1),
+	GUIO_NOSPEECH		= (1 << 2),
+	GUIO_NOSFX		= (1 << 3),
+	GUIO_NOMIDI		= (1 << 4),
+	GUIO_NOLAUNCHLOAD	= (1 << 5)
+};
+
+bool checkGameGUIOption(GameGUIOption option, const String &str);
+uint32 parseGameGUIOptions(const String &str);
+String getGameGUIOptionsDescription(uint32 options);
+
+/**
+ * Updates the GUI options of the current config manager
+ * domain, when they differ to the ones passed as
+ * parameter.
+ */
+void updateGameGUIOptions(const uint32 options);
 
 }	// End of namespace Common
 
@@ -273,7 +309,7 @@ inline void warning(const char *s, ...) {}
 #else
 
 /**
- * Print a warning message to the text console (stdout).
+ * Print a warning message to the text console (stderr).
  * Automatically prepends the text "WARNING: " and appends
  * an exclamation mark and a newline.
  */

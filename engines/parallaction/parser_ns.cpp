@@ -25,6 +25,7 @@
 
 
 #include "parallaction/parallaction.h"
+#include "parallaction/parser.h"
 #include "parallaction/sound.h"
 
 namespace Parallaction {
@@ -210,15 +211,9 @@ DECLARE_ANIM_PARSER(commands)  {
 DECLARE_ANIM_PARSER(type)  {
 	debugC(7, kDebugParser, "ANIM_PARSER(type) ");
 
-	if (_tokens[2][0] != '\0') {
-		ctxt.a->_type = ((4 + _vm->_objectsNames->lookup(_tokens[2])) << 16) & 0xFFFF0000;
-	}
-	int16 _si = _zoneTypeNames->lookup(_tokens[1]);
-	if (_si != Table::notFound) {
-		ctxt.a->_type |= 1 << (_si-1);
-		if (/*((ctxt.a->_type & 0xFFFF) != kZoneNone) &&*/ ((ctxt.a->_type & 0xFFFF) != kZoneCommand)) {
-			parseZoneTypeBlock(ctxt.a);
-		}
+	ctxt.a->_type = buildZoneType(_tokens[1], _tokens[2]);
+	if ((ACTIONTYPE(ctxt.a) != 0) && (ACTIONTYPE(ctxt.a) != kZoneCommand)) {
+		parseZoneTypeBlock(ctxt.a);
 	}
 
 	ctxt.a->_flags |= 0x1000000;
@@ -290,7 +285,13 @@ DECLARE_ANIM_PARSER(endanimation)  {
 void LocationParser_ns::parseAnimation(AnimationList &list, char *name) {
 	debugC(5, kDebugParser, "parseAnimation(name: %s)", name);
 
+	if (_vm->_location.findAnimation(name)) {
+		_script->skip("endanimation");
+		return;
+	}
+
 	AnimationPtr a(new Animation);
+	_zoneProg++;
 
 	strncpy(a->_name, name, ZONENAME_LENGTH);
 	a->_flags |= kFlagsIsAnimation;
@@ -321,6 +322,9 @@ void ProgramParser_ns::parseInstruction() {
 
 	InstructionPtr inst(new Instruction);
 	ctxt.inst = inst;
+
+	_currentInstruction = _program->_instructions.size();
+
 	_parser->parseStatement();
 	_program->_instructions.push_back(inst);
 
@@ -328,11 +332,9 @@ void ProgramParser_ns::parseInstruction() {
 }
 
 void ProgramParser_ns::parse(Script *script, ProgramPtr program) {
-
 	_script = script;
 	_program = program;
 
-	ctxt.openIf = nullInstructionPtr;
 	ctxt.end = false;
 	ctxt.locals = program->_locals;
 
@@ -343,7 +345,7 @@ void ProgramParser_ns::parse(Script *script, ProgramPtr program) {
 	} while (!ctxt.end);
 	_parser->popTables();
 
-	program->_ip = program->_instructions.begin();
+	program->_ip = 0;
 }
 
 void Parallaction_ns::loadProgram(AnimationPtr a, const char *filename) {
@@ -606,15 +608,15 @@ DECLARE_COMMAND_PARSER(flags)  {
 		do {
 			char _al = _vm->_localFlagNames->lookup(_tokens[ctxt.nextToken]);
 			ctxt.nextToken++;
-			ctxt.cmd->u._flags |= 1 << (_al - 1);
+			ctxt.cmd->_flags |= 1 << (_al - 1);
 		} while (!scumm_stricmp(_tokens[ctxt.nextToken++], "|"));
 		ctxt.nextToken--;
 	} else {
-		ctxt.cmd->u._flags |= kFlagsGlobal;
+		ctxt.cmd->_flags |= kFlagsGlobal;
 		do {
 			char _al = _vm->_globalFlagsNames->lookup(_tokens[1]);
 			ctxt.nextToken++;
-			ctxt.cmd->u._flags |= 1 << (_al - 1);
+			ctxt.cmd->_flags |= 1 << (_al - 1);
 		} while (!scumm_stricmp(_tokens[ctxt.nextToken++], "|"));
 		ctxt.nextToken--;
 	}
@@ -629,10 +631,7 @@ DECLARE_COMMAND_PARSER(zone)  {
 
 	createCommand(_parser->_lookup);
 
-	ctxt.cmd->u._zone = _vm->_location.findZone(_tokens[ctxt.nextToken]);
-	if (!ctxt.cmd->u._zone) {
-		saveCommandForward(_tokens[ctxt.nextToken], ctxt.cmd);
-	}
+	ctxt.cmd->_zoneName = _tokens[ctxt.nextToken];
 	ctxt.nextToken++;
 
 	parseCommandFlags();
@@ -645,7 +644,7 @@ DECLARE_COMMAND_PARSER(location)  {
 
 	createCommand(_parser->_lookup);
 
-	ctxt.cmd->u._string = strdup(_tokens[ctxt.nextToken]);
+	ctxt.cmd->_string = strdup(_tokens[ctxt.nextToken]);
 	ctxt.nextToken++;
 
 	parseCommandFlags();
@@ -658,7 +657,7 @@ DECLARE_COMMAND_PARSER(invObject)  {
 
 	createCommand(_parser->_lookup);
 
-	ctxt.cmd->u._object = 4 + _vm->_objectsNames->lookup(_tokens[ctxt.nextToken]);
+	ctxt.cmd->_object = 4 + _vm->_objectsNames->lookup(_tokens[ctxt.nextToken]);
 	ctxt.nextToken++;
 
 	parseCommandFlags();
@@ -671,7 +670,7 @@ DECLARE_COMMAND_PARSER(call)  {
 
 	createCommand(_parser->_lookup);
 
-	ctxt.cmd->u._callable = _vm->_callableNames->lookup(_tokens[ctxt.nextToken]) - 1;
+	ctxt.cmd->_callable = _vm->_callableNames->lookup(_tokens[ctxt.nextToken]) - 1;
 	ctxt.nextToken++;
 
 	parseCommandFlags();
@@ -693,9 +692,9 @@ DECLARE_COMMAND_PARSER(move)  {
 
 	createCommand(_parser->_lookup);
 
-	ctxt.cmd->u._move.x = atoi(_tokens[ctxt.nextToken]);
+	ctxt.cmd->_move.x = atoi(_tokens[ctxt.nextToken]);
 	ctxt.nextToken++;
-	ctxt.cmd->u._move.y = atoi(_tokens[ctxt.nextToken]);
+	ctxt.cmd->_move.y = atoi(_tokens[ctxt.nextToken]);
 	ctxt.nextToken++;
 
 	parseCommandFlags();
@@ -711,18 +710,18 @@ DECLARE_COMMAND_PARSER(endcommands)  {
 	ctxt.endcommands = true;
 }
 
-void LocationParser_ns::parseCommandFlag(CommandPtr cmd, const char *flag, Table *table, bool checkTrap) {
+void LocationParser_ns::parseCommandFlag(CommandPtr cmd, const char *flag, Table *table) {
 
 	if (!scumm_stricmp(flag, "exit")) {
 		cmd->_flagsOn |= kFlagsExit;
 	} else
-	if (checkTrap && !scumm_stricmp(flag, "exittrap")) {
+	if (!scumm_stricmp(flag, "exittrap")) {
 		cmd->_flagsOn |= kFlagsExit;
 	} else
 	if (!scumm_stricmp(flag, "enter")) {
 		cmd->_flagsOn |= kFlagsEnter;
 	} else
-	if (checkTrap && !scumm_stricmp(flag, "entertrap")) {
+	if (!scumm_stricmp(flag, "entertrap")) {
 		cmd->_flagsOn |= kFlagsEnter;
 	} else
 	if (!scumm_strnicmp(flag, "no", 2)) {
@@ -750,7 +749,7 @@ void LocationParser_ns::parseCommandFlags() {
 	if (!scumm_stricmp(_tokens[_si], "flags")) {
 		do {
 			_si++;
-			parseCommandFlag(cmd, _tokens[_si], _vm->_localFlagNames, true);
+			parseCommandFlag(cmd, _tokens[_si], _vm->_localFlagNames);
 			_si++;
 		} while (!scumm_stricmp(_tokens[_si], "|"));
 	}
@@ -758,7 +757,7 @@ void LocationParser_ns::parseCommandFlags() {
 	if (!scumm_stricmp(_tokens[_si], "gflags")) {
 		do {
 			_si++;
-			parseCommandFlag(cmd, _tokens[_si], _vm->_globalFlagsNames, false);
+			parseCommandFlag(cmd, _tokens[_si], _vm->_globalFlagsNames);
 			_si++;
 		} while (!scumm_stricmp(_tokens[_si], "|"));
 		cmd->_flagsOn |= kFlagsGlobal;
@@ -774,26 +773,8 @@ void LocationParser_ns::createCommand(uint id) {
 	ctxt.nextToken = 1;
 	ctxt.cmd = CommandPtr(new Command);
 	ctxt.cmd->_id = id;
+	ctxt.cmd->_valid = true;
 
-}
-
-void LocationParser_ns::saveCommandForward(const char *name, CommandPtr cmd) {
-	assert(_numForwardedCommands < MAX_FORWARDS);
-
-	strcpy(_forwardedCommands[_numForwardedCommands].name, name);
-	_forwardedCommands[_numForwardedCommands].cmd = cmd;
-
-	_numForwardedCommands++;
-}
-
-void LocationParser_ns::resolveCommandForwards() {
-	for (uint i = 0; i < _numForwardedCommands; i++) {
-		_forwardedCommands[i].cmd->u._zone = _vm->_location.findZone(_forwardedCommands[i].name);
-		if (_forwardedCommands[i].cmd->u._zone == 0) {
-			warning("Cannot find zone '%s' into current location script. This may be a bug in the original scripts.\n", _forwardedCommands[i].name);
-		}
-	}
-	_numForwardedCommands = 0;
 }
 
 void LocationParser_ns::parseCommands(CommandList& list) {
@@ -808,51 +789,39 @@ void LocationParser_ns::parseCommands(CommandList& list) {
 Dialogue *LocationParser_ns::parseDialogue() {
 	debugC(7, kDebugParser, "parseDialogue()");
 
-	uint16 numQuestions = 0;
-
 	Dialogue *dialogue = new Dialogue;
 	assert(dialogue);
-
-	Table forwards(NUM_QUESTIONS);
 
 	_script->readLineToken(true);
 
 	while (scumm_stricmp(_tokens[0], "enddialogue")) {
-		if (scumm_stricmp(_tokens[0], "Question")) continue;
-
-		forwards.addData(_tokens[1]);
-
-		dialogue->_questions[numQuestions++] = parseQuestion();
-
+		if (!scumm_stricmp(_tokens[0], "question")) {
+			Question *q = new Question(_tokens[1]);
+			assert(q);
+			parseQuestion(q);
+			dialogue->addQuestion(q);
+		}
 		_script->readLineToken(true);
 	}
-
-	resolveDialogueForwards(dialogue, numQuestions, forwards);
 
 	debugC(7, kDebugParser, "parseDialogue() done");
 
 	return dialogue;
 }
 
-Question *LocationParser_ns::parseQuestion() {
-
-	Question *question = new Question;
-	assert(question);
-
-	question->_text = parseDialogueString();
+void LocationParser_ns::parseQuestion(Question *q) {
+	q->_text = parseDialogueString();
 
 	_script->readLineToken(true);
-	question->_mood = atoi(_tokens[0]);
+	q->_mood = atoi(_tokens[0]);
 
 	uint16 numAnswers = 0;
 
 	_script->readLineToken(true);
 	while (scumm_stricmp(_tokens[0], "endquestion")) {	// parse answers
-		question->_answers[numAnswers] = parseAnswer();
+		q->_answers[numAnswers] = parseAnswer();
 		numAnswers++;
 	}
-
-	return question;
 }
 
 void LocationParser_ns::parseAnswerBody(Answer *answer) {
@@ -916,27 +885,6 @@ Answer *LocationParser_ns::parseAnswer() {
 	return answer;
 }
 
-void LocationParser_ns::resolveDialogueForwards(Dialogue *dialogue, uint numQuestions, Table &forwards) {
-
-	for (uint16 i = 0; i < numQuestions; i++) {
-		Question *question = dialogue->_questions[i];
-
-		for (uint16 j = 0; j < NUM_ANSWERS; j++) {
-			Answer *answer = question->_answers[j];
-			if (answer == 0) continue;
-
-			int16 index = forwards.lookup(answer->_followingName.c_str());
-			answer->_followingName.clear();
-
-			if (index == Table::notFound)
-				answer->_followingQuestion = 0;
-			else
-				answer->_followingQuestion = dialogue->_questions[index - 1];
-
-		}
-	}
-
-}
 
 Common::String LocationParser_ns::parseDialogueString() {
 	char buf[400];
@@ -970,7 +918,7 @@ DECLARE_LOCATION_PARSER(location)  {
 	}
 
 	strcpy(_vm->_location._name, _tokens[1]);
-	_vm->switchBackground(_vm->_location._name, mask);
+	_vm->changeBackground(_vm->_location._name, mask);
 
 	if (_tokens[2][0] != '\0') {
 		_vm->_char._ani->setX(atoi(_tokens[2]));
@@ -1084,12 +1032,11 @@ DECLARE_LOCATION_PARSER(music)  {
 	debugC(7, kDebugParser, "LOCATION_PARSER(music) ");
 
 	if (_vm->getPlatform() == Common::kPlatformAmiga)
-		_vm->_soundMan->setMusicFile(_tokens[1]);
+		_vm->_soundMan->execute(SC_SETMUSICFILE, _tokens[1]);
 }
 
 void LocationParser_ns::parse(Script *script) {
-
-	_numForwardedCommands = 0;
+	_zoneProg = 0;
 
 	ctxt.end = false;
 	_script = script;
@@ -1102,8 +1049,6 @@ void LocationParser_ns::parse(Script *script) {
 		_parser->parseStatement();
 	} while (!ctxt.end);
 	_parser->popTables();
-
-	resolveCommandForwards();
 }
 
 void LocationParser_ns::parsePointList(PointList &list) {
@@ -1306,16 +1251,21 @@ DECLARE_ZONE_PARSER(moveto)  {
 	ctxt.z->_moveTo.y = atoi(_tokens[2]);
 }
 
+uint32 LocationParser_ns::buildZoneType(const char *t0, const char* t1) {
+	uint16 it = 0;
+	if (t1[0] != '\0') {
+		it = 4 + _vm->_objectsNames->lookup(t1);
+	}
+	uint16 zt = _zoneTypeNames->lookup(t0);
+	return PACK_ZONETYPE(zt, it);
+}
+
 
 DECLARE_ZONE_PARSER(type)  {
 	debugC(7, kDebugParser, "ZONE_PARSER(type) ");
 
-	if (_tokens[2][0] != '\0') {
-		ctxt.z->_type = (4 + _vm->_objectsNames->lookup(_tokens[2])) << 16;
-	}
-	int16 _si = _zoneTypeNames->lookup(_tokens[1]);
-	if (_si != Table::notFound) {
-		ctxt.z->_type |= 1 << (_si - 1);
+	ctxt.z->_type = buildZoneType(_tokens[1], _tokens[2]);
+	if (ACTIONTYPE(ctxt.z) != 0) {
 		parseZoneTypeBlock(ctxt.z);
 	}
 
@@ -1360,6 +1310,7 @@ void LocationParser_ns::parseZone(ZoneList &list, char *name) {
 	}
 
 	ZonePtr z(new Zone);
+	_zoneProg++;
 
 	strncpy(z->_name, name, ZONENAME_LENGTH);
 
@@ -1376,203 +1327,118 @@ void LocationParser_ns::parseZone(ZoneList &list, char *name) {
 
 
 void LocationParser_ns::parseGetData(ZonePtr z) {
-
-	GetData *data = new GetData;
-
-	do {
-
-		if (!scumm_stricmp(_tokens[0], "file")) {
-
-			bool visible = (z->_flags & kFlagsRemove) == 0;
-
-			GfxObj *obj = _vm->_gfx->loadGet(_tokens[1]);
-			obj->frame = 0;
-			obj->x = z->getX();
-			obj->y = z->getY();
-			_vm->_gfx->showGfxObj(obj, visible);
-
-			data->gfxobj = obj;
-		}
-
-		if (!scumm_stricmp(_tokens[0], "icon")) {
-			data->_icon = 4 + _vm->_objectsNames->lookup(_tokens[1]);
-		}
-
-		_script->readLineToken(true);
-	} while (scumm_stricmp(_tokens[0], "endzone") && scumm_stricmp(_tokens[0], "endanimation"));
-
-	z->u.get = data;
-
+	TypeData *data = &z->u;
+	if (!scumm_stricmp(_tokens[0], "file")) {
+		GfxObj *obj = _vm->_gfx->loadGet(_tokens[1]);
+		obj->frame = 0;
+		obj->x = z->getX();
+		obj->y = z->getY();
+		obj->_prog = _zoneProg;
+		bool visible = (z->_flags & kFlagsRemove) == 0;
+		_vm->_gfx->showGfxObj(obj, visible);
+		data->_gfxobj = obj;
+	} else
+	if (!scumm_stricmp(_tokens[0], "icon")) {
+		data->_getIcon = 4 + _vm->_objectsNames->lookup(_tokens[1]);
+	}
 }
-
 
 void LocationParser_ns::parseExamineData(ZonePtr z) {
-
-	ExamineData *data = new ExamineData;
-
-	do {
-
-		if (!scumm_stricmp(_tokens[0], "file")) {
-			data->_filename = strdup(_tokens[1]);
-		}
-		if (!scumm_stricmp(_tokens[0], "desc")) {
-			data->_description = parseComment();
-		}
-
-		_script->readLineToken(true);
-	} while (scumm_stricmp(_tokens[0], "endzone") && scumm_stricmp(_tokens[0], "endanimation"));
-
-	z->u.examine = data;
-
+	TypeData *data = &z->u;
+	if (!scumm_stricmp(_tokens[0], "file")) {
+		data->_filename = strdup(_tokens[1]);
+	} else
+	if (!scumm_stricmp(_tokens[0], "desc")) {
+		data->_examineText = parseComment();
+	}
 }
-
 
 void LocationParser_ns::parseDoorData(ZonePtr z) {
-
-	DoorData *data = new DoorData;
-
-	do {
-
-		if (!scumm_stricmp(_tokens[0], "slidetext")) {
-			strcpy(_vm->_location._slideText[0], _tokens[1]);
-//				printf("%s\t", _slideText[0]);
-			strcpy(_vm->_location._slideText[1], _tokens[2]);
-		}
-
-		if (!scumm_stricmp(_tokens[0], "location")) {
-			data->_location = strdup(_tokens[1]);
-		}
-
-		if (!scumm_stricmp(_tokens[0], "file")) {
-//				printf("file: '%s'", _tokens[0]);
-
-			uint16 frame = (z->_flags & kFlagsClosed ? 0 : 1);
-
-			GfxObj *obj = _vm->_gfx->loadDoor(_tokens[1]);
-			obj->frame = frame;
-			obj->x = z->getX();
-			obj->y = z->getY();
-			_vm->_gfx->showGfxObj(obj, true);
-
-			data->gfxobj = obj;
-		}
-
-		if (!scumm_stricmp(_tokens[0],	"startpos")) {
-			data->_startPos.x = atoi(_tokens[1]);
-			data->_startPos.y = atoi(_tokens[2]);
-			data->_startFrame = atoi(_tokens[3]);
-		}
-
-		_script->readLineToken(true);
-	} while (scumm_stricmp(_tokens[0], "endzone") && scumm_stricmp(_tokens[0], "endanimation"));
-
-	z->u.door = data;
-
+	TypeData *data = &z->u;
+	if (!scumm_stricmp(_tokens[0], "slidetext")) {
+		_vm->_location._slideText[0] = _tokens[1];
+		_vm->_location._slideText[1] = _tokens[2];
+	} else
+	if (!scumm_stricmp(_tokens[0], "location")) {
+		data->_doorLocation = strdup(_tokens[1]);
+	} else
+	if (!scumm_stricmp(_tokens[0], "file")) {
+		GfxObj *obj = _vm->_gfx->loadDoor(_tokens[1]);
+		obj->frame = z->_flags & kFlagsClosed ? 0 : 1;
+		obj->x = z->getX();
+		obj->y = z->getY();
+		_vm->_gfx->showGfxObj(obj, true);
+		data->_gfxobj = obj;
+	} else
+	if (!scumm_stricmp(_tokens[0],	"startpos")) {
+		data->_doorStartPos.x = atoi(_tokens[1]);
+		data->_doorStartPos.y = atoi(_tokens[2]);
+		data->_doorStartFrame = atoi(_tokens[3]);
+	}
 }
 
-
 void LocationParser_ns::parseMergeData(ZonePtr z) {
-
-	MergeData *data = new MergeData;
-
-	do {
-
-		if (!scumm_stricmp(_tokens[0], "obj1")) {
-			data->_obj1 = 4 + _vm->_objectsNames->lookup(_tokens[1]);
-		}
-		if (!scumm_stricmp(_tokens[0], "obj2")) {
-			data->_obj2 = 4 + _vm->_objectsNames->lookup(_tokens[1]);
-		}
-		if (!scumm_stricmp(_tokens[0], "newobj")) {
-			data->_obj3 = 4 + _vm->_objectsNames->lookup(_tokens[1]);
-		}
-
-		_script->readLineToken(true);
-	} while (scumm_stricmp(_tokens[0], "endzone") && scumm_stricmp(_tokens[0], "endanimation"));
-
-	z->u.merge = data;
-
+	TypeData *data = &z->u;
+	if (!scumm_stricmp(_tokens[0], "obj1")) {
+		data->_mergeObj1 = 4 + _vm->_objectsNames->lookup(_tokens[1]);
+	} else
+	if (!scumm_stricmp(_tokens[0], "obj2")) {
+		data->_mergeObj2 = 4 + _vm->_objectsNames->lookup(_tokens[1]);
+	} else
+	if (!scumm_stricmp(_tokens[0], "newobj")) {
+		data->_mergeObj3 = 4 + _vm->_objectsNames->lookup(_tokens[1]);
+	}
 }
 
 void LocationParser_ns::parseHearData(ZonePtr z) {
-
-	HearData *data = new HearData;
-
-	do {
-
-		if (!scumm_stricmp(_tokens[0], "sound")) {
-			strcpy(data->_name, _tokens[1]);
-			data->_channel = atoi(_tokens[2]);
-		}
-		if (!scumm_stricmp(_tokens[0], "freq")) {
-			data->_freq = atoi(_tokens[1]);
-		}
-
-		_script->readLineToken(true);
-	} while (scumm_stricmp(_tokens[0], "endzone") && scumm_stricmp(_tokens[0], "endanimation"));
-
-	z->u.hear = data;
-
+	TypeData *data = &z->u;
+	if (!scumm_stricmp(_tokens[0], "sound")) {
+		data->_filename = _tokens[1];
+		data->_hearChannel = atoi(_tokens[2]);
+	} else
+	if (!scumm_stricmp(_tokens[0], "freq")) {
+		data->_hearFreq = atoi(_tokens[1]);
+	}
 }
 
 void LocationParser_ns::parseSpeakData(ZonePtr z) {
-
-	SpeakData *data = new SpeakData;
-
-	do {
-
-		if (!scumm_stricmp(_tokens[0], "file")) {
-			strcpy(data->_name, _tokens[1]);
-		}
-		if (!scumm_stricmp(_tokens[0], "Dialogue")) {
-			data->_dialogue = parseDialogue();
-		}
-
-		_script->readLineToken(true);
-	} while (scumm_stricmp(_tokens[0], "endzone") && scumm_stricmp(_tokens[0], "endanimation"));
-
-	z->u.speak = data;
-
+	TypeData *data = &z->u;
+	if (!scumm_stricmp(_tokens[0], "file")) {
+		data->_filename = _tokens[1];
+	} else
+	if (!scumm_stricmp(_tokens[0], "Dialogue")) {
+		data->_speakDialogue = parseDialogue();
+	}
 }
 
+typedef void (LocationParser_ns::*ZoneTypeParser)(ZonePtr);
+static ZoneTypeParser parsers[] = {
+	0,	// no type
+	&LocationParser_ns::parseExamineData,
+	&LocationParser_ns::parseDoorData,
+	&LocationParser_ns::parseGetData,
+	&LocationParser_ns::parseMergeData,
+	0,	// taste
+	&LocationParser_ns::parseHearData,
+	0,	// feel
+	&LocationParser_ns::parseSpeakData,
+	0,	// none
+	0,	// trap
+	0,	// you
+	0	// command
+};
 
 void LocationParser_ns::parseZoneTypeBlock(ZonePtr z) {
 	debugC(7, kDebugParser, "parseZoneTypeBlock(name: %s, type: %x)", z->_name, z->_type);
 
-	switch (z->_type & 0xFFFF) {
-	case kZoneExamine:	// examine Zone alloc
-		parseExamineData(z);
-		break;
-
-	case kZoneDoor: // door Zone alloc
-		parseDoorData(z);
-		break;
-
-	case kZoneGet:	// get Zone alloc
-		parseGetData(z);
-		break;
-
-	case kZoneMerge:	// merge Zone alloc
-		parseMergeData(z);
-		break;
-
-	case kZoneHear: // hear Zone alloc
-		parseHearData(z);
-		break;
-
-	case kZoneSpeak:	// speak Zone alloc
-		parseSpeakData(z);
-		break;
-
-	default:
-		// eats up 'ENDZONE' line for unprocessed zone types
+	ZoneTypeParser p = parsers[ACTIONTYPE(z)];
+	do {
+		if (p) {
+			(this->*p)(z);
+		}
 		_script->readLineToken(true);
-		break;
-	}
-
+	} while (scumm_stricmp(_tokens[0], "endzone") && scumm_stricmp(_tokens[0], "endanimation"));
 	debugC(7, kDebugParser, "parseZoneTypeBlock() done");
-
-	return;
 }
 
 

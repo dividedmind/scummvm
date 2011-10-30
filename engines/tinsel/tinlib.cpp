@@ -89,8 +89,6 @@ int clRunMode = 0;
 
 // in BG.CPP
 extern void ChangePalette(SCNHANDLE hPal);
-extern int BgWidth(void);
-extern int BgHeight(void);
 
 // in BMV.CPP
 void PlayBMV(CORO_PARAM, SCNHANDLE hFileStem, int myEscape);
@@ -108,6 +106,7 @@ extern int NewestSavedGame(void);
 
 // in SCENE.CPP
 extern void setshowpos(void);
+extern int sceneCtr;
 
 // in TINSEL.CPP
 extern void SetCdChangeScene(SCNHANDLE hScene);
@@ -277,7 +276,6 @@ static COLORREF s_talkfontColor = 0;
 //----------------- FORWARD REFERENCES --------------------
 
 static int HeldObject(void);
-void Offset(EXTREME extreme, int x, int y);
 static void PostTag(CORO_PARAM, int tagno, TINSEL_EVENT event, HPOLYGON hp, int myEscape);
 void ResetIdleTime(void);
 static void SendTag(CORO_PARAM, int tagno, TINSEL_EVENT event, HPOLYGON hp, int myEscape, bool *result);
@@ -474,7 +472,7 @@ void TinGetVersion(WHICH_VER which, char *buffer, int length) {
 
 	char *cptr = (char *)FindChunk(MASTER_SCNHANDLE, CHUNK_TIME_STAMPS);
 
-	switch (which) 	{
+	switch (which)	{
 	case VER_GLITTER:
 		memcpy(buffer, cptr, length);
 		break;
@@ -636,11 +634,19 @@ static void CdChangeScene(SCNHANDLE hScene) {
  * CdDoChange
  */
 void CdDoChange(CORO_PARAM) {
+	CORO_BEGIN_CONTEXT;
+	CORO_END_CONTEXT(_ctx);
+
+	CORO_BEGIN_CODE(_ctx);
+
 	if (!GotoCD())
 		return;
 
-	CdCD(coroParam);
+	CORO_INVOKE_0(CdCD);
+
 	CdHasChanged();
+
+	CORO_END_CODE;
 }
 
 /**
@@ -1428,6 +1434,9 @@ void NewScene(CORO_PARAM, SCNHANDLE scene, int entrance, int transition) {
 	else
 		GetControl(CONTROL_STARTOFF);
 
+	if (TinselV1)
+		++sceneCtr;
+
 	// Prevent code subsequent to this call running before scene changes
 	if (g_scheduler->getCurrentPID() != PID_MASTER_SCR)
 		CORO_KILL_SELF();
@@ -1587,7 +1596,7 @@ static void Play(CORO_PARAM, SCNHANDLE hFilm, int x, int y, bool bComplete, int 
  */
 static void PlayMidi(CORO_PARAM, SCNHANDLE hMidi, int loop, bool complete) {
 	// FIXME: This is a workaround for the FIXME below
-	if (GetMidiVolume() == 0)
+	if (GetMidiVolume() == 0 || TinselV1PSX)
 		return;
 
 	CORO_BEGIN_CONTEXT;
@@ -1977,7 +1986,7 @@ static void Print(CORO_PARAM, int x, int y, SCNHANDLE text, int time, bool bSust
 			if (_ctx->bSample) {
 				// Wait for sample to end whether or not
 				if (!_vm->_mixer->isSoundHandleActive(_ctx->handle)) {
-					if (_ctx->pText == NULL || speedText == DEFTEXTSPEED) 				{
+					if (_ctx->pText == NULL || speedText == DEFTEXTSPEED)				{
 						// No text or speed modification - just depends on sample
 						break;
 					} else {
@@ -2392,13 +2401,15 @@ void ResetIdleTime(void) {
 }
 
 /**
- * restartgame
+ * FnRestartGame
  */
-static void RestartGame(void) {
+void FnRestartGame(void) {
 	// TODO: Tinsel 2 comments out the 2 calls, but I'm not sure that this should be done
 	StopMidi();
 	StopSample();
+
 	bRestart = true;
+	sceneCtr = 0;
 }
 
 /**
@@ -3528,7 +3539,7 @@ static void TalkAttr(int r1, int g1, int b1, bool escOn, int myEscape) {
 	if (g1 > MAX_INTENSITY)	g1 = MAX_INTENSITY;	// } within limits
 	if (b1 > MAX_INTENSITY)	b1 = MAX_INTENSITY;	// }
 
-	SetTextPal(RGB(r1, g1, b1));
+	SetTextPal(TINSEL_RGB(r1, g1, b1));
 }
 
 /**
@@ -3819,6 +3830,7 @@ void Walk(CORO_PARAM, int actor, int x, int y, SCNHANDLE hFilm, int hold, bool i
 
 	bool bQuick = hold != 0;
 	PMOVER pMover = GetMover(actor);
+	
 	assert(pMover); // Can't walk a non-moving actor
 
 	CORO_BEGIN_CODE(_ctx);
@@ -4229,7 +4241,7 @@ int CallLibraryRoutine(CORO_PARAM, int operand, int32 *pp, const INT_CONTEXT *pi
 	case ACTORREF:
 		// Common to both DW1 & DW2
 		if (!TinselV0)
-			error("actorref isn't a real function!");
+			error("actorref isn't a real function");
 		return 0;
 
 	case ACTORRGB:
@@ -4362,7 +4374,7 @@ int CallLibraryRoutine(CORO_PARAM, int operand, int32 *pp, const INT_CONTEXT *pi
 
 	case CALLSCENE:
 		// DW2 only
-		error("CallScene isn't a real function!");
+		error("CallScene isn't a real function");
 
 	case CALLTAG:
 		// DW2 only
@@ -4418,7 +4430,7 @@ int CallLibraryRoutine(CORO_PARAM, int operand, int32 *pp, const INT_CONTEXT *pi
 
 	case CDPLAY:
 		// Common to both DW1 & DW2
-		error("cdplay isn't a real function!");
+		error("cdplay isn't a real function");
 
 	case CLEARHOOKSCENE:
 		// Common to both DW1 & DW2
@@ -4462,7 +4474,7 @@ int CallLibraryRoutine(CORO_PARAM, int operand, int32 *pp, const INT_CONTEXT *pi
 
 	case CUTSCENE:
 		// DW1 only
-		error("cutscene isn't a real function!");
+		error("cutscene isn't a real function");
 
 	case DECCONVW:
 		// Common to both DW1 & DW2
@@ -4485,7 +4497,7 @@ int CallLibraryRoutine(CORO_PARAM, int operand, int32 *pp, const INT_CONTEXT *pi
 	case DECFLAGS:
 		// Common to both DW1 & DW2
 		if (TinselV2)
-			error("DecFlags() is obsolete!");
+			error("DecFlags() is obsolete");
 
 		DecFlags(pp[0]);
 		return -1;
@@ -4576,7 +4588,7 @@ int CallLibraryRoutine(CORO_PARAM, int operand, int32 *pp, const INT_CONTEXT *pi
 
 	case DROPOUT:
 		// DW1 only
-		error("DropOut (%d)\n", pp[0]);
+		error("DropOut (%d)", pp[0]);
 
 	case EFFECTACTOR:
 		// Common to both DW1 & DW2
@@ -4599,7 +4611,7 @@ int CallLibraryRoutine(CORO_PARAM, int operand, int32 *pp, const INT_CONTEXT *pi
 	case ESCAPEOFF:
 	case ESCAPEON:
 		// Common to both DW1 & DW2
-		error("Escape isn't a real function!");
+		error("Escape isn't a real function");
 
 	case EVENT:
 		// Common to both DW1 & DW2
@@ -4651,7 +4663,7 @@ int CallLibraryRoutine(CORO_PARAM, int operand, int32 *pp, const INT_CONTEXT *pi
 
 	case GLOBALVAR:
 		// DW1 only
-		error("GlobalVar isn't a real function!");
+		error("GlobalVar isn't a real function");
 
 	case GRABMOVIE:
 		// DW2 only
@@ -4779,7 +4791,7 @@ int CallLibraryRoutine(CORO_PARAM, int operand, int32 *pp, const INT_CONTEXT *pi
 	case KILLACTOR:
 		// DW1 only
 		if (TinselV2)
-			error("KillActor() was not expected to be required!");
+			error("KillActor() was not expected to be required");
 
 		KillActor(pp[0]);
 		return -1;
@@ -4811,7 +4823,7 @@ int CallLibraryRoutine(CORO_PARAM, int operand, int32 *pp, const INT_CONTEXT *pi
 
 	case LOCALVAR:
 		// DW2 only
-		error("LocalVar isn't a real function!");
+		error("LocalVar isn't a real function");
 
 	case MOVECURSOR:
 		// Common to both DW1 & DW2
@@ -4926,7 +4938,7 @@ int CallLibraryRoutine(CORO_PARAM, int operand, int32 *pp, const INT_CONTEXT *pi
 
 	case PLAYRTF:
 		// Common to both DW1 & DW2
-		error("playrtf only applies to cdi!");
+		error("playrtf only applies to cdi");
 
 	case PLAYSAMPLE:
 		// Common to both DW1 & DW2
@@ -5032,7 +5044,7 @@ int CallLibraryRoutine(CORO_PARAM, int operand, int32 *pp, const INT_CONTEXT *pi
 
 	case RESTARTGAME:
 		// Common to both DW1 & DW2
-		RestartGame();
+		FnRestartGame();
 		return 0;
 
 	case RESTORESCENE:

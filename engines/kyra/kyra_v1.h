@@ -32,6 +32,8 @@
 #include "common/events.h"
 #include "common/system.h"
 
+#include "sound/mixer.h"
+
 #include "kyra/script.h"
 
 namespace Common {
@@ -56,6 +58,7 @@ struct GameFlags {
 	bool useAltShapeHeader		: 1;	// alternative shape header (uses 2 bytes more, those are unused though)
 	bool isTalkie				: 1;
 	bool useHiResOverlay		: 1;
+	bool use16ColorMode			: 1;
 	bool useDigSound			: 1;
 	bool useInstallerPackage	: 1;
 
@@ -70,10 +73,11 @@ enum {
 };
 
 struct AudioDataStruct {
-	const char * const *_fileList;
-	int _fileListLen;
-	const void * _cdaTracks;
-	int _cdaNumTracks;
+	const char *const *fileList;
+	int fileListLen;
+	const void *cdaTracks;
+	int cdaNumTracks;
+	int extraOffset;
 };
 
 // TODO: this is just the start of makeing the debug output of the kyra engine a bit more useable
@@ -149,7 +153,7 @@ public:
 		kVolumeSpeech = 2
 	};
 
-	// volume reaches from 2 to 97
+	// volume reaches per default from 2 to 97
 	void setVolume(kVolumeEntry vol, uint8 value);
 	uint8 getVolume(kVolumeEntry vol);
 
@@ -176,6 +180,17 @@ public:
 protected:
 	// Engine APIs
 	virtual Common::Error init();
+	virtual Common::Error go() = 0;
+
+	virtual Common::Error run() {
+		Common::Error err;
+		registerDefaultSettings();
+		err = init();
+		if (err != Common::kNoError)
+			return err;
+		return go();
+	}
+
 	virtual ::GUI::Debugger *getDebugger();
 	virtual bool hasFeature(EngineFeature f) const;
 	virtual void pauseEngineIntern(bool pause);
@@ -191,7 +206,7 @@ protected:
 
 	// input
 	void updateInput();
-	int checkInput(Button *buttonList, bool mainLoop = false);
+	int checkInput(Button *buttonList, bool mainLoop = false, int eventFlag = 0x8000);
 	void removeInputTop();
 
 	int _mouseX, _mouseY;
@@ -268,7 +283,7 @@ protected:
 	uint8 _flagsTable[100];	// TODO: check this value
 
 	// sound
-	Common::String _speechFile;
+	Audio::SoundHandle _speechHandle;
 
 	int _curMusicTheme;
 	int _curSfxFile;
@@ -276,6 +291,9 @@ protected:
 
 	const int8 *_trackMap;
 	int _trackMapSize;
+
+	virtual int convertVolumeToMixer(int value);
+	virtual int convertVolumeFromMixer(int value);
 
 	// pathfinder
 	virtual int findWay(int x, int y, int toX, int toY, int *moveTable, int moveTableSize);

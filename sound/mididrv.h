@@ -80,6 +80,7 @@ enum MidiDriverType {
 	// "Fake" MIDI devices
 	MD_ADLIB,
 	MD_PCSPK,
+	MD_CMS,
 	MD_PCJR,
 	MD_TOWNS,
 	MD_TIMIDITY
@@ -98,10 +99,11 @@ enum MidiDriverType {
 enum MidiDriverFlags {
 	MDT_NONE   = 0,
 	MDT_PCSPK  = 1 << 0,      // PC Speaker: Maps to MD_PCSPK and MD_PCJR
-	MDT_ADLIB  = 1 << 1,      // Adlib: Maps to MD_ADLIB
-	MDT_TOWNS  = 1 << 2,      // FM-TOWNS: Maps to MD_TOWNS
-	MDT_MIDI   = 1 << 3,      // Real MIDI
-	MDT_PREFER_MIDI = 1 << 4  // Real MIDI output is preferred
+	MDT_CMS    = 1 << 1,      // Creative Music System / Gameblaster: Maps to MD_CMS
+	MDT_ADLIB  = 1 << 2,      // Adlib: Maps to MD_ADLIB
+	MDT_TOWNS  = 1 << 3,      // FM-TOWNS: Maps to MD_TOWNS
+	MDT_MIDI   = 1 << 4,      // Real MIDI
+	MDT_PREFER_MIDI = 1 << 5  // Real MIDI output is preferred
 };
 
 /**
@@ -126,10 +128,10 @@ struct MidiDriverDescription {
 class MidiDriver {
 public:
 	/** Find the music driver matching the given driver name/description. */
-	static const MidiDriverDescription &findMusicDriver(const Common::String &str);
+	static const MidiDriverDescription *findMusicDriver(const Common::String &str);
 
-	/** Convert a string containing a music driver name into MIDI Driver type. */
-	static int parseMusicDriver(const Common::String &str);
+	/** Get the id of the music driver matching the given driver name, or MD_AUTO if there is no match. */
+	static MidiDriverType parseMusicDriver(const Common::String &str);
 
 	/**
 	 * Get a list of all available MidiDriver types.
@@ -139,7 +141,7 @@ public:
 
 	static MidiDriver *createMidi(int midiDriver);
 
-	static int detectMusicDriver(int flags);
+	static MidiDriverType detectMusicDriver(int flags);
 
 
 public:

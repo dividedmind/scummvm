@@ -29,8 +29,9 @@
 #include "graphics/thumbnail.h"
 
 #include "kyra/kyra_v1.h"
+#include "kyra/util.h"
 
-#define CURRENT_SAVE_VERSION 14
+#define CURRENT_SAVE_VERSION 16
 
 #define GF_FLOPPY  (1 <<  0)
 #define GF_TALKIE  (1 <<  1)
@@ -64,6 +65,8 @@ KyraEngine_v1::kReadSaveHeaderError KyraEngine_v1::readSaveHeader(Common::Seekab
 			in->seek(0, SEEK_SET);
 			in->read(descriptionBuffer, descriptionSize[i]);
 			descriptionBuffer[descriptionSize[i]] = 0;
+
+			Util::convertDOSToISO(descriptionBuffer);
 
 			type = in->readUint32BE();
 			header.version = in->readUint16LE();
@@ -123,12 +126,10 @@ KyraEngine_v1::kReadSaveHeaderError KyraEngine_v1::readSaveHeader(Common::Seekab
 		}
 	}
 
-	return (in->ioFailed() ? kRSHEIoError : kRSHENoError);
+	return ((in->err() || in->eos()) ? kRSHEIoError : kRSHENoError);
 }
 
 Common::SeekableReadStream *KyraEngine_v1::openSaveForReading(const char *filename, SaveHeader &header) {
-	debugC(9, kDebugLevelMain, "KyraEngine_v1::openSaveForReading('%s', -)", filename);
-
 	Common::SeekableReadStream *in = 0;
 	if (!(in = _saveFileMan->openForLoading(filename)))
 		return 0;
@@ -167,7 +168,7 @@ Common::SeekableReadStream *KyraEngine_v1::openSaveForReading(const char *filena
 				delete in;
 				return 0;
 			} else if ((header.flags & GF_FMTOWNS) && !(_flags.platform == Common::kPlatformFMTowns || _flags.platform == Common::kPlatformPC98)) {
-				warning("Can not load FM-Towns/PC98 savefile for this (non FM-Towns/PC98) gameversion");
+				warning("Can not load FM-TOWNS/PC98 savefile for this (non FM-TOWNS/PC98) gameversion");
 				delete in;
 				return 0;
 			}
@@ -178,7 +179,6 @@ Common::SeekableReadStream *KyraEngine_v1::openSaveForReading(const char *filena
 }
 
 Common::WriteStream *KyraEngine_v1::openSaveForWriting(const char *filename, const char *saveName, const Graphics::Surface *thumbnail) const {
-	debugC(9, kDebugLevelMain, "KyraEngine_v1::openSaveForWriting('%s', '%s', %p)", filename, saveName, (const void *)thumbnail);
 	if (shouldQuit())
 		return 0;
 
@@ -200,7 +200,7 @@ Common::WriteStream *KyraEngine_v1::openSaveForWriting(const char *filename, con
 	else
 		out->writeUint32BE(GF_FLOPPY);
 
-	if (out->ioFailed()) {
+	if (out->err()) {
 		warning("Can't write file '%s'. (Disk full?)", filename);
 		delete out;
 		return 0;
@@ -222,11 +222,7 @@ const char *KyraEngine_v1::getSavegameFilename(int num) {
 
 Common::String KyraEngine_v1::getSavegameFilename(const Common::String &target, int num) {
 	assert(num >= 0 && num <= 999);
-
-	char extension[5];
-	sprintf(extension, "%03d", num);
-
-	return target + "." + extension;
+	return target + Common::String::printf(".%03d", num);
 }
 
 bool KyraEngine_v1::saveFileLoadable(int slot) {

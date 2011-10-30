@@ -112,12 +112,12 @@ public:
 
 ADPCMInputStream::ADPCMInputStream(Common::SeekableReadStream *stream, bool disposeAfterUse, uint32 size, typesADPCM type, int rate, int channels, uint32 blockAlign, uint numLoops)
 	: _stream(stream), _disposeAfterUse(disposeAfterUse), _channels(channels), _type(type), _blockAlign(blockAlign), _rate(rate), _numLoops(numLoops) {
-	
+
 	if (type == kADPCMMSIma && blockAlign == 0)
 		error("ADPCMInputStream(): blockAlign isn't specified for MS IMA ADPCM");
 	if (type == kADPCMMS && blockAlign == 0)
 		error("ADPCMInputStream(): blockAlign isn't specified for MS ADPCM");
-	
+
 	if (type == kADPCMTinsel4 && blockAlign == 0)
 		error("ADPCMInputStream(): blockAlign isn't specified for Tinsel 4-bit ADPCM");
 	if (type == kADPCMTinsel6 && blockAlign == 0)
@@ -131,7 +131,7 @@ ADPCMInputStream::ADPCMInputStream(Common::SeekableReadStream *stream, bool disp
 		error("ADPCMInputStream(): Tinsel 6-bit ADPCM only supports mono");
 	if (type == kADPCMTinsel8 && channels != 1)
 		error("ADPCMInputStream(): Tinsel 8-bit ADPCM only supports mono");
-	
+
 	_startpos = stream->pos();
 	_endpos = _startpos + size;
 	_curLoop = 0;
@@ -182,7 +182,7 @@ int ADPCMInputStream::readBuffer(int16 *buffer, const int numSamples) {
 		error("Unsupported ADPCM encoding");
 		break;
 	}
-	
+
 	// Loop if necessary
 	if (samplesDecoded < numSamples || _stream->pos() == _endpos) {
 		_curLoop++;
@@ -192,7 +192,7 @@ int ADPCMInputStream::readBuffer(int16 *buffer, const int numSamples) {
 			return samplesDecoded + readBuffer(buffer + samplesDecoded, numSamples - samplesDecoded);
 		}
 	}
-	
+
 	return samplesDecoded;
 }
 
@@ -218,8 +218,8 @@ int ADPCMInputStream::readBufferIMA(int16 *buffer, const int numSamples) {
 
 	for (samples = 0; samples < numSamples && !_stream->eos() && _stream->pos() < _endpos; samples += 2) {
 		data = _stream->readByte();
-		buffer[samples] = TO_LE_16(decodeIMA((data >> 4) & 0x0f));
-		buffer[samples + 1] = TO_LE_16(decodeIMA(data & 0x0f, _channels == 2 ? 1 : 0));
+		buffer[samples] = decodeIMA((data >> 4) & 0x0f);
+		buffer[samples + 1] = decodeIMA(data & 0x0f, _channels == 2 ? 1 : 0);
 	}
 	return samples;
 }

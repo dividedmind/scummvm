@@ -37,7 +37,6 @@
 namespace Kyra {
 
 void KyraEngine_HoF::seq_playSequences(int startSeq, int endSeq) {
-	debugC(9, kDebugLevelMain, "KyraEngine_HoF::seq_playSequences(%i, %i)", startSeq, endSeq);
 	seq_init();
 
 	bool allowSkip = (!(_flags.isDemo && !_flags.isTalkie) && (startSeq == kSequenceTitle)) ? false : true;
@@ -63,7 +62,7 @@ void KyraEngine_HoF::seq_playSequences(int startSeq, int endSeq) {
 	int oldPage = _screen->setCurPage(2);
 
 	for (int i = 0; i < 4; ++i)
-		memset(_screen->getPalette(i), 0, 0x300);
+		_screen->getPalette(i).clear();
 
 	_screen->clearPage(10);
 	_screen->clearPage(12);
@@ -78,7 +77,7 @@ void KyraEngine_HoF::seq_playSequences(int startSeq, int endSeq) {
 	for (int seqNum = startSeq; seqNum <= endSeq && !((skipFlag() && allowSkip) || shouldQuit() || (_abortIntroFlag && allowSkip) || _menuChoice); seqNum++) {
 		_screen->clearPage(0);
 		_screen->clearPage(8);
-		memcpy(_screen->getPalette(1), _screen->getPalette(0), 0x300);
+		_screen->copyPalette(1, 0);
 		_seqFrameCounter = 0;
 		_seqStartTime = _system->getMillis();
 
@@ -88,7 +87,7 @@ void KyraEngine_HoF::seq_playSequences(int startSeq, int endSeq) {
 		SeqProc cb = _callbackS[seqNum];
 
 		if (cseq.flags & 2) {
-			_screen->loadBitmap(cseq.cpsFile, 2, 2, _screen->getPalette(0));
+			_screen->loadBitmap(cseq.cpsFile, 2, 2, &_screen->getPalette(0));
 			_screen->setScreenPalette(_screen->getPalette(0));
 		} else {
 			_screen->setCurPage(2);
@@ -101,12 +100,9 @@ void KyraEngine_HoF::seq_playSequences(int startSeq, int endSeq) {
 
 		if (cseq.flags & 1) {
 			_seqWsa->close();
-			_seqWsa->open(cseq.wsaFile, 0, _screen->getPalette(0));
+			_seqWsa->open(cseq.wsaFile, 0, &_screen->getPalette(0));
 			_screen->setScreenPalette(_screen->getPalette(0));
-			_seqWsa->setX(cseq.xPos);
-			_seqWsa->setY(cseq.yPos);
-			_seqWsa->setDrawPage(2);
-			_seqWsa->displayFrame(0, 0);
+			_seqWsa->displayFrame(0, 2, cseq.xPos, cseq.yPos, 0, 0, 0);
 		}
 
 		if (cseq.flags & 4) {
@@ -178,10 +174,7 @@ void KyraEngine_HoF::seq_playSequences(int startSeq, int endSeq) {
 
 				if (_seqWsa) {
 					int f = _seqWsaCurrentFrame % _seqWsa->frames();
-					_seqWsa->setX(cseq.xPos);
-					_seqWsa->setY(cseq.yPos);
-					_seqWsa->setDrawPage(2);
-					_seqWsa->displayFrame(f, 0);
+					_seqWsa->displayFrame(f, 2, cseq.xPos, cseq.yPos, 0, 0, 0);
 				}
 
 				_screen->copyPage(2, 12);
@@ -337,8 +330,6 @@ void KyraEngine_HoF::seq_playSequences(int startSeq, int endSeq) {
 }
 
 int KyraEngine_HoF::seq_introWestwood(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
-	debugC(9, kDebugLevelMain, "KyraEngine_HoF::seq_introWestwood(%p, %i, %i, %i)", (const void*)wsaObj, x, y, frm);
-
 	if (frm == -2) {
 		if (_flags.platform == Common::kPlatformFMTowns || _flags.platform == Common::kPlatformPC98)
 			delay(300 * _tickLength);
@@ -350,8 +341,6 @@ int KyraEngine_HoF::seq_introWestwood(WSAMovie_v2 *wsaObj, int x, int y, int frm
 }
 
 int KyraEngine_HoF::seq_introTitle(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
-	debugC(9, kDebugLevelMain, "KyraEngine_HoF::seq_introTitle(%p, %i, %i, %i)", (const void*)wsaObj, x, y, frm);
-
 	if (frm == 1) {
 		_sound->playTrack(3);
 	} else if (frm == 25) {
@@ -372,9 +361,7 @@ int KyraEngine_HoF::seq_introTitle(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
 }
 
 int KyraEngine_HoF::seq_introOverview(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
-	debugC(9, kDebugLevelMain, "KyraEngine_HoF::seq_introOverview(%p, %i, %i, %i)", (const void*)wsaObj, x, y, frm);
-
-	uint8 *tmpPal = &(_screen->getPalette(3)[0x101]);
+	uint8 *tmpPal = _screen->getPalette(3).getData() + 0x101;
 	memset(tmpPal, 0, 256);
 	_seqSubFrameEndTimeInternal = 0;
 	uint32 now = 0;
@@ -385,9 +372,9 @@ int KyraEngine_HoF::seq_introOverview(WSAMovie_v2 *wsaObj, int x, int y, int frm
 		_sound->playTrack(4);
 		_seqSubFrameEndTimeInternal = _system->getMillis() + 60 * _tickLength;
 
-		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0) + 3, 255) & 0xff;
+		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0), 1, 255) & 0xff;
 		memset(_seqTextColorMap, _seqTextColor[1], 16);
-		_seqTextColorMap[1] = _seqTextColor[0] = _screen->findLeastDifferentColor(_seqTextColorPresets + 3, _screen->getPalette(0) + 3, 255) & 0xff;
+		_seqTextColorMap[1] = _seqTextColor[0] = _screen->findLeastDifferentColor(_seqTextColorPresets + 3, _screen->getPalette(0), 1, 255) & 0xff;
 
 		_screen->setTextColorMap(_seqTextColorMap);
 
@@ -397,7 +384,7 @@ int KyraEngine_HoF::seq_introOverview(WSAMovie_v2 *wsaObj, int x, int y, int frm
 		break;
 
 	case 1:
-		_screen->generateGrayOverlay(_screen->getPalette(0), _screen->getPalette(3), 0x40, 0, 0, 0, 0x100, true);
+		_screen->generateGrayOverlay(_screen->getPalette(0), _screen->getPalette(3).getData(), 0x40, 0, 0, 0, 0x100, true);
 		for (int i = 0; i < 256; i++)
 			tmpPal[_screen->getPalette(3)[i]] = 1;
 
@@ -430,7 +417,7 @@ int KyraEngine_HoF::seq_introOverview(WSAMovie_v2 *wsaObj, int x, int y, int frm
 	case 201:
 		_screen->setScreenPalette(_screen->getPalette(2));
 		_screen->updateScreen();
-		_screen->applyOverlay(0, 0, 320, 200, 2, _screen->getPalette(3));
+		_screen->applyOverlay(0, 0, 320, 200, 2, _screen->getPalette(3).getData());
 		_screen->copyPage(2, 12);
 		_screen->copyRegion(0, 0, 0, 0, 320, 200, 2, 0);
 		_screen->setScreenPalette(_screen->getPalette(0));
@@ -473,17 +460,15 @@ int KyraEngine_HoF::seq_introOverview(WSAMovie_v2 *wsaObj, int x, int y, int frm
 }
 
 int KyraEngine_HoF::seq_introLibrary(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
-	debugC(9, kDebugLevelMain, "KyraEngine_HoF::seq_introLibrary(%p, %i, %i, %i)", (const void*)wsaObj, x, y, frm);
-
 	switch (_seqFrameCounter) {
 	case 0:
 		_seqSubframePlaying = true;
 		_sound->playTrack(5);
 
-		_screen->generateGrayOverlay(_screen->getPalette(0), _screen->getPalette(3), 0x24, 0, 0, 0, 0x100, false);
-		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0) + 3, 255) & 0xff;
+		_screen->generateGrayOverlay(_screen->getPalette(0), _screen->getPalette(3).getData(), 0x24, 0, 0, 0, 0x100, false);
+		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0), 1, 255) & 0xff;
 		memset(_seqTextColorMap, _seqTextColor[1], 16);
-		_seqTextColorMap[1] = _seqTextColor[0] = _screen->findLeastDifferentColor(_seqTextColorPresets + 3, _screen->getPalette(0) + 3, 255) & 0xff;
+		_seqTextColorMap[1] = _seqTextColor[0] = _screen->findLeastDifferentColor(_seqTextColorPresets + 3, _screen->getPalette(0), 1, 255) & 0xff;
 
 		_screen->setTextColorMap(_seqTextColorMap);
 		break;
@@ -497,7 +482,7 @@ int KyraEngine_HoF::seq_introLibrary(WSAMovie_v2 *wsaObj, int x, int y, int frm)
 		seq_waitForTextsTimeout();
 
 		_screen->copyPage(12, 2);
-		_screen->applyOverlay(0, 0, 320, 200, 2, _screen->getPalette(3));
+		_screen->applyOverlay(0, 0, 320, 200, 2, _screen->getPalette(3).getData());
 		_screen->copyRegion(0, 0, 0, 0, 320, 200, 2, 0);
 		_screen->updateScreen();
 		_screen->copyPage(2, 12);
@@ -518,7 +503,7 @@ int KyraEngine_HoF::seq_introLibrary(WSAMovie_v2 *wsaObj, int x, int y, int frm)
 
 	case 340:
 		seq_resetActiveWSA(0);
-		_screen->applyOverlay(0, 0, 320, 200, 2, _screen->getPalette(3));
+		_screen->applyOverlay(0, 0, 320, 200, 2, _screen->getPalette(3).getData());
 		_screen->copyPage(2, 12);
 		_screen->copyRegion(0, 0, 0, 0, 320, 200, 2, 0);
 		_screen->updateScreen();
@@ -549,17 +534,15 @@ int KyraEngine_HoF::seq_introLibrary(WSAMovie_v2 *wsaObj, int x, int y, int frm)
 
 
 int KyraEngine_HoF::seq_introHand(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
-	debugC(9, kDebugLevelMain, "KyraEngine_HoF::seq_introHand(%p, %i, %i, %i)", (const void*)wsaObj, x, y, frm);
-
 	switch (_seqFrameCounter) {
 	case 0:
 		_seqSubframePlaying = true;
 		_sound->playTrack(6);
 
-		_screen->generateGrayOverlay(_screen->getPalette(0), _screen->getPalette(3), 0x24, 0, 0, 0, 0x100, false);
-		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0) + 3, 255) & 0xff;
+		_screen->generateGrayOverlay(_screen->getPalette(0), _screen->getPalette(3).getData(), 0x24, 0, 0, 0, 0x100, false);
+		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0), 1, 255) & 0xff;
 		memset(_seqTextColorMap, _seqTextColor[1], 16);
-		_seqTextColorMap[1] = _seqTextColor[0] = _screen->findLeastDifferentColor(_seqTextColorPresets + 3, _screen->getPalette(0) + 3, 255) & 0xff;
+		_seqTextColorMap[1] = _seqTextColor[0] = _screen->findLeastDifferentColor(_seqTextColorPresets + 3, _screen->getPalette(0), 1, 255) & 0xff;
 
 		_screen->setTextColorMap(_seqTextColorMap);
 		break;
@@ -573,7 +556,7 @@ int KyraEngine_HoF::seq_introHand(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
 
 	case 201:
 		seq_waitForTextsTimeout();
-		_screen->applyOverlay(0, 0, 320, 200, 2, _screen->getPalette(3));
+		_screen->applyOverlay(0, 0, 320, 200, 2, _screen->getPalette(3).getData());
 		_screen->copyPage(2, 12);
 		_screen->copyRegion(0, 0, 0, 0, 320, 200, 2, 0);
 		_screen->updateScreen();
@@ -648,9 +631,9 @@ int KyraEngine_HoF::seq_introPoint(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
 
 		_seqTextColor[1] = 0xf7;
 		memset(_seqTextColorMap, _seqTextColor[1], 16);
-		_seqTextColorMap[1] = _seqTextColor[0] = _screen->findLeastDifferentColor(_seqTextColorPresets + 3, _screen->getPalette(0) + 3, 255) & 0xff;
+		_seqTextColorMap[1] = _seqTextColor[0] = _screen->findLeastDifferentColor(_seqTextColorPresets + 3, _screen->getPalette(0), 1, 255) & 0xff;
 		_screen->setTextColorMap(_seqTextColorMap);
-		_screen->generateGrayOverlay(_screen->getPalette(0), _screen->getPalette(3), 0x24, 0, 0, 0, 0x100, false);
+		_screen->generateGrayOverlay(_screen->getPalette(0), _screen->getPalette(3).getData(), 0x24, 0, 0, 0, 0x100, false);
 		break;
 
 	case 1:
@@ -678,7 +661,7 @@ int KyraEngine_HoF::seq_introZanfaun(WSAMovie_v2 *wsaObj, int x, int y, int frm)
 
 		_seqTextColor[1] = 0xfd;
 		memset(_seqTextColorMap, _seqTextColor[1], 16);
-		_seqTextColorMap[1] = _seqTextColor[0] = _screen->findLeastDifferentColor(_seqTextColorPresets + 3, _screen->getPalette(0) + 3, 255) & 0xff;
+		_seqTextColorMap[1] = _seqTextColor[0] = _screen->findLeastDifferentColor(_seqTextColorPresets + 3, _screen->getPalette(0), 1, 255) & 0xff;
 		_screen->setTextColorMap(_seqTextColorMap);
 		break;
 
@@ -787,12 +770,12 @@ int KyraEngine_HoF::seq_introDragon(WSAMovie_v2 *wsaObj, int x, int y, int frm) 
 }
 
 int KyraEngine_HoF::seq_introDarm(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
-	//NULLSUB (at least in fm-towns version)
+	//NULLSUB (at least in FM-TOWNS version)
 	return frm;
 }
 
 int KyraEngine_HoF::seq_introLibrary2(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
-	//NULLSUB (at least in fm-towns version)
+	//NULLSUB (at least in FM-TOWNS version)
 	return frm;
 }
 
@@ -805,7 +788,7 @@ int KyraEngine_HoF::seq_introMarco(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
 }
 
 int KyraEngine_HoF::seq_introHand1a(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
-	//NULLSUB (at least in fm-towns version)
+	//NULLSUB (at least in FM-TOWNS version)
 	return frm;
 }
 
@@ -822,12 +805,12 @@ int KyraEngine_HoF::seq_introHand1c(WSAMovie_v2 *wsaObj, int x, int y, int frm) 
 }
 
 int KyraEngine_HoF::seq_introHand2(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
-	//NULLSUB (at least in fm-towns version)
+	//NULLSUB (at least in FM-TOWNS version)
 	return frm;
 }
 
 int KyraEngine_HoF::seq_introHand3(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
-	//NULLSUB (at least in fm-towns version)
+	//NULLSUB (at least in FM-TOWNS version)
 	return frm;
 }
 
@@ -848,7 +831,7 @@ int KyraEngine_HoF::seq_finaleFunters(WSAMovie_v2 *wsaObj, int x, int y, int frm
 	case 0:
 		_sound->playTrack(3);
 
-		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0) + 3, 255) & 0xff;
+		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0), 1, 255) & 0xff;
 		memset(_seqTextColorMap, _seqTextColor[1], 16);
 		_seqTextColor[0] = _seqTextColorMap[1] = 0xff;
 		_screen->setTextColorMap(_seqTextColorMap);
@@ -941,7 +924,7 @@ int KyraEngine_HoF::seq_finaleFerb(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
 		break;
 
 	case 0:
-		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0) + 3, 255) & 0xff;
+		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0), 1, 255) & 0xff;
 		memset(_seqTextColorMap, _seqTextColor[1], 16);
 		_seqTextColor[0] = _seqTextColorMap[1] = 255;
 		_screen->setTextColorMap(_seqTextColorMap);
@@ -1023,7 +1006,7 @@ int KyraEngine_HoF::seq_finaleFish(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
 		break;
 
 	case 0:
-		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0) + 3, 255) & 0xff;
+		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0), 1, 255) & 0xff;
 		memset(_seqTextColorMap, _seqTextColor[1], 16);
 		_seqTextColor[0] = _seqTextColorMap[1] = 0xff;
 		_screen->setTextColorMap(_seqTextColorMap);
@@ -1113,7 +1096,7 @@ int KyraEngine_HoF::seq_finaleFheep(WSAMovie_v2 *wsaObj, int x, int y, int frm) 
 		break;
 
 	case 0:
-		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0) + 3, 255) & 0xff;
+		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0), 1, 255) & 0xff;
 		memset(_seqTextColorMap, _seqTextColor[1], 16);
 		_seqTextColor[0] = _seqTextColorMap[1] = 0xff;
 		_screen->setTextColorMap(_seqTextColorMap);
@@ -1189,9 +1172,9 @@ int KyraEngine_HoF::seq_finaleFarmer(WSAMovie_v2 *wsaObj, int x, int y, int frm)
 		break;
 
 	case 0:
-		_seqTextColor[1] = 1 + (_screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0) + 3, 254) & 0xff);
+		_seqTextColor[1] = 1 + (_screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0), 1, 254) & 0xff);
 		memset(_seqTextColorMap, _seqTextColor[1], 16);
-		_seqTextColorMap[1] = _seqTextColor[0] = 1 + (_screen->findLeastDifferentColor(_seqTextColorPresets + 3, _screen->getPalette(0) + 3, 254) & 0xff);
+		_seqTextColorMap[1] = _seqTextColor[0] = 1 + (_screen->findLeastDifferentColor(_seqTextColorPresets + 3, _screen->getPalette(0), 1, 254) & 0xff);
 		_screen->setTextColorMap(_seqTextColorMap);
 		seq_playTalkText(_flags.isTalkie ? 30 : 26);
 		break;
@@ -1356,7 +1339,7 @@ int KyraEngine_HoF::seq_finaleFirates(WSAMovie_v2 *wsaObj, int x, int y, int frm
 		break;
 
 	case 0:
-		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0) + 3, 255) & 0xff;
+		_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0), 1, 255) & 0xff;
 		memset(_seqTextColorMap, _seqTextColor[1], 16);
 		_seqTextColor[0] = _seqTextColorMap[1] = 0xff;
 		_screen->setTextColorMap(_seqTextColorMap);
@@ -1443,7 +1426,7 @@ int KyraEngine_HoF::seq_finaleFrash(WSAMovie_v2 *wsaObj, int x, int y, int frm) 
 	case 0:
 		if (_seqFrameCounter == 1) {
 			_sound->playTrack(4);
-			_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0) + 3, 255) & 0xff;
+			_seqTextColor[1] = _screen->findLeastDifferentColor(_seqTextColorPresets, _screen->getPalette(0), 1, 255) & 0xff;
 			memset(_seqTextColorMap, _seqTextColor[1], 16);
 			_seqTextColor[0] = _seqTextColorMap[1] = 0xff;
 			_screen->setTextColorMap(_seqTextColorMap);
@@ -1518,12 +1501,12 @@ void KyraEngine_HoF::seq_finaleActorScreen() {
 	static const uint8 colormap[] = {0, 0, 102, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 	static const ScreenDim d = { 0x00, 0x0C, 0x28, 0xB4, 0xFF, 0x00, 0x00, 0x00 };
 
-	_screen->loadBitmap("finale.cps", 3, 3, _screen->_currentPalette);
+	_screen->loadBitmap("finale.cps", 3, 3, &_screen->getPalette(0));
 	_screen->setFont(Screen::FID_GOLDFONT_FNT);
 
 	int talkieCreditsSize, talkieCreditsSpecialSize;
 	const uint8 *talkieCredits = _staticres->loadRawData(k2SeqplayCredits, talkieCreditsSize);
-	const char *const *talkieCreditsSpecial = _staticres->loadStrings(k2SeqplayCreditsSpecial, talkieCreditsSpecialSize);
+	const char * const *talkieCreditsSpecial = _staticres->loadStrings(k2SeqplayCreditsSpecial, talkieCreditsSpecialSize);
 
 	_sound->setSoundList(&_soundData[kMusicIngame]);
 	_sound->loadSoundFile(3);
@@ -1796,20 +1779,23 @@ int KyraEngine_HoF::seq_demoDig(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
 	return frm;
 }
 
+#ifdef ENABLE_LOL
 int KyraEngine_HoF::seq_lolDemoScene1(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
-	uint8 *tmpPal = _screen->getPalette(2);
+	Palette &tmpPal = _screen->getPalette(2);
 
 	if (!(_seqFrameCounter % 100)) {
 		if (_seqFrameCounter == 0) {
 			_sound->haltTrack();
 			_sound->playTrack(6);
 		}
-		memcpy(tmpPal, _screen->getPalette(0), 0x300);
+		tmpPal.copy(_screen->getPalette(0));
+
 		for (int i = 3; i < 0x300; i++) {
 			tmpPal[i] = ((int)tmpPal[i] * 120) / 64;
 			if (tmpPal[i] > 0x3f)
 				tmpPal[i] = 0x3f;
 		}
+
 		seq_playTalkText(_rnd.getRandomBit());
 		_screen->setScreenPalette(tmpPal);
 		_screen->updateScreen();
@@ -1827,22 +1813,22 @@ int KyraEngine_HoF::seq_lolDemoScene1(WSAMovie_v2 *wsaObj, int x, int y, int frm
 
 int KyraEngine_HoF::seq_lolDemoScene2(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
 	switch (_seqFrameCounter - 17) {
-		case 0:
-			_seqFrameDelay = 8;
-			break;
-		case 3:
-		case 6:
-		case 9:
-			seq_playTalkText(8);
-			break;
-		case 15:
-			seq_playTalkText(9);
-			break;
-		case 18:
-			seq_playTalkText(2);
-			break;
-		default:
-			break;
+	case 0:
+		_seqFrameDelay = 8;
+		break;
+	case 3:
+	case 6:
+	case 9:
+		seq_playTalkText(8);
+		break;
+	case 15:
+		seq_playTalkText(9);
+		break;
+	case 18:
+		seq_playTalkText(2);
+		break;
+	default:
+		break;
 	}
 	_seqFrameCounter++;
 	return frm;
@@ -1860,32 +1846,32 @@ int KyraEngine_HoF::seq_lolDemoScene3(WSAMovie_v2 *wsaObj, int x, int y, int frm
 
 int KyraEngine_HoF::seq_lolDemoScene4(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
 	switch (_seqFrameCounter) {
-		case 11:
-		case 14:
-		case 17:
-		case 20:
-			seq_playTalkText(8);
-			break;
-		case 22:
-			seq_playTalkText(11);
-			break;
-		case 24:
-			seq_playTalkText(8);
-			break;
-		case 30:
-			seq_playTalkText(15);
-			break;
-		case 34:
-			seq_playTalkText(14);
-			break;
-		case 38:
-			seq_playTalkText(13);
-			break;
-		case 42:
-			seq_playTalkText(12);
-			break;
-		default:
-			break;
+	case 11:
+	case 14:
+	case 17:
+	case 20:
+		seq_playTalkText(8);
+		break;
+	case 22:
+		seq_playTalkText(11);
+		break;
+	case 24:
+		seq_playTalkText(8);
+		break;
+	case 30:
+		seq_playTalkText(15);
+		break;
+	case 34:
+		seq_playTalkText(14);
+		break;
+	case 38:
+		seq_playTalkText(13);
+		break;
+	case 42:
+		seq_playTalkText(12);
+		break;
+	default:
+		break;
 	}
 
 	_seqFrameCounter++;
@@ -1894,30 +1880,30 @@ int KyraEngine_HoF::seq_lolDemoScene4(WSAMovie_v2 *wsaObj, int x, int y, int frm
 
 int KyraEngine_HoF::seq_lolDemoScene5(WSAMovie_v2 *wsaObj, int x, int y, int frm) {
 	switch (_seqFrameCounter++) {
-		case 0:
-		case 4:
-		case 6:
-		case 8:
-		case 10:
-		case 14:
-		case 16:
-		case 18:
-		case 20:
-		case 22:
-		case 24:
-		case 26:
-		case 28:
-		case 30:
-			seq_playTalkText(15);
-			break;
-		case 32:
-			seq_playTalkText(16);
-			break;
-		case 42:
-			seq_playTalkText(6);
-			break;
-		default:
-			break;
+	case 0:
+	case 4:
+	case 6:
+	case 8:
+	case 10:
+	case 14:
+	case 16:
+	case 18:
+	case 20:
+	case 22:
+	case 24:
+	case 26:
+	case 28:
+	case 30:
+		seq_playTalkText(15);
+		break;
+	case 32:
+		seq_playTalkText(16);
+		break;
+	case 42:
+		seq_playTalkText(6);
+		break;
+	default:
+		break;
 	}
 	return frm;
 }
@@ -1942,13 +1928,15 @@ int KyraEngine_HoF::seq_lolDemoScene6(WSAMovie_v2 *wsaObj, int x, int y, int frm
 		if (_seqFrameCounter % 175) {
 			_screen->setScreenPalette(_screen->getPalette(0));
 		} else {
-			uint8 *tmpPal = _screen->getPalette(2);
-			memcpy(tmpPal, _screen->getPalette(0), 0x300);
+			Palette &tmpPal = _screen->getPalette(2);
+			tmpPal.copy(_screen->getPalette(0));
+
 			for (int i = 3; i < 0x300; i++) {
 				tmpPal[i] = ((int)tmpPal[i] * 120) / 64;
 				if (tmpPal[i] > 0x3f)
 					tmpPal[i] = 0x3f;
 			}
+
 			seq_playTalkText(_rnd.getRandomBit());
 			_screen->setScreenPalette(tmpPal);
 			_screen->updateScreen();
@@ -1971,6 +1959,7 @@ int KyraEngine_HoF::seq_lolDemoScene6(WSAMovie_v2 *wsaObj, int x, int y, int frm
 
 	return 0;
 }
+#endif // ENABLE_LOL
 
 uint32 KyraEngine_HoF::seq_activeTextsTimeLeft() {
 	uint32 res = 0;
@@ -2060,37 +2049,35 @@ char *KyraEngine_HoF::seq_preprocessString(const char *srcStr, int width) {
 }
 
 void KyraEngine_HoF::seq_sequenceCommand(int command) {
-	uint8 pal[768];
-
 	for (int i = 0; i < 8; i++)
 		seq_resetActiveWSA(i);
 
 	switch (command) {
 	case 0:
-		memset(pal, 0, 0x300);
-		_screen->fadePalette(pal, 36);
-		memcpy (_screen->getPalette(0), pal, 0x300);
-		memcpy (_screen->getPalette(1), pal, 0x300);
+		_screen->fadeToBlack(36);
+		_screen->getPalette(0).clear();
+		_screen->getPalette(1).clear();
 		break;
 
 	case 1:
-		memset(pal, 0x3F, 0x300);
 		seq_playTalkText(_rnd.getRandomBit());
-		_screen->fadePalette(pal, 16);
-		memcpy (_screen->getPalette(0), pal, 0x300);
-		memcpy (_screen->getPalette(1), pal, 0x300);
+
+		_screen->getPalette(0).fill(0, 256, 0x3F);
+		_screen->fadePalette(_screen->getPalette(0), 16);
+
+		_screen->copyPalette(1, 0);
 		break;
 
 	case 3:
 		_screen->copyPage(2, 0);
 		_screen->fadePalette(_screen->getPalette(0), 16);
-		memcpy (_screen->getPalette(1), _screen->getPalette(0), 0x300);
+		_screen->copyPalette(1, 0);
 		break;
 
 	case 4:
 		_screen->copyPage(2, 0);
 		_screen->fadePalette(_screen->getPalette(0), 36);
-		memcpy (_screen->getPalette(1), _screen->getPalette(0), 0x300);
+		_screen->copyPalette(1, 0);
 		break;
 
 	case 5:
@@ -2108,17 +2095,17 @@ void KyraEngine_HoF::seq_sequenceCommand(int command) {
 		break;
 
 	case 8:
-		memset(pal, 0, 0x300);
-		_screen->fadePalette(pal, 16);
-		memcpy (_screen->getPalette(0), pal, 0x300);
-		memcpy (_screen->getPalette(1), pal, 0x300);
+		_screen->fadeToBlack(16);
+		_screen->getPalette(0).clear();
+		_screen->getPalette(1).clear();
 
 		delay(120 * _tickLength);
 		break;
 
-	case 9:
-		for (int i = 0; i < 0x100; i++) {
-			int pv = (_screen->getPalette(0)[3 * i] + _screen->getPalette(0)[3 * i + 1] + _screen->getPalette(0)[3 * i + 2]) / 3;
+	case 9: {
+		Palette &pal = _screen->getPalette(0);
+		for (int i = 0; i < 256; i++) {
+			int pv = (pal[3 * i] + pal[3 * i + 1] + pal[3 * i + 2]) / 3;
 			pal[3 * i] = pal[3 * i + 1] = pal[3 * i + 2] = pv & 0xff;
 		}
 
@@ -2127,9 +2114,8 @@ void KyraEngine_HoF::seq_sequenceCommand(int command) {
 		//pal[3 * i] = pal[3 * i + 1] = pal[3 * i + 2] = 0x3f;
 
 		_screen->fadePalette(pal, 64);
-		memcpy (_screen->getPalette(0), pal, 0x300);
-		memcpy (_screen->getPalette(1), pal, 0x300);
-		break;
+		_screen->copyPalette(1, 0);
+		} break;
 
 	default:
 		break;
@@ -2159,20 +2145,15 @@ void KyraEngine_HoF::seq_cmpFadeFrame(const char *cmpFile) {
 }
 
 void KyraEngine_HoF::seq_playTalkText(uint8 chatNum) {
-	debugC(9, kDebugLevelMain, "KyraEngine_HoF::seq_playTalkText(%i)", chatNum);
-
 	assert(chatNum < _sequenceSoundListSize);
 
 	if (chatNum < 12 && !_flags.isDemo && textEnabled())
 		seq_setTextEntry(chatNum, 160, 168, _sequenceStringsDuration[chatNum], 160);
 
-	_speechFile = _sequenceSoundList[chatNum];
-	_sound->voicePlay(_sequenceSoundList[chatNum]);
+	_sound->voicePlay(_sequenceSoundList[chatNum], &_speechHandle);
 }
 
 void KyraEngine_HoF::seq_waitForTextsTimeout() {
-	debugC(9, kDebugLevelMain, "KyraEngine_HoF::seq_waitForTextsTimeout()");
-
 	uint32 longest = seq_activeTextsTimeLeft() + _system->getMillis();
 	uint32 now = _system->getMillis();
 
@@ -2188,14 +2169,11 @@ void KyraEngine_HoF::seq_waitForTextsTimeout() {
 }
 
 void KyraEngine_HoF::seq_resetAllTextEntries() {
-	debugC(9, kDebugLevelMain, "KyraEngine_HoF::seq_resetAllTextEntries()");
 	for (int i = 0; i < 10; i++)
 		_activeText[i].duration = -1;
 }
 
 int KyraEngine_HoF::seq_setTextEntry(uint16 strIndex, uint16 posX, uint16 posY, int duration, uint16 width) {
-	debugC(9, kDebugLevelMain, "KyraEngine_HoF::seq_setTextEntry(%i, %i, %i, %i, %i)", strIndex, posX, posY, duration, width);
-
 	for (int i = 0; i < 10; i++) {
 		if (_activeText[i].duration != -1) {
 			if (i < 9)
@@ -2218,15 +2196,13 @@ int KyraEngine_HoF::seq_setTextEntry(uint16 strIndex, uint16 posX, uint16 posY, 
 }
 
 void KyraEngine_HoF::seq_loadNestedSequence(int wsaNum, int seqNum) {
-	debugC(9, kDebugLevelMain, "KyraEngine_HoF::seq_loadNestedSequence(%i, %i)", wsaNum, seqNum);
-
 	if (_activeWSA[wsaNum].flags != -1)
 		return;
 
 	NestedSequence s = _sequences->seqn[seqNum];
 
 	if (!_activeWSA[wsaNum].movie) {
-		_activeWSA[wsaNum].movie = new WSAMovie_v2(this, _screen);
+		_activeWSA[wsaNum].movie = new WSAMovie_v2(this);
 		assert(_activeWSA[wsaNum].movie);
 	}
 
@@ -2243,9 +2219,6 @@ void KyraEngine_HoF::seq_loadNestedSequence(int wsaNum, int seqNum) {
 	_activeWSA[wsaNum].endFrame = s.endFrame;
 	_activeWSA[wsaNum].startFrame = _activeWSA[wsaNum].currentFrame = s.startframe;
 	_activeWSA[wsaNum].frameDelay = s.frameDelay;
-	_activeWSA[wsaNum].movie->setX(0);
-	_activeWSA[wsaNum].movie->setY(0);
-	_activeWSA[wsaNum].movie->setDrawPage(_screen->_curPage);
 	_activeWSA[wsaNum].callback = _callbackN[seqNum];
 	_activeWSA[wsaNum].control = s.wsaControl;
 
@@ -2272,61 +2245,40 @@ void KyraEngine_HoF::seq_nestedSequenceFrame(int command, int wsaNum) {
 
 	switch (command) {
 	case 0:
-		_activeWSA[wsaNum].movie->setDrawPage(8);
 		xa = -_activeWSA[wsaNum].movie->xAdd();
 		ya = -_activeWSA[wsaNum].movie->yAdd();
-		_activeWSA[wsaNum].movie->setX(xa);
-		_activeWSA[wsaNum].movie->setY(ya);
-		_activeWSA[wsaNum].movie->displayFrame(0, 0);
-		_activeWSA[wsaNum].movie->setX(0);
-		_activeWSA[wsaNum].movie->setY(0);
+		_activeWSA[wsaNum].movie->displayFrame(0, 8, xa, ya, 0, 0, 0);
 		seq_animatedSubFrame(8, 2, 7, 8, _activeWSA[wsaNum].movie->xAdd(), _activeWSA[wsaNum].movie->yAdd(),
 							_activeWSA[wsaNum].movie->width(), _activeWSA[wsaNum].movie->height(), 1, 2);
 		break;
 
 	case 1:
-		_activeWSA[wsaNum].movie->setDrawPage(8);
 		xa = -_activeWSA[wsaNum].movie->xAdd();
 		ya = -_activeWSA[wsaNum].movie->yAdd();
-		_activeWSA[wsaNum].movie->setX(xa);
-		_activeWSA[wsaNum].movie->setY(ya);
-		_activeWSA[wsaNum].movie->displayFrame(0, 0);
-		_activeWSA[wsaNum].movie->setX(0);
-		_activeWSA[wsaNum].movie->setY(0);
+		_activeWSA[wsaNum].movie->displayFrame(0, 8, xa, ya, 0, 0, 0);
 		seq_animatedSubFrame(8, 2, 7, 8, _activeWSA[wsaNum].movie->xAdd(), _activeWSA[wsaNum].movie->yAdd(),
 							_activeWSA[wsaNum].movie->width(), _activeWSA[wsaNum].movie->height(), 1, 1);
 		break;
 
 	case 2:
 		seq_waitForTextsTimeout();
-		_activeWSA[wsaNum].movie->setDrawPage(8);
 		xa = -_activeWSA[wsaNum].movie->xAdd();
 		ya = -_activeWSA[wsaNum].movie->yAdd();
-		_activeWSA[wsaNum].movie->setX(xa);
-		_activeWSA[wsaNum].movie->setY(ya);
-		_activeWSA[wsaNum].movie->displayFrame(0x15, 0);
-		_activeWSA[wsaNum].movie->setX(0);
-		_activeWSA[wsaNum].movie->setY(0);
+		_activeWSA[wsaNum].movie->displayFrame(0x15, 8, xa, ya, 0, 0, 0);
 		seq_animatedSubFrame(8, 2, 7, 8, _activeWSA[wsaNum].movie->xAdd(), _activeWSA[wsaNum].movie->yAdd(),
 							_activeWSA[wsaNum].movie->width(), _activeWSA[wsaNum].movie->height(), 0, 2);
 		break;
 
 	case 3:
 		_screen->copyPage(2, 10);
-		_activeWSA[wsaNum].movie->setDrawPage(2);
-		_activeWSA[wsaNum].movie->setX(0);
-		_activeWSA[wsaNum].movie->setY(0);
-		_activeWSA[wsaNum].movie->displayFrame(0, 0);
+		_activeWSA[wsaNum].movie->displayFrame(0, 2, 0, 0, 0, 0, 0);
 		_screen->copyPage(2, 12);
 		seq_cmpFadeFrame("scene2.cmp");
 		break;
 
 	case 4:
 		_screen->copyPage(2, 10);
-		_activeWSA[wsaNum].movie->setDrawPage(2);
-		_activeWSA[wsaNum].movie->setX(0);
-		_activeWSA[wsaNum].movie->setY(0);
-		_activeWSA[wsaNum].movie->displayFrame(0, 0);
+		_activeWSA[wsaNum].movie->displayFrame(0, 2, 0, 0, 0, 0, 0);
 		_screen->copyPage(2, 12);
 		seq_cmpFadeFrame("scene3.cmp");
 		break;
@@ -2412,15 +2364,11 @@ bool KyraEngine_HoF::seq_processNextSubFrame(int wsaNum) {
 	}
 
 	if (_activeWSA[wsaNum].movie) {
-		_activeWSA[wsaNum].movie->setDrawPage(2);
-		_activeWSA[wsaNum].movie->setX(_activeWSA[wsaNum].x);
-		_activeWSA[wsaNum].movie->setY(_activeWSA[wsaNum].y);
-
 		if (_activeWSA[wsaNum].flags & 0x20) {
-			_activeWSA[wsaNum].movie->displayFrame(_activeWSA[wsaNum].control[currentFrame].index, 0x4000);
+			_activeWSA[wsaNum].movie->displayFrame(_activeWSA[wsaNum].control[currentFrame].index, 2, _activeWSA[wsaNum].x, _activeWSA[wsaNum].y, 0x4000, 0, 0);
 			_activeWSA[wsaNum].frameDelay = _activeWSA[wsaNum].control[currentFrame].delay;
 		} else {
-			_activeWSA[wsaNum].movie->displayFrame(currentFrame % _activeWSA[wsaNum].movie->frames(), 0x4000);
+			_activeWSA[wsaNum].movie->displayFrame(currentFrame % _activeWSA[wsaNum].movie->frames(), 2, _activeWSA[wsaNum].x, _activeWSA[wsaNum].y, 0x4000, 0, 0);
 		}
 	}
 
@@ -2457,7 +2405,6 @@ bool KyraEngine_HoF::seq_processNextSubFrame(int wsaNum) {
 		default:
 			currentFrame = _activeWSA[wsaNum].endFrame - 1;
 			res = true;
-			break;
 		}
 	}
 
@@ -2530,12 +2477,8 @@ void KyraEngine_HoF::seq_playWsaSyncDialogue(uint16 strIndex, uint16 vocIndex, i
 			curframe = firstframe;
 
 		_seqWsaChatFrameTimeout = _seqEndTime = _system->getMillis() + _seqFrameDelay * _tickLength;
-		if (wsa) {
-			wsa->setDrawPage(2);
-			wsa->setX(wsaXpos);
-			wsa->setY(wsaYpos);
-			wsa->displayFrame(curframe % wsa->frames(), 0);
-		}
+		if (wsa)
+			wsa->displayFrame(curframe % wsa->frames(), 2, wsaXpos, wsaYpos, 0, 0, 0);
 
 		_screen->copyPage(2, 12);
 
@@ -2567,7 +2510,6 @@ void KyraEngine_HoF::seq_playWsaSyncDialogue(uint16 strIndex, uint16 vocIndex, i
 
 void KyraEngine_HoF::seq_displayScrollText(uint8 *data, const ScreenDim *d, int tempPage1, int tempPage2, int speed,
 	int step, Screen::FontId fid1, Screen::FontId fid2, const uint8 *shapeData, const char *const *specialData) {
-
 	if (!data)
 		return;
 
@@ -2612,7 +2554,7 @@ void KyraEngine_HoF::seq_displayScrollText(uint8 *data, const ScreenDim *d, int 
 			else
 				cH = d->h;
 
-			char *str = (char*)ptr;
+			char *str = (char *)ptr;
 
 			ptr = (uint8*)strpbrk(str, mark);
 			if (!ptr)
@@ -2648,14 +2590,13 @@ void KyraEngine_HoF::seq_displayScrollText(uint8 *data, const ScreenDim *d, int 
 				break;
 			default:
 				textData[cnt + 1].x = (((d->w << 3) - _screen->getTextWidth(str)) >> 1) + 1;
-				break;
 			}
 
 			if (textData[cnt].unk1 == 5)
 				cH -= (textData[cnt].height + (textData[cnt].height >> 3));
 
 			textData[cnt + 1].y = cH;
-			textData[cnt + 1].text = (uint8*) str;
+			textData[cnt + 1].text = (uint8*)str;
 			cnt++;
 		}
 
@@ -2665,7 +2606,7 @@ void KyraEngine_HoF::seq_displayScrollText(uint8 *data, const ScreenDim *d, int 
 		bool palCycle = 0;
 
 		while (cnt2 < cnt) {
-			const char *str = (const char*)textData[cnt2 + 1].text;
+			const char *str = (const char *)textData[cnt2 + 1].text;
 			const char *str2 = str;
 			int16 cW = textData[cnt2 + 1].x - 10;
 			int16 cH = textData[cnt2 + 1].y;
@@ -2715,7 +2656,7 @@ void KyraEngine_HoF::seq_displayScrollText(uint8 *data, const ScreenDim *d, int 
 		_screen->updateScreen();
 
 		if (textData[1].y < -10) {
-			textData[1].text += strlen((char*)textData[1].text);
+			textData[1].text += strlen((char *)textData[1].text);
 			textData[1].text[0] = textData[1].unk1;
 			cnt--;
 			memcpy(&textData[1], &textData[2], cnt * sizeof(ScrollTextData));
@@ -2723,9 +2664,9 @@ void KyraEngine_HoF::seq_displayScrollText(uint8 *data, const ScreenDim *d, int 
 
 		if (palCycle) {
 			for (int col = 133; col > 112; col--)
-				memcpy(_screen->_currentPalette + (col * 3), _screen->_currentPalette + ((col - 1) * 3), 3);
-			memcpy(_screen->_currentPalette + 336, _screen->_currentPalette + 399, 3);
-			_screen->setScreenPalette(_screen->_currentPalette);
+				_screen->getPalette(0).copy(_screen->getPalette(0), col - 1, 1, col);
+			_screen->getPalette(0).copy(_screen->getPalette(0), 133, 1, 112);
+			_screen->setScreenPalette(_screen->getPalette(0));
 		}
 
 		delayUntil(_seqSubFrameEndTimeInternal);
@@ -2781,35 +2722,32 @@ void KyraEngine_HoF::seq_scrollPage(int bottom, int top) {
 }
 
 void KyraEngine_HoF::seq_showStarcraftLogo() {
-	WSAMovie_v2 *ci = new WSAMovie_v2(this, _screen);
+	WSAMovie_v2 *ci = new WSAMovie_v2(this);
 	assert(ci);
 	_screen->clearPage(2);
 	_res->loadPakFile("INTROGEN.PAK");
-	int endframe = ci->open("ci.wsa", 0, _screen->_currentPalette);
+	int endframe = ci->open("ci.wsa", 0, &_screen->getPalette(0));
 	_res->unloadPakFile("INTROGEN.PAK");
 	if (!ci->opened()) {
 		delete ci;
 		return;
 	}
 	_screen->hideMouse();
-	ci->setX(0);
-	ci->setY(0);
-	ci->setDrawPage(2);
-	ci->displayFrame(0, 0);
+	ci->displayFrame(0, 2, 0, 0, 0, 0, 0);
 	_screen->copyPage(2, 0);
 	_screen->fadeFromBlack();
 	for (int i = 1; i < endframe; i++) {
 		_seqEndTime = _system->getMillis() + 50;
 		if (skipFlag())
 			break;
-		ci->displayFrame(i, 0);
+		ci->displayFrame(i, 2, 0, 0, 0, 0, 0);
 		_screen->copyPage(2, 0);
 		_screen->updateScreen();
 		delay(_seqEndTime - _system->getMillis());
 	}
 	if (!skipFlag()) {
 		_seqEndTime = _system->getMillis() + 50;
-		ci->displayFrame(0, 0);
+		ci->displayFrame(0, 2, 0, 0, 0, 0, 0);
 		_screen->copyPage(2, 0);
 		_screen->updateScreen();
 		delay(_seqEndTime - _system->getMillis());
@@ -2823,7 +2761,7 @@ void KyraEngine_HoF::seq_showStarcraftLogo() {
 
 void KyraEngine_HoF::seq_init() {
 	_seqProcessedString = new char[200];
-	_seqWsa = new WSAMovie_v2(this, _screen);
+	_seqWsa = new WSAMovie_v2(this);
 	_activeWSA = new ActiveWSA[8];
 	_activeText = new ActiveText[10];
 
@@ -2941,16 +2879,12 @@ void KyraEngine_HoF::seq_makeBookAppear() {
 	_invWsa.running = false;
 	snd_playSoundEffect(0xAF);
 
-	_invWsa.wsa->setX(0);
-	_invWsa.wsa->setY(0);
-	_invWsa.wsa->setDrawPage(_invWsa.page);
-
 	while (true) {
 		_invWsa.timer = _system->getMillis() + _invWsa.delay * _tickLength;
 
 		_screen->copyBlockToPage(_invWsa.page, _invWsa.x, _invWsa.y, _invWsa.w, _invWsa.h, rect);
 
-		_invWsa.wsa->displayFrame(_invWsa.curFrame, 0x4000, 0, 0);
+		_invWsa.wsa->displayFrame(_invWsa.curFrame, _invWsa.page, 0, 0, 0x4000, 0, 0);
 
 		if (_invWsa.page)
 			_screen->copyRegion(_invWsa.x, _invWsa.y, _invWsa.x, _invWsa.y, _invWsa.w, _invWsa.h, _invWsa.page, 0, Screen::CR_NO_P_CHECK);

@@ -72,12 +72,41 @@ GuiManager::GuiManager() : _redrawStatus(kRedrawDisabled),
 			error("Failed to load any GUI theme, aborting");
 		}
 	}
-	_themeChange = false;
 }
 
 GuiManager::~GuiManager() {
 	delete _theme;
 }
+
+#ifdef ENABLE_KEYMAPPER
+void GuiManager::initKeymap() {
+	using namespace Common;
+
+	bool tmp;
+	Keymapper *mapper = _system->getEventManager()->getKeymapper();
+
+	// Do not try to recreate same keymap over again
+	if (mapper->getKeymap("gui", tmp) != 0)
+		return;
+
+	Action *act;
+	Keymap *guiMap = new Keymap("gui");
+
+	act = new Action(guiMap, "CLOS", "Close", kGenericActionType, kStartKeyType);
+	act->addKeyEvent(KeyState(KEYCODE_ESCAPE, ASCII_ESCAPE, 0));
+
+	act = new Action(guiMap, "CLIK", "Mouse click");
+	act->addLeftClickEvent();
+
+	act = new Action(guiMap, "VIRT", "Display keyboard", kVirtualKeyboardActionType);
+	act->addKeyEvent(KeyState(KEYCODE_F7, ASCII_F7, 0));
+
+	act = new Action(guiMap, "REMP", "Remap keys", kKeyRemapActionType);
+	act->addKeyEvent(KeyState(KEYCODE_F8, ASCII_F8, 0));
+
+	mapper->addGlobalKeymap(guiMap);
+}
+#endif
 
 bool GuiManager::loadNewTheme(Common::String id, ThemeEngine::GraphicsMode gfx) {
 	// If we are asked to reload the currently active theme, just do nothing
@@ -113,12 +142,20 @@ bool GuiManager::loadNewTheme(Common::String id, ThemeEngine::GraphicsMode gfx) 
 	// Enable the new theme
 	//
 	_theme = newTheme;
-	_themeChange = true;
+	_useStdCursor = !_theme->ownCursor();
+
+	// If _stateIsSaved is set, we know that a Theme is already initialized,
+	// thus we initialize the new theme properly
+	if (_stateIsSaved) {
+		_theme->enable();
+
+		if (_useStdCursor)
+			setupCursor();
+	}
 
 	// refresh all dialogs
-	for (int i = 0; i < _dialogStack.size(); ++i) {
+	for (int i = 0; i < _dialogStack.size(); ++i)
 		_dialogStack[i]->reflowLayout();
-	}
 
 	// We need to redraw immediately. Otherwise
 	// some other event may cause a widget to be
@@ -132,19 +169,25 @@ bool GuiManager::loadNewTheme(Common::String id, ThemeEngine::GraphicsMode gfx) 
 
 void GuiManager::redraw() {
 	int i;
+	ThemeEngine::ShadingStyle shading;
 
-	if (_redrawStatus == kRedrawDisabled)
+	if (_redrawStatus == kRedrawDisabled || _dialogStack.empty())
 		return;
 
-	if (_dialogStack.empty())
-		return;
+	shading = (ThemeEngine::ShadingStyle)xmlEval()->getVar("Dialog." + _dialogStack.top()->_name + ".Shading", 0);
+
+	// Tanoku: Do not apply shading more than once when opening many dialogs
+	// on top of each other. Screen ends up being too dark and it's a
+	// performance hog.
+	if (_redrawStatus == kRedrawOpenDialog && _dialogStack.size() > 2)
+		shading = ThemeEngine::kShadingNone;
 
 	switch (_redrawStatus) {
 		case kRedrawCloseDialog:
 		case kRedrawFull:
 		case kRedrawTopDialog:
 			_theme->clearAll();
-			_theme->openDialog(true);
+			_theme->openDialog(true, ThemeEngine::kShadingNone);
 
 			for (i = 0; i < _dialogStack.size() - 1; i++) {
 				_dialogStack[i]->drawDialog();
@@ -154,7 +197,7 @@ void GuiManager::redraw() {
 
 		case kRedrawOpenDialog:
 			_theme->updateScreen();
-			_theme->openDialog(true, (ThemeEngine::ShadingStyle)xmlEval()->getVar("Dialog." + _dialogStack.top()->_name + ".Shading", 0));
+			_theme->openDialog(true, shading);
 			_dialogStack.top()->drawDialog();
 			_theme->finishBuffering();
 			break;
@@ -193,7 +236,6 @@ void GuiManager::runLoop() {
 
 //		_theme->refresh();
 
-		_themeChange = false;
 		_redrawStatus = kRedrawFull;
 		redraw();
 	}
@@ -203,6 +245,12 @@ void GuiManager::runLoop() {
 	const uint32 waitTime = 1000 / 45;
 
 #ifdef ENABLE_KEYMAPPER
+	// Due to circular reference with event manager and GUI
+	// we cannot init keymap on the GUI creation. Thus, let's
+	// try to do it on every launch, checking whether the
+	// map is already existing
+	initKeymap();
+
 	eventMan->getKeymapper()->pushKeymap("gui");
 #endif
 
@@ -238,21 +286,6 @@ void GuiManager::runLoop() {
 				continue;
 
 			Common::Point mouse(event.mouse.x - activeDialog->_x, event.mouse.y - activeDialog->_y);
-
-			// HACK to change the cursor to the new themes one
-			if (_themeChange) {
-				_theme->enable();
-
-				_useStdCursor = !_theme->ownCursor();
-				if (_useStdCursor)
-					setupCursor();
-
-//				_theme->refresh();
-
-				_themeChange = false;
-				_redrawStatus = kRedrawFull;
-				redraw();
-			}
 
 			if (lastRedraw + waitTime < _system->getMillis()) {
 				_theme->updateScreen();
@@ -366,6 +399,8 @@ void GuiManager::closeTopDialog() {
 	_dialogStack.pop();
 	if (_redrawStatus != kRedrawFull)
 		_redrawStatus = kRedrawCloseDialog;
+
+	redraw();
 }
 
 void GuiManager::setupCursor() {

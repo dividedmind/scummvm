@@ -37,8 +37,6 @@
 namespace Kyra {
 
 Common::Error KyraEngine_LoK::loadGameState(int slot) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::loadGame(%d)", slot);
-
 	const char *fileName = getSavegameFilename(slot);
 
 	SaveHeader header;
@@ -162,14 +160,13 @@ Common::Error KyraEngine_LoK::loadGameState(int slot) {
 		// In the first version when this entry was introduced,
 		// it wasn't made sure that _curSfxFile was initialized
 		// so if it's out of bounds we just set it to 0.
-		if (_flags.platform == Common::kPlatformFMTowns || _flags.platform == Common::kPlatformPC98) {
-			if (_curSfxFile >= _soundData->_fileListLen || _curSfxFile < 0)
+		if (_flags.platform == Common::kPlatformFMTowns) {
+			if (_curSfxFile >= _soundData->fileListLen || _curSfxFile < 0)
 				_curSfxFile = 0;
 			_sound->loadSoundFile(_curSfxFile);
 		}
 	}
 
-	_screen->_disableScreen = true;
 	loadMainScreen(8);
 
 	if (queryGameFlag(0x2D)) {
@@ -187,19 +184,16 @@ Common::Error KyraEngine_LoK::loadGameState(int slot) {
 	setHandItem(_itemInHand);
 	_animator->setBrandonAnimSeqSize(3, 48);
 	redrawInventory(0);
-	_animator->_noDrawShapesFlag = 1;
+	_brandonPosX = brandonX;
+	_brandonPosY = brandonY;
 	enterNewScene(_currentCharacter->sceneId, _currentCharacter->facing, 0, 0, 1);
-	_animator->_noDrawShapesFlag = 0;
 
-	_currentCharacter->x1 = brandonX;
-	_currentCharacter->y1 = brandonY;
 	_animator->animRefreshNPC(0);
 	_animator->restoreAllObjectBackgrounds();
 	_animator->preserveAnyChangedBackgrounds();
 	_animator->prepDrawAllObjects();
 	_animator->copyChangedObjectsForward(0);
 	_screen->copyRegion(8, 8, 8, 8, 304, 128, 2, 0);
-	_screen->_disableScreen = false;
 	_screen->updateScreen();
 
 	setMousePos(brandonX, brandonY);
@@ -220,8 +214,6 @@ Common::Error KyraEngine_LoK::loadGameState(int slot) {
 }
 
 Common::Error KyraEngine_LoK::saveGameState(int slot, const char *saveName, const Graphics::Surface *thumb) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::saveGame(%d, '%s', %p)", slot, saveName, (const void *)thumb);
-
 	const char *fileName = getSavegameFilename(slot);
 
 	if (shouldQuit())

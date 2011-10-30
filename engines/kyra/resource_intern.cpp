@@ -37,7 +37,7 @@ namespace Kyra {
 
 PlainArchive::PlainArchive(Common::SharedPtr<Common::ArchiveMember> file, const FileInputList &files)
 	: _file(file), _files() {
-	for (FileInputList::iterator i = files.begin(); i != files.end(); ++i) {
+	for (FileInputList::const_iterator i = files.begin(); i != files.end(); ++i) {
 		Entry entry;
 
 		entry.offset = i->offset;
@@ -85,14 +85,15 @@ Common::SeekableReadStream *PlainArchive::createReadStreamForMember(const Common
 
 CachedArchive::CachedArchive(const FileInputList &files)
 	: _files() {
-	for (FileInputList::iterator i = files.begin(); i != files.end(); ++i) {
+	for (FileInputList::const_iterator i = files.begin(); i != files.end(); ++i) {
 		Entry entry;
 
 		entry.data = i->data;
 		entry.size = i->size;
 
-		i->name.toLowercase();
-		_files[i->name] = entry;
+		Common::String name = i->name;
+		name.toLowercase();
+		_files[name] = entry;
 	}
 }
 
@@ -143,12 +144,15 @@ bool ResLoaderPak::checkFilename(Common::String filename) const {
 
 bool ResLoaderPak::isLoadable(const Common::String &filename, Common::SeekableReadStream &stream) const {
 	int32 filesize = stream.size();
+	if (filesize < 0)
+		return false;
+
 	int32 offset = 0;
 	bool switchEndian = false;
 	bool firstFile = true;
 
 	offset = stream.readUint32LE();
-	if (offset > filesize) {
+	if (offset > filesize || offset < 0) {
 		switchEndian = true;
 		offset = SWAP_BYTES_32(offset);
 	}
@@ -156,7 +160,7 @@ bool ResLoaderPak::isLoadable(const Common::String &filename, Common::SeekableRe
 	Common::String file;
 	while (!stream.eos()) {
 		// The start offset of a file should never be in the filelist
-		if (offset < stream.pos() || offset > filesize)
+		if (offset < stream.pos() || offset > filesize || offset < 0)
 			return false;
 
 		byte c = 0;
@@ -212,13 +216,15 @@ struct PlainArchiveListSearch {
 
 Common::Archive *ResLoaderPak::load(Common::SharedPtr<Common::ArchiveMember> memberFile, Common::SeekableReadStream &stream) const {
 	int32 filesize = stream.size();
+	if (filesize < 0)
+		return 0;
 
 	int32 startoffset = 0, endoffset = 0;
 	bool switchEndian = false;
 	bool firstFile = true;
 
 	startoffset = stream.readUint32LE();
-	if (startoffset > filesize) {
+	if (startoffset > filesize || startoffset < 0) {
 		switchEndian = true;
 		startoffset = SWAP_BYTES_32(startoffset);
 	}
@@ -228,9 +234,9 @@ Common::Archive *ResLoaderPak::load(Common::SharedPtr<Common::ArchiveMember> mem
 	Common::String file;
 	while (!stream.eos()) {
 		// The start offset of a file should never be in the filelist
-		if (startoffset < stream.pos() || startoffset > filesize) {
+		if (startoffset < stream.pos() || startoffset > filesize || startoffset < 0) {
 			warning("PAK file '%s' is corrupted", memberFile->getDisplayName().c_str());
-			return false;
+			return 0;
 		}
 
 		file.clear();
@@ -241,14 +247,14 @@ Common::Archive *ResLoaderPak::load(Common::SharedPtr<Common::ArchiveMember> mem
 
 		if (stream.eos()) {
 			warning("PAK file '%s' is corrupted", memberFile->getDisplayName().c_str());
-			return false;
+			return 0;
 		}
 
 		// Quit now if we encounter an empty string
 		if (file.empty()) {
 			if (firstFile) {
 				warning("PAK file '%s' is corrupted", memberFile->getDisplayName().c_str());
-				return false;
+				return 0;
 			} else {
 				break;
 			}
@@ -256,6 +262,11 @@ Common::Archive *ResLoaderPak::load(Common::SharedPtr<Common::ArchiveMember> mem
 
 		firstFile = false;
 		endoffset = switchEndian ? stream.readUint32BE() : stream.readUint32LE();
+
+		if (endoffset < 0) {
+			warning("PAK file '%s' is corrupted", memberFile->getDisplayName().c_str());
+			return 0;
+		}
 
 		if (!endoffset)
 			endoffset = filesize;
@@ -667,7 +678,7 @@ bool FileExpander::process(uint8 *dst, const uint8 *src, uint32 outsize, uint32 
 		int16 cmd = 0;
 
 		do  {
-			cmd = ((int16*) _tables[2])[_src->getKeyLower()];
+			cmd = ((int16*)_tables[2])[_src->getKeyLower()];
 			_src->advSrcBitsByIndex(cmd < 0 ? calcCmdAndIndex(_tables[3], cmd) : _tables[0][cmd]);
 
 			if (cmd == 0x11d) {
@@ -680,7 +691,7 @@ bool FileExpander::process(uint8 *dst, const uint8 *src, uint32 outsize, uint32 
 				*d++ = cmd & 0xff;
 			} else if (cmd != 0x100) {
 				cmd -= 0xfe;
-				int16 offset = ((int16*) _tables[4])[_src->getKeyLower()];
+				int16 offset = ((int16*)_tables[4])[_src->getKeyLower()];
 				_src->advSrcBitsByIndex(offset < 0 ? calcCmdAndIndex(_tables[5], offset) : _tables[1][offset]);
 				if ((offset & 0xff) >= 4) {
 					uint8 newIndex = ((offset & 0xff) >> 1) - 1;
@@ -787,13 +798,13 @@ void FileExpander::generateTables(uint8 srcIndex, uint8 dstIndex, uint8 dstIndex
 	cnt--;
 	s = tbl1 + cnt;
 	d = &_tables16[2][cnt];
-	uint16 * bt = (uint16*) tbl3;
+	uint16 * bt = (uint16*)tbl3;
 	uint16 inc = 0;
 	uint16 cnt2 = 0;
 
 	do {
 		uint8 t = *s--;
-		uint16 *s2 = (uint16*) tbl2;
+		uint16 *s2 = (uint16*)tbl2;
 
 		if (t && t < 9) {
 			inc = 1 << t;
@@ -811,7 +822,7 @@ void FileExpander::generateTables(uint8 srcIndex, uint8 dstIndex, uint8 dstIndex
 			t -= 8;
 			uint8 shiftCnt = 1;
 			uint8 v = (*d) >> 8;
-			s2 = &((uint16*) tbl2)[*d & 0xff];
+			s2 = &((uint16*)tbl2)[*d & 0xff];
 
 			do {
 				if (!*s2) {

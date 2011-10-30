@@ -218,6 +218,7 @@ void TuckerEngine::openCompressedSoundFile() {
 			int version = _fCompressedSound.readUint16LE();
 			if (version == kCurrentCompressedSoundDataVersion) {
 				_compressedSoundType = i;
+				debug(1, "Using compressed sound file '%s'", compressedSoundFilesTable[i].filename);
 				return;
 			}
 			warning("Unhandled version %d for compressed sound file '%s'", version, compressedSoundFilesTable[i].filename);
@@ -268,7 +269,8 @@ void TuckerEngine::loadImage(const char *fname, uint8 *dst, int type) {
 		}
 	}
 	if (type != 0) {
-		f.seek(-768, SEEK_END);
+		if (f.readByte() != 12)
+			return;
 		f.read(_currentPalette, 768);
 		setBlackPalette();
 	}
@@ -334,8 +336,7 @@ void TuckerEngine::loadPanel() {
 }
 
 void TuckerEngine::loadBudSpr(int startOffset) {
-	int endOffset;
-	loadCTable01(0, startOffset, endOffset);
+	int endOffset = loadCTable01(0, startOffset);
 	loadCTable02(0);
 	int frame = 0;
 	int spriteOffset = 0;
@@ -366,12 +367,12 @@ void TuckerEngine::loadBudSpr(int startOffset) {
 	}
 }
 
-void TuckerEngine::loadCTable01(int locationNum, int firstSpriteNum, int &lastSpriteNum) {
+int TuckerEngine::loadCTable01(int index, int firstSpriteNum) {
 	loadFile("ctable01.c", _loadTempBuf);
 	DataTokenizer t(_loadTempBuf,  _fileLoadSize);
-	lastSpriteNum = firstSpriteNum;
+	int lastSpriteNum = firstSpriteNum;
 	int count = 0;
-	if (t.findIndex(_locationNum)) {
+	if (t.findIndex(index)) {
 		while (t.findNextToken(kDataTokenDw)) {
 			const int x = t.getNextInteger();
 			if (x < 0) {
@@ -397,6 +398,7 @@ void TuckerEngine::loadCTable01(int locationNum, int firstSpriteNum, int &lastSp
 		}
 	}
 	_ctable01Table_sprite[count] = -1;
+	return lastSpriteNum;
 }
 
 void TuckerEngine::loadCTable02(int fl) {
@@ -465,7 +467,7 @@ void TuckerEngine::loadLoc() {
 		copyLocBitmap(filename, 0, false);
 		Graphics::copyRect(_quadBackgroundGfxBuf + 134400, 320, _locationBackgroundGfxBuf + 320, 640, 320, 140);
 	}
-	_fullRedrawCounter = 2;
+	_fullRedraw = true;
 }
 
 void TuckerEngine::loadObj() {
@@ -503,27 +505,17 @@ void TuckerEngine::loadObj() {
 }
 
 void TuckerEngine::loadData() {
-	int flag = 0;
 	int objNum = _partNum * 10;
 	loadFile("data.c", _loadTempBuf);
 	DataTokenizer t(_loadTempBuf, _fileLoadSize);
 	_dataCount = 0;
 	int count = 0;
 	int maxCount = 0;
-	while (flag < 2) {
-		flag = 0;
-		if (!t.findIndex(objNum)) {
-			flag = 2;
-		}
-		while (flag == 0) {
-			if (!t.findNextToken(kDataTokenDw)) {
-				flag = 1;
-				continue;
-			}
+	while (t.findIndex(objNum)) {
+		while (t.findNextToken(kDataTokenDw)) {
 			_dataCount = t.getNextInteger();
 			if (_dataCount < 0) {
-				flag = 1;
-				continue;
+				break;
 			}
 			if (_dataCount > maxCount) {
 				maxCount = _dataCount;
@@ -538,10 +530,8 @@ void TuckerEngine::loadData() {
 			d->yDest = t.getNextInteger();
 			d->index = count;
 		}
-		if (flag < 2) {
-			++objNum;
-			++count;
-		}
+		++objNum;
+		++count;
 	}
 	_dataCount = maxCount;
 	int offset = 0;
@@ -592,21 +582,19 @@ void TuckerEngine::loadData3() {
 			LocationAnimation *d = &_locationAnimationsTable[_locationAnimationsCount++];
 			d->graphicNum = num;
 			const int seqNum = t.getNextInteger();
-			int i = 0;
-			int j = 1;
 			if (seqNum > 0) {
-				while (j < seqNum) {
-					while (_staticData3Table[i] != 999) {
-						++i;
+				int anim = 0;
+				for (int i = 1; i < seqNum; ++i) {
+					while (_staticData3Table[anim] != 999) {
+						++anim;
 					}
-					++i;
-					++j;
+					++anim;
 				}
-				d->animCurrentCounter = d->animInitCounter = i;
-				while (_staticData3Table[i + 1] != 999) {
-					++i;
+				d->animCurrentCounter = d->animInitCounter = anim;
+				while (_staticData3Table[anim + 1] != 999) {
+					++anim;
 				}
-				d->animLastCounter = i;
+				d->animLastCounter = anim;
 			} else {
 				d->animLastCounter = 0;
 			}
@@ -702,6 +690,7 @@ void TuckerEngine::loadActionFile() {
 			action->index = t.getNextInteger();
 			action->delay = t.getNextInteger();
 			action->setFlagNum = t.getNextInteger();
+			assert(action->setFlagNum >= 0 && action->setFlagNum < kFlagsTableSize);
 			action->setFlagValue = t.getNextInteger();
 			action->fxNum = t.getNextInteger();
 			action->fxDelay = t.getNextInteger();
@@ -959,33 +948,33 @@ void TuckerEngine::loadActionsTable() {
 				found = t.findNextToken(kDataTokenDw);
 				assert(found);
 			}
-			_forceRedrawPanelItems = 1;
+			_forceRedrawPanelItems = true;
 			_panelState = 1;
 			setCursorType(2);
 			_tableInstructionsPtr = _csDataBuf + t._pos + 1;
 			_csDataLoaded = true;
-			_csDataHandled = 1;
+			_csDataHandled = true;
 			debug(2, "loadActionsTable() _nextAction %d", _nextAction);
 		}
-		if (_csDataTableFlag2 == 1 && _charSpeechSoundCounter > 0) {
+		if (_stopActionOnSpeechFlag && _charSpeechSoundCounter > 0) {
 			break;
 		}
-		_csDataTableFlag2 = 0;
-		if (_stopActionOnPanelLock == 1) {
+		_stopActionOnSpeechFlag = false;
+		if (_stopActionOnPanelLock) {
 			if (_panelLockedFlag) {
 				break;
 			}
-			_stopActionOnPanelLock = 0;
+			_stopActionOnPanelLock = false;
 		}
 		if (_stopActionCounter > 0) {
 			--_stopActionCounter;
 			break;
 		}
-		if (_stopActionOnSoundFlag != 0) {
+		if (_stopActionOnSoundFlag) {
 			if (isSoundPlaying(_soundInstructionIndex)) {
 				break;
 			}
-			_stopActionOnSoundFlag = 0;
+			_stopActionOnSoundFlag = false;
 		}
 		if (_csDataTableCount != 0) {
 			if (_csDataTableCount == 99) {
@@ -993,19 +982,17 @@ void TuckerEngine::loadActionsTable() {
 					if (_backgroundSpriteCurrentFrame != _backgroundSpriteLastFrame) {
 						break;
 					}
-					_csDataTableCount = 0;
 				} else {
 					if (_spriteAnimationFramesTable[_spriteAnimationFrameIndex] != 999) {
 						break;
 					}
-					_csDataTableCount = 0;
 				}
 			} else {
 				if (_spritesTable[_csDataTableCount - 1].firstFrame - 1 != _spritesTable[_csDataTableCount - 1].animationFrame) {
 					break;
 				}
-				_csDataTableCount = 0;
 			}
+			 _csDataTableCount = 0;
 		}
 		if (_conversationOptionsCount != 0) {
 			if (_leftMouseButtonPressed && _nextTableToLoadIndex != -1) {
@@ -1016,18 +1003,17 @@ void TuckerEngine::loadActionsTable() {
 			}
 			break;
 		}
-		table = 0;
-		while (table == 0) {
-			table = parseTableInstruction();
-		}
+		do {
+			table = executeTableInstruction();
+		} while (table == 0);
 	} while (table == 3);
 	if (table == 2) {
 		_nextAction = 0;
 		_csDataLoaded = false;
-		_forceRedrawPanelItems = 1;
+		_forceRedrawPanelItems = true;
 		_panelState = 0;
 		setCursorType(0);
-		_csDataHandled = 0;
+		_csDataHandled = false;
 		_skipPanelObjectUnderCursor = 0;
 		_mouseClick = 1;
 	}

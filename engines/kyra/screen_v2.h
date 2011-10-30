@@ -37,17 +37,14 @@ public:
 	~Screen_v2();
 
 	// screen page handling
-	void copyWsaRect(int x, int y, int w, int h, int dimState, int plotFunc, const uint8 *src,
-					int unk1, const uint8 *unkPtr1, const uint8 *unkPtr2);
-
 	void checkedPageUpdate(int srcPage, int dstPage);
 
 	// palette handling
-	uint8 *generateOverlay(const uint8 *palette, uint8 *buffer, int color, uint16 factor);
+	uint8 *generateOverlay(const Palette &pal, uint8 *buffer, int color, uint16 factor);
 	void applyOverlay(int x, int y, int w, int h, int pageNum, const uint8 *overlay);
-	int findLeastDifferentColor(const uint8 *paletteEntry, const uint8 *palette, uint16 numColors, bool skipSpecialColours = false);
+	int findLeastDifferentColor(const uint8 *paletteEntry, const Palette &pal, uint8 firstColor, uint16 numColors, bool skipSpecialColors = false);
 
-	virtual void getFadeParams(const uint8 *palette, int delay, int &delayInc, int &diff);
+	virtual void getFadeParams(const Palette &pal, int delay, int &delayInc, int &diff);
 
 	// shape handling
 	uint8 *getPtrToShape(uint8 *shpFile, int shape);
@@ -71,7 +68,7 @@ public:
 	virtual int getLayer(int x, int y);
 
 	// special WSA handling
-	void wsaFrameAnimationStep(int x1, int y1, int x2, int y2, int w1, int h1, int w2, int h2,	int srcPage, int dstPage, int dim);
+	void wsaFrameAnimationStep(int x1, int y1, int x2, int y2, int w1, int h1, int w2, int h2, int srcPage, int dstPage, int dim);
 protected:
 	uint8 *_wsaFrameAnimBuffer;
 };

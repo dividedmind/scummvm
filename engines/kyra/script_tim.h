@@ -64,7 +64,8 @@ struct TIM {
 	} func[kCountFuncs];
 
 	enum {
-		kWSASlots = 10
+		kWSASlots = 6,
+		kAnimParts = 10
 	};
 
 	struct WSASlot {
@@ -79,14 +80,39 @@ struct TIM {
 	uint8 *text;
 
 	const Common::Array<const TIMOpcode*> *opcodes;
+
+	// TODO: Get rid of this ugly HACK to allow the
+	// Lands of Lore outro to be working properly.
+	bool isLoLOutro;
+	uint8 lolCharacter;
 };
 
 class TIMInterpreter {
 public:
+	struct AnimPart {
+		uint16 firstFrame;
+		uint16 lastFrame;
+		uint16 cycles;
+		int16 nextPart;
+		int16 partDelay;
+		uint16 field_A;
+		int16 sfxIndex;
+		uint16 sfxFrame;
+	};
+
 	struct Animation {
-		WSAMovie_v2 *wsa;
+		Movie *wsa;
 		int16 x, y;
+		uint32 nextFrame;
+		uint8 enable;
+		uint8 field_D;
+		uint8 frameDelay;
+		int8 curPart;
+		uint8 curFrame;
+		uint8 cyclesCompleted;
 		uint16 wsaCopyParams;
+		int8 lastPart;
+		AnimPart *parts;
 	};
 
 	TIMInterpreter(KyraEngine_v1 *engine, Screen_v2 *screen_v2, OSystem *system);
@@ -95,8 +121,10 @@ public:
 	TIM *load(const char *filename, const Common::Array<const TIMOpcode*> *opcodes);
 	void unload(TIM *&tim) const;
 
+	bool callback(Common::IFFChunk &chunk);
+
 	virtual Animation *initAnimStruct(int index, const char *filename, int x, int y, int, int offscreenBuffer, uint16 wsaFlags);
-	int freeAnimStruct(int index);
+	virtual int freeAnimStruct(int index);
 
 	void setLangData(const char *filename);
 	void clearLangData() { delete[] _langData; _langData = 0; }
@@ -113,17 +141,27 @@ public:
 	void refreshTimersAfterPause(uint32 elapsedTime);
 
 	void displayText(uint16 textId, int16 flags);
+	void displayText(uint16 textId, int16 flags, uint8 color);
 	void setupTextPalette(uint index, int fadePalette);
+
+	virtual void drawDialogueBox(int numStr, const char *s1, const char *s2, const char *s3) {}
+	virtual uint16 processDialogue() { return 1; }
+
+	virtual void setupBackgroundAnimationPart(int animIndex, int part, int firstFrame, int lastFrame, int cycles, int nextPart, int partDelay, int f, int sfxIndex, int sfxFrame) {}
+	virtual void startBackgroundAnimation(int animIndex, int part) {}
+	virtual void stopBackgroundAnimation(int animIndex) {}
+	virtual void updateBackgroundAnimation(int animIndex) {}
+	virtual void playAnimationPart(int animIndex, int firstFrame, int lastFrame, int delay) {}
+	virtual int resetAnimationLastPart(int animIndex) { return -1; }
+
+	virtual void resetDialogueState(TIM *tim) {}
 
 	int _drawPage2;
 
 	int _palDelayInc, _palDiff, _palDelayAcc;
-	int _dialogueComplete;
+	int _abortFlag;
 
 protected:
-	virtual KyraEngine_v1 *vm();
-	virtual Screen_v2 *screen();
-	
 	KyraEngine_v1 *_vm;
 	Screen_v2 *_screen;
 	OSystem *_system;
@@ -133,13 +171,17 @@ protected:
 
 	bool _finished;
 
+	// used when loading
+	int _avtlChunkSize;
+	const char *_filename;
+	TIM *_tim;
+
 	Common::String _vocFiles[120];
 
-	Animation _animations[TIM::kWSASlots];
+	Animation *_animations;
 
 	virtual void update() {}
 	virtual void checkSpeechProgress() {}
-	virtual uint16 processDialogue() { return 1; }
 
 	char _audioFilename[32];
 
@@ -181,32 +223,41 @@ protected:
 	int cmd_stopFuncNow(const uint16 *param);
 	int cmd_stopAllFuncs(const uint16 *param);
 #define cmd_return(n, v) \
-	int cmd_return_##n(const uint16 *) { return v; }
+	int cmd_return_##n(const uint16 *){ return v; }
 	cmd_return( 1,  1);
 	cmd_return(n1, -1);
 #undef cmd_return
 };
 
+#ifdef ENABLE_LOL
 class LoLEngine;
 class Screen_LoL;
 class TIMInterpreter_LoL : public TIMInterpreter {
 friend class LoLEngine;
 public:
 	TIMInterpreter_LoL(LoLEngine *engine, Screen_v2 *screen_v2, OSystem *system);
-	Animation *initAnimStruct(int index, const char *filename, int x, int y, int copyPara, int, uint16 wsaFlags);
-		
-private:
-	KyraEngine_v1 *vm();
-	Screen_v2 *screen();
 
+	Animation *initAnimStruct(int index, const char *filename, int x, int y, int frameDelay, int, uint16 wsaCopyParams);
+	int freeAnimStruct(int index);
+
+	void drawDialogueBox(int numStr, const char *s1, const char *s2, const char *s3);
+	uint16 processDialogue();
+	void resetDialogueState(TIM *tim);
+
+	void setupBackgroundAnimationPart(int animIndex, int part, int firstFrame, int lastFrame, int cycles, int nextPart, int partDelay, int f, int sfxIndex, int sfxFrame);
+	void startBackgroundAnimation(int animIndex, int part);
+	void stopBackgroundAnimation(int animIndex);
+	void updateBackgroundAnimation(int animIndex);
+	void playAnimationPart(int animIndex, int firstFrame, int lastFrame, int delay);
+	int resetAnimationLastPart(int animIndex);
+
+private:
 	void update();
 	void checkSpeechProgress();
-	uint16 processDialogue();
-	
+
 	char *getTableString(int id);
 	void advanceToOpcode(int opcode);
 
-	void drawDialogueBox(int numStr, const char *s1, const char *s2, const char *s3);	
 	void drawDialogueButtons();
 
 	LoLEngine *_vm;
@@ -235,6 +286,7 @@ private:
 	int cmd_processDialogue(const uint16 *param);
 	int cmd_dialogueBox(const uint16 *param);
 };
+#endif // ENABLE_LOL
 
 } // end of namespace Kyra
 

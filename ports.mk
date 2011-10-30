@@ -16,7 +16,7 @@ install: all
 	$(INSTALL) -d "$(DESTDIR)$(PREFIX)/share/pixmaps/"
 	$(INSTALL) -c -m 644 "$(srcdir)/icons/scummvm.xpm" "$(DESTDIR)$(PREFIX)/share/pixmaps/scummvm.xpm"
 	$(INSTALL) -d "$(DESTDIR)$(PREFIX)/share/doc/scummvm/"
-	$(INSTALL) -c -m 644 "$(srcdir)/AUTHORS" "$(srcdir)/COPYING" "$(srcdir)/COPYRIGHT" "$(srcdir)/NEWS" "$(srcdir)/README" "$(DESTDIR)$(PREFIX)/share/doc/scummvm/"
+	$(INSTALL) -c -m 644 $(DIST_FILES_DOCS) "$(DESTDIR)$(PREFIX)/share/doc/scummvm/"
 	$(INSTALL) -d "$(DESTDIR)$(DATADIR)/scummvm/"
 	$(INSTALL) -c -m 644 $(DIST_FILES_THEMES) $(DIST_FILES_ENGINEDATA) "$(DESTDIR)$(DATADIR)/scummvm/"
 ifdef DYNAMIC_MODULES
@@ -48,58 +48,56 @@ bundle: scummvm-static $(srcdir)/dists/macosx/Info.plist
 	echo "APPL????" > $(bundle_name)/Contents/PkgInfo
 	cp $(srcdir)/dists/macosx/Info.plist $(bundle_name)/Contents/
 	cp $(srcdir)/icons/scummvm.icns $(bundle_name)/Contents/Resources/
-	cp $(srcdir)/dists/pred.dic $(bundle_name)/Contents/Resources/
+	cp $(DIST_FILES_DOCS) $(bundle_name)/
 	cp $(DIST_FILES_THEMES) $(bundle_name)/Contents/Resources/
 	cp $(DIST_FILES_ENGINEDATA) $(bundle_name)/Contents/Resources/
 	$(srcdir)/tools/credits.pl --rtf > $(bundle_name)/Contents/Resources/Credits.rtf
 	chmod 644 $(bundle_name)/Contents/Resources/*
 	cp scummvm-static $(bundle_name)/Contents/MacOS/scummvm
 	chmod 755 $(bundle_name)/Contents/MacOS/scummvm
-	strip $(bundle_name)/Contents/MacOS/scummvm
+	$(STRIP) $(bundle_name)/Contents/MacOS/scummvm
 
-iphonebundle: $(srcdir)/dists/iphone/Info.plist
+iphonebundle: iphone $(srcdir)/dists/iphone/Info.plist
 	mkdir -p $(bundle_name)
 	cp $(srcdir)/dists/iphone/Info.plist $(bundle_name)/
-	cp $(srcdir)/dists/pred.dic $(bundle_name)/
+	cp $(DIST_FILES_DOCS) $(bundle_name)/
 	cp $(DIST_FILES_THEMES) $(bundle_name)/
 	cp $(DIST_FILES_ENGINEDATA) $(bundle_name)/
 	cp scummvm $(bundle_name)/ScummVM
 	cp $(srcdir)/dists/iphone/icon.png $(bundle_name)/icon.png
 	cp $(srcdir)/dists/iphone/Default.png $(bundle_name)/Default.png
 
-# location of additional libs for OS X usually /sw/ for fink or
-# /opt/local/ for darwinports
-OSXOPT=/sw
-
 # Location of static libs for the iPhone
-ifeq ($(BACKEND), iphone)
-OSXOPT=/usr/local/arm-apple-darwin
-else
+ifneq ($(BACKEND), iphone)
 # Static libaries, used for the scummvm-static and iphone targets
-OSX_STATIC_LIBS := `$(OSXOPT)/bin/sdl-config --static-libs`
+OSX_STATIC_LIBS := `$(STATICLIBPATH)/bin/sdl-config --static-libs`
 endif
 
 ifdef USE_VORBIS
 OSX_STATIC_LIBS += \
-		$(OSXOPT)/lib/libvorbisfile.a \
-		$(OSXOPT)/lib/libvorbis.a \
-		$(OSXOPT)/lib/libogg.a
+		$(STATICLIBPATH)/lib/libvorbisfile.a \
+		$(STATICLIBPATH)/lib/libvorbis.a \
+		$(STATICLIBPATH)/lib/libogg.a
 endif
 
 ifdef USE_TREMOR
-OSX_STATIC_LIBS += $(OSXOPT)/lib/libvorbisidec.a
+OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libvorbisidec.a
 endif
 
 ifdef USE_FLAC
-OSX_STATIC_LIBS += $(OSXOPT)/lib/libFLAC.a
+OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libFLAC.a
 endif
 
 ifdef USE_MAD
-OSX_STATIC_LIBS += $(OSXOPT)/lib/libmad.a
+OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libmad.a
 endif
 
 ifdef USE_MPEG2
-OSX_STATIC_LIBS += $(OSXOPT)/lib/libmpeg2.a
+OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libmpeg2.a
+endif
+
+ifdef USE_ZLIB
+OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libz.a
 endif
 
 # Special target to create a static linked binary for Mac OS X.
@@ -109,25 +107,25 @@ scummvm-static: $(OBJS)
 	$(CXX) $(LDFLAGS) -force_cpusubtype_ALL -o scummvm-static $(OBJS) \
 		-framework CoreMIDI \
 		$(OSX_STATIC_LIBS) \
-		-lSystemStubs \
-		-lz
-#		$(OSXOPT)/lib/libz.a
+		-lSystemStubs
 
 # Special target to create a static linked binary for the iPhone
 iphone: $(OBJS)
 	$(CXX) $(LDFLAGS) -o scummvm $(OBJS) \
 		$(OSX_STATIC_LIBS) \
-		-framework UIKit -framework CoreGraphics -framework CoreSurface \
+		-framework UIKit -framework CoreGraphics -framework OpenGLES \
 		-framework GraphicsServices -framework CoreFoundation -framework QuartzCore \
 		-framework Foundation -framework AudioToolbox -framework CoreAudio \
 		-lobjc -lz
 
 # Special target to create a snapshot disk image for Mac OS X
 # TODO: Replace AUTHORS by Credits.rtf
-osxsnap: bundle credits
+osxsnap: bundle
 	mkdir ScummVM-snapshot
+	$(srcdir)/tools/credits.pl --text > $(srcdir)/AUTHORS
 	cp $(srcdir)/AUTHORS ./ScummVM-snapshot/Authors
-	cp $(srcdir)/COPYING ./ScummVM-snapshot/License
+	cp $(srcdir)/COPYING ./ScummVM-snapshot/License\ \(GPL\)
+	cp $(srcdir)/COPYING.LGPL ./ScummVM-snapshot/License\ \(LGPL\)
 	cp $(srcdir)/COPYRIGHT ./ScummVM-snapshot/Copyright\ Holders
 	cp $(srcdir)/NEWS ./ScummVM-snapshot/News
 	cp $(srcdir)/README ./ScummVM-snapshot/ScummVM\ ReadMe
@@ -139,7 +137,7 @@ osxsnap: bundle credits
 	/Developer/Tools/SetFile -a V ./ScummVM-snapshot/background.jpg
 	hdiutil create -ov -format UDZO -imagekey zlib-level=9 -fs HFS+ \
 					-srcfolder ScummVM-snapshot \
-					-volname "ScummVM snapshot" \
+					-volname "ScummVM" \
 					ScummVM-snapshot.dmg
 	rm -rf ScummVM-snapshot
 
@@ -153,12 +151,12 @@ scummvmico.o: $(srcdir)/icons/scummvm.ico
 # Special target to create a win32 snapshot binary
 win32dist: $(EXECUTABLE)
 	mkdir -p $(WIN32PATH)
-	strip $(EXECUTABLE) -o $(WIN32PATH)/$(EXECUTABLE)
-	cp $(srcdir)/dists/pred.dic $(WIN32PATH)
+	$(STRIP) $(EXECUTABLE) -o $(WIN32PATH)/$(EXECUTABLE)
 	cp $(DIST_FILES_THEMES) $(WIN32PATH)
 	cp $(DIST_FILES_ENGINEDATA) $(WIN32PATH)
 	cp $(srcdir)/AUTHORS $(WIN32PATH)/AUTHORS.txt
 	cp $(srcdir)/COPYING $(WIN32PATH)/COPYING.txt
+	cp $(srcdir)/COPYING.LGPL $(WIN32PATH)/COPYING.LGPL.txt
 	cp $(srcdir)/COPYRIGHT $(WIN32PATH)/COPYRIGHT.txt
 	cp $(srcdir)/NEWS $(WIN32PATH)/NEWS.txt
 	cp $(srcdir)/README $(WIN32PATH)/README.txt
@@ -173,16 +171,65 @@ win32dist: $(EXECUTABLE)
 # Special target to create an AmigaOS snapshot installation
 aos4dist: $(EXECUTABLE)
 	mkdir -p $(AOS4PATH)
-	strip -R.comment $< -o $(AOS4PATH)/$<_SVN
-	cp icons/scummvm.info $(AOS4PATH)/$<_SVN.info
+	$(STRIP) $(EXECUTABLE) -o $(AOS4PATH)/$(EXECUTABLE)_SVN
+	cp icons/scummvm.info $(AOS4PATH)/$(EXECUTABLE)_SVN.info
 	cp $(DIST_FILES_THEMES) $(AOS4PATH)/themes/
 	cp $(DIST_FILES_ENGINEDATA) $(AOS4PATH)/extras/
-	cp $(srcdir)/dists/pred.dic $(AOS4PATH)/extras/
 	cp $(srcdir)/AUTHORS $(AOS4PATH)/AUTHORS.txt
 	cp $(srcdir)/COPYING $(AOS4PATH)/COPYING.txt
+	cp $(srcdir)/COPYING.LGPL $(AOS4PATH)/COPYING.LGPL.txt
 	cp $(srcdir)/COPYRIGHT $(AOS4PATH)/COPYRIGHT.txt
 	cp $(srcdir)/NEWS $(AOS4PATH)/NEWS.txt
 	cp $(srcdir)/README $(AOS4PATH)/README.txt
-	cp /sdk/local/documentation/SDL-1.2.9/README-SDL.txt $(AOS4PATH)
 
-.PHONY: deb bundle osxsnap win32dist install uninstall
+#
+# Wii/Gamecube specific
+#
+
+# Special target to create a Wii snapshot
+wiidist: $(EXECUTABLE)
+	$(MKDIR) wiidist/scummvm
+ifeq ($(GAMECUBE),1)
+	$(DEVKITPPC)/bin/elf2dol $(EXECUTABLE) wiidist/scummvm/scummvm.dol
+else
+	$(STRIP) $(EXECUTABLE) -o wiidist/scummvm/boot.elf
+	$(CP) $(srcdir)/dists/wii/icon.png wiidist/scummvm/
+	sed "s/@REVISION@/$(VER_SVNREV)/;s/@TIMESTAMP@/`date +%Y%m%d%H%M%S`/" < $(srcdir)/dists/wii/meta.xml > wiidist/scummvm/meta.xml
+endif
+	sed 's/$$/\r/' < $(srcdir)/dists/wii/READMII > wiidist/scummvm/READMII.txt
+	for i in $(DIST_FILES_DOCS); do sed 's/$$/\r/' < $$i > wiidist/scummvm/`basename $$i`.txt; done
+	$(CP) $(DIST_FILES_THEMES) wiidist/scummvm/
+ifneq ($(DIST_FILES_ENGINEDATA),)
+	$(CP) $(DIST_FILES_ENGINEDATA) wiidist/scummvm/
+endif
+	$(CP) $(srcdir)/backends/vkeybd/packs/vkeybd_default.zip wiidist/scummvm/
+
+.PHONY: deb bundle osxsnap win32dist wiidist install uninstall
+
+#
+# ARM specific
+#
+ifdef USE_TREMOLO
+DEFINES += -DUSE_TREMOR -DUSE_VORBIS -DUSE_TREMOLO
+LIBS += -ltremolo
+endif
+
+ifdef USE_ARM_SMUSH_ASM
+DEFINES += -DUSE_ARM_SMUSH_ASM
+endif
+
+ifdef USE_ARM_SOUND_ASM
+DEFINES += -DUSE_ARM_SOUND_ASM
+endif
+
+ifdef USE_ARM_GFX_ASM
+DEFINES += -DUSE_ARM_GFX_ASM
+endif
+
+ifdef USE_ARM_COSTUME_ASM
+DEFINES += -DUSE_ARM_COSTUME_ASM
+endif
+
+ifdef USE_ARM_SCALER_ASM
+DEFINES += -DUSE_ARM_SCALER_ASM
+endif

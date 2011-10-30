@@ -24,6 +24,7 @@
  */
 
 #include "cruise/cruise_main.h"
+#include "cruise/cruise.h"
 
 namespace Cruise {
 
@@ -36,9 +37,7 @@ void resetBackgroundIncrustList(backgroundIncrustStruct *pHead) {
 
 // blit background to another one
 void addBackgroundIncrustSub1(int fileIdx, int X, int Y, char *ptr2, int16 scale, char *destBuffer, char *dataPtr) {
-	if (*dataPtr == 0) {
-		ASSERT(0);
-	}
+	assert((dataPtr != NULL) && (*dataPtr != 0));
 
 	buildPolyModel(X, Y, scale, ptr2, destBuffer, dataPtr);
 }
@@ -53,7 +52,11 @@ void backupBackground(backgroundIncrustStruct *pIncrust, int X, int Y, int width
 	pIncrust->ptr = (uint8*)malloc(width * height);
 	for (int i = 0; i < height; i++) {
 		for (int j = 0; j < width; j++) {
-			pIncrust->ptr[i*width+j] = pBackground[(i+Y)*320+j+X];
+			int xp = j + X;
+			int yp = i + Y;
+
+			pIncrust->ptr[i * width + j] = ((xp < 0) || (yp < 0) || (xp >= 320) || (yp >= 200)) ?
+				0 : pBackground[yp * 320 + xp];
 		}
 	}
 }
@@ -64,7 +67,7 @@ void restoreBackground(backgroundIncrustStruct *pIncrust) {
 	if (pIncrust->ptr == NULL)
 		return;
 
-	uint8* pBackground = backgroundPtrtable[pIncrust->backgroundIdx];
+	uint8* pBackground = backgroundScreens[pIncrust->backgroundIdx];
 	if (pBackground == NULL)
 		return;
 
@@ -75,7 +78,11 @@ void restoreBackground(backgroundIncrustStruct *pIncrust) {
 
 	for (int i = 0; i < height; i++) {
 		for (int j = 0; j < width; j++) {
-			pBackground[(i+Y)*320+j+X] = pIncrust->ptr[i*width+j];
+			int xp = j + X;
+			int yp = i + Y;
+
+			if ((xp >= 0) && (yp >= 0) && (xp < 320) && (yp < 200))
+				pBackground[yp * 320 + xp] = pIncrust->ptr[i * width + j];
 		}
 	}
 }
@@ -92,20 +99,16 @@ backgroundIncrustStruct *addBackgroundIncrust(int16 overlayIdx,	int16 objectIdx,
 
 	ptr = filesDatabase[params.fileIdx].subData.ptr;
 
-	if (!ptr) {
+	// Don't process any further if not a sprite or polygon
+	if (!ptr) return NULL;
+	if ((filesDatabase[params.fileIdx].subData.resourceType != OBJ_TYPE_SPRITE) &&
+		(filesDatabase[params.fileIdx].subData.resourceType != OBJ_TYPE_POLY)) {
 		return NULL;
 	}
 
-	if (filesDatabase[params.fileIdx].subData.resourceType != 4 && filesDatabase[params.fileIdx].subData.resourceType != 8) {
-		return NULL;
-	}
+	backgroundPtr = backgroundScreens[backgroundIdx];
 
-	backgroundPtr = backgroundPtrtable[backgroundIdx];
-
-	if (!backgroundPtr) {
-		ASSERT(0);
-		return NULL;
-	}
+	assert(backgroundPtr != NULL);
 
 	currentHead = pHead;
 	currentHead2 = currentHead->next;
@@ -139,21 +142,23 @@ backgroundIncrustStruct *addBackgroundIncrust(int16 overlayIdx,	int16 objectIdx,
 	newElement->X = params.X;
 	newElement->Y = params.Y;
 	newElement->scale = params.scale;
-	newElement->field_E = params.fileIdx;
+	newElement->frame = params.fileIdx;
 	newElement->spriteId = filesDatabase[params.fileIdx].subData.index;
 	newElement->ptr = NULL;
 	strcpy(newElement->name, filesDatabase[params.fileIdx].subData.name);
 
-	if (filesDatabase[params.fileIdx].subData.resourceType == 4) {	// sprite
+	if (filesDatabase[params.fileIdx].subData.resourceType == OBJ_TYPE_SPRITE) {
+		// sprite
 		int width = filesDatabase[params.fileIdx].width;
 		int height = filesDatabase[params.fileIdx].height;
-
 		if (saveBuffer == 1) {
 			backupBackground(newElement, newElement->X, newElement->Y, width, height, backgroundPtr);
 		}
 
-		drawSprite(width, height, NULL, (char *)filesDatabase[params.fileIdx].subData.ptr, newElement->Y, newElement->X, (char *)backgroundPtr, (char *)filesDatabase[params.fileIdx].subData.ptrMask);
-	} else {			// poly
+		drawSprite(width, height, NULL, filesDatabase[params.fileIdx].subData.ptr, newElement->Y,
+			newElement->X, backgroundPtr, filesDatabase[params.fileIdx].subData.ptrMask);
+	} else {
+		// poly
 		if (saveBuffer == 1) {
 			int newX;
 			int newY;
@@ -180,115 +185,6 @@ backgroundIncrustStruct *addBackgroundIncrust(int16 overlayIdx,	int16 objectIdx,
 	return newElement;
 }
 
-void saveIncrust(Common::OutSaveFile& currentSaveFile) {
-	int count = 0;
-
-	backgroundIncrustStruct *pl = backgroundIncrustHead.next;
-	while (pl) {
-		count++;
-		pl = pl->next;
-	}
-
-	currentSaveFile.writeSint16LE(count);
-
-	pl = backgroundIncrustHead.next;
-	while (pl) {
-		char dummy[4] = {0, 0, 0, 0};
-		currentSaveFile.write(dummy, 2);
-		currentSaveFile.write(dummy, 2);
-
-		currentSaveFile.writeSint16LE(pl->objectIdx);
-		currentSaveFile.writeSint16LE(pl->type);
-		currentSaveFile.writeSint16LE(pl->overlayIdx);
-		currentSaveFile.writeSint16LE(pl->X);
-		currentSaveFile.writeSint16LE(pl->Y);
-		currentSaveFile.writeSint16LE(pl->field_E);
-		currentSaveFile.writeSint16LE(pl->scale);
-		currentSaveFile.writeSint16LE(pl->backgroundIdx);
-		currentSaveFile.writeSint16LE(pl->scriptNumber);
-		currentSaveFile.writeSint16LE(pl->scriptOverlayIdx);
-		currentSaveFile.write(dummy, 4);
-		currentSaveFile.writeSint16LE(pl->saveWidth / 2);
-		currentSaveFile.writeSint16LE(pl->saveHeight);
-		currentSaveFile.writeSint16LE(pl->saveSize);
-		currentSaveFile.writeSint16LE(pl->savedX);
-		currentSaveFile.writeSint16LE(pl->savedY);
-		currentSaveFile.write(pl->name, 13);
-		currentSaveFile.write(dummy, 1);
-		currentSaveFile.writeSint16LE(pl->spriteId);
-		currentSaveFile.write(dummy, 2);
-
-		if (pl->saveSize) {
-			char* buffer = (char*)malloc(pl->saveSize);
-			memset(buffer, 0, pl->saveSize);
-			currentSaveFile.write(buffer, pl->saveSize);
-			free(buffer);
-		}
-
-		pl = pl->next;
-	}
-}
-
-void loadBackgroundIncrustFromSave(Common::InSaveFile& currentSaveFile) {
-	int16 numEntry;
-	int32 i;
-
-	numEntry = currentSaveFile.readSint16LE();
-
-	backgroundIncrustStruct *pl = &backgroundIncrustHead;
-	backgroundIncrustStruct *pl1 = &backgroundIncrustHead;
-
-	for (i = 0; i < numEntry; i++) {
-		backgroundIncrustStruct *pl2 = (backgroundIncrustStruct *)mallocAndZero(sizeof(backgroundIncrustStruct));
-
-		currentSaveFile.skip(2);
-		currentSaveFile.skip(2);
-
-		pl2->objectIdx = currentSaveFile.readSint16LE();
-		pl2->type = currentSaveFile.readSint16LE();
-		pl2->overlayIdx = currentSaveFile.readSint16LE();
-		pl2->X = currentSaveFile.readSint16LE();
-		pl2->Y = currentSaveFile.readSint16LE();
-		pl2->field_E = currentSaveFile.readSint16LE();
-		pl2->scale = currentSaveFile.readSint16LE();
-		pl2->backgroundIdx = currentSaveFile.readSint16LE();
-		pl2->scriptNumber = currentSaveFile.readSint16LE();
-		pl2->scriptOverlayIdx = currentSaveFile.readSint16LE();
-		currentSaveFile.skip(4);
-		pl2->saveWidth = currentSaveFile.readSint16LE() * 2;
-		pl2->saveHeight = currentSaveFile.readSint16LE();
-		pl2->saveSize = currentSaveFile.readUint16LE();
-		pl2->savedX = currentSaveFile.readSint16LE();
-		pl2->savedY = currentSaveFile.readSint16LE();
-		currentSaveFile.read(pl2->name, 13);
-		currentSaveFile.skip(1);
-		pl2->spriteId = currentSaveFile.readSint16LE();
-		currentSaveFile.skip(2);
-
-		if (pl2->saveSize) {
-			/*pl2->ptr = (uint8 *) mallocAndZero(pl2->size);
-			currentSaveFile.read(pl2->ptr, pl2->size);*/
-
-			currentSaveFile.skip(pl2->saveSize);
-
-			int width = pl2->saveWidth;
-			int height = pl2->saveHeight;
-			pl2->ptr = (uint8*)malloc(width * height);
-			memset(pl2->ptr, 0, width * height);
-
-			// TODO: convert graphic format here
-		}
-
-		pl2->next = NULL;
-		pl->next = pl2;
-
-		pl2->prev = pl1->prev;
-		pl1->prev = pl2;
-
-		pl = pl2;
-	}
-}
-
 void regenerateBackgroundIncrust(backgroundIncrustStruct *pHead) {
 
 	lastAni[0] = 0;
@@ -299,11 +195,11 @@ void regenerateBackgroundIncrust(backgroundIncrustStruct *pHead) {
 		backgroundIncrustStruct* pl2 = pl->next;
 
 		bool bLoad = false;
-		int frame = pl->field_E;
+		int frame = pl->frame;
 		//int screen = pl->backgroundIdx;
 
 		if ((filesDatabase[frame].subData.ptr == NULL) || (strcmp(pl->name, filesDatabase[frame].subData.name))) {
-			frame = 257 - 1;
+			frame = NUM_FILE_ENTRIES - 1;
 			if (loadFile(pl->name, frame, pl->spriteId) >= 0) {
 				bLoad = true;
 			} else {
@@ -311,14 +207,16 @@ void regenerateBackgroundIncrust(backgroundIncrustStruct *pHead) {
 			}
 		}
 
-		if (frame >= -1) {
-			if (filesDatabase[frame].subData.resourceType == 4) {	// sprite
+		if (frame >= 0) {
+			if (filesDatabase[frame].subData.resourceType == OBJ_TYPE_SPRITE) {
+				// Sprite
 				int width = filesDatabase[frame].width;
 				int height = filesDatabase[frame].height;
 
-				drawSprite(width, height, NULL, (char *)filesDatabase[frame].subData.ptr, pl->Y, pl->X, (char*)backgroundPtrtable[pl->backgroundIdx], (char *)filesDatabase[frame].subData.ptrMask);
-			} else {			// poly
-				addBackgroundIncrustSub1(frame, pl->X, pl->Y, NULL, pl->scale, (char*)backgroundPtrtable[pl->backgroundIdx], (char *)filesDatabase[frame].subData.ptr);
+				drawSprite(width, height, NULL, filesDatabase[frame].subData.ptr, pl->Y, pl->X, backgroundScreens[pl->backgroundIdx], filesDatabase[frame].subData.ptrMask);
+			} else {
+				// Poly
+				addBackgroundIncrustSub1(frame, pl->X, pl->Y, NULL, pl->scale, (char*)backgroundScreens[pl->backgroundIdx], (char *)filesDatabase[frame].subData.ptr);
 			}
 		}
 
@@ -334,9 +232,8 @@ void freeBackgroundIncrustList(backgroundIncrustStruct *pHead) {
 	while (pCurrent) {
 		backgroundIncrustStruct *pNext = pCurrent->next;
 
-		if (pCurrent->ptr) {
+		if (pCurrent->ptr)
 			free(pCurrent->ptr);
-		}
 
 		free(pCurrent);
 
@@ -425,7 +322,6 @@ void unmergeBackgroundIncrust(backgroundIncrustStruct * pHead, int ovl, int idx)
 
 		pl = pl2->next;
 	}
-
 }
 
 } // End of namespace Cruise

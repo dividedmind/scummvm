@@ -1,17 +1,122 @@
 For a more comprehensive changelog for the latest experimental SVN code, see:
         http://scummvm.svn.sourceforge.net/viewvc/scummvm/?view=log
 
-0.14.0
+1.1.0 (????-??-??)
+ General:
+   - Added support for a custom SJIS font for FM-TOWNS and PC98 games.
+
+ KYRA:
+   - Adapted KYRA to support the custom SJIS font.
+
+1.0.0 (2009-??-??)
  New Games:
    - Added support for Discworld.
-   - Added support for Discworld 2 - Missing Presumed ...!?
+   - Added support for Discworld 2 - Missing Presumed ...!?.
+   - Added support for Return to Zork.
+   - Added support for Leather Goddesses of Phobos 2.
+   - Added support for The Manhole.
+   - Added support for Rodney's Funscreen.
+   - Added support for Cruise for a Corpse.
 
-0.13.0 (2009-02-??)
+ General:
+   - Added experimental AdLib emulator from DOSBox.
+   - Added quick search to Launcher.
+   - Improved modern GUI theme look.
+   - Added per-game GUI options.
+   - Improved Mass Add dialog.
+
+ New Ports:
+   - Added GP2X Wiz port.
+
+ AGI:
+   - Increased compatibility for Sierra games.
+   - Implemented all 'unknown' commands.
+
+ Beneath a Steel Sky:
+   - Changed the game speed to match the original game (previously
+     it ran too fast).
+
+ Broken Sword 1:
+   - Added support for the original cutscenes.
+   - Dropped support for the now obsolete MPEG2 cutscenes.
+   - Added support for the PlayStation version.
+
+ Broken Sword 2:
+   - Added support for the original cutscenes.
+   - Dropped support for the now obsolete MPEG2 cutscenes.
+   - Dropped support for playing cutscene sound without the video.
+   - Added support for the PlayStation version.
+
+ Gob:
+   - Introduced a new savegame format to fix a fatal flaw of the old one,
+     breaking compatibility with old savegames made on big-endian systems.
+
+ Groovie:
+   - Increased microscope puzzle difficulty to match original.
+
+ KYRA:
+   - Added support for PC Speaker based music and sound effects.
+   - Added support for 16 color dithering in Kyrandia PC-9801.
+
+0.13.1 (2009-04-27)
+ AGOS:
+    - Fixed crash after OmniTV video is played in The Feeble Files.
+    - Fixed crashes when exploring Jack the Ripper scene in the PC version of
+      the Waxworks.
+    - Fixed palette glitches in the AtariST version of Elvira 2.
+    - Fixed noise that can occur when sound effects are played, when exploring
+      Pyramid scene in the Waxworks.
+
+ Gob:
+    - Fixed a crash in the Italian version of Woodruff.
+
+ Groovie:
+    - Fixed some issues with music in The 7th Guest.
+
+ Parallaction:
+    - Fixed the sarcophagus puzzle in Nippon Safes.
+
+ SAGA:
+    - Fixed a crash in Inherit the Earth.
+    - Fixed glitches in the save/load dialog.
+
+ Sword2:
+    - Fixed random sound corruption when using the original sound files.
+
+ Game launcher:
+   - Fixed a case where memory could be corrupted.
+   - Fixed the small cursor in the modern theme.
+   - Fixed a bug in the theme engine, which could cause crashes.
+   - Made the file browser bigger in 1x mode.
+
+ iPhone port:
+    - Fixed backspace handling on the iPhone soft keyboard.
+
+ DS port:
+     - Added support for the Global Main Menu feature.
+
+ PS2 port:
+    - Switched to the new GUI and theme code.
+    - All possible devices are supported to store, play and save games
+      (CD, HD, USB, MC and remote).
+    - Optimized cache/read-ahead for every media.
+    - Added support for the Return to Launcher feature.
+
+ Symbian port:
+    - Added Bluetooth mouse support.
+    - Added support for the Return to Launcher feature.
+
+ WinCE port:
+    - Fixed an issue which could cause random crashes with VGA devices.
+
+0.13.0 (2009-02-28)
  General:
    - Added MIDI driver for Atari ST / FreeMint.
    - Added a 'Load' button to the Launcher (not supported by all engines).
    - Added a new global main menu (GMM) dialog usable from all engines.
    - Added the ability to return to the launcher from running games (via the GMM).
+   - Rewrote GUI renderer to use an vector based approach.
+   - Rewrote GUI configuration to use XML.
 
  New Games:
    - Added support for Blue's 123 Time Activities.
@@ -19,12 +124,20 @@ For a more comprehensive changelog for the latest experimental SVN code, see:
    - Added support for Bud Tucker in Double Trouble.
    - Added support for The 7th Guest.
 
+ AGOS:
+    - Added support for the original cutscenes of The Feeble Files.
+    - Added support for text compression in the AtariST version of Elvira 1.
+    - Fixed combining items in Waxworks.
+    - Fixed display of spell descriptions in Elvira 2.
+
  KYRA:
    - Added support for Auto-save feature.
    - Added support for MIDI music.
 
+ Parallaction:
+    - Credits of the Nippon Safes Amiga demo are now shown correctly.
+
  SCUMM:
-   - Fixed a long-time bug which caused talkspeed and talkdelay to be mixed up.
    - Implemented radio-chatter effect in The DIG.
 
 0.12.0 (2008-08-31)
@@ -37,13 +150,13 @@ For a more comprehensive changelog for the latest experimental SVN code, see:
    - Added support for the Macintosh version of I Have no Mouth, and I
      must Scream.
    - Added support for Drascula: The Vampire Strikes Back.
-   
+
  General:
    - Added CAMD MIDI driver for AmigaOS4.
    - Revived the PS2 port (was already in 0.11.1 but was forgotten in the
      release notes).
-   - Plugged numerous memory leaks in all engines (part of GSoC'08 task),
-   - Added audio double buffering to the SDL backend, which fixes the 
+   - Plugged numerous memory leaks in all engines (part of GSoC'08 task).
+   - Added audio double buffering to the SDL backend, which fixes the
      problems with the MT-32 emulator on Mac OS X (for now only enabled
      on Mac OS X).
 
@@ -60,7 +173,7 @@ For a more comprehensive changelog for the latest experimental SVN code, see:
    - Rewrote parts of Digital iMUSE, fixing some bugs.
    - Rewrote the internal timer code, fixing some speed issues in e.g. COMI.
    - Improved support for sound effects in Amiga version of Zak McKracken.
-   - Added support for mixed Adlib/MIDI mode in Monkey Island 1 (Floppy).
+   - Added support for mixed AdLib/MIDI mode in Monkey Island 1 (Floppy).
 
 0.11.1 (2008-02-29)
  SCUMM:
@@ -142,7 +255,7 @@ For a more comprehensive changelog for the latest experimental SVN code, see:
    - Many bugfixes.
 
  Queen:
-   - Added support for Adlib music.
+   - Added support for AdLib music.
    - Added missing music patterns playback in Amiga version.
 
  SCUMM:
@@ -224,7 +337,7 @@ For a more comprehensive changelog for the latest experimental SVN code, see:
    - Renamed Simon engine to AGOS.
 
  Kyrandia:
-   - Added support for FM-Towns version (both English and Japanese).
+   - Added support for FM-TOWNS version (both English and Japanese).
 
  BASS:
    - Fixed long-standing font bug. We were using the control panel font for
@@ -290,7 +403,7 @@ For a more comprehensive changelog for the latest experimental SVN code, see:
 
  BASS:
    - Fixed character spacing in LINC terminals in floppy version v0.0303.
-   - Fixed a regression which caused incorrect adlib music emulation.
+   - Fixed a regression which caused incorrect AdLib music emulation.
 
  Broken Sword 1:
    - Fixed speech-related crashes.
@@ -344,12 +457,12 @@ For a more comprehensive changelog for the latest experimental SVN code, see:
    - Fixed sound distortion in the Inherit the Earth demo.
 
  Simon
-   - Improved Hebrew support
+   - Improved Hebrew support.
    - Lots of long-overdue cleanups and re-structuring were made to accomodate
      for The Feeble Files.
    - Fixed a rare MIDI bug that would cause a channel to change volume without
      adjusting it to the master volume.
-   - Fixed delay after introduction of Simon the Sorcerer 1 demo (With speech)
+   - Fixed delay after introduction of Simon the Sorcerer 1 demo (with speech).
    - Fixed music tempo in DOS versions of Simon the Sorcerer 1.
 
  Broken Sword 1:
@@ -528,7 +641,7 @@ For a more comprehensive changelog for the latest experimental SVN code, see:
 
  Windows Mobile port (PocketPC / Smartphone):
    - Fixed FOTAQ crash on all platforms when leaving the hotel AGAIN.
-   - Better low quality Adlib emulation for FOTAQ.
+   - Better low quality AdLib emulation for FOTAQ.
    - Fix randomly broken Hide Toolbar option. (thanks iKi)
    - Fix first hardware key mapping (was not displayed before).
    - Fix BASS & Simon hangs on Smartphone when using the Skip hotkey.
@@ -655,7 +768,7 @@ For a more comprehensive changelog for the latest experimental SVN code, see:
    - Added HQ2x and HQ3x scalers.
    - Rewrote sound code for more flexibility and performance.
    - Improved native MT32 support.
-   - Adlib GM emulation table revamped, providing more accurate software MIDI.
+   - AdLib GM emulation table revamped, providing more accurate software MIDI.
    - Default Makefile now uses configure script.
    - Greatly improved the launcher and options dialogs (work-in-progress).
    - Many other "under the hood" improvements, like a new config managment
@@ -671,9 +784,9 @@ For a more comprehensive changelog for the latest experimental SVN code, see:
  SCUMM:
    - Many, Many, Many SCUMM game engine fixes. Many of them. And that's a lot.
    - Added INSANE support for Full Throttle 'action sequences'.
-   - Added option to choose between Adlib, PCjr and PC Speaker in earlier
+   - Added option to choose between AdLib, PCjr and PC Speaker in earlier
      games.
-   - Added Adlib support for indy3ega and loom (ega).
+   - Added AdLib support for indy3ega and loom (ega).
    - Added MIDI support for loom (ega), monkeyega and monkeyvga.
    - Added sound effects support for indy3/monkeyega/monkeyvga/pass.
    - Added FM Towns targets for Loom and Indy3.
@@ -755,7 +868,7 @@ For a more comprehensive changelog for the latest experimental SVN code, see:
 - Added akos16 implementation for The Dig and Full Throttle costumes.
 - Added Digital iMUSE implementation for The Dig and Full Throttle music.
 - Loom CD speech+music syncronisation improved greatly.
-- Added midi-emulation via adlib, for platforms without sequencer support.
+- Added midi-emulation via AdLib, for platforms without sequencer support.
 - Code separation of various engine parts into several libraries.
 - Several fixes to prevent Simon the Sorcerer crashing and hanging.
 - Hundreds of bugfixes for many other games.

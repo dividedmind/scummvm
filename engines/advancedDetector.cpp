@@ -197,6 +197,8 @@ static void updateGameDescriptor(GameDescriptor &desc, const ADGameDescription *
 
 	if (params.flags & kADFlagUseExtraAsHint)
 		desc["extra"] = realDesc->extra;
+
+	desc.setGUIOptions(realDesc->guioptions | params.guioptions);
 }
 
 GameList AdvancedMetaEngine::detectGames(const Common::FSList &fslist) const {
@@ -244,6 +246,18 @@ Common::Error AdvancedMetaEngine::createInstance(OSystem *syst, Engine **engine)
 		path = ConfMan.get("path");
 	} else {
 		path = ".";
+
+		// This situation may happen only when game was
+		// launched from a command line with wrong target and
+		// no path was provided.
+		//
+		// A dummy entry will get created and will keep game path
+		// We mark this entry, so it will not be added to the
+		// config file.
+		//
+		// Fixes bug #1544799
+		ConfMan.set("autoadded", "true");
+
 		warning("No path was provided. Assuming the data files are in the current directory");
 	}
 	Common::FSNode dir(path);
@@ -277,15 +291,18 @@ Common::Error AdvancedMetaEngine::createInstance(OSystem *syst, Engine **engine)
 		}
 	}
 
-	if (agdDesc == 0) {
+	if (agdDesc == 0)
 		return Common::kNoGameDataFoundError;
-	}
+
+	// If the GUI options were updated, we catch this here and update them in the users config
+	// file transparently.
+	Common::updateGameGUIOptions(agdDesc->guioptions | params.guioptions);
 
 	debug(2, "Running %s", toGameDescriptor(*agdDesc, params.list).description().c_str());
-	if (!createInstance(syst, engine, agdDesc)) {
+	if (!createInstance(syst, engine, agdDesc))
 		return Common::kNoGameDataFoundError;
-	}
-	return Common::kNoError;
+	else
+		return Common::kNoError;
 }
 
 struct SizeMD5 {
@@ -296,15 +313,15 @@ struct SizeMD5 {
 typedef Common::HashMap<Common::String, SizeMD5, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo> SizeMD5Map;
 typedef Common::HashMap<Common::String, Common::FSNode, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo> FileMap;
 
-static void reportUnknown(const SizeMD5Map &filesSizeMD5) {
+static void reportUnknown(const Common::FSNode &path, const SizeMD5Map &filesSizeMD5) {
 	// TODO: This message should be cleaned up / made more specific.
 	// For example, we should specify at least which engine triggered this.
 	//
 	// Might also be helpful to display the full path (for when this is used
 	// from the mass detector).
-	printf("Your game version appears to be unknown. Please, report the following\n");
-	printf("data to the ScummVM team along with name of the game you tried to add\n");
-	printf("and its version/language/etc.:\n");
+	printf("The game in '%s' seems to be unknown.\n", path.getPath().c_str());
+	printf("Please, report the following data to the ScummVM team along with name\n");
+	printf("of the game you tried to add and its version/language/etc.:\n");
 
 	for (SizeMD5Map::const_iterator file = filesSizeMD5.begin(); file != filesSizeMD5.end(); ++file)
 		printf("  \"%s\", \"%s\", %d\n", file->_key.c_str(), file->_value.md5, file->_value.size);
@@ -322,7 +339,10 @@ static ADGameDescList detectGame(const Common::FSList &fslist, const ADParams &p
 	const ADGameDescription *g;
 	const byte *descPtr;
 
-	debug(3, "Starting detection");
+	if (fslist.empty())
+		return ADGameDescList();
+	Common::FSNode parent = fslist.begin()->getParent();
+	debug(3, "Starting detection in dir '%s'", parent.getPath().c_str());
 
 	// First we compose a hashmap of all files in fslist.
 	// Includes nifty stuff like removing trailing dots and ignoring case.
@@ -368,6 +388,7 @@ static ADGameDescList detectGame(const Common::FSList &fslist, const ADParams &p
 
 	ADGameDescList matched;
 	int maxFilesMatched = 0;
+	bool gotAnyMatchesWithAllFiles = false;
 
 	// MD5 based matching
 	uint i;
@@ -385,12 +406,15 @@ static ADGameDescList detectGame(const Common::FSList &fslist, const ADParams &p
 		if ((params.flags & kADFlagUseExtraAsHint) && !extra.empty() && g->extra != extra)
 			continue;
 
+		bool allFilesPresent = true;
+
 		// Try to match all files for this game
 		for (fileDesc = g->filesDescriptions; fileDesc->fileName; fileDesc++) {
 			Common::String tstr = fileDesc->fileName;
 
 			if (!filesSizeMD5.contains(tstr)) {
 				fileMissing = true;
+				allFilesPresent = false;
 				break;
 			}
 
@@ -408,6 +432,19 @@ static ADGameDescList detectGame(const Common::FSList &fslist, const ADParams &p
 
 			debug(3, "Matched file: %s", tstr.c_str());
 		}
+
+		// We found at least one entry with all required files present.
+		// That means that we got new variant of the game.
+		//
+		// Wihtout this check we would have errorneous checksum display
+		// where only located files will be enlisted.
+		//
+		// Potentially this could rule out variants where some particular file
+		// is really missing, but the developers should better know about such
+		// cases.
+		if (allFilesPresent)
+			gotAnyMatchesWithAllFiles = true;
+
 		if (!fileMissing) {
 			debug(2, "Found game: %s (%s %s/%s) (%d)", g->gameid, g->extra,
 			 getPlatformDescription(g->platform), getLanguageDescription(g->language), i);
@@ -443,8 +480,9 @@ static ADGameDescList detectGame(const Common::FSList &fslist, const ADParams &p
 
 	// We didn't find a match
 	if (matched.empty()) {
-		if (!filesSizeMD5.empty())
-			reportUnknown(filesSizeMD5);
+		if (!filesSizeMD5.empty() && gotAnyMatchesWithAllFiles) {
+			reportUnknown(parent, filesSizeMD5);
+		}
 
 		// Filename based fallback
 		if (params.fileBasedFallback != 0)

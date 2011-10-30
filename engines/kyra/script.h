@@ -29,6 +29,7 @@
 #include "common/stream.h"
 #include "common/array.h"
 #include "common/func.h"
+#include "common/iff_container.h"
 
 namespace Kyra {
 
@@ -43,7 +44,7 @@ struct EMCData {
 	uint16 *ordr;
 	uint16 dataSize;
 
-	const Common::Array<const Opcode*> *opcodes;
+	const Common::Array<const Opcode*> *sysFuncs;
 };
 
 struct EMCState {
@@ -62,44 +63,39 @@ struct EMCState {
 };
 
 #define stackPos(x) (script->stack[script->sp+x])
-#define stackPosString(x) ((const char*)&script->dataPtr->text[READ_BE_UINT16(&script->dataPtr->text[stackPos(x)<<1])])
-
-#define FORM_CHUNK 0x4D524F46
-#define TEXT_CHUNK 0x54584554
-#define DATA_CHUNK 0x41544144
-#define ORDR_CHUNK 0x5244524F
-#define AVTL_CHUNK 0x4C545641
+#define stackPosString(x) ((const char *)&script->dataPtr->text[READ_BE_UINT16(&script->dataPtr->text[stackPos(x)<<1])])
 
 class Resource;
 class KyraEngine_v1;
 
-class ScriptFileParser {
+class IFFParser : public Common::IFFParser {
 public:
-	ScriptFileParser() : _stream(0), _startOffset(0), _endOffset(0) {}
-	ScriptFileParser(const char *filename, Resource *res) : _stream(0), _startOffset(0), _endOffset(0) { setFile(filename, res); }
-	~ScriptFileParser() { destroy(); }
-
-	// 'script' must be allocated with new!
-	void setFile(const char *filename, Resource *res);
-
-	operator bool() const { return (_startOffset != _endOffset) && _stream; }
-
-	uint32 getFORMBlockSize();
-	uint32 getIFFBlockSize(const uint32 chunk);
-	bool loadIFFBlock(const uint32 chunk, void *loadTo, uint32 ptrSize);
-private:
-	void destroy();
-
-	Common::SeekableReadStream *_stream;
-	uint32 _startOffset;
-	uint32 _endOffset;
+	IFFParser(Common::ReadStream &input) : Common::IFFParser(&input) {
+		// It seems Westwood missunderstood the 'size' field of the FORM chunk.
+		//
+		// For EMC scripts (type EMC2) it's filesize instead of filesize - 8,
+		// means accidently including the 8 bytes used by the chunk header for the FORM
+		// chunk.
+		//
+		// For TIM scripts (type AVFS) it's filesize - 12 instead of filesize - 8,
+		// means it will not include the size of the 'type' field in the FORM chunk,
+		// instead of only not including the chunk header size.
+		//
+		// Both lead to some problems in our IFF parser, either reading after the end
+		// of file or producing a "Chunk overread" error message. To work around this
+		// we need to adjust the size field properly.
+		if (_formType == MKID_BE('EMC2'))
+			_formChunk.size -= 8;
+		else if (_formType == MKID_BE('AVFS'))
+			_formChunk.size += 4;
+	}
 };
 
 class EMCInterpreter {
 public:
 	EMCInterpreter(KyraEngine_v1 *vm);
 
-	bool load(const char *filename, EMCData *data, const Common::Array<const Opcode*> *opcodes);
+	bool load(const char *filename, EMCData *data, const Common::Array<const Opcode *> *opcodes);
 	void unload(EMCData *data);
 
 	void init(EMCState *scriptState, const EMCData *data);
@@ -112,32 +108,37 @@ protected:
 	KyraEngine_v1 *_vm;
 	int16 _parameter;
 
-	typedef void (EMCInterpreter::*CommandProc)(EMCState*);
-	struct CommandEntry {
-		CommandProc proc;
+	const char *_filename;
+	EMCData *_scriptData;
+
+	bool callback(Common::IFFChunk &chunk);
+
+	typedef void (EMCInterpreter::*OpcodeProc)(EMCState *);
+	struct OpcodeEntry {
+		OpcodeProc proc;
 		const char *desc;
 	};
 
-	const CommandEntry *_commands;
+	const OpcodeEntry *_opcodes;
 private:
-	void cmd_jmpTo(EMCState*);
-	void cmd_setRetValue(EMCState*);
-	void cmd_pushRetOrPos(EMCState*);
-	void cmd_push(EMCState*);
-	void cmd_pushReg(EMCState*);
-	void cmd_pushBPNeg(EMCState*);
-	void cmd_pushBPAdd(EMCState*);
-	void cmd_popRetOrPos(EMCState*);
-	void cmd_popReg(EMCState*);
-	void cmd_popBPNeg(EMCState*);
-	void cmd_popBPAdd(EMCState*);
-	void cmd_addSP(EMCState*);
-	void cmd_subSP(EMCState*);
-	void cmd_execOpcode(EMCState*);
-	void cmd_ifNotJmp(EMCState*);
-	void cmd_negate(EMCState*);
-	void cmd_eval(EMCState*);
-	void cmd_setRetAndJmp(EMCState*);
+	void op_jmp(EMCState *);
+	void op_setRetValue(EMCState *);
+	void op_pushRetOrPos(EMCState *);
+	void op_push(EMCState *);
+	void op_pushReg(EMCState *);
+	void op_pushBPNeg(EMCState *);
+	void op_pushBPAdd(EMCState *);
+	void op_popRetOrPos(EMCState *);
+	void op_popReg(EMCState *);
+	void op_popBPNeg(EMCState *);
+	void op_popBPAdd(EMCState *);
+	void op_addSP(EMCState *);
+	void op_subSP(EMCState *);
+	void op_sysCall(EMCState *);
+	void op_ifNotJmp(EMCState *);
+	void op_negate(EMCState *);
+	void op_eval(EMCState *);
+	void op_setRetAndJmp(EMCState *);
 };
 } // end of namespace Kyra
 

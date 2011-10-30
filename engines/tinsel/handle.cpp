@@ -112,14 +112,14 @@ void SetupHandleTable(void) {
 	MEMHANDLE *pH;
 	Common::File f;
 
-	if (f.open(INDEX_FILENAME)) {
+	if (f.open(TinselV1PSX? PSX_INDEX_FILENAME : INDEX_FILENAME)) {
 		// get size of index file
 		len = f.size();
 
 		if (len > 0) {
 			if ((len % RECORD_SIZE) != 0) {
 				// index file is corrupt
-				error(FILE_IS_CORRUPT, INDEX_FILENAME);
+				error(FILE_IS_CORRUPT, TinselV1PSX? PSX_INDEX_FILENAME : INDEX_FILENAME);
 			}
 
 			// calc number of handles
@@ -145,16 +145,16 @@ void SetupHandleTable(void) {
 
 			if (f.ioFailed()) {
 				// index file is corrupt
-				error(FILE_IS_CORRUPT, INDEX_FILENAME);
+				error(FILE_IS_CORRUPT, (TinselV1PSX? PSX_INDEX_FILENAME : INDEX_FILENAME));
 			}
 
 			// close the file
 			f.close();
 		} else {	// index file is corrupt
-			error(FILE_IS_CORRUPT, INDEX_FILENAME);
+			error(FILE_IS_CORRUPT, (TinselV1PSX? PSX_INDEX_FILENAME : INDEX_FILENAME));
 		}
 	} else {	// cannot find the index file
-		error(CANNOT_FIND_FILE, INDEX_FILENAME);
+		error(CANNOT_FIND_FILE, (TinselV1PSX? PSX_INDEX_FILENAME : INDEX_FILENAME));
 	}
 
 	// allocate memory nodes and load all permanent graphics
@@ -207,9 +207,7 @@ void OpenCDGraphFile(void) {
 
 	// As the theory goes, the right CD will be in there!
 
-	cdGraphStream.clearIOFailed();
-	cdGraphStream.open(szCdPlayFile);
-	if (cdGraphStream.ioFailed())
+	if (!cdGraphStream.open(szCdPlayFile))
 		error(CANNOT_FIND_FILE, szCdPlayFile);
 }
 
@@ -235,7 +233,7 @@ void LoadCDGraphData(MEMHANDLE *pH) {
 	bytes = cdGraphStream.read(addr, (cdTopHandle - cdBaseHandle) & OFFSETMASK);
 
 	// New code to try and handle CD read failures 24/2/97
-	while (bytes != ((cdTopHandle - cdBaseHandle) & OFFSETMASK) && retries++ < MAX_READ_RETRIES) 	{
+	while (bytes != ((cdTopHandle - cdBaseHandle) & OFFSETMASK) && retries++ < MAX_READ_RETRIES)	{
 		// Try again
 		cdGraphStream.seek(cdBaseHandle & OFFSETMASK, SEEK_SET);
 		bytes = cdGraphStream.read(addr, (cdTopHandle - cdBaseHandle) & OFFSETMASK);
@@ -299,7 +297,7 @@ void LoadFile(MEMHANDLE *pH, bool bWarn) {
 	char szFilename[sizeof(pH->szName) + 1];
 
 	if (pH->filesize & fCompressed) {
-		error("Compression handling has been removed!");
+		error("Compression handling has been removed");
 	}
 
 	// extract and zero terminate the filename
@@ -364,7 +362,7 @@ void LoadFile(MEMHANDLE *pH, bool bWarn) {
  * Returns the address of a image, given its memory handle.
  * @param offset			Handle and offset to data
  */
-uint8 *LockMem(SCNHANDLE offset) {
+byte *LockMem(SCNHANDLE offset) {
 	uint32 handle = offset >> SCNHANDLE_SHIFT;	// calc memory handle to use
 	MEMHANDLE *pH;			// points to table entry
 
@@ -383,7 +381,7 @@ uint8 *LockMem(SCNHANDLE offset) {
 	} else if (handle == cdPlayHandle) {
 		// Must be in currently loaded/loadable range
 		if (offset < cdBaseHandle || offset >= cdTopHandle)
-			error("Overlapping (in time) CD-plays!");
+			error("Overlapping (in time) CD-plays");
 
 		if (pH->pNode->pBaseAddr && (pH->filesize & fLoaded))
 			// already allocated and loaded
@@ -420,6 +418,10 @@ uint8 *LockMem(SCNHANDLE offset) {
 		if (pH->pNode->pBaseAddr == NULL)
 			error("Out of memory");
 
+		if (TinselV2) {
+			SetCD(pH->flags2 & fAllCds);
+			CdCD(nullContext);
+		}
 		LoadFile(pH, true);
 
 		// make sure address is valid

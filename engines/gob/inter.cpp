@@ -33,7 +33,9 @@
 #include "gob/util.h"
 #include "gob/draw.h"
 #include "gob/game.h"
-#include "gob/parse.h"
+#include "gob/expression.h"
+#include "gob/script.h"
+#include "gob/hotspots.h"
 #include "gob/scenery.h"
 #include "gob/sound/sound.h"
 
@@ -56,7 +58,6 @@ Inter::Inter(GobEngine *vm) : _vm(vm) {
 	_soundStopVal = 0;
 
 	memset(_varStack, 0, 300);
-	memset(_varSizesStack, 0, 300);
 	_varStackPos = 0;
 
 	_noBusyWait = false;
@@ -66,6 +67,79 @@ Inter::Inter(GobEngine *vm) : _vm(vm) {
 
 Inter::~Inter() {
 	delocateVars();
+}
+
+void Inter::setupOpcodes() {
+	setupOpcodesDraw();
+	setupOpcodesFunc();
+	setupOpcodesGob();
+}
+
+void Inter::executeOpcodeDraw(byte i) {
+	debugC(1, kDebugDrawOp, "opcodeDraw %d [0x%X] (%s)", i, i, getDescOpcodeDraw(i));
+
+	if (_opcodesDraw[i].proc && _opcodesDraw[i].proc->isValid())
+		(*_opcodesDraw[i].proc)();
+	else
+		warning("unimplemented opcodeDraw: %d [0x%X]", i, i);
+}
+
+bool Inter::executeOpcodeFunc(byte i, byte j, OpFuncParams &params) {
+	debugC(1, kDebugFuncOp, "opcodeFunc %d.%d [0x%X.0x%X] (%s)",
+			i, j, i, j, getDescOpcodeFunc(i, j));
+
+	if ((i > 4) || (j > 15)) {
+		warning("unimplemented opcodeFunc: %d.%d [0x%X.0x%X]", i, j, i, j);
+		return false;
+	}
+
+	i = i * 16 + j;
+	if (_opcodesFunc[i].proc && _opcodesFunc[i].proc->isValid())
+		return (*_opcodesFunc[i].proc)(params);
+	else
+		warning("unimplemented opcodeFunc: %d.%d [0x%X.0x%X]", i, j, i, j);
+
+	return false;
+}
+
+void Inter::executeOpcodeGob(int i, OpGobParams &params) {
+	debugC(1, kDebugGobOp, "opcodeGoblin %d [0x%X] (%s)",
+			i, i, getDescOpcodeGob(i));
+
+	OpcodeEntry<OpcodeGob> *op = 0;
+
+	if (_opcodesGob.contains(i))
+		op = &_opcodesGob.getVal(i);
+
+	if (op && op->proc && op->proc->isValid()) {
+		(*op->proc)(params);
+		return;
+	}
+
+	_vm->_game->_script->skip(params.paramCount << 1);
+	warning("unimplemented opcodeGob: %d [0x%X]", i, i);
+}
+
+const char *Inter::getDescOpcodeDraw(byte i) {
+	const char *desc = _opcodesDraw[i].desc;
+
+	return ((desc) ? desc : "");
+}
+
+const char *Inter::getDescOpcodeFunc(byte i, byte j) {
+	if ((i > 4) || (j > 15))
+		return "";
+
+	const char *desc = _opcodesFunc[i * 16 + j].desc;
+
+	return ((desc) ? desc : "");
+}
+
+const char *Inter::getDescOpcodeGob(int i) {
+	if (_opcodesGob.contains(i))
+		return _opcodesGob.getVal(i).desc;
+
+	return "";
 }
 
 void Inter::initControlVars(char full) {
@@ -82,51 +156,6 @@ void Inter::initControlVars(char full) {
 			_animPalDir[i] = 0;
 		_soundEndTimeKey = 0;
 	}
-}
-
-int16 Inter::load16() {
-	int16 tmp = (int16) READ_LE_UINT16(_vm->_global->_inter_execPtr);
-	_vm->_global->_inter_execPtr += 2;
-	return tmp;
-}
-
-char Inter::evalExpr(int16 *pRes) {
-	byte token;
-
-	_vm->_parse->printExpr(99);
-
-	_vm->_parse->parseExpr(99, &token);
-	if (!pRes)
-		return token;
-
-	switch (token) {
-	case 20:
-		*pRes = _vm->_global->_inter_resVal;
-		break;
-
-	case 22:
-	case 23:
-		*pRes = 0;
-		break;
-
-	case 24:
-		*pRes = 1;
-		break;
-	}
-
-	return token;
-}
-
-bool Inter::evalBoolResult() {
-	byte token;
-
-	_vm->_parse->printExpr(99);
-
-	_vm->_parse->parseExpr(99, &token);
-	if ((token == 24) || ((token == 20) && _vm->_global->_inter_resVal))
-		return true;
-	else
-		return false;
 }
 
 void Inter::renewTimeInVars() {
@@ -152,7 +181,7 @@ void Inter::storeMouse() {
 
 	WRITE_VAR(2, x);
 	WRITE_VAR(3, y);
-	WRITE_VAR(4, _vm->_game->_mouseButtons);
+	WRITE_VAR(4, (uint32) _vm->_game->_mouseButtons);
 }
 
 void Inter::storeKey(int16 key) {
@@ -161,20 +190,20 @@ void Inter::storeKey(int16 key) {
 	storeMouse();
 	WRITE_VAR(1, _vm->_sound->blasterPlayingSound());
 
-	if (key == 0x4800)
-		key = 0x0B;
-	else if (key == 0x5000)
-		key = 0x0A;
-	else if (key == 0x4D00)
-		key = 0x09;
-	else if (key == 0x4B00)
-		key = 0x08;
-	else if (key == 0x011B)
-		key = 0x1B;
-	else if (key == 0x0E08)
-		key = 0x19;
-	else if (key == 0x5300)
-		key = 0x1A;
+	if      (key == kKeyUp)
+		key =    kShortKeyUp;
+	else if (key == kKeyDown)
+		key =    kShortKeyDown;
+	else if (key == kKeyRight)
+		key =    kShortKeyRight;
+	else if (key == kKeyLeft)
+		key =    kShortKeyLeft;
+	else if (key == kKeyEscape)
+		key =    kShortKeyEscape;
+	else if (key == kKeyBackspace)
+		key =    kShortKeyBackspace;
+	else if (key == kKeyDelete)
+		key =    kShortKeyDelete;
 	else if ((key & 0xFF) != 0)
 		key &= 0xFF;
 
@@ -186,14 +215,14 @@ void Inter::storeKey(int16 key) {
 
 void Inter::writeVar(uint32 offset, uint16 type, uint32 value) {
 	switch (type) {
-	case 16:
-	case 18:
+	case TYPE_VAR_INT8:
+	case TYPE_ARRAY_INT8:
 		WRITE_VARO_UINT8(offset, value);
 		break;
 
-	case 17:
-	case 24:
-	case 27:
+	case TYPE_VAR_INT16:
+	case TYPE_VAR_INT32_AS_INT16:
+	case TYPE_ARRAY_INT16:
 		WRITE_VARO_UINT16(offset, value);
 		break;
 
@@ -210,20 +239,20 @@ void Inter::funcBlock(int16 retFlag) {
 
 	params.retFlag = retFlag;
 
-	if (!_vm->_global->_inter_execPtr)
+	if (_vm->_game->_script->isFinished())
 		return;
 
 	_break = false;
-	_vm->_global->_inter_execPtr++;
-	params.cmdCount = *_vm->_global->_inter_execPtr++;
-	_vm->_global->_inter_execPtr += 2;
+	_vm->_game->_script->skip(1);
+	params.cmdCount = _vm->_game->_script->readByte();
+	_vm->_game->_script->skip(2);
 
 	if (params.cmdCount == 0) {
-		_vm->_global->_inter_execPtr = 0;
+		_vm->_game->_script->setFinished(true);
 		return;
 	}
 
-	int startaddr = _vm->_global->_inter_execPtr - _vm->_game->_totFileData;
+	int startaddr = _vm->_game->_script->pos();
 
 	params.counter = 0;
 	do {
@@ -231,12 +260,14 @@ void Inter::funcBlock(int16 retFlag) {
 			break;
 
 		// WORKAROUND:
-		// The EGA and Mac versions of gob1 doesn't add a delay after showing
-		// images between levels. We manually add it here.
+		// The EGA, Mac and Windows versions of gob1 doesn't add a delay after
+		// showing images between levels. We manually add it here.
 		if ((_vm->getGameType() == kGameTypeGob1) &&
-		   (_vm->isEGA() || (_vm->getPlatform() == Common::kPlatformMacintosh))) {
+		   (  _vm->isEGA() ||
+		     (_vm->getPlatform() == Common::kPlatformMacintosh) ||
+		     (_vm->getPlatform() == Common::kPlatformWindows))) {
 
-			int addr = _vm->_global->_inter_execPtr-_vm->_game->_totFileData;
+			int addr = _vm->_game->_script->pos();
 
 			if ((startaddr == 0x18B4 && addr == 0x1A7F && // Zombie, EGA
 				 !strncmp(_vm->_game->_curTotFile, "avt005.tot", 10)) ||
@@ -262,20 +293,19 @@ void Inter::funcBlock(int16 retFlag) {
 
 		} // End of workaround
 
-		cmd = *_vm->_global->_inter_execPtr;
+		cmd = _vm->_game->_script->readByte();
 		if ((cmd >> 4) >= 12) {
 			cmd2 = 16 - (cmd >> 4);
 			cmd &= 0xF;
 		} else
 			cmd2 = 0;
 
-		_vm->_global->_inter_execPtr++;
 		params.counter++;
 
 		if (cmd2 == 0)
 			cmd >>= 4;
 
-		if (executeFuncOpcode(cmd2, cmd, params))
+		if (executeOpcodeFunc(cmd2, cmd, params))
 			return;
 
 		if (_vm->shouldQuit())
@@ -291,26 +321,26 @@ void Inter::funcBlock(int16 retFlag) {
 		}
 	} while (params.counter != params.cmdCount);
 
-	_vm->_global->_inter_execPtr = 0;
+	_vm->_game->_script->setFinished(true);
 	return;
 }
 
 void Inter::callSub(int16 retFlag) {
 	byte block;
 
-	while (!_vm->shouldQuit() && _vm->_global->_inter_execPtr &&
-			(_vm->_global->_inter_execPtr != _vm->_game->_totFileData)) {
+	while (!_vm->shouldQuit() && !_vm->_game->_script->isFinished() &&
+			(_vm->_game->_script->pos() != 0)) {
 
-		block = *_vm->_global->_inter_execPtr;
+		block = _vm->_game->_script->peekByte();
 		if (block == 1)
 			funcBlock(retFlag);
 		else if (block == 2)
-			_vm->_game->collisionsBlock();
+			_vm->_game->_hotspots->evaluate();
 		else
 			error("Unknown block type %d in Inter::callSub()", block);
 	}
 
-	if (_vm->_global->_inter_execPtr == _vm->_game->_totFileData)
+	if (!_vm->_game->_script->isFinished() && (_vm->_game->_script->pos() == 0))
 		_terminate = 1;
 }
 

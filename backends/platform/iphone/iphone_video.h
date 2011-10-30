@@ -27,18 +27,19 @@
 #define _IPHONE_VIDEO__H
 
 #import <UIKit/UIKit.h>
-#import <GraphicsServices/GraphicsServices.h>
 #import <Foundation/Foundation.h>
-#import <CoreSurface/CoreSurface.h>
-
 #import <QuartzCore/QuartzCore.h>
+
+#import <OpenGLES/EAGL.h>
+#import <OpenGLES/ES1/gl.h>
+#import <OpenGLES/ES1/glext.h>
+
 #import "iphone_keyboard.h"
 
 @interface iPhoneView : UIView
 {
-	CoreSurfaceBufferRef _screenSurface;
+	void* _screenSurface;
 	NSMutableArray* _events;
-	NSLock* _lock;
 	SoftKeyboard* _keyboardView;
 	CALayer* _screenLayer;
 
@@ -46,17 +47,26 @@
 	int _fullHeight;
 	int _widthOffset;
 	int _heightOffset;
+
+	EAGLContext* _context;
+	GLuint _viewRenderbuffer;
+	GLuint _viewFramebuffer;
+	GLint _backingWidth;
+	GLint _backingHeight;
+	GLint _visibleWidth;
+	GLint _visibleHeight;
+	GLuint _screenTexture;
 }
 
 - (id)initWithFrame:(struct CGRect)frame;
 
 - (void)drawRect:(CGRect)frame;
 
-- (CoreSurfaceBufferRef)getSurface;
+- (void *)getSurface;
 
 - (void)initSurface;
 
-- (void)updateScreenRect:(id)rect;
+- (void)updateSurface;
 
 - (id)getEvent;
 

@@ -426,7 +426,10 @@ bool OSystem_SDL_Symbian::remapKey(SDL_Event &ev, Common::Event &event) {
 			case GUI::ACTION_PAUSE:
 			case GUI::ACTION_SWAPCHAR:
 			case GUI::ACTION_FASTMODE:
-			case GUI::ACTION_DEBUGGER: {
+			case GUI::ACTION_DEBUGGER:
+			case GUI::ACTION_MAINMENU:
+			case GUI::ACTION_VKB:
+			case GUI::ACTION_KEYMAPPER:{
 					GUI::Key &key = GUI::Actions::Instance()->getKeyAction(loop);
 					ev.key.keysym.sym = (SDLKey) key.keycode();
 					ev.key.keysym.scancode = 0;
@@ -468,7 +471,16 @@ bool OSystem_SDL_Symbian::remapKey(SDL_Event &ev, Common::Event &event) {
 
 void OSystem_SDL_Symbian::setWindowCaption(const char *caption) {
 	OSystem_SDL::setWindowCaption(caption);
+}
+
+void OSystem_SDL_Symbian::engineInit() {
+	// Check mappings for the engine just started
 	check_mappings();
+}
+
+void OSystem_SDL_Symbian::engineDone() {
+	// Need to reset engine to basic state after an engine has been running
+	GUI::Actions::Instance()->initInstanceMain(this);
 }
 
 void OSystem_SDL_Symbian::check_mappings() {

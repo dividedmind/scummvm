@@ -80,7 +80,7 @@ private:
 	// Codebooks
 	uint16 _num2blocks;
 	uint16 _num4blocks;
-	byte _codebook2[256 * 6];
+	byte _codebook2[256 * 10];
 	byte _codebook4[256 * 4];
 
 	// Buffers
@@ -88,9 +88,10 @@ private:
 	Graphics::Surface *_prevBuf;
 	Graphics::Surface _showBuf;
 	void buildShowBuf();
-	byte _scale;
+	byte _scaleX, _scaleY;
 	byte _offScale;
 	bool _dirty;
+	byte _alpha;
 
 #ifdef DITHER
 	// Dithering

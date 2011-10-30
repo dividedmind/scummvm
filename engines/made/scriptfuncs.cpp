@@ -190,7 +190,7 @@ int16 ScriptFunctions::sfClearScreen(int16 argc, int16 *argv) {
 		_vm->_mixer->stopHandle(_audioStreamHandle);
 		_vm->_autoStopSound = false;
 	}
- 	_vm->_screen->clearScreen();
+	_vm->_screen->clearScreen();
 	return 0;
 }
 
@@ -203,11 +203,12 @@ int16 ScriptFunctions::sfShowPage(int16 argc, int16 *argv) {
 }
 
 int16 ScriptFunctions::sfPollEvent(int16 argc, int16 *argv) {
-
-	_vm->_system->updateScreen();
+	_vm->handleEvents();
+	_vm->_screen->updateScreenAndWait(10);
 
 	int16 eventNum = _vm->_eventNum;
 	_vm->_eventNum = 0;
+
 	return eventNum;
 }
 
@@ -631,12 +632,12 @@ int16 ScriptFunctions::sfClearMono(int16 argc, int16 *argv) {
 }
 
 int16 ScriptFunctions::sfGetSoundEnergy(int16 argc, int16 *argv) {
-	// This is called while in-game voices are played to animate 
+	// This is called while in-game voices are played to animate
 	// mouths when NPCs are talking
 	int result = 0;
 	if (_vm->_mixer->isSoundHandleActive(_audioStreamHandle) && _vm->_soundEnergyArray) {
 		while (_vm->_soundEnergyIndex < _vm->_soundEnergyArray->size()) {
-			SoundEnergyItem *soundEnergyItem = &_vm->_soundEnergyArray->operator[](_vm->_soundEnergyIndex);
+			SoundEnergyItem *soundEnergyItem = &(*_vm->_soundEnergyArray)[_vm->_soundEnergyIndex];
 			if (((_vm->_soundRate / 1000) * _vm->_mixer->getSoundElapsedTime(_audioStreamHandle)) < soundEnergyItem->position) {
 				result = soundEnergyItem->energy;
 				break;

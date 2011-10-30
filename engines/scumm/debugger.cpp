@@ -484,10 +484,14 @@ bool ScummDebugger::Cmd_Object(int argc, const char **argv) {
 		_vm->markObjectRectAsDirty(obj);
 		_vm->clearDrawObjectQueue();
 		_vm->runInventoryScript(obj);
-	} else if (!strcmp(argv[2], "state") && argc == 4) {
-		_vm->putState(obj, atoi(argv[3]));
-		//is BgNeedsRedraw enough?
-		_vm->_bgNeedsRedraw = true;
+	} else if (!strcmp(argv[2], "state")) {
+		if (argc == 4) {
+			_vm->putState(obj, atoi(argv[3]));
+			//is BgNeedsRedraw enough?
+			_vm->_bgNeedsRedraw = true;
+		} else {
+			DebugPrintf("object command 'state' requires a parameter\n");
+		}
 	} else if (!strcmp(argv[2], "name")) {
 		DebugPrintf("Name of object %d: %s\n", obj, _vm->getObjOrActorName(obj));
 	} else {
@@ -503,7 +507,7 @@ bool ScummDebugger::Cmd_Debug(int argc, const char **argv) {
 	// No parameters given: Print out a list of all channels and their status
 	if (argc <= 1) {
 		DebugPrintf("Available debug channels: ");
-		for (Common::DebugChannelList::iterator i = lvls.begin(); i != lvls.end(); ++i) {
+		for (Common::DebugChannelList::const_iterator i = lvls.begin(); i != lvls.end(); ++i) {
 			DebugPrintf("%c%s - %s (%s)\n", i->enabled ? '+' : ' ',
 					i->name.c_str(), i->description.c_str(),
 					i->enabled ? "enabled" : "disabled");
@@ -518,7 +522,7 @@ bool ScummDebugger::Cmd_Debug(int argc, const char **argv) {
 	} else if (argv[1][0] == '-') {
 		result = Common::disableDebugChannel(argv[1] + 1);
 	}
-	
+
 	if (result) {
 		DebugPrintf("%s %s\n", (argv[1][0] == '+') ? "Enabled" : "Disabled", argv[1] + 1);
 	} else {

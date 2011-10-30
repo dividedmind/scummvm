@@ -36,7 +36,8 @@ typedef unsigned int u32;
 typedef signed int s32;
 */
 
-#include "nds/jtypes.h"
+#include "nds/ndstypes.h"
+
 
 // Somebody removed these from scummsys.h, but they're still required, so I'm adding them here
 // in the hope that they'll stay.
@@ -51,6 +52,8 @@ typedef signed int s32;
 
 #define CT_NO_TRANSPARENCY
 
+#define DISABLE_TEXT_CONSOLE
+#define DISABLE_COMMAND_LINE
 
 #ifdef __cplusplus
 extern "C" {
@@ -63,6 +66,8 @@ int consolePrintf(const char* s, ...);
 //#undef assert
 //#define assert(expr) consolePrintf("Asserted!")
 #define NO_DEBUG_MSGS
+
+#define consolePrintf iprintf
 
 #ifdef assert
 #undef assert

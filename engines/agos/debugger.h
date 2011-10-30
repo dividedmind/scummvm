@@ -48,9 +48,13 @@ protected:
 	bool Cmd_PlaySound(int argc, const char **argv);
 	bool Cmd_PlayVoice(int argc, const char **argv);
 	bool Cmd_SetBit(int argc, const char **argv);
+	bool Cmd_SetBit2(int argc, const char **argv);
+	bool Cmd_SetBit3(int argc, const char **argv);
 	bool Cmd_SetVar(int argc, const char **argv);
 	bool Cmd_SetObjectFlag(int argc, const char **argv);
 	bool Cmd_StartSubroutine(int argc, const char **argv);
+	bool Cmd_dumpImage(int argc, const char **argv);
+	bool Cmd_dumpScript(int argc, const char **argv);
 };
 
 } // End of namespace AGOS

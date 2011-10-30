@@ -45,6 +45,7 @@
 #include "sword1/sword1.h"
 #include "sword1/sworddefs.h"
 #include "sword1/swordres.h"
+#include "sword1/screen.h"
 
 namespace Sword1 {
 
@@ -120,10 +121,11 @@ ControlButton::ControlButton(uint16 x, uint16 y, uint32 resId, uint8 id, uint8 f
 	_resMan->resOpen(_resId);
 	FrameHeader *tmp = _resMan->fetchFrame(_resMan->fetchRes(_resId), 0);
 	_width = _resMan->getUint16(tmp->width);
+	_width = (_width > SCREEN_WIDTH) ? SCREEN_WIDTH : _width;
 	_height = _resMan->getUint16(tmp->height);
 	if ((x == 0) && (y == 0)) { // center the frame (used for panels);
-		_x = (640 - _width) / 2;
-		_y = (480 - _height) / 2;
+		_x = (((640 - _width) / 2) < 0)? 0 : ((640 - _width) / 2) ;
+		_y = (((480 - _height) / 2) < 0)? 0 : ((480 - _height) / 2);
 	}
 	_dstBuf = screenBuf + _y * SCREEN_WIDTH + _x;
 	_system = system;
@@ -141,13 +143,78 @@ void ControlButton::draw(void) {
 	FrameHeader *fHead = _resMan->fetchFrame(_resMan->fetchRes(_resId), _frameIdx);
 	uint8 *src = (uint8*)fHead + sizeof(FrameHeader);
 	uint8 *dst = _dstBuf;
-	for (uint16 cnt = 0; cnt < _resMan->readUint16(&fHead->height); cnt++) {
-		for (uint16 cntx = 0; cntx < _resMan->readUint16(&fHead->width); cntx++)
-			if (src[cntx])
-				dst[cntx] = src[cntx];
-		dst += SCREEN_WIDTH;
-		src += _resMan->readUint16(&fHead->width);
-	}
+
+	if (SwordEngine::isPsx() && _resId) {
+		uint8 *HIFbuf = (uint8*)malloc(_resMan->readUint16(&fHead->height) * _resMan->readUint16(&fHead->width));
+		memset(HIFbuf, 0, _resMan->readUint16(&fHead->height) * _resMan->readUint16(&fHead->width));
+		Screen::decompressHIF(src, HIFbuf);
+		src = HIFbuf;
+
+		if (_resMan->readUint16(&fHead->width) < 300)
+			for (uint16 cnt = 0; cnt < _resMan->readUint16(&fHead->height); cnt++) {
+				for (uint16 cntx = 0; cntx < _resMan->readUint16(&fHead->width); cntx++)
+					if (src[cntx])
+						dst[cntx] = src[cntx];
+
+				dst += SCREEN_WIDTH;
+				for (uint16 cntx = 0; cntx < _resMan->readUint16(&fHead->width); cntx++)
+					if (src[cntx])
+						dst[cntx] = src[cntx];
+
+				dst += SCREEN_WIDTH;
+				src += _resMan->readUint16(&fHead->width);
+			}
+		else if (_resId == SR_DEATHPANEL) { // Check for death panel psx version (which is 1/3 of original width)
+			for (uint16 cnt = 0; cnt < _resMan->readUint16(&fHead->height)/2; cnt++) {
+				//Stretched panel is bigger than 640px, check we don't draw outside screen
+				for (uint16 cntx = 0; (cntx < (_resMan->readUint16(&fHead->width))/3) && (cntx < (SCREEN_WIDTH-3) ); cntx++)
+					if (src[cntx]) {
+						dst[cntx * 3] = src[cntx];
+						dst[cntx * 3 + 1] = src[cntx];
+						dst[cntx * 3 + 2] = src[cntx];
+					}
+				dst+= SCREEN_WIDTH;
+
+				for (uint16 cntx = 0; cntx < (_resMan->readUint16(&fHead->width))/3; cntx++)
+					if (src[cntx]) {
+						dst[cntx * 3] = src[cntx];
+						dst[cntx * 3 + 1] = src[cntx];
+						dst[cntx * 3 + 2] = src[cntx];
+					}
+				dst += SCREEN_WIDTH;
+				src += _resMan->readUint16(&fHead->width)/3;
+			}
+		} else { //save slots needs to be multiplied by 2 in height
+			for (uint16 cnt = 0; cnt < _resMan->readUint16(&fHead->height); cnt++) {
+				for (uint16 cntx = 0; cntx < _resMan->readUint16(&fHead->width) / 2; cntx++)
+					if (src[cntx]) {
+						dst[cntx * 2] = src[cntx];
+						dst[cntx * 2 + 1] = src[cntx];
+					}
+
+				dst += SCREEN_WIDTH;
+				for (uint16 cntx = 0; cntx < _resMan->readUint16(&fHead->width) / 2; cntx++)
+					if (src[cntx]) {
+						dst[cntx * 2] = src[cntx];
+						dst[cntx * 2 + 1] = src[cntx];
+					}
+
+				dst += SCREEN_WIDTH;
+				src += _resMan->readUint16(&fHead->width)/2;
+			}
+		}
+
+		free(HIFbuf);
+	} else
+		for (uint16 cnt = 0; cnt < _resMan->readUint16(&fHead->height); cnt++) {
+			for (uint16 cntx = 0; cntx < _resMan->readUint16(&fHead->width); cntx++)
+				if (src[cntx])
+					dst[cntx] = src[cntx];
+
+			dst += SCREEN_WIDTH;
+			src += _resMan->readUint16(&fHead->width);
+		}
+
 	_system->copyRectToScreen(_dstBuf, SCREEN_WIDTH, _x, _y, _width, _height);
 }
 
@@ -173,6 +240,7 @@ Control::Control(Common::SaveFileManager *saveFileMan, ResMan *pResMan, ObjectMa
 	_sound = pSound;
 	_lStrings = _languageStrings + SwordEngine::_systemVars.language * 20;
 	_selectedButton = 255;
+	_panelShown = false;
 }
 
 void Control::askForCd(void) {
@@ -233,6 +301,7 @@ static int volToBalance(int volL, int volR) {
 }
 
 uint8 Control::runPanel(void) {
+	_panelShown = true;
 	_mouseDown = false;
 	_restoreBuf = NULL;
 	_keyPressed.reset();
@@ -348,6 +417,7 @@ uint8 Control::runPanel(void) {
 	free(_screenBuf);
 	_mouse->controlPanel(false);
 	_music->startMusic(Logic::_scriptVars[CURRENT_MUSIC], 1);
+	_panelShown = false;
 	return retVal;
 }
 
@@ -721,7 +791,7 @@ bool Control::restoreFromFile(void) {
 void Control::readSavegameDescriptions(void) {
 	char saveName[40];
 	Common::String pattern = "sword1.???";
-	Common::StringList filenames = _saveFileMan->listSavefiles(pattern.c_str());
+	Common::StringList filenames = _saveFileMan->listSavefiles(pattern);
 	sort(filenames.begin(), filenames.end());	// Sort (hopefully ensuring we are sorted numerically..)
 
 	_saveNames.clear();
@@ -739,7 +809,7 @@ void Control::readSavegameDescriptions(void) {
 
 		if (slotNum >= 0 && slotNum <= 999) {
 			num++;
-			Common::InSaveFile *in = _saveFileMan->openForLoading(file->c_str());
+			Common::InSaveFile *in = _saveFileMan->openForLoading(*file);
 			if (in) {
 				in->readUint32LE();	// header
 				in->read(saveName, 40);
@@ -755,6 +825,10 @@ void Control::readSavegameDescriptions(void) {
 	_saveScrollPos = 0;
 	_selectedSavegame = 255;
 	_saveFiles = _numSaves = _saveNames.size();
+}
+
+bool Control::isPanelShown(void) {
+	return _panelShown;
 }
 
 int Control::displayMessage(const char *altButton, const char *message, ...) {
@@ -773,7 +847,7 @@ int Control::displayMessage(const char *altButton, const char *message, ...) {
 
 bool Control::savegamesExist(void) {
 	Common::String pattern = "sword1.???";
-	Common::StringList saveNames = _saveFileMan->listSavefiles(pattern.c_str());
+	Common::StringList saveNames = _saveFileMan->listSavefiles(pattern);
 	return saveNames.size() > 0;
 }
 
@@ -940,17 +1014,37 @@ void Control::renderText(const uint8 *str, uint16 x, uint16 y, uint8 mode) {
 
 		FrameHeader *chSpr = _resMan->fetchFrame(font, *str - 32);
 		uint8 *sprData = (uint8*)chSpr + sizeof(FrameHeader);
+		uint8 *HIFbuf = NULL;
+
+		if (SwordEngine::isPsx()) { //Text fonts are compressed in psx version
+			HIFbuf = (uint8 *)malloc(_resMan->getUint16(chSpr->height) * _resMan->getUint16(chSpr->width));
+			memset(HIFbuf, 0, _resMan->getUint16(chSpr->height) * _resMan->getUint16(chSpr->width));
+			Screen::decompressHIF(sprData, HIFbuf);
+			sprData = HIFbuf;
+		}
+
 		for (uint16 cnty = 0; cnty < _resMan->getUint16(chSpr->height); cnty++) {
 			for (uint16 cntx = 0; cntx < _resMan->getUint16(chSpr->width); cntx++) {
 				if (sprData[cntx])
 					dst[cntx] = sprData[cntx];
 			}
+
+			if(SwordEngine::isPsx()) { //On PSX version we need to double horizontal lines
+				dst += SCREEN_WIDTH;
+				for (uint16 cntx = 0; cntx < _resMan->getUint16(chSpr->width); cntx++)
+					if (sprData[cntx])
+						dst[cntx] = sprData[cntx];
+			}
+
 			sprData += _resMan->getUint16(chSpr->width);
 			dst += SCREEN_WIDTH;
 		}
 		destX += _resMan->getUint16(chSpr->width) - 3;
 		str++;
+
+		free(HIFbuf);
 	}
+
 	_system->copyRectToScreen(_screenBuf + y * SCREEN_WIDTH + x, SCREEN_WIDTH, x, y, (destX - x) + 3, 28);
 }
 
@@ -963,14 +1057,34 @@ void Control::renderVolumeBar(uint8 id, uint8 volL, uint8 volR) {
 		FrameHeader *frHead = _resMan->fetchFrame(_resMan->openFetchRes(SR_VLIGHT), (vol + 15) >> 4);
 		uint8 *destMem = _screenBuf + destY * SCREEN_WIDTH + destX;
 		uint8 *srcMem = (uint8*)frHead + sizeof(FrameHeader);
-		for (uint16 cnty = 0; cnty < _resMan->getUint16(frHead->height); cnty++) {
+		uint16 barHeight = _resMan->getUint16(frHead->height);
+		uint8 *psxVolBuf = NULL;
+
+		if (SwordEngine::isPsx()) {
+			psxVolBuf = (uint8 *)malloc(_resMan->getUint16(frHead->height) / 2 * _resMan->getUint16(frHead->width));
+			memset(psxVolBuf, 0, _resMan->getUint16(frHead->height) / 2 * _resMan->getUint16(frHead->width));
+			Screen::decompressHIF(srcMem, psxVolBuf);
+			srcMem = psxVolBuf;
+			barHeight /= 2;
+		}
+
+		for (uint16 cnty = 0; cnty < barHeight; cnty++) {
 			memcpy(destMem, srcMem, _resMan->getUint16(frHead->width));
+
+			if(SwordEngine::isPsx()) { //linedoubling
+				destMem += SCREEN_WIDTH;
+				memcpy(destMem, srcMem, _resMan->getUint16(frHead->width));
+			}
+
 			srcMem += _resMan->getUint16(frHead->width);
 			destMem += SCREEN_WIDTH;
 		}
+
 		_system->copyRectToScreen(_screenBuf + destY * SCREEN_WIDTH + destX, SCREEN_WIDTH, destX, destY, _resMan->getUint16(frHead->width), _resMan->getUint16(frHead->height));
 		_resMan->resClose(SR_VLIGHT);
 		destX += 32;
+
+		free(psxVolBuf);
 	}
 }
 
@@ -991,26 +1105,21 @@ void Control::saveGameToFile(uint8 slot) {
 	outf->write(_saveNames[slot].c_str(), 40);
 	outf->writeByte(SAVEGAME_VERSION);
 
-	// FIXME: at this point, we can't save a thumbnail of the game screen, as the save menu is shown
-#if 0
-	outf->writeByte(HAS_THUMBNAIL);
-
-	// Thumbnail
-	Graphics::saveThumbnail(*outf);
-#else
-	outf->writeByte(NO_THUMBNAIL);
-#endif
+	if (!isPanelShown()) // Generate a thumbnail only if we are outside of game menu
+		Graphics::saveThumbnail(*outf);
 
 	// Date / time
 	tm curTime;
 	_system->getTimeAndDate(curTime);
 
-	uint32 saveDate = (curTime.tm_mday & 0xFF) << 24 | ((curTime.tm_mon + 1) & 0xFF) << 16 | (curTime.tm_year + 1900) & 0xFFFF;
-	uint16 saveTime = (curTime.tm_hour & 0xFF) << 8 | (curTime.tm_min) & 0xFF;
+	uint32 saveDate = (curTime.tm_mday & 0xFF) << 24 | ((curTime.tm_mon + 1) & 0xFF) << 16 | ((curTime.tm_year + 1900) & 0xFFFF);
+	uint16 saveTime = (curTime.tm_hour & 0xFF) << 8 | ((curTime.tm_min) & 0xFF);
 
 	outf->writeUint32BE(saveDate);
 	outf->writeUint16BE(saveTime);
-	// TODO: played time
+
+	uint32 currentTime = _system->getMillis() / 1000;
+	outf->writeUint32BE(currentTime - SwordEngine::_systemVars.engineStartTime);
 
 	_objMan->saveLiveList(liveBuf);
 	for (cnt = 0; cnt < TOTAL_SECTIONS; cnt++)
@@ -1031,7 +1140,7 @@ void Control::saveGameToFile(uint8 slot) {
 	for (uint32 cnt2 = 0; cnt2 < playerSize; cnt2++)
 		outf->writeUint32LE(playerRaw[cnt2]);
 	outf->finalize();
-	if (outf->ioFailed())
+	if (outf->err())
 		displayMessage(0, "Couldn't write to file '%s'. Device full? (%s)", fName, _saveFileMan->popErrorDesc().c_str());
 	delete outf;
 }
@@ -1058,25 +1167,26 @@ bool Control::restoreGameFromFile(uint8 slot) {
 	inf->skip(40);		// skip description
 	uint8 saveVersion = inf->readByte();
 
-	if (saveVersion != SAVEGAME_VERSION) {
+	if (saveVersion > SAVEGAME_VERSION) {
 		warning("Different save game version");
 		return false;
 	}
 
-	bool hasThumbnail = inf->readByte();
+	if (saveVersion < 2) // These older version of the savegames used a flag to signal presence of thumbnail
+		inf->skip(1);
 
-	if (hasThumbnail) {
-		// We don't need the thumbnail here, so just read it and discard it
-		Graphics::Surface *thumbnail = new Graphics::Surface();
-		assert(thumbnail);
-		Graphics::loadThumbnail(*inf, *thumbnail);
-		delete thumbnail;
-		thumbnail = 0;
-	}
+	if (Graphics::checkThumbnailHeader(*inf))
+		Graphics::skipThumbnailHeader(*inf);
 
 	inf->readUint32BE();	// save date
 	inf->readUint16BE();	// save time
-	// TODO: played time
+
+	if (saveVersion < 2) { // Before version 2 we didn't had play time feature
+		SwordEngine::_systemVars.engineStartTime =	_system->getMillis() / 1000; // Start counting
+	} else {
+		uint32 currentTime = _system->getMillis() / 1000;
+		SwordEngine::_systemVars.engineStartTime = currentTime - inf->readUint32BE(); // Engine start time
+	}
 
 	_restoreBuf = (uint8*)malloc(
 		TOTAL_SECTIONS * 2 +
@@ -1097,7 +1207,7 @@ bool Control::restoreGameFromFile(uint8 slot) {
 	for (uint32 cnt2 = 0; cnt2 < playerSize; cnt2++)
 		playerBuf[cnt2] = inf->readUint32LE();
 
-	if (inf->ioFailed()) {
+	if (inf->err() || inf->eos()) {
 		displayMessage(0, "Can't read from file '%s'. (%s)", fName, _saveFileMan->popErrorDesc().c_str());
 		delete inf;
 		free(_restoreBuf);
@@ -1163,23 +1273,22 @@ bool Control::convertSaveGame(uint8 slot, char* desc) {
 	newSave->writeUint32LE(SAVEGAME_HEADER);
 	newSave->write(desc, 40);
 	newSave->writeByte(SAVEGAME_VERSION);
-	newSave->writeByte(NO_THUMBNAIL);
 
 	// Date / time
 	tm curTime;
 	_system->getTimeAndDate(curTime);
 
-	uint32 saveDate = (curTime.tm_mday & 0xFF) << 24 | ((curTime.tm_mon + 1) & 0xFF) << 16 | (curTime.tm_year + 1900) & 0xFFFF;
-	uint16 saveTime = (curTime.tm_hour & 0xFF) << 8 | (curTime.tm_min) & 0xFF;
+	uint32 saveDate = (curTime.tm_mday & 0xFF) << 24 | ((curTime.tm_mon + 1) & 0xFF) << 16 | ((curTime.tm_year + 1900) & 0xFFFF);
+	uint16 saveTime = (curTime.tm_hour & 0xFF) << 8 | ((curTime.tm_min) & 0xFF);
 
 	newSave->writeUint32BE(saveDate);
 	newSave->writeUint16BE(saveTime);
-	// TODO: played time
+	newSave->writeUint32BE(0); // We don't have playtime info when converting, so we start from 0.
 
 	newSave->write(saveData, dataSize);
 
 	newSave->finalize();
-	if (newSave->ioFailed())
+	if (newSave->err())
 		warning("Couldn't write to file '%s'. Device full?", newFileName);
 	delete newSave;
 
@@ -1356,7 +1465,7 @@ const uint8 Control::_languageStrings[8 * 20][43] = {
 //BS1_GERMAN:
 	"PAUSE",
 	"BITTE LEGEN SIE CD-",
-	"EIN UND DR\xDC CKEN SIE EINE BELIEBIGE TASTE",
+	"EIN UND DR\xDC""CKEN SIE EINE BELIEBIGE TASTE",
 	"FALSCHE CD",
 	"Speichern",
 	"Laden",

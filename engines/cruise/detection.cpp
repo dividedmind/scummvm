@@ -30,6 +30,7 @@
 #include "engines/advancedDetector.h"
 
 #include "cruise/cruise.h"
+#include "cruise/saveload.h"
 
 namespace Cruise {
 
@@ -57,16 +58,13 @@ Common::Platform CruiseEngine::getPlatform() const {
 
 static const PlainGameDescriptor cruiseGames[] = {
 	{"cruise", "Cinematique evo.2 engine game"},
-	{"cruise", "Cruise for a corpse"},
+	{"cruise", "Cruise for a Corpse"},
 	{0, 0}
 };
 
-static const ADObsoleteGameID obsoleteGameIDsTable[] = {
-	{"cruise", "cruise", Common::kPlatformUnknown},
-	{0, 0, Common::kPlatformUnknown}
-};
-
 namespace Cruise {
+
+using Common::GUIO_NONE;
 
 static const CRUISEGameDescription gameDescriptions[] = {
 	{
@@ -76,7 +74,8 @@ static const CRUISEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("D1", "41a7a4d426dbd048eb369cfee4bb2717"),
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GType_CRUISE,
 		0,
@@ -88,7 +87,8 @@ static const CRUISEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("D1", "a90d2b9ead6b4d812cd14268672cf178"),
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GType_CRUISE,
 		0,
@@ -100,7 +100,21 @@ static const CRUISEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("D1", "e258865807ea31b2d523340e6f0a606b"),
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
+		},
+		GType_CRUISE,
+		0,
+	},
+	{
+		{
+			"cruise",
+			"16 colors",
+			AD_ENTRY1("D1", "287d2ec1799e2f881dee23c70be96e81"),
+			Common::DE_DEU,
+			Common::kPlatformPC,
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GType_CRUISE,
 		0,
@@ -112,7 +126,8 @@ static const CRUISEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("D1", "f2a26522d49983c4ae32bcccbb801b02"),
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GType_CRUISE,
 		0,
@@ -124,7 +139,8 @@ static const CRUISEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("D1", "e19a4ab2e24a69087e4ea994a5506231"),
 			Common::IT_ITA,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GType_CRUISE,
 		0,
@@ -136,7 +152,8 @@ static const CRUISEGameDescription gameDescriptions[] = {
 			AD_ENTRY1("D1", "9a302ada55600d96061fda1d63a6ccda"),
 			Common::ES_ESP,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GType_CRUISE,
 		0,
@@ -156,13 +173,15 @@ static const ADParams detectionParams = {
 	// List of all engine targets
 	cruiseGames,
 	// Structure for autoupgrading obsolete targets
-	obsoleteGameIDsTable,
+	0,
 	// Name of single gameid (optional)
 	"cruise",
 	// List of files for file-based fallback detection (optional)
 	0,
 	// Flags
-	0
+	0,
+	// Additional GUI options (for every game}
+	Common::GUIO_NOSPEECH | Common::GUIO_NOMIDI
 };
 
 class CruiseMetaEngine : public AdvancedMetaEngine {
@@ -173,12 +192,76 @@ public:
 		return "Cinematique evo 2 engine";
 	}
 
-	virtual const char *getCopyright() const {
+	virtual const char *getOriginalCopyright() const {
 		return "Cruise for a Corpse (C) Delphine Software";
 	}
 
+	virtual bool hasFeature(MetaEngineFeature f) const;
+	virtual int getMaximumSaveSlot() const { return 99; };
+	virtual SaveStateList listSaves(const char *target) const;
+	virtual void removeSaveState(const char *target, int slot) const;
+	virtual SaveStateDescriptor querySaveMetaInfos(const char *target, int slot) const;
 	virtual bool createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const;
 };
+
+bool CruiseMetaEngine::hasFeature(MetaEngineFeature f) const {
+	return
+		(f == kSupportsListSaves) ||
+		(f == kSupportsDeleteSave) ||
+		(f == kSavesSupportMetaInfo) ||
+		(f == kSavesSupportThumbnail) ||
+		(f == kSupportsLoadingDuringStartup);
+}
+
+SaveStateList CruiseMetaEngine::listSaves(const char *target) const {
+	Common::SaveFileManager *saveFileMan = g_system->getSavefileManager();
+	Common::StringList filenames;
+	Common::String pattern("cruise.s??");
+
+	filenames = saveFileMan->listSavefiles(pattern);
+	sort(filenames.begin(), filenames.end());	// Sort (hopefully ensuring we are sorted numerically..)
+
+	SaveStateList saveList;
+	for (Common::StringList::const_iterator file = filenames.begin(); file != filenames.end(); ++file) {
+		// Obtain the last 2 digits of the filename, since they correspond to the save slot
+		int slotNum = atoi(file->c_str() + file->size() - 2);
+
+		if (slotNum >= 0 && slotNum <= 99) {
+			Common::InSaveFile *in = saveFileMan->openForLoading(*file);
+			if (in) {
+				Cruise::CruiseSavegameHeader header;
+				Cruise::readSavegameHeader(in, header);
+				saveList.push_back(SaveStateDescriptor(slotNum, header.saveName));
+				if (header.thumbnail) delete header.thumbnail;
+				delete in;
+			}
+		}
+	}
+
+	return saveList;
+}
+
+void CruiseMetaEngine::removeSaveState(const char *target, int slot) const {
+	g_system->getSavefileManager()->removeSavefile(Cruise::CruiseEngine::getSavegameFile(slot));
+}
+
+SaveStateDescriptor CruiseMetaEngine::querySaveMetaInfos(const char *target, int slot) const {
+	Common::InSaveFile *f = g_system->getSavefileManager()->openForLoading(
+		Cruise::CruiseEngine::getSavegameFile(slot));
+	assert(f);
+
+	Cruise::CruiseSavegameHeader header;
+	Cruise::readSavegameHeader(f, header);
+	delete f;
+
+	// Create the return descriptor
+	SaveStateDescriptor desc(slot, header.saveName);
+	desc.setDeletableFlag(true);
+	desc.setWriteProtectedFlag(false);
+	desc.setThumbnail(header.thumbnail);
+
+	return desc;
+}
 
 bool CruiseMetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGameDescription *desc) const {
 	const Cruise::CRUISEGameDescription *gd = (const Cruise::CRUISEGameDescription *)desc;
@@ -187,6 +270,7 @@ bool CruiseMetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGa
 	}
 	return gd != 0;
 }
+
 
 #if PLUGIN_ENABLED_DYNAMIC(CRUISE)
 REGISTER_PLUGIN_DYNAMIC(CRUISE, PLUGIN_TYPE_ENGINE, CruiseMetaEngine);

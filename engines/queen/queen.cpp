@@ -31,6 +31,7 @@
 #include "common/savefile.h"
 #include "common/system.h"
 #include "common/events.h"
+#include "common/EventRecorder.h"
 
 #include "queen/queen.h"
 #include "queen/bankman.h"
@@ -56,7 +57,7 @@ static const PlainGameDescriptor queenGameDescriptor = {
 class QueenMetaEngine : public MetaEngine {
 public:
 	virtual const char *getName() const;
-	virtual const char *getCopyright() const;
+	virtual const char *getOriginalCopyright() const;
 
 	virtual bool hasFeature(MetaEngineFeature f) const;
 	virtual GameList getSupportedGames() const;
@@ -72,7 +73,7 @@ const char *QueenMetaEngine::getName() const {
 	return "Flight of the Amazon Queen";
 }
 
-const char *QueenMetaEngine::getCopyright() const {
+const char *QueenMetaEngine::getOriginalCopyright() const {
 	return "Flight of the Amazon Queen (C) John Passfield and Steve Stamatiadis";
 }
 
@@ -120,10 +121,13 @@ GameList QueenMetaEngine::detectGames(const Common::FSList &fslist) const {
 				GameDescriptor dg(queenGameDescriptor.gameid, queenGameDescriptor.description, version.language, version.platform);
 				if (version.features & Queen::GF_DEMO) {
 					dg.updateDesc("Demo");
+					dg.setGUIOptions(Common::GUIO_NOSPEECH);
 				} else if (version.features & Queen::GF_INTERVIEW) {
 					dg.updateDesc("Interview");
+					dg.setGUIOptions(Common::GUIO_NOSPEECH);
 				} else if (version.features & Queen::GF_FLOPPY) {
 					dg.updateDesc("Floppy");
+					dg.setGUIOptions(Common::GUIO_NOSPEECH);
 				} else if (version.features & Queen::GF_TALKIE) {
 					dg.updateDesc("Talkie");
 				}
@@ -141,7 +145,7 @@ SaveStateList QueenMetaEngine::listSaves(const char *target) const {
 	char saveDesc[32];
 	Common::String pattern("queen.s??");
 
-	filenames = saveFileMan->listSavefiles(pattern.c_str());
+	filenames = saveFileMan->listSavefiles(pattern);
 	sort(filenames.begin(), filenames.end());	// Sort (hopefully ensuring we are sorted numerically..)
 
 	SaveStateList saveList;
@@ -150,7 +154,7 @@ SaveStateList QueenMetaEngine::listSaves(const char *target) const {
 		int slotNum = atoi(file->c_str() + file->size() - 2);
 
 		if (slotNum >= 0 && slotNum <= 99) {
-			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
+			Common::InSaveFile *in = saveFileMan->openForLoading(*file);
 			if (in) {
 				for (int i = 0; i < 4; i++)
 					in->readUint32BE();
@@ -171,7 +175,7 @@ void QueenMetaEngine::removeSaveState(const char *target, int slot) const {
 	Common::String filename = target;
 	filename += extension;
 
-	g_system->getSavefileManager()->removeSavefile(filename.c_str());
+	g_system->getSavefileManager()->removeSavefile(filename);
 }
 
 Common::Error QueenMetaEngine::createInstance(OSystem *syst, Engine **engine) const {
@@ -190,7 +194,7 @@ namespace Queen {
 
 QueenEngine::QueenEngine(OSystem *syst)
 	: Engine(syst), _debugger(0) {
-	syst->getEventManager()->registerRandomSource(randomizer, "queen");
+	g_eventRec.registerRandomSource(randomizer, "queen");
 }
 
 QueenEngine::~QueenEngine() {
@@ -344,7 +348,7 @@ Common::Error QueenEngine::saveGameState(int slot, const char *desc) {
 		file->finalize();
 
 		// check for errors
-		if (file->ioFailed()) {
+		if (file->err()) {
 			warning("Can't write file '%s'. (Disk full?)", name);
 			err = Common::kWritingFailed;
 		}
@@ -444,35 +448,7 @@ GUI::Debugger *QueenEngine::getDebugger() {
 	return _debugger;
 }
 
-Common::Error QueenEngine::go() {
-	_logic->start();
-	if (ConfMan.hasKey("save_slot") && canLoadOrSave()) {
-		loadGameState(ConfMan.getInt("save_slot"));
-	}
-	_lastSaveTime = _lastUpdateTime = _system->getMillis();
-
-	while (!shouldQuit()) {
-		if (_logic->newRoom() > 0) {
-			_logic->update();
-			_logic->oldRoom(_logic->currentRoom());
-			_logic->currentRoom(_logic->newRoom());
-			_logic->changeRoom();
-			_display->fullscreen(false);
-			if (_logic->currentRoom() == _logic->newRoom()) {
-				_logic->newRoom(0);
-			}
-		} else if (_logic->joeWalk() == JWM_EXECUTE) {
-			_logic->joeWalk(JWM_NORMAL);
-			_command->executeCurrentAction();
-		} else {
-			_logic->joeWalk(JWM_NORMAL);
-			update(true);
-		}
-	}
-	return Common::kNoError;
-}
-
-Common::Error QueenEngine::init() {
+Common::Error QueenEngine::run() {
 	initGraphics(GAME_SCREEN_WIDTH, GAME_SCREEN_HEIGHT, false);
 
 	_resource = new Resource();
@@ -500,6 +476,31 @@ Common::Error QueenEngine::init() {
 
 	registerDefaultSettings();
 	readOptionSettings();
+
+	_logic->start();
+	if (ConfMan.hasKey("save_slot") && canLoadOrSave()) {
+		loadGameState(ConfMan.getInt("save_slot"));
+	}
+	_lastSaveTime = _lastUpdateTime = _system->getMillis();
+
+	while (!shouldQuit()) {
+		if (_logic->newRoom() > 0) {
+			_logic->update();
+			_logic->oldRoom(_logic->currentRoom());
+			_logic->currentRoom(_logic->newRoom());
+			_logic->changeRoom();
+			_display->fullscreen(false);
+			if (_logic->currentRoom() == _logic->newRoom()) {
+				_logic->newRoom(0);
+			}
+		} else if (_logic->joeWalk() == JWM_EXECUTE) {
+			_logic->joeWalk(JWM_NORMAL);
+			_command->executeCurrentAction();
+		} else {
+			_logic->joeWalk(JWM_NORMAL);
+			update(true);
+		}
+	}
 
 	return Common::kNoError;
 }

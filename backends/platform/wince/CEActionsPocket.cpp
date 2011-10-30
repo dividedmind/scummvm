@@ -130,16 +130,21 @@ void CEActionsPocket::initInstanceGame() {
 	bool is_lure = (gameid == "lure");
 	bool is_feeble = (gameid == "feeble");
 	bool is_drascula = (strncmp(gameid.c_str(), "drascula",8) == 0);
+	bool is_tucker = (gameid == "tucker");
+	bool is_groovie = (gameid == "groovie");
+	bool is_tinsel = (gameid == "tinsel");
+	bool is_cruise = (gameid == "cruise");
+	bool is_made = (gameid == "made");
 
 	GUI_Actions::initInstanceGame();
 
 	// See if a right click mapping could be needed
-	if (is_sword1 || is_sword2 || is_sky || is_queen || is_comi || is_gob ||
-			is_samnmax || is_cine || is_touche || is_parallaction || is_drascula)
+	if (is_sword1 || is_sword2 || is_sky || is_queen || is_comi || is_gob || is_tinsel ||
+			is_samnmax || is_cine || is_touche || is_parallaction || is_drascula || is_cruise)
 		_right_click_needed = true;
 
 	// See if a "hide toolbar" mapping could be needed
-	if (is_sword1 || is_sword2 || is_comi)
+	if (is_sword1 || is_sword2 || is_comi || is_groovie)
 		_hide_toolbar_needed = true;
 
 	// Initialize keys for different actions
@@ -147,7 +152,7 @@ void CEActionsPocket::initInstanceGame() {
 	_key_action[POCKET_ACTION_PAUSE].setKey(VK_SPACE);
 	_action_enabled[POCKET_ACTION_PAUSE] = true;
 	// Save
-	if (is_simon || is_sword2 || is_gob || is_kyra || is_feeble)
+	if (is_simon || is_sword2 || is_gob || is_kyra || is_feeble || is_tucker || is_groovie)
 		_action_enabled[POCKET_ACTION_SAVE] = false;
 	else if (is_queen) {
 		_action_enabled[POCKET_ACTION_SAVE] = true;
@@ -155,15 +160,18 @@ void CEActionsPocket::initInstanceGame() {
 	} else if (is_sky) {
 		_action_enabled[POCKET_ACTION_SAVE] = true;
 		_key_action[POCKET_ACTION_SAVE].setKey(Common::ASCII_F5, SDLK_F5);
-	} else if (is_cine || is_drascula) {
+	} else if (is_cine || is_drascula || is_cruise) {
 		_action_enabled[POCKET_ACTION_SAVE] = true;
 		_key_action[POCKET_ACTION_SAVE].setKey(Common::ASCII_F10, SDLK_F10); // F10
-	} else if (is_agi) {
+	} else if (is_agi || is_made) {
 		_action_enabled[POCKET_ACTION_SAVE] = true;
 		_key_action[POCKET_ACTION_SAVE].setKey(Common::ASCII_ESCAPE, SDLK_ESCAPE);
 	} else if (is_parallaction) {
 		_action_enabled[POCKET_ACTION_SAVE] = true;
 		_key_action[POCKET_ACTION_SAVE].setKey('s', SDLK_s);
+	} else if (is_tinsel) {
+		_action_enabled[POCKET_ACTION_SAVE] = true;
+		_key_action[POCKET_ACTION_SAVE].setKey(Common::ASCII_F1, SDLK_F1);
 	} else {
 		_action_enabled[POCKET_ACTION_SAVE] = true;
 		_key_action[POCKET_ACTION_SAVE].setKey(Common::ASCII_F5, SDLK_F5); // F5 key
@@ -171,10 +179,10 @@ void CEActionsPocket::initInstanceGame() {
 	// Quit
 	_action_enabled[POCKET_ACTION_QUIT] = true;
 	// Skip
-	if (!is_cine && !is_parallaction)
+	if (!is_cine && !is_parallaction && !is_groovie && !is_cruise && !is_made)
 		_action_enabled[POCKET_ACTION_SKIP] = true;
-	if (is_simon || is_sky || is_sword2 || is_queen || is_sword1 || is_gob ||
-			is_saga || is_kyra || is_touche || is_lure || is_feeble || is_drascula)
+	if (is_simon || is_sky || is_sword2 || is_queen || is_sword1 || is_gob || is_tinsel ||
+			is_saga || is_kyra || is_touche || is_lure || is_feeble || is_drascula || is_tucker)
 		_key_action[POCKET_ACTION_SKIP].setKey(VK_ESCAPE);
 	else
 		_key_action[POCKET_ACTION_SKIP].setKey(KEY_ALL_SKIP);
@@ -208,6 +216,12 @@ void CEActionsPocket::initInstanceGame() {
 		_key_action[POCKET_ACTION_MULTI].setKey('V', SDLK_v, KMOD_SHIFT); // FT cheat : shift-V
 	// Key bind method
 	_action_enabled[POCKET_ACTION_BINDKEYS] = true;
+	// Disable double-tap right-click for convenience
+	if (is_tinsel || is_cruise)
+		if (!ConfMan.hasKey("no_doubletap_rightclick")) {
+			ConfMan.setBool("no_doubletap_rightclick", true);
+			ConfMan.flushToDisk();
+		}
 }
 
 

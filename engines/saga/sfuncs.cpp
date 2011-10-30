@@ -394,15 +394,14 @@ void Script::sfPreDialog(SCRIPTFUNC_PARAMS) {
 
 // Script function #13 (0x0D)
 void Script::sfKillActorThreads(SCRIPTFUNC_PARAMS) {
-	ScriptThread *anotherThread;
 	ScriptThreadList::iterator threadIterator;
 	int16 actorId = thread->pop();
 
 	for (threadIterator = _threadList.begin(); threadIterator != _threadList.end(); ++threadIterator) {
-		anotherThread = threadIterator.operator->();
-		if ((anotherThread != thread) && (anotherThread->_threadVars[kThreadVarActor] == actorId)) {
-			anotherThread->_flags &= ~kTFlagWaiting;
-			anotherThread->_flags |= kTFlagAborted;
+		ScriptThread &anotherThread = *threadIterator;
+		if ((&anotherThread != thread) && (anotherThread._threadVars[kThreadVarActor] == actorId)) {
+			anotherThread._flags &= ~kTFlagWaiting;
+			anotherThread._flags |= kTFlagAborted;
 		}
 	}
 }
@@ -1570,9 +1569,9 @@ void Script::sfStub(const char *name, ScriptThread *thread, int nArgs) {
 
 	for (int i = 0; i < nArgs; i++) {
 		snprintf(buf1, 100, "%d", thread->pop());
-		strncat(buf, buf1, 256);
+		strncat(buf, buf1, sizeof(buf) - strlen(buf) - 1);
 		if (i + 1 < nArgs)
-			strncat(buf, ", ", 256);
+			strncat(buf, ", ", sizeof(buf) - strlen(buf) - 1);
 	}
 
 	debug(0, "%s)", buf);

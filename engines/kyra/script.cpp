@@ -28,111 +28,111 @@
 #include "common/stream.h"
 #include "common/util.h"
 #include "common/system.h"
+
 #include "kyra/kyra_v1.h"
 #include "kyra/resource.h"
 #include "kyra/script.h"
 
 namespace Kyra {
 EMCInterpreter::EMCInterpreter(KyraEngine_v1 *vm) : _vm(vm) {
-#define COMMAND(x) { &EMCInterpreter::x, #x }
-	static const CommandEntry commandProcs[] = {
+#define OPCODE(x) { &EMCInterpreter::x, #x }
+	static const OpcodeEntry opcodes[] = {
 		// 0x00
-		COMMAND(cmd_jmpTo),
-		COMMAND(cmd_setRetValue),
-		COMMAND(cmd_pushRetOrPos),
-		COMMAND(cmd_push),
+		OPCODE(op_jmp),
+		OPCODE(op_setRetValue),
+		OPCODE(op_pushRetOrPos),
+		OPCODE(op_push),
 		// 0x04
-		COMMAND(cmd_push),
-		COMMAND(cmd_pushReg),
-		COMMAND(cmd_pushBPNeg),
-		COMMAND(cmd_pushBPAdd),
+		OPCODE(op_push),
+		OPCODE(op_pushReg),
+		OPCODE(op_pushBPNeg),
+		OPCODE(op_pushBPAdd),
 		// 0x08
-		COMMAND(cmd_popRetOrPos),
-		COMMAND(cmd_popReg),
-		COMMAND(cmd_popBPNeg),
-		COMMAND(cmd_popBPAdd),
+		OPCODE(op_popRetOrPos),
+		OPCODE(op_popReg),
+		OPCODE(op_popBPNeg),
+		OPCODE(op_popBPAdd),
 		// 0x0C
-		COMMAND(cmd_addSP),
-		COMMAND(cmd_subSP),
-		COMMAND(cmd_execOpcode),
-		COMMAND(cmd_ifNotJmp),
+		OPCODE(op_addSP),
+		OPCODE(op_subSP),
+		OPCODE(op_sysCall),
+		OPCODE(op_ifNotJmp),
 		// 0x10
-		COMMAND(cmd_negate),
-		COMMAND(cmd_eval),
-		COMMAND(cmd_setRetAndJmp)
+		OPCODE(op_negate),
+		OPCODE(op_eval),
+		OPCODE(op_setRetAndJmp)
 	};
-	_commands = commandProcs;
-#undef COMMAND
+	_opcodes = opcodes;
+#undef OPCODE
+}
+
+bool EMCInterpreter::callback(Common::IFFChunk &chunk) {
+	switch (chunk._type) {
+	case MKID_BE('TEXT'):
+		_scriptData->text = new byte[chunk._size];
+		assert(_scriptData->text);
+		if (chunk._stream->read(_scriptData->text, chunk._size) != chunk._size)
+			error("Couldn't read TEXT chunk from file '%s'", _filename);
+		break;
+
+	case MKID_BE('ORDR'):
+		_scriptData->ordr = new uint16[chunk._size >> 1];
+		assert(_scriptData->ordr);
+		if (chunk._stream->read(_scriptData->ordr, chunk._size) != chunk._size)
+			error("Couldn't read ORDR chunk from file '%s'", _filename);
+
+		for (int i = (chunk._size >> 1) - 1; i >= 0; --i)
+			_scriptData->ordr[i] = READ_BE_UINT16(&_scriptData->ordr[i]);
+		break;
+
+	case MKID_BE('DATA'):
+		_scriptData->data = new uint16[chunk._size >> 1];
+		assert(_scriptData->data);
+		if (chunk._stream->read(_scriptData->data, chunk._size) != chunk._size)
+			error("Couldn't read DATA chunk from file '%s'", _filename);
+
+		for (int i = (chunk._size >> 1) - 1; i >= 0; --i)
+			_scriptData->data[i] = READ_BE_UINT16(&_scriptData->data[i]);
+		break;
+
+	default:
+		warning("Unexpected chunk '%s' of size %d found in file '%s'", Common::ID2string(chunk._type), chunk._size, _filename);
+	}
+
+	return false;
 }
 
 bool EMCInterpreter::load(const char *filename, EMCData *scriptData, const Common::Array<const Opcode*> *opcodes) {
-	ScriptFileParser file(filename, _vm->resource());
-	if (!file) {
+	Common::SeekableReadStream *stream = _vm->resource()->createReadStream(filename);
+	if (!stream) {
 		error("Couldn't open script file '%s'", filename);
 		return false;
 	}
 
 	memset(scriptData, 0, sizeof(EMCData));
 
-	uint32 formBlockSize = file.getFORMBlockSize();
-	if (formBlockSize == (uint32)-1) {
-		error("No FORM chunk found in file: '%s'", filename);
-		return false;
-	}
+	_scriptData = scriptData;
+	_filename = filename;
 
-	uint32 chunkSize = file.getIFFBlockSize(TEXT_CHUNK);
-	if (chunkSize != (uint32)-1) {
-		scriptData->text = new byte[chunkSize];
+	IFFParser iff(*stream);
+	Common::Functor1Mem< Common::IFFChunk &, bool, EMCInterpreter > c(this, &EMCInterpreter::callback);
+	iff.parse(c);
 
-		if (!file.loadIFFBlock(TEXT_CHUNK, scriptData->text, chunkSize)) {
-			unload(scriptData);
-			error("Couldn't load TEXT chunk from file: '%s'", filename);
-			return false;
-		}
-	}
-
-	chunkSize = file.getIFFBlockSize(ORDR_CHUNK);
-	if (chunkSize == (uint32)-1) {
-		unload(scriptData);
+	if (!_scriptData->ordr)
 		error("No ORDR chunk found in file: '%s'", filename);
-		return false;
-	}
-	chunkSize >>= 1;
 
-	scriptData->ordr = new uint16[chunkSize];
-
-	if (!file.loadIFFBlock(ORDR_CHUNK, scriptData->ordr, chunkSize << 1)) {
-		unload(scriptData);
-		error("Couldn't load ORDR chunk from file: '%s'", filename);
-		return false;
-	}
-
-	while (chunkSize--)
-		scriptData->ordr[chunkSize] = READ_BE_UINT16(&scriptData->ordr[chunkSize]);
-
-	chunkSize = file.getIFFBlockSize(DATA_CHUNK);
-	if (chunkSize == (uint32)-1) {
-		unload(scriptData);
+	if (!_scriptData->data)
 		error("No DATA chunk found in file: '%s'", filename);
-		return false;
-	}
-	chunkSize >>= 1;
 
-	scriptData->data = new uint16[chunkSize];
+	if (stream->err())
+		error("Read error while parsing file '%s'", filename);
 
-	if (!file.loadIFFBlock(DATA_CHUNK, scriptData->data, chunkSize << 1)) {
-		unload(scriptData);
-		error("Couldn't load DATA chunk from file: '%s'", filename);
-		return false;
-	}
-	scriptData->dataSize = chunkSize;
+	delete stream;
 
-	while (chunkSize--)
-		scriptData->data[chunkSize] = READ_BE_UINT16(&scriptData->data[chunkSize]);
+	_scriptData->sysFuncs = opcodes;
 
-	scriptData->opcodes = opcodes;
-
-	strncpy(scriptData->filename, filename, 13);
+	strncpy(_scriptData->filename, filename, 13);
+	_scriptData->filename[12] = 0;
 
 	return true;
 }
@@ -191,7 +191,7 @@ bool EMCInterpreter::run(EMCState *script) {
 
 	// Should be no Problem at all to cast to uint32 here, since that's the biggest ptrdiff the original
 	// would allow, of course that's not realistic to happen to be somewhere near the limit of uint32 anyway.
-	const uint32 instOffset = (uint32)((const byte*)script->ip - (const byte*)script->dataPtr->data);
+	const uint32 instOffset = (uint32)((const byte *)script->ip - (const byte *)script->dataPtr->data);
 	int16 code = *script->ip++;
 	int16 opcode = (code >> 8) & 0x1F;
 
@@ -207,105 +207,28 @@ bool EMCInterpreter::run(EMCState *script) {
 	}
 
 	if (opcode > 18) {
-		error("Script unknown command: %d in file '%s' at offset 0x%.08X", opcode, script->dataPtr->filename, instOffset);
+		error("Unknown script opcode: %d in file '%s' at offset 0x%.08X", opcode, script->dataPtr->filename, instOffset);
 	} else {
-		debugC(5, kDebugLevelScript, "[0x%.08X] EMCInterpreter::%s([%d/%u])", instOffset, _commands[opcode].desc, _parameter, (uint)_parameter);
-		(this->*(_commands[opcode].proc))(script);
+		debugC(5, kDebugLevelScript, "[0x%.08X] EMCInterpreter::%s([%d/%u])", instOffset, _opcodes[opcode].desc, _parameter, (uint)_parameter);
+		(this->*(_opcodes[opcode].proc))(script);
 	}
 
 	return (script->ip != 0);
 }
 
 #pragma mark -
-#pragma mark - ScriptFileParser implementation
-#pragma mark -
-
-void ScriptFileParser::setFile(const char *filename, Resource *res) {
-	destroy();
-
-	res->exists(filename, true);
-	_stream = res->createReadStream(filename);
-	assert(_stream);
-	_startOffset = 0;
-	_endOffset = _stream->size();
-}
-
-void ScriptFileParser::destroy() {
-	delete _stream;
-	_stream = 0;
-	_startOffset = _endOffset = 0;
-}
-
-uint32 ScriptFileParser::getFORMBlockSize() {
-	uint32 oldOffset = _stream->pos();
-
-	uint32 data = _stream->readUint32LE();
-
-	if (data != FORM_CHUNK) {
-		_stream->seek(oldOffset);
-		return (uint32)-1;
-	}
-
-	data = _stream->readUint32BE();
-	return data;
-}
-
-uint32 ScriptFileParser::getIFFBlockSize(const uint32 chunkName) {
-	uint32 size = (uint32)-1;
-
-	_stream->seek(_startOffset + 0x0C);
-
-	while ((uint)_stream->pos() < _endOffset) {
-		uint32 chunk = _stream->readUint32LE();
-		uint32 size_temp = _stream->readUint32BE();
-
-		if (chunk != chunkName) {
-			_stream->seek((size_temp + 1) & (~1), SEEK_CUR);
-			assert((uint)_stream->pos() <= _endOffset);
-		} else {
-			size = size_temp;
-			break;
-		}
-	}
-
-	return size;
-}
-
-bool ScriptFileParser::loadIFFBlock(const uint32 chunkName, void *loadTo, uint32 ptrSize) {
-	_stream->seek(_startOffset + 0x0C);
-
-	while ((uint)_stream->pos() < _endOffset) {
-		uint32 chunk = _stream->readUint32LE();
-		uint32 chunkSize = _stream->readUint32BE();
-
-		if (chunk != chunkName) {
-			_stream->seek((chunkSize + 1) & (~1), SEEK_CUR);
-			assert((uint)_stream->pos() <= _endOffset);
-		} else {
-			uint32 loadSize = 0;
-
-			loadSize = MIN(ptrSize, chunkSize);
-			_stream->read(loadTo, loadSize);
-			return true;
-		}
-	}
-
-	return false;
-}
-
-#pragma mark -
 #pragma mark - Command implementations
 #pragma mark -
 
-void EMCInterpreter::cmd_jmpTo(EMCState* script) {
+void EMCInterpreter::op_jmp(EMCState *script) {
 	script->ip = script->dataPtr->data + _parameter;
 }
 
-void EMCInterpreter::cmd_setRetValue(EMCState* script) {
+void EMCInterpreter::op_setRetValue(EMCState *script) {
 	script->retValue = _parameter;
 }
 
-void EMCInterpreter::cmd_pushRetOrPos(EMCState* script) {
+void EMCInterpreter::op_pushRetOrPos(EMCState *script) {
 	switch (_parameter) {
 	case 0:
 		script->stack[--script->sp] = script->retValue;
@@ -319,27 +242,26 @@ void EMCInterpreter::cmd_pushRetOrPos(EMCState* script) {
 
 	default:
 		script->ip = 0;
-		break;
 	}
 }
 
-void EMCInterpreter::cmd_push(EMCState* script) {
+void EMCInterpreter::op_push(EMCState *script) {
 	script->stack[--script->sp] = _parameter;
 }
 
-void EMCInterpreter::cmd_pushReg(EMCState* script) {
+void EMCInterpreter::op_pushReg(EMCState *script) {
 	script->stack[--script->sp] = script->regs[_parameter];
 }
 
-void EMCInterpreter::cmd_pushBPNeg(EMCState* script) {
+void EMCInterpreter::op_pushBPNeg(EMCState *script) {
 	script->stack[--script->sp] = script->stack[(-(int32)(_parameter + 2)) + script->bp];
 }
 
-void EMCInterpreter::cmd_pushBPAdd(EMCState* script) {
+void EMCInterpreter::op_pushBPAdd(EMCState *script) {
 	script->stack[--script->sp] = script->stack[(_parameter - 1) + script->bp];
 }
 
-void EMCInterpreter::cmd_popRetOrPos(EMCState* script) {
+void EMCInterpreter::op_popRetOrPos(EMCState *script) {
 	switch (_parameter) {
 	case 0:
 		script->retValue = script->stack[script->sp++];
@@ -356,52 +278,51 @@ void EMCInterpreter::cmd_popRetOrPos(EMCState* script) {
 
 	default:
 		script->ip = 0;
-		break;
 	}
 }
 
-void EMCInterpreter::cmd_popReg(EMCState* script) {
+void EMCInterpreter::op_popReg(EMCState *script) {
 	script->regs[_parameter] = script->stack[script->sp++];
 }
 
-void EMCInterpreter::cmd_popBPNeg(EMCState* script) {
+void EMCInterpreter::op_popBPNeg(EMCState *script) {
 	script->stack[(-(int32)(_parameter + 2)) + script->bp] = script->stack[script->sp++];
 }
 
-void EMCInterpreter::cmd_popBPAdd(EMCState* script) {
+void EMCInterpreter::op_popBPAdd(EMCState *script) {
 	script->stack[(_parameter - 1) + script->bp] = script->stack[script->sp++];
 }
 
-void EMCInterpreter::cmd_addSP(EMCState* script) {
+void EMCInterpreter::op_addSP(EMCState *script) {
 	script->sp += _parameter;
 }
 
-void EMCInterpreter::cmd_subSP(EMCState* script) {
+void EMCInterpreter::op_subSP(EMCState *script) {
 	script->sp -= _parameter;
 }
 
-void EMCInterpreter::cmd_execOpcode(EMCState* script) {
-	uint8 opcode = _parameter;
+void EMCInterpreter::op_sysCall(EMCState *script) {
+	const uint8 id = _parameter;
 
-	assert(script->dataPtr->opcodes);
-	assert(opcode < script->dataPtr->opcodes->size());
+	assert(script->dataPtr->sysFuncs);
+	assert(id < script->dataPtr->sysFuncs->size());
 
-	if ((*script->dataPtr->opcodes)[opcode] && ((*script->dataPtr->opcodes)[opcode])->isValid()) {
-		script->retValue = (*(*script->dataPtr->opcodes)[opcode])(script);
+	if ((*script->dataPtr->sysFuncs)[id] && ((*script->dataPtr->sysFuncs)[id])->isValid()) {
+		script->retValue = (*(*script->dataPtr->sysFuncs)[id])(script);
 	} else {
 		script->retValue = 0;
-		warning("Calling unimplemented opcode(0x%.02X/%d) from file '%s'", opcode, opcode, script->dataPtr->filename);
+		warning("Unimplemented system call 0x%.02X/%d used in file '%s'", id, id, script->dataPtr->filename);
 	}
 }
 
-void EMCInterpreter::cmd_ifNotJmp(EMCState* script) {
+void EMCInterpreter::op_ifNotJmp(EMCState *script) {
 	if (!script->stack[script->sp++]) {
 		_parameter &= 0x7FFF;
 		script->ip = script->dataPtr->data + _parameter;
 	}
 }
 
-void EMCInterpreter::cmd_negate(EMCState* script) {
+void EMCInterpreter::op_negate(EMCState *script) {
 	int16 value = script->stack[script->sp];
 	switch (_parameter) {
 	case 0:
@@ -422,11 +343,10 @@ void EMCInterpreter::cmd_negate(EMCState* script) {
 	default:
 		warning("Unknown negation func: %d", _parameter);
 		script->ip = 0;
-		break;
 	}
 }
 
-void EMCInterpreter::cmd_eval(EMCState* script) {
+void EMCInterpreter::op_eval(EMCState *script) {
 	int16 ret = 0;
 	bool error = false;
 
@@ -509,7 +429,6 @@ void EMCInterpreter::cmd_eval(EMCState* script) {
 	default:
 		warning("Unknown evaluate func: %d", _parameter);
 		error = true;
-		break;
 	}
 
 	if (error)
@@ -518,7 +437,7 @@ void EMCInterpreter::cmd_eval(EMCState* script) {
 		script->stack[--script->sp] = ret;
 }
 
-void EMCInterpreter::cmd_setRetAndJmp(EMCState* script) {
+void EMCInterpreter::op_setRetAndJmp(EMCState *script) {
 	if (script->sp >= EMCState::kStackLastEntry) {
 		script->ip = 0;
 	} else {

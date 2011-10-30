@@ -41,19 +41,6 @@ public:
 	virtual ~Stream() {}
 
 	/**
-	 * DEPRECATED: Use err() or eos() instead.
-	 * Returns true if any I/O failure occurred or the end of the
-	 * stream was reached while reading.
-	 */
-	virtual bool ioFailed() const { return err(); }
-
-	/**
-	 * DEPRECATED: Don't use this unless you are still using ioFailed().
-	 * Reset the I/O error status.
-	 */
-	virtual void clearIOFailed() { clearErr(); }
-
-	/**
 	 * Returns true if an I/O failure occurred.
 	 * This flag is never cleared automatically. In order to clear it,
 	 * client code has to call clearErr() explicitly.
@@ -154,6 +141,10 @@ public:
 		writeUint32BE((uint32)value);
 	}
 
+	/**
+	 * Write the given string to the stream.
+	 * This writes str.size() characters, but no terminating zero byte.
+	 */
 	void writeString(const String &str);
 };
 
@@ -188,7 +179,7 @@ public:
 	 * DEPRECATED
 	 * Default implementation for backward compatibility
 	 */
-	virtual bool ioFailed() { return (eos() || err()); }
+	inline bool ioFailed() { return (eos() || err()); }
 
 	/**
 	 * Read an unsigned byte from the stream and return it.
@@ -400,8 +391,8 @@ public:
 	 *
 	 * Upon successful completion, return a string with the content
 	 * of the line, *without* the end of a line marker. This method
-	 * does not indicate whether an error occured. Callers muse use
-	 * ioFailed() or eos() to determine whether an exception occurred.
+	 * does not indicate whether an error occured. Callers must use
+	 * err() or eos() to determine whether an exception occurred.
 	 */
 	virtual String readLine();
 };
@@ -505,8 +496,6 @@ public:
 	~BufferedReadStream();
 
 	virtual bool eos() const { return (_pos == _bufSize) && _parentStream->eos(); }
-	virtual bool ioFailed() const { return _parentStream->ioFailed(); }
-	virtual void clearIOFailed() { _parentStream->clearIOFailed(); }
 	virtual bool err() const { return _parentStream->err(); }
 	virtual void clearErr() { _parentStream->clearErr(); }
 

@@ -284,7 +284,7 @@ void LzhDecompressor::make_table(uint nchar, byte bitlen[], uint tablebits, uint
 	for (i = 1; i <= 16; i++)
 		start[i + 1] = start[i] + (count[i] << (16 - i));
 	if (start[17] != (uint16)(1U << 16))
-		error("LzhDecompressor::make_table() Bad table\n");
+		error("LzhDecompressor::make_table() Bad table");
 	jutbits = 16 - tablebits;
 	for (i = 1; i <= tablebits; i++) {
 		start[i] >>= jutbits;
@@ -366,7 +366,7 @@ void LzhDecompressor::downheap(int i) {
 	k = heap[i];
 	while ((j = 2 * i) <= heapsize) {
 		if (j < heapsize && freq[heap[j]] > freq[heap[j + 1]])
-		 	j++;
+			j++;
 		if (freq[k] <= freq[heap[j]]) break;
 		heap[i] = heap[j];  i = j;
 	}

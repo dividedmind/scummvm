@@ -58,17 +58,14 @@ bool File::open(const String &filename, Archive &archive) {
 	assert(!filename.empty());
 	assert(!_handle);
 
-	clearIOFailed();
-
 	SeekableReadStream *stream = 0;
-	if (archive.hasFile(filename)) {
+
+	if ((stream = archive.createReadStreamForMember(filename))) {
 		debug(3, "Opening hashed: %s", filename.c_str());
-		stream = archive.createReadStreamForMember(filename);
-	} else if (archive.hasFile(filename + ".")) {
+	} else if ((stream = archive.createReadStreamForMember(filename + "."))) {
 		// WORKAROUND: Bug #1458388: "SIMON1: Game Detection fails"
 		// sometimes instead of "GAMEPC" we get "GAMEPC." (note trailing dot)
 		debug(3, "Opening hashed: %s.", filename.c_str());
-		stream = archive.createReadStreamForMember(filename + ".");
 	}
 
 	return open(stream, filename);
@@ -91,7 +88,6 @@ bool File::open(const FSNode &node) {
 
 bool File::open(SeekableReadStream *stream, const Common::String &name) {
 	assert(!_handle);
-	clearIOFailed();
 
 	if (stream) {
 		_handle = stream;
@@ -122,16 +118,6 @@ void File::close() {
 
 bool File::isOpen() const {
 	return _handle != NULL;
-}
-
-bool File::ioFailed() const {
-	// TODO/FIXME: Just use ferror() here?
-	return !_handle || _handle->ioFailed();
-}
-
-void File::clearIOFailed() {
-	if (_handle)
-		_handle->clearIOFailed();
 }
 
 bool File::err() const {
@@ -212,12 +198,12 @@ bool DumpFile::isOpen() const {
 
 bool DumpFile::err() const {
 	assert(_handle);
-	return _handle->ioFailed();
+	return _handle->err();
 }
 
 void DumpFile::clearErr() {
 	assert(_handle);
-	_handle->clearIOFailed();
+	_handle->clearErr();
 }
 
 uint32 DumpFile::write(const void *ptr, uint32 len) {

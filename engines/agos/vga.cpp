@@ -133,6 +133,7 @@ void AGOSEngine::setupVgaOpcodes() {
 	memset(_vga_opcode_table, 0, sizeof(_vga_opcode_table));
 
 	switch (getGameType()) {
+	case GType_PN:
 	case GType_ELVIRA1:
 	case GType_ELVIRA2:
 	case GType_WW:
@@ -170,7 +171,7 @@ void AGOSEngine::runVgaScript() {
 			return;
 
 		if (opcode >= _numVideoOpcodes || !_vga_opcode_table[opcode])
-			error("Invalid VGA opcode '%d' encountered", opcode);
+			error("runVgaScript: Invalid VGA opcode '%d' encountered", opcode);
 
 		(this->*_vga_opcode_table[opcode]) ();
 	}
@@ -256,7 +257,7 @@ void AGOSEngine::setBitFlag(uint bit, bool value) {
 }
 
 int AGOSEngine::vcReadVarOrWord() {
-	if (getGameType() == GType_ELVIRA1) {
+	if (getGameType() == GType_PN || getGameType() == GType_ELVIRA1) {
 		return vcReadNextWord();
 	} else {
 		int16 var = vcReadNextWord();
@@ -288,6 +289,17 @@ void AGOSEngine::vcWriteVar(uint var, int16 value) {
 }
 
 void AGOSEngine::vcSkipNextInstruction() {
+
+	static const byte opcodeParamLenPN[] = {
+		0, 6,  2, 10, 6, 4, 2, 2,
+		4, 4,  8,  2, 0, 2, 2, 2,
+		0, 2,  2,  2, 0, 4, 2, 2,
+		2, 8,  0, 10, 0, 8, 0, 2,
+		2, 0,  0,  0, 0, 2, 4, 2,
+		4, 4,  0,  0, 2, 2, 2, 4,
+		4, 0, 18,  2, 4, 4, 4, 0,
+		4
+	};
 
 	static const byte opcodeParamLenElvira1[] = {
 		0, 6,  2, 10, 6, 4, 2, 2,
@@ -362,9 +374,12 @@ void AGOSEngine::vcSkipNextInstruction() {
 	} else if (getGameType() == GType_ELVIRA2 || getGameType() == GType_WW) {
 		opcode = vcReadNextWord();
 		_vcPtr += opcodeParamLenWW[opcode];
-	} else {
+	} else if (getGameType() == GType_ELVIRA1) {
 		opcode = vcReadNextWord();
 		_vcPtr += opcodeParamLenElvira1[opcode];
+	} else {
+		opcode = vcReadNextWord();
+		_vcPtr += opcodeParamLenPN[opcode];
 	}
 
 	if (_dumpVgaOpcodes)
@@ -411,7 +426,7 @@ void AGOSEngine::vc3_loadSprite() {
 		vgaSpriteId = vcReadNextWord();
 	} else {
 		vgaSpriteId = vcReadNextWord();
-		zoneNum = vgaSpriteId / 100;
+		zoneNum = (getGameType() == GType_PN) ? 0 : vgaSpriteId / 100;
 	}
 
 	x = vcReadNextWord();
@@ -444,8 +459,9 @@ void AGOSEngine::vc5_ifEqual() {
 }
 
 void AGOSEngine::vc6_ifObjectHere() {
-	if (!ifObjectHere(vcReadNextWord()))
+	if (!ifObjectHere(vcReadNextWord())) {
 		vcSkipNextInstruction();
+	}
 }
 
 void AGOSEngine::vc7_ifObjectNotHere() {
@@ -595,13 +611,6 @@ void AGOSEngine::vc10_draw() {
 		flags = vcReadNextWord();
 	}
 
-	if (getGameType() == GType_ELVIRA2 && getPlatform() == Common::kPlatformAtariST) {
-		if (((image >= 11 && image <= 16) || (image >= 195 && image <= 198)) &&
-			_zoneNumber == 1) {
-			y += 75;
-		}
-	}
-
 	drawImage_init(image, palette, x, y, flags);
 }
 
@@ -617,7 +626,7 @@ void AGOSEngine::drawImage_init(int16 image, uint16 palette, int16 x, int16 y, u
 	if (state.image < 0)
 		state.image = vcReadVar(-state.image);
 
-	state.palette = palette * 16;
+	state.palette = (getGameType() == GType_PN) ? 0 : palette * 16;
 	state.paletteMod = 0;
 
 	state.x = x - _scrollX;
@@ -652,7 +661,11 @@ void AGOSEngine::drawImage_init(int16 image, uint16 palette, int16 x, int16 y, u
 	state.y_skip = 0;				/* rows to skip   = bl */
 
 	if (getFeatures() & GF_PLANAR) {
-		state.srcPtr = convertImage(&state, ((flags & 0x80) != 0));
+		if (getGameType() == GType_PN) {
+			state.srcPtr = convertImage(&state, ((state.flags & (kDFCompressed | kDFCompressedFlip)) != 0));
+		}
+		else
+			state.srcPtr = convertImage(&state, ((flags & 0x80) != 0));
 
 		// converted planar clip is already uncompressed
 		if (state.flags & kDFCompressedFlip) {
@@ -698,6 +711,36 @@ void AGOSEngine::drawImage_init(int16 image, uint16 palette, int16 x, int16 y, u
 	drawImage(&state);
 }
 
+void AGOSEngine::checkOnStopTable() {
+	VgaSleepStruct *vfs = _onStopTable, *vfs_tmp;
+	while (vfs->ident != 0) {
+		if (vfs->ident == _vgaCurSpriteId) {
+			VgaSprite *vsp = findCurSprite();
+			animate(vsp->windowNum, vsp->zoneNum, vfs->id, vsp->x, vsp->y, vsp->palette, true);
+			vfs_tmp = vfs;
+			do {
+				memcpy(vfs_tmp, vfs_tmp + 1, sizeof(VgaSleepStruct));
+				vfs_tmp++;
+			} while (vfs_tmp->ident != 0);
+		} else {
+			vfs++;
+		}
+	}
+}
+
+void AGOSEngine::vc11_onStop() {
+	uint16 id = vcReadNextWord();
+
+	VgaSleepStruct *vfs = _onStopTable;
+	while (vfs->ident)
+		vfs++;
+
+	vfs->ident = _vgaCurSpriteId;
+	vfs->codePtr = _vcPtr;
+	vfs->id = id;
+	vfs->zoneNum = _vgaCurZoneNum;
+}
+
 void AGOSEngine::vc12_delay() {
 	uint16 num;
 
@@ -735,7 +778,13 @@ void AGOSEngine::vc14_addToSpriteY() {
 
 void AGOSEngine::vc15_sync() {
 	VgaSleepStruct *vfs = _waitSyncTable, *vfs_tmp;
-	uint16 id = vcReadNextWord();
+	uint16 id;
+
+	if (getGameType() == GType_PN)
+		id = _vgaCurSpriteId;
+	else
+		id = vcReadNextWord();
+
 	while (vfs->ident != 0) {
 		if (vfs->ident == id) {
 			addVgaEvent(_vgaBaseDelay, ANIMATE_EVENT, vfs->codePtr, vfs->id, vfs->zoneNum);
@@ -786,12 +835,13 @@ void AGOSEngine::checkWaitEndTable() {
 
 void AGOSEngine::vc17_waitEnd() {
 	uint16 id = vcReadNextWord();
+	uint16 zoneNum = (getGameType() == GType_PN) ? 0 : id / 100;
 
 	VgaSleepStruct *vfs = _waitEndTable;
 	while (vfs->ident)
 		vfs++;
 
-	if (isSpriteLoaded(id, id / 100)) {
+	if (isSpriteLoaded(id, zoneNum)) {
 		vfs->ident = id;
 		vfs->codePtr = _vcPtr;
 		vfs->id = _vgaCurSpriteId;
@@ -849,18 +899,46 @@ void AGOSEngine::vc21_endRepeat() {
 	}
 }
 
+static const uint8 iconPalette[64] = {
+	0x00, 0x00, 0x00,
+	0x77, 0x77, 0x55,
+	0x55, 0x00, 0x00,
+	0x77, 0x00, 0x00,
+	0x22, 0x00, 0x00,
+	0x00, 0x11, 0x00,
+	0x11, 0x22, 0x11,
+	0x22, 0x33, 0x22,
+	0x44, 0x55, 0x44,
+	0x33, 0x44, 0x00,
+	0x11, 0x33, 0x00,
+	0x00, 0x11, 0x44,
+	0x77, 0x44, 0x00,
+	0x66, 0x22, 0x00,
+	0x00, 0x22, 0x66,
+	0x77, 0x55, 0x00,
+};
+
 void AGOSEngine::vc22_setPaletteOld() {
 	byte *offs, *palptr, *src;
 	uint16 b, num;
 
 	b = vcReadNextWord();
 
+	// PC EGA version of Personal Nightmare uses standard EGA palette
+	if (getGameType() == GType_PN && (getFeatures() & GF_EGA))
+		return;
+
 	num = 16;
 
 	palptr = _displayPalette;
 	_bottomPalette = 1;
 
-	if (getGameType() == GType_ELVIRA1) {
+	if (getGameType() == GType_PN) {
+		if (b > 128) {
+			b-= 128;
+			palptr = _displayPalette + 64;
+		}
+	} else if (getGameType() == GType_ELVIRA1) {
 		if (b >= 1000) {
 			b -= 1000;
 			_bottomPalette = 0;
@@ -884,6 +962,20 @@ void AGOSEngine::vc22_setPaletteOld() {
 				palptr[(13 + i) * 4 + 3] = 0;
 			}
 		}
+	}
+
+	if (getGameType() == GType_ELVIRA2 && getPlatform() == Common::kPlatformAtariST) {
+		// Custom palette used for icon area
+		palptr = &_displayPalette[13 * 64];
+		for (uint8 c = 0; c < 16; c++) {
+			palptr[0] = iconPalette[c * 3 + 0] * 2;
+			palptr[1] = iconPalette[c * 3 + 1] * 2;
+			palptr[2] = iconPalette[c * 3 + 2] * 2;
+			palptr[3] = 0;
+
+			palptr += 4;
+		};
+		palptr = _displayPalette;
 	}
 
 	offs = _curVgaFile1 + READ_BE_UINT16(_curVgaFile1 + 6);
@@ -964,6 +1056,7 @@ void AGOSEngine::vc24_setSpriteXY() {
 
 void AGOSEngine::vc25_halt_sprite() {
 	checkWaitEndTable();
+	checkOnStopTable();
 
 	VgaSprite *vsp = findCurSprite();
 	while (vsp->id != 0) {
@@ -989,7 +1082,7 @@ void AGOSEngine::vc27_resetSprite() {
 	VgaSleepStruct *vfs;
 	VgaTimerEntry *vte, *vte2;
 
-	_lockWord |= 8;
+	_videoLockOut |= 8;
 
 	_lastVgaWaitFor = 0;
 
@@ -1020,6 +1113,12 @@ void AGOSEngine::vc27_resetSprite() {
 		vfs++;
 	}
 
+	vfs = _onStopTable;
+	while (vfs->ident) {
+		vfs->ident = 0;
+		vfs++;
+	}
+
 	vte = _vgaTimerList;
 	while (vte->delay) {
 		// Skip the animateSprites event in earlier games
@@ -1037,7 +1136,7 @@ void AGOSEngine::vc27_resetSprite() {
 		}
 	}
 
-	if (_lockWord & 0x20) {
+	if (_videoLockOut & 0x20) {
 		AnimTable *animTable = _screenAnim1;
 		while (animTable->srcPtr) {
 			animTable->srcPtr = 0;
@@ -1048,21 +1147,21 @@ void AGOSEngine::vc27_resetSprite() {
 	if (getGameType() == GType_SIMON2 || getGameType() == GType_FF || getGameType() == GType_PP)
 		vcWriteVar(254, 0);
 
+	// Stop any OmniTV video that is currently been played
 	if (getGameType() == GType_FF || getGameType() == GType_PP)
 		setBitFlag(42, true);
 
-	_lockWord &= ~8;
+	_videoLockOut &= ~8;
 }
 
 void AGOSEngine::vc28_playSFX() {
 	uint16 sound = vcReadNextWord();
-	uint16 channels = vcReadNextWord();
-	uint16 frequency = vcReadNextWord();
+	uint16 chans = vcReadNextWord();
+	uint16 freq = vcReadNextWord();
 	uint16 flags = vcReadNextWord();
+	debug(0, "vc28_playSFX: (sound %d, channels %d, frequency %d, flags %d)", sound, chans, freq, flags);
 
-	loadSound(sound);
-
-	debug(0, "vc28_playSFX: (%d, %d, %d, %d)", sound, channels, frequency, flags);
+	loadSound(sound, freq, flags);
 }
 
 void AGOSEngine::vc29_stopAllSounds() {
@@ -1081,19 +1180,30 @@ void AGOSEngine::vc31_setWindow() {
 }
 
 void AGOSEngine::vc32_saveScreen() {
-	uint xoffs = _videoWindows[4 * 4 + 0] * 16;
-	uint yoffs = _videoWindows[4 * 4 + 1];
-	uint width = _videoWindows[4 * 4 + 2] * 16;
-	uint height = _videoWindows[4 * 4 + 3];
+	if (getGameType() == GType_PN) {
+		Graphics::Surface *screen = _system->lockScreen();
+		byte *dst = getBackGround();
+		byte *src = (byte *)screen->pixels;
+		for (int i = 0; i < _screenHeight; i++) {
+			memcpy(dst, src, _screenWidth);
+			dst += _backGroundBuf->pitch;
+			src += screen->pitch;
+		}
+		_system->unlockScreen();
+	} else {
+		uint16 xoffs = _videoWindows[4 * 4 + 0] * 16;
+		uint16 yoffs = _videoWindows[4 * 4 + 1];
+		uint16 width = _videoWindows[4 * 4 + 2] * 16;
+		uint16 height = _videoWindows[4 * 4 + 3];
 
-	byte *dst = getBackGround() + xoffs + yoffs * _screenWidth;
-	byte *src = _window4BackScn;
-	uint srcWidth = _videoWindows[4 * 4 + 2] * 16;
-
-	for (; height > 0; height--) {
-		memcpy(dst, src, width);
-		dst += _screenWidth;
-		src += srcWidth;
+		byte *dst = (byte *)_backGroundBuf->getBasePtr(xoffs, yoffs);
+		byte *src = (byte *)_window4BackScn->pixels;;
+		uint16 srcWidth = _videoWindows[4 * 4 + 2] * 16;
+		for (; height > 0; height--) {
+			memcpy(dst, src, width);
+			dst += _backGroundBuf->pitch;
+			src += srcWidth;
+		}
 	}
 }
 
@@ -1115,34 +1225,17 @@ void AGOSEngine::vc33_setMouseOn() {
 void AGOSEngine::vc34_setMouseOff() {
 	mouseOff();
 	_mouseHideCount = 200;
-	_leftButtonDown = 0;
+	_leftButtonDown = false;
 }
 
 void AGOSEngine::clearVideoBackGround(uint16 num, uint16 color) {
 	const uint16 *vlut = &_videoWindows[num * 4];
-	byte *dst = getBackGround() + vlut[0] * 16 + (vlut[1] * (vlut[2] * 16));
+	byte *dst = (byte *)_backGroundBuf->getBasePtr(vlut[0] * 16, vlut[1]);
 
 	for (uint h = 0; h < vlut[3]; h++) {
 		memset(dst, color, vlut[2] * 16);
-		dst += _screenWidth;
+		dst += _backGroundBuf->pitch;
 	}
-}
-
-void AGOSEngine_Simon2::clearVideoWindow(uint16 num, uint16 color) {
-	const uint16 *vlut = &_videoWindows[num * 4];
-	uint16 xoffs = vlut[0] * 16;
-	uint16 yoffs = vlut[1];
-	uint16 dstWidth = _videoWindows[18] * 16;
-	byte *dst = _window4BackScn + xoffs + yoffs * dstWidth;
-
-	setMoveRect(0, 0, vlut[2] * 16, vlut[3]);
-
-	for (uint h = 0; h < vlut[3]; h++) {
-		memset(dst, color, vlut[2] * 16);
-		dst += dstWidth;
-	}
-
-	_window4Flag = 1;
 }
 
 void AGOSEngine::clearVideoWindow(uint16 num, uint16 color) {
@@ -1159,14 +1252,18 @@ void AGOSEngine::clearVideoWindow(uint16 num, uint16 color) {
 
 	if (getGameType() == GType_ELVIRA1 && num == 3) {
 		Graphics::Surface *screen = _system->lockScreen();
-		memset((byte *)screen->pixels, color, _screenWidth * _screenHeight);
+		byte *dst = (byte *)screen->pixels;
+		for (int i = 0; i < _screenHeight; i++) {
+			memset(dst, color, _screenWidth);
+			dst += screen->pitch;
+		}
 		 _system->unlockScreen();
 	} else if (num == 4) {
 		const uint16 *vlut = &_videoWindows[num * 4];
 		uint16 xoffs = (vlut[0] - _videoWindows[16]) * 16;
 		uint16 yoffs = (vlut[1] - _videoWindows[17]);
 		uint16 dstWidth = _videoWindows[18] * 16;
-		byte *dst = _window4BackScn + xoffs + yoffs * dstWidth;
+		byte *dst = (byte *)_window4BackScn->pixels + xoffs + yoffs * dstWidth;
 
 		setMoveRect(0, 0, vlut[2] * 16, vlut[3]);
 
@@ -1183,10 +1280,6 @@ void AGOSEngine::vc35_clearWindow() {
 	uint16 num = vcReadNextWord();
 	uint16 color = vcReadNextWord();
 
-	// Clear video window
-	clearVideoWindow(num, color);
-	_vgaSpriteChanged++;
-
 	// Clear video background
 	if (getGameType() == GType_ELVIRA1) {
 		if (num == 2 || num == 6)
@@ -1199,7 +1292,10 @@ void AGOSEngine::vc35_clearWindow() {
 			return;
 	}
 
+	// Clear video window
+	clearVideoWindow(num, color);
 	clearVideoBackGround(num, color);
+	_vgaSpriteChanged++;
 }
 
 void AGOSEngine::vc36_setWindowImage() {
@@ -1218,13 +1314,17 @@ void AGOSEngine::vc37_pokePalette() {
 	uint16 offs = vcReadNextWord();
 	uint16 color = vcReadNextWord();
 
+	// PC EGA version of Personal Nightmare uses standard EGA palette
+	if (getGameType() == GType_PN && (getFeatures() & GF_EGA))
+		return;
+
 	byte *palptr = _displayPalette + offs * 4;
 	palptr[0] = ((color & 0xf00) >> 8) * 32;
 	palptr[1] = ((color & 0x0f0) >> 4) * 32;
 	palptr[2] = ((color & 0x00f) >> 0) * 32;
 	palptr[3] = 0;
 
-	if (!(_lockWord & 0x20)) {
+	if (!(_videoLockOut & 0x20)) {
 		_paletteFlag = 1;
 		_displayScreen++;
 	}

@@ -31,7 +31,8 @@
 #include "gob/goblin.h"
 #include "gob/inter.h"
 #include "gob/game.h"
-#include "gob/parse.h"
+#include "gob/script.h"
+#include "gob/resources.h"
 #include "gob/mult.h"
 
 namespace Gob {
@@ -51,30 +52,42 @@ void Map_v2::loadMapObjects(const char *avjFile) {
 	int16 mapWidth, mapHeight;
 	int16 tmp;
 	byte *variables;
-	byte *extData;
 	uint32 tmpPos;
 	uint32 passPos;
 
-	var = _vm->_parse->parseVarIndex();
-	variables = _vm->_inter->_variables->getAddressOff8(var, 0);
+	var = _vm->_game->_script->readVarIndex();
+	variables = _vm->_inter->_variables->getAddressOff8(var);
 
-	id = _vm->_inter->load16();
+	id = _vm->_game->_script->readInt16();
 
-	if (id == -1) {
-		_passMap = (int8 *) _vm->_inter->_variables->getAddressOff8(var, 0);
+	if (((uint16) id) >= 65520) {
+		warning("Map_v2::loadMapObjects(): ID >= 65520");
+		return;
+	} else if (id == -1) {
+		_passMap = (int8 *) _vm->_inter->_variables->getAddressOff8(var);
 		return;
 	}
 
-	extData = _vm->_game->loadExtData(id, 0, 0);
-	Common::MemoryReadStream mapData(extData, 4294967295U);
+	Resource *resource = _vm->_game->_resources->getResource(id);
+	if (!resource)
+		return;
 
-	if (mapData.readByte() == 3) {
+	Common::SeekableReadStream &mapData = *resource->stream();
+
+	_widthByte = mapData.readByte();
+	if (_widthByte == 4) {
 		_screenWidth = 640;
+		_screenHeight = 400;
+	} else if (_widthByte == 3) {
 		_passWidth = 65;
+		_screenWidth = 640;
+		_screenHeight = 200;
 	} else {
-		_screenWidth = 320;
 		_passWidth = 40;
+		_screenWidth = 320;
+		_screenHeight = 200;
 	}
+
 	_wayPointsCount = mapData.readByte();
 	_tilesWidth = mapData.readSint16LE();
 	_tilesHeight = mapData.readSint16LE();
@@ -82,13 +95,18 @@ void Map_v2::loadMapObjects(const char *avjFile) {
 	_bigTiles = !(_tilesHeight & 0xFF00);
 	_tilesHeight &= 0xFF;
 
+	if (_widthByte == 4) {
+		_screenWidth = mapData.readSint16LE();
+		_screenHeight = mapData.readSint16LE();
+	}
+
 	_mapWidth = _screenWidth / _tilesWidth;
 	_mapHeight = _screenHeight / _tilesHeight;
 
 	passPos = mapData.pos();
 	mapData.skip(_mapWidth * _mapHeight);
 
-	if (*extData == 1)
+	if (resource->getData()[0] == 1)
 		wayPointsCount = _wayPointsCount = 40;
 	else
 		wayPointsCount = _wayPointsCount == 0 ? 1 : _wayPointsCount;
@@ -101,11 +119,16 @@ void Map_v2::loadMapObjects(const char *avjFile) {
 		_wayPoints[i].notWalkable = mapData.readSByte();
 	}
 
+	if (_widthByte == 4) {
+		_mapWidth  = VAR(17);
+		_passWidth = _mapWidth;
+	}
+
 	// In the original asm, this writes byte-wise into the variables-array
 	tmpPos = mapData.pos();
 	mapData.seek(passPos);
 	if ((variables != 0) &&
-	    (variables != _vm->_inter->_variables->getAddressOff8(0, 0))) {
+	    (variables != _vm->_inter->_variables->getAddressOff8(0))) {
 
 		_passMap = (int8 *) variables;
 		mapHeight = _screenHeight / _tilesHeight;
@@ -114,7 +137,7 @@ void Map_v2::loadMapObjects(const char *avjFile) {
 		for (int i = 0; i < mapHeight; i++) {
 			for (int j = 0; j < mapWidth; j++)
 				setPass(j, i, mapData.readSByte());
-			_vm->_inter->_variables->getAddressOff8(var + i * _passWidth, mapWidth);
+			_vm->_inter->_variables->getAddressOff8(var + i * _passWidth);
 		}
 	}
 	mapData.seek(tmpPos);
@@ -130,11 +153,11 @@ void Map_v2::loadMapObjects(const char *avjFile) {
 	for (int i = 0; i < _vm->_goblin->_gobsCount; i++)
 		loadGoblinStates(mapData, i);
 
-	_vm->_goblin->_soundSlotsCount = _vm->_inter->load16();
+	_vm->_goblin->_soundSlotsCount = _vm->_game->_script->readInt16();
 	for (int i = 0; i < _vm->_goblin->_soundSlotsCount; i++)
 		_vm->_goblin->_soundSlots[i] = _vm->_inter->loadSound(1);
 
-	delete[] extData;
+	delete resource;
 }
 
 void Map_v2::loadGoblinStates(Common::SeekableReadStream &data, int index) {

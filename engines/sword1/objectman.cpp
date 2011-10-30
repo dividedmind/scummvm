@@ -101,15 +101,23 @@ uint8 ObjectMan::fnCheckForTextLine(uint32 textId) {
 
 char *ObjectMan::lockText(uint32 textId) {
 	uint8 lang = SwordEngine::_systemVars.language;
-	char *addr = (char*)_resMan->openFetchRes(_textList[textId / ITM_PER_SEC][lang]) + sizeof(Header);
+	char *addr = (char*)_resMan->openFetchRes(_textList[textId / ITM_PER_SEC][lang]);
+	if (addr == 0)
+		return _missingSubTitleStr;
+	addr += sizeof(Header);
 	if ((textId & ITM_ID) >= _resMan->readUint32(addr)) {
 		warning("ObjectMan::lockText(%d): only %d texts in file", textId & ITM_ID, _resMan->readUint32(addr));
 		textId = 0; // get first line instead
 	}
 	uint32 offset = _resMan->readUint32(addr + ((textId & ITM_ID) + 1)* 4);
 	if (offset == 0) {
+		// Workaround bug for missing sentence in some langages in Syria (see bug #1977094).
+		// We use the hardcoded text in this case.
+		if (textId == 2950145)
+			return const_cast<char*>(_translationId2950145[lang]);
+
 		warning("ObjectMan::lockText(%d): text number has no text lines", textId);
-		return _errorStr;
+		return _missingSubTitleStr;
 	}
 	return addr + offset;
 }
@@ -128,7 +136,7 @@ uint32 ObjectMan::lastTextNumber(int section) {
 Object *ObjectMan::fetchObject(uint32 id) {
 	uint8 *addr = _cptData[id / ITM_PER_SEC];
 	if (!addr)
-		error("fetchObject: section %d is not open!", id / ITM_PER_SEC);
+		error("fetchObject: section %d is not open", id / ITM_PER_SEC);
 	id &= ITM_ID;
 	// DON'T do endian conversion here. it's already done.
 	return (Object*)(addr + *(uint32*)(addr + (id + 1)*4));
@@ -136,7 +144,7 @@ Object *ObjectMan::fetchObject(uint32 id) {
 
 uint32 ObjectMan::fetchNoObjects(int section) {
 	if (_cptData[section] == NULL)
-		error("fetchNoObjects: section %d is not open!", section);
+		error("fetchNoObjects: section %d is not open", section);
 	return *(uint32*)_cptData[section];
 }
 
@@ -161,6 +169,26 @@ void ObjectMan::saveLiveList(uint16 *dest) {
 	memcpy(dest, _liveList, TOTAL_SECTIONS * sizeof(uint16));
 }
 
-char ObjectMan::_errorStr[] = "Error: Text not found.";
+// String displayed when a subtitle sentence is missing in the cluster file.
+// It happens with at least one sentence in Syria in some langages (see bug
+// #1977094).
+// Note: an empty string or a null pointer causes a crash.
+
+char ObjectMan::_missingSubTitleStr[] = " ";
+
+// Missing translation for textId 2950145 (see bug #1977094).
+// Currently text is missing for Portuguese languages. (It's possible that it
+// is not needed. The English version of the game does not include Portuguese
+// so I cannot check.)
+
+const char *ObjectMan::_translationId2950145[7] = {
+	"Oh?",     // English (not needed)
+	"Quoi?",   // French
+	"Oh?",     // German
+	"Eh?",     // Italian
+	"\277Eh?", // Spanish
+	"Ano?",    // Czech
+	" "        // Portuguese
+};
 
 } // End of namespace Sword1

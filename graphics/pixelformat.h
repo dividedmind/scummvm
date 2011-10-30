@@ -26,8 +26,9 @@
 #ifndef GRAPHICS_PIXELFORMAT_H
 #define GRAPHICS_PIXELFORMAT_H
 
-namespace Graphics {
+#include "common/scummsys.h"
 
+namespace Graphics {
 
 /**
  * A pixel format description.
@@ -85,6 +86,46 @@ struct PixelFormat {
 		r = ((color >> rShift) << rLoss) & 0xFF;
 		g = ((color >> gShift) << gLoss) & 0xFF;
 		b = ((color >> bShift) << bLoss) & 0xFF;
+	}
+
+	//////////////////////////////////////////////////////////////////////
+	// Convenience functions for getting number of color component bits //
+	//////////////////////////////////////////////////////////////////////
+
+	inline byte rBits() const {
+		return (8 - rLoss);
+	}
+
+	inline byte gBits() const {
+		return (8 - gLoss);
+	}
+
+	inline byte bBits() const {
+		return (8 - bLoss);
+	}
+
+	inline byte aBits() const {
+		return (8 - aLoss);
+	}
+
+	////////////////////////////////////////////////////////////////////////
+	// Convenience functions for getting color components' maximum values //
+	////////////////////////////////////////////////////////////////////////
+
+	inline uint rMax() const {
+		return (1 << rBits()) - 1;
+	}
+
+	inline uint gMax() const {
+		return (1 << gBits()) - 1;
+	}
+
+	inline uint bMax() const {
+		return (1 << bBits()) - 1;
+	}
+
+	inline uint aMax() const {
+		return (1 << aBits()) - 1;
 	}
 };
 

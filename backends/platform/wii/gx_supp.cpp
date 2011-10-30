@@ -78,11 +78,6 @@ static camera cam = {
 void GX_InitVideo() {
 	vmode = VIDEO_GetPreferredMode(NULL);
 
-#ifdef GAMECUBE
-	if(VIDEO_HaveComponentCable())
-		vmode = &TVNtsc480Prog;
-#endif
-
 	vmode->viWidth = 688;
 	vmode->viXOrigin = (VI_MAX_WIDTH_PAL - 688) / 2;
 
@@ -185,7 +180,7 @@ void GX_Start(u16 width, u16 height, s16 haspect, s16 vaspect) {
 	memset(texturemem, 0, texturesize);
 
 	/*** Setup for first call to scaler ***/
-	oldvwidth = oldvheight = -1;
+	oldvwidth = oldvheight = 0;
 
 	if (inited)
 		return;

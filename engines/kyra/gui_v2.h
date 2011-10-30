@@ -34,8 +34,8 @@ namespace Kyra {
 	do { \
 		button.nextButton = 0; \
 		button.index = a; \
-		button.unk6 = b; \
-		button.unk8 = c; \
+		button.keyCode = b; \
+		button.keyCode2 = c; \
 		button.data0Val1 = d; \
 		button.data1Val1 = e; \
 		button.data2Val1 = f; \
@@ -54,6 +54,7 @@ namespace Kyra {
 		button.data2Val3 = s; \
 		button.flags2 = t; \
 		button.mouseWheel = 0; \
+		button.arg = 0; \
 	} while (0)
 
 #define GUI_V2_MENU(menu, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q) \
@@ -95,7 +96,7 @@ namespace Kyra {
 		item.labelId = n; \
 		item.labelX = o; \
 		item.labelY = p; \
-		item.unk1F = q; \
+		item.keyCode = q; \
 	} while (0)
 
 class KyraEngine_v2;
@@ -120,7 +121,7 @@ protected:
 
 	bool _buttonListChanged;
 	Button *_backUpButtonList;
-	Button *_unknownButtonList;
+	Button *_specialProcessButton;
 	uint16 _flagsModifier;
 
 protected:

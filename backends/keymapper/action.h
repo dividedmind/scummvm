@@ -63,17 +63,18 @@ private:
 	Keymap *_boss;
 
 public:
-	Action(Keymap *boss, const char *id, String des = "", 
+	Action(Keymap *boss, const char *id, String des = "",
 		   ActionType typ = kGenericActionType,
 		   KeyType prefKey = kGenericKeyType,
 		   int pri = 0, int flg = 0 );
 
-	void addEvent(const Event &evt) { 
+	void addEvent(const Event &evt) {
 		events.push_back(evt);
 	}
 
 	void addKeyEvent(const KeyState &ks) {
 		Event evt;
+
 		evt.type = EVENT_KEYDOWN;
 		evt.kbd = ks;
 		addEvent(evt);
@@ -81,23 +82,26 @@ public:
 
 	void addLeftClickEvent() {
 		Event evt;
+
 		evt.type = EVENT_LBUTTONDOWN;
 		addEvent(evt);
 	}
 
 	void addMiddleClickEvent() {
 		Event evt;
+
 		evt.type = EVENT_MBUTTONDOWN;
 		addEvent(evt);
 	}
 
 	void addRightClickEvent() {
 		Event evt;
+
 		evt.type = EVENT_RBUTTONDOWN;
 		addEvent(evt);
 	}
 
-	Keymap *getBoss() { 
+	Keymap *getParent() {
 		return _boss;
 	}
 
@@ -107,10 +111,10 @@ public:
 };
 
 struct ActionPriorityComp : public BinaryFunction<Action, Action, bool> {
-	bool operator()(const Action *x, const Action *y) const { 
+	bool operator()(const Action *x, const Action *y) const {
 		return x->priority > y->priority;
 	}
-	bool operator()(const Action &x, const Action &y) const { 
+	bool operator()(const Action &x, const Action &y) const {
 		return x.priority > y.priority;
 	}
 };

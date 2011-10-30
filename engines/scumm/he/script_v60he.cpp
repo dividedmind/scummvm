@@ -63,345 +63,37 @@ static int virtScreenSavePack(byte *dst, byte *src, int len, int unk);
 //     transparency in akos.cpp
 //     negative size in file read/write
 
-#define OPCODE(x)	_OPCODE(ScummEngine_v60he, x)
+#define OPCODE(i, x)	_opcodes[i]._OPCODE(ScummEngine_v60he, x)
 
 void ScummEngine_v60he::setupOpcodes() {
-	static const OpcodeEntryv60he opcodes[256] = {
-		/* 00 */
-		OPCODE(o6_pushByte),
-		OPCODE(o6_pushWord),
-		OPCODE(o6_pushByteVar),
-		OPCODE(o6_pushWordVar),
-		/* 04 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_byteArrayRead),
-		OPCODE(o6_wordArrayRead),
-		/* 08 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_byteArrayIndexedRead),
-		OPCODE(o6_wordArrayIndexedRead),
-		/* 0C */
-		OPCODE(o6_dup),
-		OPCODE(o6_not),
-		OPCODE(o6_eq),
-		OPCODE(o6_neq),
-		/* 10 */
-		OPCODE(o6_gt),
-		OPCODE(o6_lt),
-		OPCODE(o6_le),
-		OPCODE(o6_ge),
-		/* 14 */
-		OPCODE(o6_add),
-		OPCODE(o6_sub),
-		OPCODE(o6_mul),
-		OPCODE(o6_div),
-		/* 18 */
-		OPCODE(o6_land),
-		OPCODE(o6_lor),
-		OPCODE(o6_pop),
-		OPCODE(o6_invalid),
-		/* 1C */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* 20 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* 24 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* 28 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* 2C */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* 30 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* 34 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* 38 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* 3C */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* 40 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_writeByteVar),
-		OPCODE(o6_writeWordVar),
-		/* 44 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_byteArrayWrite),
-		OPCODE(o6_wordArrayWrite),
-		/* 48 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_byteArrayIndexedWrite),
-		OPCODE(o6_wordArrayIndexedWrite),
-		/* 4C */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_byteVarInc),
-		OPCODE(o6_wordVarInc),
-		/* 50 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_byteArrayInc),
-		OPCODE(o6_wordArrayInc),
-		/* 54 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_byteVarDec),
-		OPCODE(o6_wordVarDec),
-		/* 58 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_byteArrayDec),
-		OPCODE(o6_wordArrayDec),
-		/* 5C */
-		OPCODE(o6_if),
-		OPCODE(o6_ifNot),
-		OPCODE(o6_startScript),
-		OPCODE(o6_startScriptQuick),
-		/* 60 */
-		OPCODE(o6_startObject),
-		OPCODE(o6_drawObject),
-		OPCODE(o6_drawObjectAt),
-		OPCODE(o6_invalid),
-		/* 64 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_stopObjectCode),
-		OPCODE(o6_stopObjectCode),
-		OPCODE(o6_endCutscene),
-		/* 68 */
-		OPCODE(o6_cutscene),
-		OPCODE(o6_stopMusic),
-		OPCODE(o6_freezeUnfreeze),
-		OPCODE(o6_cursorCommand),
-		/* 6C */
-		OPCODE(o6_breakHere),
-		OPCODE(o6_ifClassOfIs),
-		OPCODE(o6_setClass),
-		OPCODE(o6_getState),
-		/* 70 */
-		OPCODE(o60_setState),
-		OPCODE(o6_setOwner),
-		OPCODE(o6_getOwner),
-		OPCODE(o6_jump),
-		/* 74 */
-		OPCODE(o6_startSound),
-		OPCODE(o6_stopSound),
-		OPCODE(o6_startMusic),
-		OPCODE(o6_stopObjectScript),
-		/* 78 */
-		OPCODE(o6_panCameraTo),
-		OPCODE(o6_actorFollowCamera),
-		OPCODE(o6_setCameraAt),
-		OPCODE(o6_loadRoom),
-		/* 7C */
-		OPCODE(o6_stopScript),
-		OPCODE(o6_walkActorToObj),
-		OPCODE(o6_walkActorTo),
-		OPCODE(o6_putActorAtXY),
-		/* 80 */
-		OPCODE(o6_putActorAtObject),
-		OPCODE(o6_faceActor),
-		OPCODE(o6_animateActor),
-		OPCODE(o6_doSentence),
-		/* 84 */
-		OPCODE(o6_pickupObject),
-		OPCODE(o6_loadRoomWithEgo),
-		OPCODE(o6_invalid),
-		OPCODE(o6_getRandomNumber),
-		/* 88 */
-		OPCODE(o6_getRandomNumberRange),
-		OPCODE(o6_invalid),
-		OPCODE(o6_getActorMoving),
-		OPCODE(o6_isScriptRunning),
-		/* 8C */
-		OPCODE(o6_getActorRoom),
-		OPCODE(o6_getObjectX),
-		OPCODE(o6_getObjectY),
-		OPCODE(o6_getObjectOldDir),
-		/* 90 */
-		OPCODE(o6_getActorWalkBox),
-		OPCODE(o6_getActorCostume),
-		OPCODE(o6_findInventory),
-		OPCODE(o6_getInventoryCount),
-		/* 94 */
-		OPCODE(o6_getVerbFromXY),
-		OPCODE(o6_beginOverride),
-		OPCODE(o6_endOverride),
-		OPCODE(o6_setObjectName),
-		/* 98 */
-		OPCODE(o6_isSoundRunning),
-		OPCODE(o6_setBoxFlags),
-		OPCODE(o6_invalid),
-		OPCODE(o6_resourceRoutines),
-		/* 9C */
-		OPCODE(o60_roomOps),
-		OPCODE(o60_actorOps),
-		OPCODE(o6_verbOps),
-		OPCODE(o6_getActorFromXY),
-		/* A0 */
-		OPCODE(o6_findObject),
-		OPCODE(o6_pseudoRoom),
-		OPCODE(o6_getActorElevation),
-		OPCODE(o6_getVerbEntrypoint),
-		/* A4 */
-		OPCODE(o6_arrayOps),
-		OPCODE(o6_saveRestoreVerbs),
-		OPCODE(o6_drawBox),
-		OPCODE(o6_pop),
-		/* A8 */
-		OPCODE(o6_getActorWidth),
-		OPCODE(o6_wait),
-		OPCODE(o6_getActorScaleX),
-		OPCODE(o6_getActorAnimCounter),
-		/* AC */
-		OPCODE(o6_invalid),
-		OPCODE(o6_isAnyOf),
-		OPCODE(o6_systemOps),
-		OPCODE(o6_isActorInBox),
-		/* B0 */
-		OPCODE(o6_delay),
-		OPCODE(o6_delaySeconds),
-		OPCODE(o6_delayMinutes),
-		OPCODE(o6_stopSentence),
-		/* B4 */
-		OPCODE(o6_printLine),
-		OPCODE(o6_printText),
-		OPCODE(o6_printDebug),
-		OPCODE(o6_printSystem),
-		/* B8 */
-		OPCODE(o6_printActor),
-		OPCODE(o6_printEgo),
-		OPCODE(o6_talkActor),
-		OPCODE(o6_talkEgo),
-		/* BC */
-		OPCODE(o6_dimArray),
-		OPCODE(o6_stopObjectCode),
-		OPCODE(o6_startObjectQuick),
-		OPCODE(o6_startScriptQuick2),
-		/* C0 */
-		OPCODE(o6_dim2dimArray),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* C4 */
-		OPCODE(o6_abs),
-		OPCODE(o6_distObjectObject),
-		OPCODE(o6_distObjectPt),
-		OPCODE(o6_distPtPt),
-		/* C8 */
-		OPCODE(o60_kernelGetFunctions),
-		OPCODE(o60_kernelSetFunctions),
-		OPCODE(o6_delayFrames),
-		OPCODE(o6_pickOneOf),
-		/* CC */
-		OPCODE(o6_pickOneOfDefault),
-		OPCODE(o6_stampObject),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* D0 */
-		OPCODE(o6_getDateTime),
-		OPCODE(o6_stopTalking),
-		OPCODE(o6_getAnimateVariable),
-		OPCODE(o6_invalid),
-		/* D4 */
-		OPCODE(o6_shuffle),
-		OPCODE(o6_jumpToScript),
-		OPCODE(o6_band),
-		OPCODE(o6_bor),
-		/* D8 */
-		OPCODE(o6_isRoomScriptRunning),
-		OPCODE(o60_closeFile),
-		OPCODE(o60_openFile),
-		OPCODE(o60_readFile),
-		/* DC */
-		OPCODE(o60_writeFile),
-		OPCODE(o6_findAllObjects),
-		OPCODE(o60_deleteFile),
-		OPCODE(o60_rename),
-		/* E0 */
-		OPCODE(o60_soundOps),
-		OPCODE(o6_getPixel),
-		OPCODE(o60_localizeArrayToScript),
-		OPCODE(o6_pickVarRandom),
-		/* E4 */
-		OPCODE(o6_setBoxSet),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* E8 */
-		OPCODE(o6_invalid),
-		OPCODE(o60_seekFilePos),
-		OPCODE(o60_redimArray),
-		OPCODE(o60_readFilePos),
-		/* EC */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* F0 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* F4 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* F8 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* FC */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-	};
+	ScummEngine_v6::setupOpcodes();
 
-	_opcodesv60he = opcodes;
+	_opcodes[0x63].setProc(0, 0);
+	_opcodes[0x64].setProc(0, 0);
+	OPCODE(0x70, o60_setState);
+	_opcodes[0x9a].setProc(0, 0);
+	OPCODE(0x9c, o60_roomOps);
+	OPCODE(0x9d, o60_actorOps);
+	_opcodes[0xac].setProc(0, 0);
+	OPCODE(0xbd, o6_stopObjectCode);
+	OPCODE(0xc8, o60_kernelGetFunctions);
+	OPCODE(0xc9, o60_kernelSetFunctions);
+	OPCODE(0xd9, o60_closeFile);
+	OPCODE(0xda, o60_openFile);
+	OPCODE(0xdb, o60_readFile);
+	OPCODE(0xdc, o60_writeFile);
+	OPCODE(0xde, o60_deleteFile);
+	OPCODE(0xdf, o60_rename);
+	OPCODE(0xe0, o60_soundOps);
+	OPCODE(0xe2, o60_localizeArrayToScript);
+	OPCODE(0xe9, o60_seekFilePos);
+	OPCODE(0xea, o60_redimArray);
+	OPCODE(0xeb, o60_readFilePos);
+	_opcodes[0xec].setProc(0, 0);
+	_opcodes[0xed].setProc(0, 0);
 }
 
-void ScummEngine_v60he::executeOpcode(byte i) {
-	OpcodeProcv60he op = _opcodesv60he[i].proc;
-	(this->*op) ();
-}
-
-const char *ScummEngine_v60he::getOpcodeDesc(byte i) {
-	return _opcodesv60he[i].desc;
-}
-
-int ScummEngine_v60he::convertFilePath(byte *dst) {
+int ScummEngine_v60he::convertFilePath(byte *dst, int dstSize) {
 	debug(1, "convertFilePath: original filePath is %s", dst);
 
 	int len = resStrLen(dst);
@@ -421,16 +113,25 @@ int ScummEngine_v60he::convertFilePath(byte *dst) {
 
 	// Strip path
 	int r = 0;
-	if (dst[0] == '.' && dst[1] == '/') { // Game Data Path
+	if (dst[len - 3] == 's' && dst[len - 2] == 'g') { // Save Game File
+		// Change filename prefix to target name, for save game files.
+		char saveName[20];
+		sprintf(saveName, "%s.sg%c", _targetName.c_str(), dst[len - 1]);
+		memcpy(dst, saveName, 20);
+	} else if (dst[0] == '.' && dst[1] == '/') { // Game Data Path
+		// The default game data path is set to './' by ScummVM
 		r = 2;
 	} else if (dst[0] == '*' && dst[1] == '/') { // Save Game Path (HE72 - HE100)
+		// The default save game path is set to '*/' by ScummVM
 		r = 2;
 	} else if (dst[0] == 'c' && dst[1] == ':') { // Save Game Path (HE60 - HE71)
+		// The default save path is game path (DOS) or 'c:/hegames/' (Windows)
 		for (r = len; r != 0; r--) {
 			if (dst[r - 1] == '/')
 				break;
 		}
 	} else if (dst[0] == 'u' && dst[1] == 's') { // Save Game Path (Moonbase Commander)
+		// The default save path is 'user/'
 		r = 5;
 	}
 
@@ -577,7 +278,7 @@ void ScummEngine_v60he::o60_roomOps() {
 		len = resStrLen(_scriptPointer);
 		_scriptPointer += len + 1;
 
-		r = convertFilePath(buffer);
+		r = convertFilePath(buffer, sizeof(buffer));
 		memcpy(_saveLoadFileName, buffer + r, sizeof(buffer) - r);
 		debug(1, "o60_roomOps: case 221: filename %s", _saveLoadFileName);
 
@@ -992,7 +693,7 @@ void ScummEngine_v60he::o60_openFile() {
 	len = resStrLen(_scriptPointer);
 	_scriptPointer += len + 1;
 
-	filename = (char *)buffer + convertFilePath(buffer);
+	filename = (char *)buffer + convertFilePath(buffer, sizeof(buffer));
 	debug(1, "Final filename to %s", filename);
 
 	mode = pop();
@@ -1046,7 +747,7 @@ void ScummEngine_v60he::o60_deleteFile() {
 	len = resStrLen(_scriptPointer);
 	_scriptPointer += len + 1;
 
-	filename = (char *)buffer + convertFilePath(buffer);
+	filename = (char *)buffer + convertFilePath(buffer, sizeof(buffer));
 
 	debug(1, "o60_deleteFile (\"%s\")", filename);
 
@@ -1068,8 +769,8 @@ void ScummEngine_v60he::o60_rename() {
 	len = resStrLen(_scriptPointer);
 	_scriptPointer += len + 1;
 
-	oldFilename = (char *)buffer1 + convertFilePath(buffer1);
-	newFilename = (char *)buffer2 + convertFilePath(buffer2);
+	oldFilename = (char *)buffer1 + convertFilePath(buffer1, sizeof(buffer1));
+	newFilename = (char *)buffer2 + convertFilePath(buffer2, sizeof(buffer2));
 
 	debug(1, "o60_rename (\"%s\" to \"%s\")", oldFilename, newFilename);
 

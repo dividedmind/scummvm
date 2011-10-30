@@ -52,6 +52,7 @@
 		#pragma warning( disable : 4355 ) // turn off "base member init" warning
 		#pragma warning( disable : 4510 ) // turn off "default constructor could not be generated"
 		#pragma warning( disable : 4610 ) // turn off "struct can never be instantiated - user defined constructor required"
+		#pragma warning( disable : 4701 ) // turn off "potentially uninitialized variables" warning
 		#pragma warning( disable : 4800 ) // turn off "forcing value to bool 'true' or 'false' (performance warning)"
 
 		// vsnprintf is already defined in Visual Studio 2008
@@ -331,6 +332,8 @@
 
 #elif defined(__PSP__)
 
+	#include <malloc.h>
+
 	#define scumm_stricmp strcasecmp
 	#define scumm_strnicmp strncasecmp
 
@@ -345,15 +348,13 @@
 	#define	SCUMM_BIG_ENDIAN
 	#define	SCUMM_NEED_ALIGNMENT
 
-#elif defined (__DS__) //NeilM
+#elif defined (__DS__)
 
 	#define scumm_stricmp stricmp
 	#define scumm_strnicmp strnicmp
 
 	#define SCUMM_NEED_ALIGNMENT
 	#define SCUMM_LITTLE_ENDIAN
-
-	#include "nds/jtypes.h"
 
 	#define SCUMMVM_DONT_DEFINE_TYPES
 
@@ -449,7 +450,7 @@
 	typedef byte OverlayColor;
 #else
 	// 15/16 bit color mode everywhere else...
-	typedef int16 OverlayColor;
+	typedef uint16 OverlayColor;
 #endif
 
 

@@ -41,10 +41,6 @@ static const PlainGameDescriptor groovieGames[] = {
 	{"clandestiny", "Clandestiny"},
 	{"unclehenry", "Uncle Henry's Playhouse"},
 	{"tlc", "Tender Loving Care"},
-
-	// Extras
-	{"making11h", "The Making of The 11th Hour"},
-	{"clantrailer", "Clandestiny Trailer"},
 #endif
 
 	// Unknown
@@ -59,7 +55,7 @@ static const GroovieGameDescription gameDescriptions[] = {
 		{
 			"t7g", "",
 			AD_ENTRY1s("script.grv", "d1b8033b40aa67c076039881eccce90d", 16659),
-			Common::EN_ANY, Common::kPlatformPC, ADGF_NO_FLAGS
+			Common::EN_ANY, Common::kPlatformPC, ADGF_NO_FLAGS, Common::GUIO_NONE
 		},
 		kGroovieT7G, 0
 	},
@@ -69,7 +65,7 @@ static const GroovieGameDescription gameDescriptions[] = {
 		{
 			"t7g", "",
 			AD_ENTRY1s("script.grv", "6e30b54b1f3bc2262cdcf7961db2ae67", 17191),
-			Common::EN_ANY, Common::kPlatformMacintosh, ADGF_NO_FLAGS
+			Common::EN_ANY, Common::kPlatformMacintosh, ADGF_NO_FLAGS, Common::GUIO_NONE
 		},
 		kGroovieT7G, 0
 	},
@@ -83,7 +79,7 @@ static const GroovieGameDescription gameDescriptions[] = {
 				{ "intro.gjd", 0, NULL, 31711554},
 				{ NULL, 0, NULL, 0}
 			},
-			Common::RU_RUS, Common::kPlatformPC, ADGF_NO_FLAGS
+			Common::RU_RUS, Common::kPlatformPC, ADGF_NO_FLAGS, Common::GUIO_NONE
 		},
 		kGroovieT7G, 0
 	},
@@ -94,7 +90,7 @@ static const GroovieGameDescription gameDescriptions[] = {
 		{
 			"11h", "",
 			AD_ENTRY1s("disk.1", "5c0428cd3659fc7bbcd0aa16485ed5da", 227),
-			Common::EN_ANY, Common::kPlatformPC, ADGF_NO_FLAGS
+			Common::EN_ANY, Common::kPlatformPC, ADGF_NO_FLAGS, Common::GUIO_NONE
 		},
 		kGroovieV2, 1
 	},
@@ -104,7 +100,7 @@ static const GroovieGameDescription gameDescriptions[] = {
 		{
 			"11h", "Demo",
 			AD_ENTRY1s("disk.1", "aacb32ce07e0df2894bd83a3dee40c12", 70),
-			Common::EN_ANY, Common::kPlatformPC, ADGF_DEMO
+			Common::EN_ANY, Common::kPlatformPC, ADGF_DEMO, Common::GUIO_NOLAUNCHLOAD
 		},
 		kGroovieV2, 1
 	},
@@ -112,9 +108,9 @@ static const GroovieGameDescription gameDescriptions[] = {
 	// The Making of The 11th Hour DOS English
 	{
 		{
-			"making11h", "",
+			"11h", "Making Of",
 			AD_ENTRY1s("disk.1", "5c0428cd3659fc7bbcd0aa16485ed5da", 227),
-			Common::EN_ANY, Common::kPlatformPC, ADGF_NO_FLAGS
+			Common::EN_ANY, Common::kPlatformPC, ADGF_NO_FLAGS, Common::GUIO_NOMIDI | Common::GUIO_NOLAUNCHLOAD
 		},
 		kGroovieV2, 2
 	},
@@ -122,9 +118,9 @@ static const GroovieGameDescription gameDescriptions[] = {
 	// Clandestiny Trailer DOS English
 	{
 		{
-			"clantrailer", "",
+			"clandestiny", "Trailer",
 			AD_ENTRY1s("disk.1", "5c0428cd3659fc7bbcd0aa16485ed5da", 227),
-			Common::EN_ANY, Common::kPlatformPC, ADGF_NO_FLAGS
+			Common::EN_ANY, Common::kPlatformPC, ADGF_NO_FLAGS, Common::GUIO_NOMIDI | Common::GUIO_NOLAUNCHLOAD
 		},
 		kGroovieV2, 3
 	},
@@ -134,7 +130,7 @@ static const GroovieGameDescription gameDescriptions[] = {
 		{
 			"clandestiny", "",
 			AD_ENTRY1s("disk.1", "f79fc1515174540fef6a34132efc4c53", 76),
-			Common::EN_ANY, Common::kPlatformPC, ADGF_NO_FLAGS
+			Common::EN_ANY, Common::kPlatformPC, ADGF_NO_FLAGS, Common::GUIO_NOMIDI
 		},
 		kGroovieV2, 1
 	},
@@ -144,7 +140,7 @@ static const GroovieGameDescription gameDescriptions[] = {
 		{
 			"unclehenry", "",
 			AD_ENTRY1s("disk.1", "0e1b1d3cecc4fc7efa62a968844d1f7a", 72),
-			Common::EN_ANY, Common::kPlatformPC, ADGF_NO_FLAGS
+			Common::EN_ANY, Common::kPlatformPC, ADGF_NO_FLAGS, Common::GUIO_NOMIDI
 		},
 		kGroovieV2, 1
 	},
@@ -154,7 +150,7 @@ static const GroovieGameDescription gameDescriptions[] = {
 		{
 			"tlc", "",
 			AD_ENTRY1s("disk.1", "32a1afa68478f1f9d2b25eeea427f2e3", 84),
-			Common::EN_ANY, Common::kPlatformPC, ADGF_NO_FLAGS
+			Common::EN_ANY, Common::kPlatformPC, ADGF_NO_FLAGS, Common::GUIO_NOMIDI
 		},
 		kGroovieV2, 1
 	},
@@ -179,7 +175,9 @@ static const ADParams detectionParams = {
 	// List of files for file-based fallback detection (optional)
 	0,
 	// Flags
-	0
+	kADFlagUseExtraAsHint,
+	// Additional GUI options (for every game}
+	Common::GUIO_NOSUBTITLES | Common::GUIO_NOSFX
 };
 
 
@@ -191,7 +189,7 @@ public:
 		return "Groovie Engine";
 	}
 
-	const char *getCopyright() const {
+	const char *getOriginalCopyright() const {
 		return "Groovie Engine (C) 1990-1996 Trilobyte";
 	}
 
@@ -206,7 +204,7 @@ public:
 
 bool GroovieMetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGameDescription *gd) const {
 	if (gd) {
-		*engine = new GroovieEngine(syst, (GroovieGameDescription *)gd);
+		*engine = new GroovieEngine(syst, (const GroovieGameDescription *)gd);
 	}
 	return gd != 0;
 }
@@ -234,7 +232,7 @@ void GroovieMetaEngine::removeSaveState(const char *target, int slot) const {
 	}
 
 	Common::String filename = SaveLoad::getSlotSaveName(target, slot);
-	g_system->getSavefileManager()->removeSavefile(filename.c_str());
+	g_system->getSavefileManager()->removeSavefile(filename);
 }
 
 SaveStateDescriptor GroovieMetaEngine::querySaveMetaInfos(const char *target, int slot) const {

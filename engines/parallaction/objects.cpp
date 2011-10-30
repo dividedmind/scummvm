@@ -30,18 +30,29 @@
 namespace Parallaction {
 
 
-ZonePtr nullZonePtr;
-AnimationPtr nullAnimationPtr;
-InstructionPtr nullInstructionPtr;
-
 Command::Command() {
 	_id = 0;
 	_flagsOn = 0;
 	_flagsOff = 0;
+	_valid = false;
+
+	_flags = 0;
+	_string = 0;
+	_callable = 0;
+	_object = 0;
+	_counterValue = 0;
+	_zeta0 = 0;
+	_zeta1 = 0;
+	_zeta2 = 0;
+	_characterId = 0;
+	_string2 = 0;
+	_musicCommand = 0;
+	_musicParm = 0;
 }
 
 Command::~Command() {
-
+	free(_string);
+	free(_string2);
 }
 
 
@@ -105,6 +116,27 @@ void Animation::setF(int16 value) {
 	_frame = CLIP(value, min, max);
 }
 
+void Animation::forceXYZF(int16 x, int16 y, int16 z, int16 f) {
+	_left = x;
+	_top = y;
+	_z = z;
+	_frame = f;
+}
+
+void Animation::getFoot(Common::Point &foot) {
+	Common::Rect rect;
+	gfxobj->getRect(_frame, rect);
+	foot.x = getX() + (rect.left + rect.width() / 2);
+	foot.y = getY() + (rect.top + rect.height());
+}
+
+void Animation::setFoot(const Common::Point &foot) {
+	Common::Rect rect;
+	gfxobj->getRect(_frame, rect);
+
+	setX(foot.x - (rect.left + rect.width() / 2));
+	setY(foot.y - (rect.top + rect.height()));
+}
 
 #define NUM_LOCALS	10
 char	_localNames[NUM_LOCALS][10];
@@ -167,55 +199,11 @@ Zone::Zone() {
 	_label = 0;
 
 	// BRA specific
-	_index = 0;
-	_linkedName = 0;
+	_index = INVALID_ZONE_INDEX;
+	_locationIndex = INVALID_LOCATION_INDEX;
 }
 
 Zone::~Zone() {
-//	printf("~Zone(%s)\n", _name);
-
-	switch (_type & 0xFFFF) {
-	case kZoneExamine:
-		free(u.examine->_filename);
-		u.examine->_description.clear();
-		delete u.examine->_cnv;
-		delete u.examine;
-		break;
-
-	case kZoneDoor:
-		free(u.door->_location);
-		u.door->gfxobj->release();
-		delete u.door;
-		break;
-
-	case kZoneSpeak:
-		delete u.speak->_dialogue;
-		delete u.speak;
-		break;
-
-	case kZoneGet:
-		u.get->gfxobj->release();
-		delete u.get;
-		break;
-
-	case kZoneHear:
-		delete u.hear;
-		break;
-
-	case kZoneMerge:
-		delete u.merge;
-		break;
-
-	case kZonePath:
-		delete u.path;
-		break;
-
-	default:
-		break;
-	}
-
-
-	free(_linkedName);
 }
 
 void Zone::translate(int16 x, int16 y) {
@@ -236,6 +224,7 @@ bool Zone::hitRect(int x, int y) const {
 
 Dialogue::Dialogue() {
 	memset(_questions, 0, sizeof(_questions));
+	_numQuestions = 0;
 }
 
 Dialogue::~Dialogue() {
@@ -244,20 +233,31 @@ Dialogue::~Dialogue() {
 	}
 }
 
+Question *Dialogue::findQuestion(const Common::String &name) const {
+	for (uint i = 0; _questions[i]; ++i) {
+		if (_questions[i]->_name == name) {
+			return _questions[i];
+		}
+	}
+	return 0;
+}
+
+void Dialogue::addQuestion(Question *q) {
+	assert(_numQuestions < NUM_QUESTIONS);
+	assert(q);
+	_questions[_numQuestions] = q;
+	_numQuestions++;
+}
+
 Answer::Answer() {
 	_mood = 0;
-	_followingQuestion =  NULL;
 	_noFlags = 0;
 	_yesFlags = 0;
 	_hasCounterCondition = false;
 }
 
-Question::Question() {
-	_mood = 0;
-
-	for (uint32 i = 0; i < NUM_ANSWERS; i++)
-		_answers[i] = NULL;
-
+Question::Question(const Common::String &name) : _name(name), _mood(0) {
+	memset(_answers, 0, sizeof(_answers));
 }
 
 Question::~Question() {
@@ -423,18 +423,19 @@ void FixedTable::clear() {
 	_used -= deleted;
 }
 
-Table* createTableFromStream(uint32 size, Common::SeekableReadStream &stream) {
+Table* createTableFromStream(uint32 size, Common::SeekableReadStream *stream) {
+	assert(stream);
 
 	Table *t = new Table(size);
+	assert(t);
 
-	Script s(&stream, false);
-
+	Script s(stream, false);
 	s.readLineToken();
 	while (scumm_stricmp(_tokens[0], "ENDTABLE")) {
 		t->addData(_tokens[0]);
 		s.readLineToken();
 	}
-
+	delete stream;
 	return t;
 }
 

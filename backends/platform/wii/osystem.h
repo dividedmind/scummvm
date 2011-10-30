@@ -56,7 +56,6 @@ extern void wii_memstats(void);
 class OSystem_Wii : public BaseBackend {
 private:
 	s64 _startup_time;
-	syswd_t _alarm;
 
 	u16 *_palette;
 	u16 *_cursorPalette;
@@ -75,7 +74,6 @@ private:
 	u16 *_texture;
 	u16 _currentWidth, _currentHeight;
 
-	OSystem::GraphicsMode *_supportedGraphicsModes;
 	s32 _activeGraphicsMode;
 
 	bool _fullscreen;
@@ -86,6 +84,8 @@ private:
 	s32 _mouseHotspotX, _mouseHotspotY;
 	u8 _mouseKeyColor;
 	u8 *_mouseCursor;
+
+	bool _kbd_active;
 
 	bool _event_quit;
 
@@ -100,6 +100,7 @@ private:
 	void initEvents();
 	void deinitEvents();
 	void updateEventScreenResolution();
+	bool pollKeyboard(Common::Event &event);
 
 protected:
 	Common::SaveFileManager *_savefile;

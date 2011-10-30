@@ -46,7 +46,7 @@ class ScrollBarWidget;
  implement this simple rewrapping -- we currently don't do that at all!).
 
  Or, one can go and implement a more complete console, by replacing the
- _buffer by a real line buffer -- an arrach of char* pointers.
+ _buffer by a real line buffer -- an array of char* pointers.
  This will allow one to implement resizing perfectly, but has the drawback
  of making things like scrolling, drawing etc. more complicated.
 
@@ -67,7 +67,7 @@ class ScrollBarWidget;
 class ConsoleDialog : public Dialog {
 public:
 	typedef bool (*InputCallbackProc)(ConsoleDialog *console, const char *input, void *refCon);
-	typedef bool (*CompletionCallbackProc)(ConsoleDialog* console, const char *input, char*& completion, void *refCon);
+	typedef bool (*CompletionCallbackProc)(ConsoleDialog* console, const char *input, Common::String &completion, void *refCon);
 
 protected:
 	enum {
@@ -143,7 +143,7 @@ public:
 	void handleKeyDown(Common::KeyState state);
 	void handleCommand(CommandSender *sender, uint32 cmd, uint32 data);
 
-	int printf(const char *format, ...);
+	int printf(const char *format, ...) GCC_PRINTF(2, 3);
 	int vprintf(const char *format, va_list argptr);
 #undef putchar
 	void putchar(int c);

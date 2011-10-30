@@ -23,6 +23,9 @@
  *
  */
 
+#include "common/config-manager.h"
+#include "common/timer.h"
+#include "common/util.h"
 
 #include "scumm/actor.h"
 #include "scumm/file.h"
@@ -31,10 +34,6 @@
 #include "scumm/scumm.h"
 #include "scumm/sound.h"
 #include "scumm/util.h"
-
-#include "common/config-manager.h"
-#include "common/timer.h"
-#include "common/util.h"
 
 #include "sound/adpcm.h"
 #include "sound/audiocd.h"
@@ -45,8 +44,6 @@
 #include "sound/voc.h"
 #include "sound/vorbis.h"
 #include "sound/wave.h"
-
-
 
 namespace Scumm {
 
@@ -420,17 +417,16 @@ void Sound::playSound(int soundID) {
 		sound = (char *)malloc(size);
 		int vol = ptr[24] * 4;
 		int loopStart = 0, loopEnd = 0;
-#if 0	// Disabling this until after 0.11.0
 		int loopcount = ptr[27];
 		if (loopcount > 1) {
 			// TODO: We can only loop once, or infinitely many times, but
 			// have no support for a finite number of repetitions.
-			// This is
+			// So far, I have seen only 1 and 255 (for infinite repetitions),
+			// so maybe this is not really a problem.
 			loopStart = READ_BE_UINT16(ptr + 10) - READ_BE_UINT16(ptr + 8);
 			loopEnd = READ_BE_UINT16(ptr + 14);
 			flags |= Audio::Mixer::FLAG_LOOP;
 		}
-#endif
 
 		memcpy(sound, ptr + READ_BE_UINT16(ptr + 8), size);
 		_mixer->playRaw(Audio::Mixer::kSFXSoundType, NULL, sound, size, rate,
@@ -1181,7 +1177,7 @@ int ScummEngine::readSoundResource(int idx) {
 				break;
 			}
 
-			if ((_musicType == MDT_PCSPK) && pri != 11)
+			if ((_musicType == MDT_PCSPK || _musicType == MDT_CMS) && pri != 11)
 				pri = -1;
 
 			debugC(DEBUG_RESOURCE, "    tag: %s, total_size=%d, pri=%d", tag2str(tag), size, pri);
@@ -1292,7 +1288,7 @@ int ScummEngine::readSoundResource(int idx) {
 }
 
 // Adlib MIDI-SYSEX to set MIDI instruments for small header games.
-static byte ADLIB_INSTR_MIDI_HACK[95] = {
+static const byte ADLIB_INSTR_MIDI_HACK[95] = {
 	0x00, 0xf0, 0x14, 0x7d, 0x00,  // sysex 00: part on/off
 	0x00, 0x00, 0x03,              // part/channel  (offset  5)
 	0x00, 0x00, 0x07, 0x0f, 0x00, 0x00, 0x08, 0x00,
@@ -1710,7 +1706,7 @@ static void convertADResource(ResourceManager *res, const GameSettings& game, in
 		} else {
 			dw = 500000 * 256 / ticks;
 		}
-		debugC(DEBUG_SOUND, "  ticks = %d, speed = %ld", ticks, dw);
+		debugC(DEBUG_SOUND, "  ticks = %d, speed = %d", ticks, dw);
 
 		// Write a tempo change Meta event
 		memcpy(ptr, "\x00\xFF\x51\x03", 4); ptr += 4;
@@ -2121,6 +2117,19 @@ int ScummEngine::readSoundResourceSmallHeader(int idx) {
 			_fileHandle->read(_res->createResource(rtSound, idx, wa_size + 6), wa_size + 6);
 		}
 		return 1;
+	} else if (_musicType == MDT_CMS && ad_offs != 0) {
+		if (_game.features & GF_OLD_BUNDLE) {
+			_fileHandle->seek(wa_offs + wa_size + 6, SEEK_SET);
+			byte musType = _fileHandle->readByte();
+		
+			if (musType == 0x80) {
+				_fileHandle->seek(ad_offs, SEEK_SET);
+				_fileHandle->read(_res->createResource(rtSound, idx, ad_size), ad_size);
+			} else {
+				_fileHandle->seek(wa_offs, SEEK_SET);
+				_fileHandle->read(_res->createResource(rtSound, idx, wa_size), wa_size);
+			}
+		}
 	} else if (ad_offs != 0) {
 		// AD resources have a header, instrument definitions and one MIDI track.
 		// We build an 'ADL ' resource from that:

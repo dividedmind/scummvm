@@ -24,9 +24,10 @@
 
 #include "kyra/kyra_v1.h"
 #include "kyra/kyra_lok.h"
+#include "kyra/lol.h"
 #include "kyra/kyra_hof.h"
 #include "kyra/kyra_mr.h"
-#include "kyra/lol.h"
+
 
 #include "common/config-manager.h"
 #include "engines/advancedDetector.h"
@@ -42,36 +43,36 @@ struct KYRAGameDescription {
 
 namespace {
 
-#define FLAGS(x, y, z, a, b, c, id) { Common::UNK_LANG, Common::UNK_LANG, Common::UNK_LANG, Common::kPlatformUnknown, x, y, z, a, b, c, id }
-#define FLAGS_FAN(fanLang, repLang, x, y, z, a, b, c, id) { Common::UNK_LANG, fanLang, repLang, Common::kPlatformUnknown, x, y, z, a, b, c, id }
+#define FLAGS(x, y, z, a, b, c, d, id) { Common::UNK_LANG, Common::UNK_LANG, Common::UNK_LANG, Common::kPlatformUnknown, x, y, z, a, b, c, d, id }
+#define FLAGS_FAN(fanLang, repLang, x, y, z, a, b, c, d, id) { Common::UNK_LANG, fanLang, repLang, Common::kPlatformUnknown, x, y, z, a, b, c, d, id }
 
-#define KYRA1_FLOPPY_FLAGS FLAGS(false, false, false, false, false, false, Kyra::GI_KYRA1)
-#define KYRA1_FLOPPY_CMP_FLAGS FLAGS(false, false, false, false, false, true, Kyra::GI_KYRA1)
-#define KYRA1_AMIGA_FLAGS FLAGS(false, false, false, false, false, false, Kyra::GI_KYRA1)
-#define KYRA1_TOWNS_FLAGS FLAGS(false, true, false, false, false, false, Kyra::GI_KYRA1)
-#define KYRA1_TOWNS_SJIS_FLAGS FLAGS(false, true, false, true, false, false, Kyra::GI_KYRA1)
-#define KYRA1_CD_FLAGS FLAGS(false, true, true, false, false, false, Kyra::GI_KYRA1)
-#define KYRA1_DEMO_FLAGS FLAGS(true, false, false, false, false, false, Kyra::GI_KYRA1)
+#define KYRA1_FLOPPY_FLAGS FLAGS(false, false, false, false, false, false, false, Kyra::GI_KYRA1)
+#define KYRA1_FLOPPY_CMP_FLAGS FLAGS(false, false, false, false, false, false, true, Kyra::GI_KYRA1)
+#define KYRA1_AMIGA_FLAGS FLAGS(false, false, false, false, false, false, false, Kyra::GI_KYRA1)
+#define KYRA1_TOWNS_FLAGS FLAGS(false, true, false, false, false, false, false, Kyra::GI_KYRA1)
+#define KYRA1_TOWNS_SJIS_FLAGS FLAGS(false, true, false, true, false, false, false, Kyra::GI_KYRA1)
+#define KYRA1_CD_FLAGS FLAGS(false, true, true, false, false, false, false, Kyra::GI_KYRA1)
+#define KYRA1_DEMO_FLAGS FLAGS(true, false, false, false, false, false, false, Kyra::GI_KYRA1)
 
-#define KYRA2_FLOPPY_FLAGS FLAGS(false, false, false, false, false, false, Kyra::GI_KYRA2)
-#define KYRA2_FLOPPY_CMP_FLAGS FLAGS(false, false, false, false, false, true, Kyra::GI_KYRA2)
-#define KYRA2_CD_FLAGS FLAGS(false, false, true, false, false, false, Kyra::GI_KYRA2)
-#define KYRA2_CD_FAN_FLAGS(x, y) FLAGS_FAN(x, y, false, false, true, false, false, false, Kyra::GI_KYRA2)
-#define KYRA2_CD_DEMO_FLAGS FLAGS(true, false, true, false, false, false, Kyra::GI_KYRA2)
-#define KYRA2_DEMO_FLAGS FLAGS(true, false, false, false, false, false, Kyra::GI_KYRA2)
-#define KYRA2_TOWNS_FLAGS FLAGS(false, false, false, false, false, false, Kyra::GI_KYRA2)
-#define KYRA2_TOWNS_SJIS_FLAGS FLAGS(false, false, false, true, false, false, Kyra::GI_KYRA2)
+#define KYRA2_FLOPPY_FLAGS FLAGS(false, false, false, false, false, false, false, Kyra::GI_KYRA2)
+#define KYRA2_FLOPPY_CMP_FLAGS FLAGS(false, false, false, false, false, false, true, Kyra::GI_KYRA2)
+#define KYRA2_CD_FLAGS FLAGS(false, false, true, false, false, false, false, Kyra::GI_KYRA2)
+#define KYRA2_CD_FAN_FLAGS(x, y) FLAGS_FAN(x, y, false, false, true, false, false, false, false, Kyra::GI_KYRA2)
+#define KYRA2_CD_DEMO_FLAGS FLAGS(true, false, true, false, false, false, false, Kyra::GI_KYRA2)
+#define KYRA2_DEMO_FLAGS FLAGS(true, false, false, false, false, false, false, Kyra::GI_KYRA2)
+#define KYRA2_TOWNS_FLAGS FLAGS(false, false, false, false, false, false, false, Kyra::GI_KYRA2)
+#define KYRA2_TOWNS_SJIS_FLAGS FLAGS(false, false, false, true, false, false, false, Kyra::GI_KYRA2)
 
-#define KYRA3_CD_FLAGS FLAGS(false, false, true, false, true, true, Kyra::GI_KYRA3)
-#define KYRA3_CD_INS_FLAGS FLAGS(false, false, true, false, true, false, Kyra::GI_KYRA3)
-#define KYRA3_CD_FAN_FLAGS(x, y) FLAGS_FAN(x, y, false, false, true, false, true, false, Kyra::GI_KYRA3)
+#define KYRA3_CD_FLAGS FLAGS(false, false, true, false, false, true, true, Kyra::GI_KYRA3)
+#define KYRA3_CD_INS_FLAGS FLAGS(false, false, true, false, false, true, false, Kyra::GI_KYRA3)
+#define KYRA3_CD_FAN_FLAGS(x, y) FLAGS_FAN(x, y, false, false, true, false, false, true, false, Kyra::GI_KYRA3)
 
-#define LOL_CD_FLAGS FLAGS(false, false, true, false, false, false, Kyra::GI_LOL)
-#define LOL_FLOPPY_FLAGS FLAGS(false, false, false, false, false, false, Kyra::GI_LOL)
-#define LOL_FLOPPY_CMP_FLAGS FLAGS(false, false, false, false, false, true, Kyra::GI_LOL)
-#define LOL_PC98_FLAGS FLAGS(false, false, false, false, false, false, Kyra::GI_LOL)
-#define LOL_PC98_SJIS_FLAGS FLAGS(false, false, false, true, false, false, Kyra::GI_LOL)
-#define LOL_DEMO_FLAGS FLAGS(true, false, false, false, false, false, Kyra::GI_KYRA2)
+#define LOL_CD_FLAGS FLAGS(false, false, true, false, false, false, false, Kyra::GI_LOL)
+#define LOL_FLOPPY_FLAGS FLAGS(false, false, false, false, false, false, false, Kyra::GI_LOL)
+#define LOL_FLOPPY_CMP_FLAGS FLAGS(false, false, false, false, false, false, true, Kyra::GI_LOL)
+#define LOL_PC98_SJIS_FLAGS FLAGS(false, false, false, true, true, false, false, Kyra::GI_LOL)
+#define LOL_DEMO_FLAGS FLAGS(true, true, false, false, false, false, false, Kyra::GI_LOL)
+#define LOL_KYRA2_DEMO_FLAGS FLAGS(true, false, false, false, false, false, false, Kyra::GI_KYRA2)
 
 const KYRAGameDescription adGameDescs[] = {
 	/* disable these targets until they get supported
@@ -82,7 +83,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("DISK1.EXE", "c8641d0414d6c966d0a3dad79db07bf4"),
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_FLOPPY_CMP_FLAGS
 	},
@@ -94,7 +96,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("DISK1.EXE", "5d5cee4c3d0b68d586788b74243d254a"),
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_FLOPPY_CMP_FLAGS
 	},
@@ -107,7 +110,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("GEMCUT.EMC", "3c244298395520bb62b5edfe41688879"),
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_FLOPPY_FLAGS
 	},
@@ -118,7 +122,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("GEMCUT.EMC", "796e44863dd22fa635b042df1bf16673"),
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_FLOPPY_FLAGS
 	},
@@ -129,7 +134,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("GEMCUT.EMC", "abf8eb360e79a6c2a837751fbd4d3d24"),
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_FLOPPY_FLAGS
 	},
@@ -140,7 +146,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("GEMCUT.EMC", "6018e1dfeaca7fe83f8d0b00eb0dd049"),
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_FLOPPY_FLAGS
 	},
@@ -151,7 +158,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("GEMCUT.EMC", "f0b276781f47c130f423ec9679fe9ed9"),
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_FLOPPY_FLAGS
 	},
@@ -162,7 +170,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("GEMCUT.EMC", "8909b41596913b3f5deaf3c9f1017b01"),
 			Common::ES_ESP,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_FLOPPY_FLAGS
 	},
@@ -173,7 +182,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("GEMCUT.EMC", "747861d2a9c643c59fdab570df5b9093"),
 			Common::ES_ESP,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_FLOPPY_FLAGS
 	},
@@ -184,7 +194,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("GEMCUT.EMC", "ef08c8c237ee1473fd52578303fc36df"),
 			Common::IT_ITA,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_FLOPPY_FLAGS
 	},
@@ -196,7 +207,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("GEMCUT.PAK", "2bd1da653eaefd691e050e4a9eb68a64"),
 			Common::EN_ANY,
 			Common::kPlatformAmiga,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_AMIGA_FLAGS
 	},
@@ -212,15 +224,16 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformMacintosh,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_FLOPPY_FLAGS
 	},
 
-	{ // FM-Towns version
+	{ // FM-TOWNS version
 		{
 			"kyra1",
-			"CD",
+			0,
 			{
 				{ "EMC.PAK", 0, "a046bb0b422061aab8e4c4689400343a", -1 },
 				{ "TWMUSIC.PAK", 0, "e53bca3a3e3fb49107d59463ec387a59", -1 },
@@ -228,14 +241,15 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformFMTowns,
-			ADGF_CD
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_TOWNS_FLAGS
 	},
 	{
 		{
 			"kyra1",
-			"CD",
+			0,
 			{
 				{ "JMC.PAK", 0, "9c5707a2a478e8167e44283246612d2c", -1 },
 				{ "TWMUSIC.PAK", 0, "e53bca3a3e3fb49107d59463ec387a59", -1 },
@@ -243,30 +257,18 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::JA_JPN,
 			Common::kPlatformFMTowns,
-			ADGF_CD
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_TOWNS_SJIS_FLAGS
 	},
 
-	{ // PC-9821 version
-		{
-			"kyra1",
-			0,
-			{
-				{ "EMC.PAK", 0, "a046bb0b422061aab8e4c4689400343a", -1 },
-				{ "MUSIC98.PAK", 0, "02fc212f799331b769b274e33d87b37f", -1 },
-				{ NULL, 0, NULL, 0 }
-			},
-			Common::EN_ANY,
-			Common::kPlatformPC98,
-			ADGF_NO_FLAGS
-		},
-		KYRA1_TOWNS_FLAGS
-	},
+	// PC-9801 floppy + CD / PC-9821 floppy version are all using the same data files,
+	// thus we will mark it as non CD game.
 	{
 		{
 			"kyra1",
-			0,
+			"",
 			{
 				{ "JMC.PAK", 0, "9c5707a2a478e8167e44283246612d2c", -1 },
 				{ "MUSIC98.PAK", 0, "02fc212f799331b769b274e33d87b37f", -1 },
@@ -274,7 +276,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::JA_JPN,
 			Common::kPlatformPC98,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_TOWNS_SJIS_FLAGS
 	},
@@ -286,7 +289,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("GEMCUT.PAK", "fac399fe62f98671e56a005c5e94e39f"),
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_CD
+			ADGF_CD,
+			Common::GUIO_NONE
 		},
 		KYRA1_CD_FLAGS
 	},
@@ -297,7 +301,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("GEMCUT.PAK", "230f54e6afc007ab4117159181a1c722"),
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_CD
+			ADGF_CD,
+			Common::GUIO_NONE
 		},
 		KYRA1_CD_FLAGS
 	},
@@ -308,7 +313,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("GEMCUT.PAK", "b037c41768b652a040360ffa3556fd2a"),
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_CD
+			ADGF_CD,
+			Common::GUIO_NONE
 		},
 		KYRA1_CD_FLAGS
 	},
@@ -320,7 +326,57 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("GEMCUT.PAK", "d8327fc4b7a72b23c900fa13aef4093a"),
 			Common::IT_ITA,
 			Common::kPlatformPC,
-			ADGF_CD
+			ADGF_CD,
+			Common::GUIO_NONE
+		},
+		KYRA1_CD_FLAGS
+	},
+
+	{ // Kyra 1 Mac CD as mentioned in fr #2766454 "KYRA1: Add support for Macintosh CD" by nnooiissee
+		{
+			"kyra1",
+			"CD",
+			{
+				{ "GEMCUT.PAK", 0, "d3d4b281cd357230aabcec46843d04bd", -1 },
+				{ "BEAD.CPS", 0, "3038466f65b7751451844707187aa401", -1 },
+				{ NULL, 0, NULL, 0 }
+			},
+			Common::EN_ANY,
+			Common::kPlatformMacintosh,
+			ADGF_CD,
+			Common::GUIO_NONE
+		},
+		KYRA1_CD_FLAGS
+	},
+	{
+		{
+			"kyra1",
+			"CD",
+			{
+				{ "GEMCUT.PAK", 0, "4a0cb720e824295bcbccbd1407652110", -1 },
+				{ "BEAD.CPS", 0, "3038466f65b7751451844707187aa401", -1 },
+				{ NULL, 0, NULL, 0 }
+			},
+			Common::DE_DEU,
+			Common::kPlatformMacintosh,
+			ADGF_CD,
+			Common::GUIO_NONE
+		},
+		KYRA1_CD_FLAGS
+	},
+	{
+		{
+			"kyra1",
+			"CD",
+			{
+				{ "GEMCUT.PAK", 0, "b71ee090aa12e80ed2ba068826d92bed", -1 },
+				{ "BEAD.CPS", 0, "3038466f65b7751451844707187aa401", -1 },
+				{ NULL, 0, NULL, 0 }
+			},
+			Common::FR_FRA,
+			Common::kPlatformMacintosh,
+			ADGF_CD,
+			Common::GUIO_NONE
 		},
 		KYRA1_CD_FLAGS
 	},
@@ -332,7 +388,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("DEMO1.WSA", "fb722947d94897512b13b50cc84fd648"),
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DEMO
+			ADGF_DEMO,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA1_DEMO_FLAGS
 	},
@@ -344,7 +401,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("WESTWOOD.001", "3f52dda68c4f7696c8309038be9f4151"),
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA2_FLOPPY_CMP_FLAGS
 	},
@@ -356,7 +414,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("WESTWOOD.001", "d787b9559afddfe058b84c0b3a787224"),
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA2_FLOPPY_CMP_FLAGS
 	},
@@ -368,7 +427,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("FATE.PAK", "1ba18be685ad8e5a0ab5d46a0ce4d345"),
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA2_FLOPPY_FLAGS
 	},
@@ -380,7 +440,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("FATE.PAK", "262fb69dd8e52e596c7aefc6456f7c1b"),
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA2_FLOPPY_FLAGS
 	},
@@ -392,7 +453,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("FATE.PAK", "f7de11506b4c8fdf64bc763206c3e4e7"),
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA2_FLOPPY_FLAGS
 	},
@@ -404,7 +466,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("FATE.PAK", "e0a70c31b022cb4bb3061890020fc27c"),
 			Common::IT_ITA,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA2_FLOPPY_FLAGS
 	},
@@ -416,7 +479,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("FATE.PAK", "28cbad1c5bf06b2d3825ae57d760d032"),
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD
+			ADGF_DROPLANGUAGE | ADGF_CD,
+			Common::GUIO_NONE
 		},
 		KYRA2_CD_FLAGS
 	},
@@ -427,7 +491,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("FATE.PAK", "28cbad1c5bf06b2d3825ae57d760d032"),
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD
+			ADGF_DROPLANGUAGE | ADGF_CD,
+			Common::GUIO_NONE
 		},
 		KYRA2_CD_FLAGS
 	},
@@ -438,7 +503,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("FATE.PAK", "28cbad1c5bf06b2d3825ae57d760d032"),
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD
+			ADGF_DROPLANGUAGE | ADGF_CD,
+			Common::GUIO_NONE
 		},
 		KYRA2_CD_FLAGS
 	},
@@ -451,7 +517,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("FATE.PAK", "30487f3b8d7790c7857f4769ff2dd125"),
 			Common::IT_ITA,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD
+			ADGF_DROPLANGUAGE | ADGF_CD,
+			Common::GUIO_NONE
 		},
 		KYRA2_CD_FAN_FLAGS(Common::IT_ITA, Common::EN_ANY)
 	},
@@ -462,7 +529,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("FATE.PAK", "30487f3b8d7790c7857f4769ff2dd125"),
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD
+			ADGF_DROPLANGUAGE | ADGF_CD,
+			Common::GUIO_NONE
 		},
 		KYRA2_CD_FAN_FLAGS(Common::IT_ITA, Common::EN_ANY)
 	},
@@ -473,7 +541,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("FATE.PAK", "30487f3b8d7790c7857f4769ff2dd125"),
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD
+			ADGF_DROPLANGUAGE | ADGF_CD,
+			Common::GUIO_NONE
 		},
 		KYRA2_CD_FAN_FLAGS(Common::IT_ITA, Common::EN_ANY)
 	},
@@ -485,7 +554,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("FATE.PAK", "39772ff82e42c4c520050518deb82e64"),
 			Common::IT_ITA,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD
+			ADGF_DROPLANGUAGE | ADGF_CD,
+			Common::GUIO_NONE
 		},
 		KYRA2_CD_FAN_FLAGS(Common::IT_ITA, Common::EN_ANY)
 	},
@@ -497,7 +567,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("FATE.PAK", "39772ff82e42c4c520050518deb82e64"),
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD
+			ADGF_DROPLANGUAGE | ADGF_CD,
+			Common::GUIO_NONE
 		},
 		KYRA2_CD_FAN_FLAGS(Common::IT_ITA, Common::EN_ANY)
 	},
@@ -509,7 +580,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("FATE.PAK", "39772ff82e42c4c520050518deb82e64"),
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD
+			ADGF_DROPLANGUAGE | ADGF_CD,
+			Common::GUIO_NONE
 		},
 		KYRA2_CD_FAN_FLAGS(Common::IT_ITA, Common::EN_ANY)
 	},
@@ -521,7 +593,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("THANKS.CPS", "b1a78d990b120bb2234b7094f74e30a5"),
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD | ADGF_DEMO
+			ADGF_DROPLANGUAGE | ADGF_CD | ADGF_DEMO,
+			Common::GUIO_NONE
 		},
 		KYRA2_CD_DEMO_FLAGS
 	},
@@ -533,7 +606,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("THANKS.CPS", "b1a78d990b120bb2234b7094f74e30a5"),
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD | ADGF_DEMO
+			ADGF_DROPLANGUAGE | ADGF_CD | ADGF_DEMO,
+			Common::GUIO_NONE
 		},
 		KYRA2_CD_DEMO_FLAGS
 	},
@@ -545,7 +619,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("THANKS.CPS", "b1a78d990b120bb2234b7094f74e30a5"),
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD | ADGF_DEMO
+			ADGF_DROPLANGUAGE | ADGF_CD | ADGF_DEMO,
+			Common::GUIO_NONE
 		},
 		KYRA2_CD_DEMO_FLAGS
 	},
@@ -557,30 +632,33 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("VOC.PAK", "ecb3561b63749158172bf21528cf5f45"),
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DEMO
+			ADGF_DEMO,
+			Common::GUIO_NONE
 		},
 		KYRA2_DEMO_FLAGS
 	},
 
-	{ // FM-Towns
+	{ // FM-TOWNS
 		{
 			"kyra2",
-			"CD",
+			0,
 			AD_ENTRY1("WSCORE.PAK", "c44de1302b67f27d4707409987b7a685"),
 			Common::EN_ANY,
 			Common::kPlatformFMTowns,
-			ADGF_CD
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA2_TOWNS_FLAGS
 	},
 	{
 		{
 			"kyra2",
-			"CD",
+			0,
 			AD_ENTRY1("WSCORE.PAK", "c44de1302b67f27d4707409987b7a685"),
 			Common::JA_JPN,
 			Common::kPlatformFMTowns,
-			ADGF_CD
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA2_TOWNS_SJIS_FLAGS
 	},
@@ -591,7 +669,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("WSCORE.PAK", "c44de1302b67f27d4707409987b7a685"),
 			Common::EN_ANY,
 			Common::kPlatformPC98,
-			ADGF_CD
+			ADGF_CD,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA2_TOWNS_FLAGS
 	},
@@ -602,7 +681,8 @@ const KYRAGameDescription adGameDescs[] = {
 			AD_ENTRY1("WSCORE.PAK", "c44de1302b67f27d4707409987b7a685"),
 			Common::JA_JPN,
 			Common::kPlatformPC98,
-			ADGF_CD
+			ADGF_CD,
+			Common::GUIO_NOSPEECH
 		},
 		KYRA2_TOWNS_SJIS_FLAGS
 	},
@@ -621,7 +701,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE
+			ADGF_DROPLANGUAGE,
+			Common::GUIO_NOMIDI
 		},
 		KYRA3_CD_FLAGS
 	},
@@ -636,7 +717,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE
+			ADGF_DROPLANGUAGE,
+			Common::GUIO_NOMIDI
 		},
 		KYRA3_CD_FLAGS
 	},
@@ -651,7 +733,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE
+			ADGF_DROPLANGUAGE,
+			Common::GUIO_NOMIDI
 		},
 		KYRA3_CD_FLAGS
 	},
@@ -668,7 +751,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE
+			ADGF_DROPLANGUAGE,
+			Common::GUIO_NOMIDI
 		},
 		KYRA3_CD_INS_FLAGS
 	},
@@ -683,7 +767,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE
+			ADGF_DROPLANGUAGE,
+			Common::GUIO_NOMIDI
 		},
 		KYRA3_CD_INS_FLAGS
 	},
@@ -698,7 +783,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE
+			ADGF_DROPLANGUAGE,
+			Common::GUIO_NOMIDI
 		},
 		KYRA3_CD_INS_FLAGS
 	},
@@ -715,7 +801,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformMacintosh,
-			ADGF_DROPLANGUAGE
+			ADGF_DROPLANGUAGE,
+			Common::GUIO_NOMIDI
 		},
 		KYRA3_CD_INS_FLAGS
 	},
@@ -730,7 +817,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::DE_DEU,
 			Common::kPlatformMacintosh,
-			ADGF_DROPLANGUAGE
+			ADGF_DROPLANGUAGE,
+			Common::GUIO_NOMIDI
 		},
 		KYRA3_CD_INS_FLAGS
 	},
@@ -745,7 +833,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::FR_FRA,
 			Common::kPlatformMacintosh,
-			ADGF_DROPLANGUAGE
+			ADGF_DROPLANGUAGE,
+			Common::GUIO_NOMIDI
 		},
 		KYRA3_CD_INS_FLAGS
 	},
@@ -762,7 +851,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::ES_ESP,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE
+			ADGF_DROPLANGUAGE,
+			Common::GUIO_NOMIDI
 		},
 		KYRA3_CD_FAN_FLAGS(Common::ES_ESP, Common::EN_ANY)
 	},
@@ -777,7 +867,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE
+			ADGF_DROPLANGUAGE,
+			Common::GUIO_NOMIDI
 		},
 		KYRA3_CD_FAN_FLAGS(Common::ES_ESP, Common::EN_ANY)
 	},
@@ -792,7 +883,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE
+			ADGF_DROPLANGUAGE,
+			Common::GUIO_NOMIDI
 		},
 		KYRA3_CD_FAN_FLAGS(Common::ES_ESP, Common::EN_ANY)
 	},
@@ -809,7 +901,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE
+			ADGF_DROPLANGUAGE,
+			Common::GUIO_NOMIDI
 		},
 		KYRA3_CD_FAN_FLAGS(Common::IT_ITA, Common::FR_FRA)
 	},
@@ -824,7 +917,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE
+			ADGF_DROPLANGUAGE,
+			Common::GUIO_NOMIDI
 		},
 		KYRA3_CD_FAN_FLAGS(Common::IT_ITA, Common::FR_FRA)
 	},
@@ -839,11 +933,13 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::IT_ITA,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE
+			ADGF_DROPLANGUAGE,
+			Common::GUIO_NOMIDI
 		},
 		KYRA3_CD_FAN_FLAGS(Common::IT_ITA, Common::FR_FRA)
 	},
 
+#ifdef ENABLE_LOL
 	// Lands of Lore CD
 	{
 		{
@@ -856,7 +952,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD
+			ADGF_DROPLANGUAGE | ADGF_CD,
+			Common::GUIO_NONE
 		},
 		LOL_CD_FLAGS
 	},
@@ -872,7 +969,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD
+			ADGF_DROPLANGUAGE | ADGF_CD,
+			Common::GUIO_NONE
 		},
 		LOL_CD_FLAGS
 	},
@@ -888,7 +986,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD
+			ADGF_DROPLANGUAGE | ADGF_CD,
+			Common::GUIO_NONE
 		},
 		LOL_CD_FLAGS
 	},
@@ -904,7 +1003,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD
+			ADGF_DROPLANGUAGE | ADGF_CD,
+			Common::GUIO_NONE
 		},
 		LOL_CD_FLAGS
 	},
@@ -920,7 +1020,8 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD
+			ADGF_DROPLANGUAGE | ADGF_CD,
+			Common::GUIO_NONE
 		},
 		LOL_CD_FLAGS
 	},
@@ -936,9 +1037,26 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_DROPLANGUAGE | ADGF_CD
+			ADGF_DROPLANGUAGE | ADGF_CD,
+			Common::GUIO_NONE
 		},
 		LOL_CD_FLAGS
+	},
+
+	{
+		{
+			"lol",
+			0,
+			{
+				{ "WESTWOOD.1", 0, "c656aa9a2b4032d341e3dc8e3525b917", -1 },
+				{ 0, 0, 0, 0 }
+			},
+			Common::EN_ANY,
+			Common::kPlatformPC,
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
+		},
+		LOL_FLOPPY_CMP_FLAGS
 	},
 
 	{
@@ -951,9 +1069,27 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		LOL_FLOPPY_CMP_FLAGS
+	},
+
+	{
+		{
+			"lol",
+			"Extracted",
+			{
+				{ "GENERAL.PAK", 0, "2aaa30e120c08af87196820e9dd4bf73", -1 },
+				{ "CHAPTER7.PAK", 0, "eb92bf7ebb4e890add1233a6b0c810ff", -1 },
+				{ 0, 0, 0, 0 }
+			},
+			Common::EN_ANY,
+			Common::kPlatformPC,
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
+		},
+		LOL_FLOPPY_FLAGS
 	},
 
 	{
@@ -967,26 +1103,10 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		LOL_FLOPPY_FLAGS
-	},
-
-	/* disable these targets until they get supported
-	{
-		{
-			"lol",
-			0,
-			{
-				{ "GENERAL.PAK", 0, "3fe6539b9b09084c0984eaf7170464e9", -1 },
-				{ "MUS.PAK", 0, "008dc69d8cbcdb6bae30e270fab26e76", -1 },
-				{ 0, 0, 0, 0 }
-			},
-			Common::EN_ANY,
-			Common::kPlatformPC98,
-			ADGF_NO_FLAGS
-		},
-		LOL_PC98_FLAGS
 	},
 
 	{
@@ -1000,10 +1120,28 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::JA_JPN,
 			Common::kPlatformPC98,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			Common::GUIO_NOSPEECH
 		},
 		LOL_PC98_SJIS_FLAGS
-	},*/
+	},
+
+	{
+		{
+			"lol",
+			"Demo",
+			{
+				{ "INTRO.PAK", 0, "4bc22a3b57f19a49212c5de58ab014d6", -1 },
+				{ "INTROVOC.PAK", 0, "7e578e4f1da31c1f294e14a8e8f3cc44", -1 },
+				{ 0, 0, 0, 0 }
+			},
+			Common::EN_ANY,
+			Common::kPlatformPC,
+			ADGF_DEMO,
+			Common::GUIO_NONE
+		},
+		LOL_DEMO_FLAGS
+	},
 
 	{
 		{
@@ -1015,19 +1153,23 @@ const KYRAGameDescription adGameDescs[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_DEMO,
+			Common::GUIO_NOSPEECH
 		},
-		LOL_DEMO_FLAGS
+		LOL_KYRA2_DEMO_FLAGS
 	},
+#endif // ENABLE_LOL
 
-	{ AD_TABLE_END_MARKER, FLAGS(0, 0, 0, 0, 0, 0, 0) }
+	{ AD_TABLE_END_MARKER, FLAGS(0, 0, 0, 0, 0, 0, 0, 0) }
 };
 
 const PlainGameDescriptor gameList[] = {
 	{ "kyra1", "The Legend of Kyrandia" },
 	{ "kyra2", "The Legend of Kyrandia: The Hand of Fate" },
 	{ "kyra3", "The Legend of Kyrandia: Malcolm's Revenge" },
+#ifdef ENABLE_LOL
 	{ "lol", "Lands of Lore: The Throne of Chaos" },
+#endif // ENABLE_LOL
 	{ 0, 0 }
 };
 
@@ -1047,7 +1189,9 @@ const ADParams detectionParams = {
 	// List of files for file-based fallback detection (optional)
 	0,
 	// Flags
-	0
+	0,
+	// Additional GUI options (for every game}
+	Common::GUIO_NONE
 };
 
 } // End of anonymous namespace
@@ -1060,8 +1204,12 @@ public:
 		return "Legend of Kyrandia Engine";
 	}
 
-	const char *getCopyright() const {
-		return "The Legend of Kyrandia (C) Westwood Studios";
+	const char *getOriginalCopyright() const {
+		return "The Legend of Kyrandia (C) Westwood Studios"
+#ifdef ENABLE_LOL
+				"\nLands of Lore (C) Westwood Studios"
+#endif
+		    ;
 	}
 
 	bool hasFeature(MetaEngineFeature f) const;
@@ -1077,7 +1225,7 @@ bool KyraMetaEngine::hasFeature(MetaEngineFeature f) const {
 		(f == kSupportsListSaves) ||
 		(f == kSupportsLoadingDuringStartup) ||
 		(f == kSupportsDeleteSave) ||
-	   	(f == kSavesSupportMetaInfo) ||
+	  	(f == kSavesSupportMetaInfo) ||
 		(f == kSavesSupportThumbnail);
 }
 
@@ -1119,9 +1267,11 @@ bool KyraMetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGame
 	case Kyra::GI_KYRA3:
 		*engine = new Kyra::KyraEngine_MR(syst, flags);
 		break;
+#ifdef ENABLE_LOL
 	case Kyra::GI_LOL:
 		*engine = new Kyra::LoLEngine(syst, flags);
 		break;
+#endif // ENABLE_LOL
 	default:
 		res = false;
 		warning("Kyra engine: unknown gameID");
@@ -1137,7 +1287,7 @@ SaveStateList KyraMetaEngine::listSaves(const char *target) const {
 	pattern += ".???";
 
 	Common::StringList filenames;
-	filenames = saveFileMan->listSavefiles(pattern.c_str());
+	filenames = saveFileMan->listSavefiles(pattern);
 	Common::sort(filenames.begin(), filenames.end());	// Sort (hopefully ensuring we are sorted numerically..)
 
 	SaveStateList saveList;
@@ -1146,10 +1296,11 @@ SaveStateList KyraMetaEngine::listSaves(const char *target) const {
 		int slotNum = atoi(file->c_str() + file->size() - 3);
 
 		if (slotNum >= 0 && slotNum <= 999) {
-			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
+			Common::InSaveFile *in = saveFileMan->openForLoading(*file);
 			if (in) {
 				if (Kyra::KyraEngine_v1::readSaveHeader(in, false, header) == Kyra::KyraEngine_v1::kRSHENoError) {
-					// Workaround for old savegames using 'German' as description for kyra3 start savegame (slot 0)
+					// WORKAROUND: Old savegames are using 'German' as description for kyra3 restart game save (slot 0),
+					// since that looks odd we replace it by "New Game".
 					if (slotNum == 0 && header.gameID == Kyra::GI_KYRA3)
 						header.description = "New Game";
 
@@ -1166,17 +1317,19 @@ SaveStateList KyraMetaEngine::listSaves(const char *target) const {
 int KyraMetaEngine::getMaximumSaveSlot() const { return 999; }
 
 void KyraMetaEngine::removeSaveState(const char *target, int slot) const {
-	// Slot 0 can't be deleted, it's for restarting the game(s)
-	if (slot == 0)
+	// In Kyra games slot 0 can't be deleted, it's for restarting the game(s).
+	// An exception makes Lands of Lore here, it does not have any way to restart the
+	// game except via its main menu.
+	if (slot == 0 && !ConfMan.getDomain(target)->get("gameid").equalsIgnoreCase("lol"))
 		return;
 
 	Common::String filename = Kyra::KyraEngine_v1::getSavegameFilename(target, slot);
-	g_system->getSavefileManager()->removeSavefile(filename.c_str());
+	g_system->getSavefileManager()->removeSavefile(filename);
 }
 
 SaveStateDescriptor KyraMetaEngine::querySaveMetaInfos(const char *target, int slot) const {
 	Common::String filename = Kyra::KyraEngine_v1::getSavegameFilename(target, slot);
-	Common::InSaveFile *in = g_system->getSavefileManager()->openForLoading(filename.c_str());
+	Common::InSaveFile *in = g_system->getSavefileManager()->openForLoading(filename);
 
 	if (in) {
 		Kyra::KyraEngine_v1::SaveHeader header;
@@ -1188,8 +1341,15 @@ SaveStateDescriptor KyraMetaEngine::querySaveMetaInfos(const char *target, int s
 		if (error == Kyra::KyraEngine_v1::kRSHENoError) {
 			SaveStateDescriptor desc(slot, header.description);
 
-			desc.setDeletableFlag(slot != 0);
-			desc.setWriteProtectedFlag(slot == 0 || slot >= 990);
+			bool lolGame = ConfMan.getDomain(target)->get("gameid").equalsIgnoreCase("lol");
+
+			// Slot 0 is used for the 'restart game' save in all three Kyrandia games, thus
+			// we prevent it from being deleted.
+			desc.setDeletableFlag(slot != 0 || lolGame);
+
+			// We don't allow quick saves (slot 990 till 998) to be overwritten.
+			// The same goes for the 'Autosave', which is slot 999.
+			desc.setWriteProtectedFlag((slot == 0 && !lolGame) || slot >= 990);
 			desc.setThumbnail(header.thumbnail);
 
 			return desc;

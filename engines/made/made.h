@@ -76,13 +76,11 @@ class MusicPlayer;
 
 class MadeEngine : public ::Engine {
 	int _gameId;
-	Common::KeyState _keyPressed;
 
 protected:
 
 	// Engine APIs
-	virtual Common::Error init();
-	virtual Common::Error go();
+	virtual Common::Error run();
 
 public:
 	MadeEngine(OSystem *syst, const MadeGameDescription *gameDesc);
@@ -119,7 +117,7 @@ public:
 	bool _autoStopSound;
 	uint _soundEnergyIndex;
 	SoundEnergyArray *_soundEnergyArray;
-	
+
 	uint32 _musicBeatStart;
 	uint32 _cdTimeStart;
 

@@ -30,6 +30,7 @@ chdir("../../../");
 	"mmp/scummvm_touche.mmp", 
 	"mmp/scummvm_tinsel.mmp", 
 	"mmp/scummvm_tucker.mmp", 
+	"mmp/scummvm_sci.mmp", 
 	# Target Platform Project Files
 	"S60/ScummVM_S60.mmp",  
 	"S60v3/ScummVM_S60v3.mmp", 
@@ -67,7 +68,7 @@ Preparing to update all the Symbian MMP project files with objects from module.m
 my @section_empty = (""); # section standard: no #ifdef's in module.mk files
 my @sections_scumm = ("", "ENABLE_SCUMM_7_8", "ENABLE_HE"); # special sections for engine SCUMM
 my @sections_saga = ("", "ENABLE_IHNM", "ENABLE_SAGA2"); # special sections for engine SAGA
-
+my @sections_kyra = ("", "ENABLE_LOL"); # special sections for engine KYRA
 
 # files excluded from build, case insensitive, will be matched in filename string only
 my @excludes_snd = ( 
@@ -113,7 +114,7 @@ ParseModule("_agos",	"agos",		\@section_empty);
 ParseModule("_sky",	"sky",		\@section_empty);
 ParseModule("_gob",	"gob",		\@section_empty);
 ParseModule("_saga",	"saga",		\@sections_saga);
-ParseModule("_kyra",	"kyra",		\@section_empty);
+ParseModule("_kyra",	"kyra",		\@sections_kyra);
 ParseModule("_sword1",	"sword1",	\@section_empty);
 ParseModule("_sword2",	"sword2",	\@section_empty);
 ParseModule("_lure",	"lure",		\@section_empty);
@@ -129,6 +130,7 @@ ParseModule("_m4",	"m4",		\@section_empty);
 ParseModule("_tinsel",	"tinsel",	\@section_empty);
 ParseModule("_groovie",	"groovie",	\@section_empty);
 ParseModule("_tucker",	"tucker",	\@section_empty);
+ParseModule("_sci",	"sci",	\@section_empty);
 print "
 =======================================================================================
 Done. Enjoy :P
@@ -198,7 +200,7 @@ sub CheckForModuleMK
 			# there is nothing we need in #ifndef sections: so ignore these for now
 			
 			# found a section? reset 
-			if ($line =~ /^ifdef (.*)/)
+			if ($line =~ /^ifdef (.*)/) 
 			{
 				$sec = $1;
 				$isenable = 1;

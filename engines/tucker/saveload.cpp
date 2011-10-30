@@ -55,7 +55,7 @@ static void saveOrLoadInt(Common::ReadStream &stream, int &i) {
 
 template <class S>
 void TuckerEngine::saveOrLoadGameStateData(S &s) {
-	for (int i = 0; i < 300; ++i) {
+	for (int i = 0; i < kFlagsTableSize; ++i) {
 		saveOrLoadInt(s, _flagsTable[i]);
 	}
 	for (int i = 0; i < 40; ++i) {
@@ -80,7 +80,7 @@ void TuckerEngine::saveOrLoadGameStateData(S &s) {
 Common::Error TuckerEngine::loadGameState(int num) {
 	Common::Error ret = Common::kNoError;
 	Common::String gameStateFileName = generateGameStateFileName(_targetName.c_str(), num);
-	Common::InSaveFile *f = _saveFileMan->openForLoading(gameStateFileName.c_str());
+	Common::InSaveFile *f = _saveFileMan->openForLoading(gameStateFileName);
 	if (f) {
 		uint16 version = f->readUint16LE();
 		if (version < kCurrentGameStateVersion) {
@@ -88,13 +88,14 @@ Common::Error TuckerEngine::loadGameState(int num) {
 		} else {
 			f->skip(2);
 			saveOrLoadGameStateData(*f);
-			if (f->ioFailed()) {
+			if (f->err() || f->eos()) {
 				warning("Can't read file '%s'", gameStateFileName.c_str());
 				ret = Common::kReadingFailed;
 			} else {
 				_nextLocationNum = _locationNum;
 				setBlackPalette();
 				loadBudSpr(0);
+				_forceRedrawPanelItems = true;
 			}
 		}
 		delete f;
@@ -105,13 +106,13 @@ Common::Error TuckerEngine::loadGameState(int num) {
 Common::Error TuckerEngine::saveGameState(int num, const char *description) {
 	Common::Error ret = Common::kNoError;
 	Common::String gameStateFileName = generateGameStateFileName(_targetName.c_str(), num);
-	Common::OutSaveFile *f = _saveFileMan->openForSaving(gameStateFileName.c_str());
+	Common::OutSaveFile *f = _saveFileMan->openForSaving(gameStateFileName);
 	if (f) {
 		f->writeUint16LE(kCurrentGameStateVersion);
 		f->writeUint16LE(0);
 		saveOrLoadGameStateData(*f);
 		f->finalize();
-		if (f->ioFailed()) {
+		if (f->err()) {
 			warning("Can't write file '%s'", gameStateFileName.c_str());
 			ret = Common::kWritingFailed;
 		}

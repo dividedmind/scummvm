@@ -26,6 +26,7 @@
 #include "common/events.h"
 #include "common/system.h"
 
+#include "parallaction/exec.h"
 #include "parallaction/input.h"
 #include "parallaction/parallaction.h"
 #include "parallaction/debug.h"
@@ -68,8 +69,12 @@ Input::Input(Parallaction *vm) : _vm(vm) {
 	_activeItem._index = 0;
 	_activeItem._id = 0;
 	_mouseButtons = 0;
-	_delayedActionZone = nullZonePtr;
+	_delayedActionZone.reset();
 
+	_dinoCursor = 0;
+	_dougCursor = 0;
+	_donnaCursor = 0;
+	_comboArrow = 0;
 	initCursors();
 }
 
@@ -197,10 +202,20 @@ int Input::updateGameInput() {
 		return event;
 	}
 
-	if (_hasKeyPressEvent && (_vm->getFeatures() & GF_DEMO) == 0) {
-		if (_keyPressed.keycode == Common::KEYCODE_l) event = kEvLoadGame;
-		if (_keyPressed.keycode == Common::KEYCODE_s) event = kEvSaveGame;
+	if (_vm->getGameType() == GType_Nippon) {
+		if (_hasKeyPressEvent && (_vm->getFeatures() & GF_DEMO) == 0) {
+			if (_keyPressed.keycode == Common::KEYCODE_l) event = kEvLoadGame;
+			if (_keyPressed.keycode == Common::KEYCODE_s) event = kEvSaveGame;
+		}
+	} else
+	if (_vm->getGameType() == GType_BRA) {
+		if (_hasKeyPressEvent && (_vm->getFeatures() & GF_DEMO) == 0) {
+			if (_keyPressed.keycode == Common::KEYCODE_F5) event = kEvIngameMenu;
+		}
+	} else {
+		error("unsupported gametype in updateGameInput");
 	}
+
 
 	if (event == kEvNone) {
 		translateGameInput();
@@ -255,7 +270,7 @@ void Input::trackMouse(ZonePtr z) {
 }
 
 void Input::stopHovering() {
-	_hoverZone = nullZonePtr;
+	_hoverZone.reset();
 	_vm->_gfx->hideFloatingLabel();
 }
 
@@ -269,7 +284,7 @@ void Input::takeAction(ZonePtr z) {
 void Input::walkTo(const Common::Point &dest) {
 	stopHovering();
 	setArrowCursor();
-	_vm->_char.scheduleWalk(dest.x, dest.y);
+	_vm->scheduleWalk(dest.x, dest.y, true);
 }
 
 bool Input::translateGameInput() {
@@ -282,7 +297,7 @@ bool Input::translateGameInput() {
 		// if walking is over, then take programmed action
 		takeAction(_delayedActionZone);
 		_hasDelayedAction = false;
-		_delayedActionZone = nullZonePtr;
+		_delayedActionZone.reset();
 		return true;
 	}
 
@@ -297,17 +312,17 @@ bool Input::translateGameInput() {
 	// test if mouse is hovering on an interactive zone for the currently selected inventory item
 	ZonePtr z = _vm->hitZone(_activeItem._id, mousePos.x, mousePos.y);
 
-	if (((_mouseButtons == kMouseLeftUp) && (_activeItem._id == 0) && ((_engineFlags & kEngineWalking) == 0)) && ((!z) || ((z->_type & 0xFFFF) != kZoneCommand))) {
+	if (((_mouseButtons == kMouseLeftUp) && (_activeItem._id == 0) && ((_engineFlags & kEngineWalking) == 0)) && ((!z) || (ACTIONTYPE(z) != kZoneCommand))) {
 		walkTo(mousePos);
 		return true;
 	}
 
 	trackMouse(z);
- 	if (!z) {
- 		return true;
- 	}
+	if (!z) {
+		return true;
+	}
 
-	if ((_mouseButtons == kMouseLeftUp) && ((_activeItem._id != 0) || ((z->_type & 0xFFFF) == kZoneCommand))) {
+	if ((_mouseButtons == kMouseLeftUp) && ((_activeItem._id != 0) || (ACTIONTYPE(z) == kZoneCommand))) {
 
 		if (z->_flags & kFlagsNoWalk) {
 			// character doesn't need to walk to take specified action
@@ -370,9 +385,9 @@ void Input::exitInventoryMode() {
 		ZonePtr z = _vm->hitZone(kZoneMerge, _activeItem._index, _vm->getInventoryItemIndex(pos));
 
 		if (z) {
-			_vm->dropItem(z->u.merge->_obj1);
-			_vm->dropItem(z->u.merge->_obj2);
-			_vm->addInventoryItem(z->u.merge->_obj3);
+			_vm->dropItem(z->u._mergeObj1);
+			_vm->dropItem(z->u._mergeObj2);
+			_vm->addInventoryItem(z->u._mergeObj3);
 			_vm->_cmdExec->run(z->_commands);
 		}
 
@@ -437,8 +452,9 @@ bool Input::isMouseEnabled() {
 }
 
 void Input::getAbsoluteCursorPos(Common::Point& p) const {
-	p = _mousePos;
-	p.x += _vm->_gfx->getScrollPos();
+	_vm->_gfx->getScrollPos(p);
+	p.x += _mousePos.x;
+	p.y += _mousePos.y;
 }
 
 
@@ -467,7 +483,15 @@ void Input::initCursors() {
 			_mouseArrow = _donnaCursor;
 		} else {
 			// TODO: Where are the Amiga cursors?
-			_mouseArrow = 0;
+			Graphics::Surface *surf1 = new Graphics::Surface;
+			surf1->create(_mouseComboProps_BR._width, _mouseComboProps_BR._height, 1);
+			_comboArrow = new SurfaceToFrames(surf1);
+
+			// TODO: scale mouse cursor (see staticres.cpp)
+			Graphics::Surface *surf2 = new Graphics::Surface;
+			surf2->create(32, 16, 1);
+			memcpy(surf2->pixels, _resMouseArrow_BR_Amiga, 32*16);
+			_mouseArrow = new SurfaceToFrames(surf2);
 		}
 		break;
 
@@ -489,9 +513,6 @@ void Input::setArrowCursor() {
 		break;
 
 	case GType_BRA: {
-		if (_vm->getPlatform() == Common::kPlatformAmiga)
-			return;
-
 		Common::Rect r;
 		_mouseArrow->getRect(0, r);
 		_vm->_system->setMouseCursor(_mouseArrow->getData(0), r.width(), r.height(), 0, 0, 0);

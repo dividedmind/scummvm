@@ -81,7 +81,6 @@ SkyEngine::SkyEngine(OSystem *syst)
 }
 
 SkyEngine::~SkyEngine() {
-
 	_timer->removeTimerProc(&timerHandler);
 
 	delete _skyLogic;
@@ -110,7 +109,6 @@ void SkyEngine::initVirgin() {
 }
 
 void SkyEngine::handleKey(void) {
-
 	if (_keyPressed.keycode && _systemVars.paused) {
 		_skySound->fnUnPauseFx();
 		_systemVars.paused = false;
@@ -155,7 +153,6 @@ void SkyEngine::handleKey(void) {
 }
 
 Common::Error SkyEngine::go() {
-
 	_keyPressed.reset();
 
 	uint16 result = 0;
@@ -167,7 +164,7 @@ Common::Error SkyEngine::go() {
 
 	if (result != GAME_RESTORED) {
 		bool introSkipped = false;
-		if (_systemVars.gameVersion > 267) { // don't do intro for floppydemos
+		if (_systemVars.gameVersion > 272) { // don't do intro for floppydemos
 			Intro *skyIntro = new Intro(_skyDisk, _skyScreen, _skyMusic, _skySound, _skyText, _mixer, _system);
 			bool floppyIntro = ConfMan.getBool("alt_intro");
 			introSkipped = !skyIntro->doIntro(floppyIntro);
@@ -211,8 +208,11 @@ Common::Error SkyEngine::go() {
 		_skyScreen->recreate();
 		_skyScreen->spriteEngine();
 		if (_debugger->showGrid()) {
-			_skyScreen->showGrid(_skyLogic->_skyGrid->giveGrid(Logic::_scriptVariables[SCREEN]));
-			_skyScreen->forceRefresh();
+			uint8 *grid = _skyLogic->_skyGrid->giveGrid(Logic::_scriptVariables[SCREEN]);
+			if (grid) {
+				_skyScreen->showGrid(grid);
+				_skyScreen->forceRefresh();
+			}
 		}
 		_skyScreen->flip();
 
@@ -223,7 +223,7 @@ Common::Error SkyEngine::go() {
 		else {
 			delayCount += _systemVars.gameSpeed;
 			int needDelay = delayCount - (int)_system->getMillis();
-			if ((needDelay < 0) || (needDelay > 4 * _systemVars.gameSpeed)) {
+			if ((needDelay < 0) || (needDelay > _systemVars.gameSpeed)) {
 				needDelay = 0;
 				delayCount = _system->getMillis();
 			}
@@ -285,7 +285,7 @@ Common::Error SkyEngine::init() {
 		_systemVars.systemFlags |= SF_ALLOW_TEXT;
 
 	_systemVars.systemFlags |= SF_PLAY_VOCS;
-	_systemVars.gameSpeed = 50;
+	_systemVars.gameSpeed = 80;
 
 	_skyCompact = new SkyCompact();
 	_skyText = new Text(_skyDisk, _skyCompact);
@@ -355,7 +355,6 @@ Common::Error SkyEngine::init() {
 }
 
 void SkyEngine::initItemList() {
-
 	//See List.asm for (cryptic) item # descriptions
 
 	for (int i = 0; i < 300; i++)
@@ -363,7 +362,6 @@ void SkyEngine::initItemList() {
 }
 
 void SkyEngine::loadFixedItems(void) {
-
 	_itemList[49] = _skyDisk->loadFile(49);
 	_itemList[50] = _skyDisk->loadFile(50);
 	_itemList[73] = _skyDisk->loadFile(73);
@@ -383,22 +381,18 @@ void SkyEngine::loadFixedItems(void) {
 }
 
 void *SkyEngine::fetchItem(uint32 num) {
-
 	return _itemList[num];
 }
 
 void SkyEngine::timerHandler(void *refCon) {
-
 	((SkyEngine *)refCon)->gotTimerTick();
 }
 
 void SkyEngine::gotTimerTick(void) {
-
 	_skyScreen->handleTimer();
 }
 
 void SkyEngine::delay(int32 amount) {
-
 	Common::Event event;
 
 	uint32 start = _system->getMillis();
@@ -432,6 +426,8 @@ void SkyEngine::delay(int32 amount) {
 			}
 		}
 
+		_system->updateScreen();
+
 		if (amount > 0)
 			_system->delayMillis((amount > 10) ? 10 : amount);
 
@@ -440,9 +436,10 @@ void SkyEngine::delay(int32 amount) {
 
 bool SkyEngine::isDemo(void) {
 	switch (_systemVars.gameVersion) {
-	case 109: // pc gamer demo
-	case 267: // floppy demo
-	case 365: // cd demo
+	case 109: // PC Gamer demo
+	case 267: // English floppy demo
+	case 272: // German floppy demo
+	case 365: // CD demo
 		return true;
 	case 288:
 	case 303:
@@ -457,10 +454,10 @@ bool SkyEngine::isDemo(void) {
 }
 
 bool SkyEngine::isCDVersion(void) {
-
 	switch (_systemVars.gameVersion) {
 	case 109:
 	case 267:
+	case 272:
 	case 288:
 	case 303:
 	case 331:

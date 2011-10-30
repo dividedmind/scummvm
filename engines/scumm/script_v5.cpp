@@ -23,12 +23,11 @@
  *
  */
 
-
 #include "scumm/actor.h"
 #include "scumm/charset.h"
-#include "scumm/intern.h"
 #include "scumm/object.h"
-#include "scumm/scumm.h"
+#include "scumm/scumm_v3.h"
+#include "scumm/scumm_v5.h"
 #include "scumm/sound.h"
 #include "scumm/util.h"
 #include "scumm/verbs.h"
@@ -37,346 +36,329 @@
 
 namespace Scumm {
 
-#define OPCODE(x)	_OPCODE(ScummEngine_v5, x)
+#define OPCODE(i, x)	_opcodes[i]._OPCODE(ScummEngine_v5, x)
 
 void ScummEngine_v5::setupOpcodes() {
-	static const OpcodeEntryV5 opcodes[256] = {
-		/* 00 */
-		OPCODE(o5_stopObjectCode),
-		OPCODE(o5_putActor),
-		OPCODE(o5_startMusic),
-		OPCODE(o5_getActorRoom),
-		/* 04 */
-		OPCODE(o5_isGreaterEqual),
-		OPCODE(o5_drawObject),
-		OPCODE(o5_getActorElevation),
-		OPCODE(o5_setState),
-		/* 08 */
-		OPCODE(o5_isNotEqual),
-		OPCODE(o5_faceActor),
-		OPCODE(o5_startScript),
-		OPCODE(o5_getVerbEntrypoint),
-		/* 0C */
-		OPCODE(o5_resourceRoutines),
-		OPCODE(o5_walkActorToActor),
-		OPCODE(o5_putActorAtObject),
-		OPCODE(o5_getObjectState),
-		/* 10 */
-		OPCODE(o5_getObjectOwner),
-		OPCODE(o5_animateActor),
-		OPCODE(o5_panCameraTo),
-		OPCODE(o5_actorOps),
-		/* 14 */
-		OPCODE(o5_print),
-		OPCODE(o5_actorFromPos),
-		OPCODE(o5_getRandomNr),
-		OPCODE(o5_and),
-		/* 18 */
-		OPCODE(o5_jumpRelative),
-		OPCODE(o5_doSentence),
-		OPCODE(o5_move),
-		OPCODE(o5_multiply),
-		/* 1C */
-		OPCODE(o5_startSound),
-		OPCODE(o5_ifClassOfIs),
-		OPCODE(o5_walkActorTo),
-		OPCODE(o5_isActorInBox),
-		/* 20 */
-		OPCODE(o5_stopMusic),
-		OPCODE(o5_putActor),
-		OPCODE(o5_getAnimCounter),
-		OPCODE(o5_getActorY),
-		/* 24 */
-		OPCODE(o5_loadRoomWithEgo),
-		OPCODE(o5_pickupObject),
-		OPCODE(o5_setVarRange),
-		OPCODE(o5_stringOps),
-		/* 28 */
-		OPCODE(o5_equalZero),
-		OPCODE(o5_setOwnerOf),
-		OPCODE(o5_startScript),
-		OPCODE(o5_delayVariable),
-		/* 2C */
-		OPCODE(o5_cursorCommand),
-		OPCODE(o5_putActorInRoom),
-		OPCODE(o5_delay),
-		OPCODE(o5_ifNotState),
-		/* 30 */
-		OPCODE(o5_matrixOps),
-		OPCODE(o5_getInventoryCount),
-		OPCODE(o5_setCameraAt),
-		OPCODE(o5_roomOps),
-		/* 34 */
-		OPCODE(o5_getDist),
-		OPCODE(o5_findObject),
-		OPCODE(o5_walkActorToObject),
-		OPCODE(o5_startObject),
-		/* 38 */
-		OPCODE(o5_lessOrEqual),
-		OPCODE(o5_doSentence),
-		OPCODE(o5_subtract),
-		OPCODE(o5_getActorScale),
-		/* 3C */
-		OPCODE(o5_stopSound),
-		OPCODE(o5_findInventory),
-		OPCODE(o5_walkActorTo),
-		OPCODE(o5_drawBox),
-		/* 40 */
-		OPCODE(o5_cutscene),
-		OPCODE(o5_putActor),
-		OPCODE(o5_chainScript),
-		OPCODE(o5_getActorX),
-		/* 44 */
-		OPCODE(o5_isLess),
-		OPCODE(o5_drawObject),
-		OPCODE(o5_increment),
-		OPCODE(o5_setState),
-		/* 48 */
-		OPCODE(o5_isEqual),
-		OPCODE(o5_faceActor),
-		OPCODE(o5_startScript),
-		OPCODE(o5_getVerbEntrypoint),
-		/* 4C */
-		OPCODE(o5_soundKludge),
-		OPCODE(o5_walkActorToActor),
-		OPCODE(o5_putActorAtObject),
-		OPCODE(o5_ifState),
-		/* 50 */
-		OPCODE(o5_pickupObjectOld),
-		OPCODE(o5_animateActor),
-		OPCODE(o5_actorFollowCamera),
-		OPCODE(o5_actorOps),
-		/* 54 */
-		OPCODE(o5_setObjectName),
-		OPCODE(o5_actorFromPos),
-		OPCODE(o5_getActorMoving),
-		OPCODE(o5_or),
-		/* 58 */
-		OPCODE(o5_beginOverride),
-		OPCODE(o5_doSentence),
-		OPCODE(o5_add),
-		OPCODE(o5_divide),
-		/* 5C */
-		OPCODE(o5_oldRoomEffect),
-		OPCODE(o5_setClass),
-		OPCODE(o5_walkActorTo),
-		OPCODE(o5_isActorInBox),
-		/* 60 */
-		OPCODE(o5_freezeScripts),
-		OPCODE(o5_putActor),
-		OPCODE(o5_stopScript),
-		OPCODE(o5_getActorFacing),
-		/* 64 */
-		OPCODE(o5_loadRoomWithEgo),
-		OPCODE(o5_pickupObject),
-		OPCODE(o5_getClosestObjActor),
-		OPCODE(o5_getStringWidth),
-		/* 68 */
-		OPCODE(o5_isScriptRunning),
-		OPCODE(o5_setOwnerOf),
-		OPCODE(o5_startScript),
-		OPCODE(o5_debug),
-		/* 6C */
-		OPCODE(o5_getActorWidth),
-		OPCODE(o5_putActorInRoom),
-		OPCODE(o5_stopObjectScript),
-		OPCODE(o5_ifNotState),
-		/* 70 */
-		OPCODE(o5_lights),
-		OPCODE(o5_getActorCostume),
-		OPCODE(o5_loadRoom),
-		OPCODE(o5_roomOps),
-		/* 74 */
-		OPCODE(o5_getDist),
-		OPCODE(o5_findObject),
-		OPCODE(o5_walkActorToObject),
-		OPCODE(o5_startObject),
-		/* 78 */
-		OPCODE(o5_isGreater),
-		OPCODE(o5_doSentence),
-		OPCODE(o5_verbOps),
-		OPCODE(o5_getActorWalkBox),
-		/* 7C */
-		OPCODE(o5_isSoundRunning),
-		OPCODE(o5_findInventory),
-		OPCODE(o5_walkActorTo),
-		OPCODE(o5_drawBox),
-		/* 80 */
-		OPCODE(o5_breakHere),
-		OPCODE(o5_putActor),
-		OPCODE(o5_startMusic),
-		OPCODE(o5_getActorRoom),
-		/* 84 */
-		OPCODE(o5_isGreaterEqual),
-		OPCODE(o5_drawObject),
-		OPCODE(o5_getActorElevation),
-		OPCODE(o5_setState),
-		/* 88 */
-		OPCODE(o5_isNotEqual),
-		OPCODE(o5_faceActor),
-		OPCODE(o5_startScript),
-		OPCODE(o5_getVerbEntrypoint),
-		/* 8C */
-		OPCODE(o5_resourceRoutines),
-		OPCODE(o5_walkActorToActor),
-		OPCODE(o5_putActorAtObject),
-		OPCODE(o5_getObjectState),
-		/* 90 */
-		OPCODE(o5_getObjectOwner),
-		OPCODE(o5_animateActor),
-		OPCODE(o5_panCameraTo),
-		OPCODE(o5_actorOps),
-		/* 94 */
-		OPCODE(o5_print),
-		OPCODE(o5_actorFromPos),
-		OPCODE(o5_getRandomNr),
-		OPCODE(o5_and),
-		/* 98 */
-		OPCODE(o5_systemOps),
-		OPCODE(o5_doSentence),
-		OPCODE(o5_move),
-		OPCODE(o5_multiply),
-		/* 9C */
-		OPCODE(o5_startSound),
-		OPCODE(o5_ifClassOfIs),
-		OPCODE(o5_walkActorTo),
-		OPCODE(o5_isActorInBox),
-		/* A0 */
-		OPCODE(o5_stopObjectCode),
-		OPCODE(o5_putActor),
-		OPCODE(o5_getAnimCounter),
-		OPCODE(o5_getActorY),
-		/* A4 */
-		OPCODE(o5_loadRoomWithEgo),
-		OPCODE(o5_pickupObject),
-		OPCODE(o5_setVarRange),
-		OPCODE(o5_saveLoadVars),
-		/* A8 */
-		OPCODE(o5_notEqualZero),
-		OPCODE(o5_setOwnerOf),
-		OPCODE(o5_startScript),
-		OPCODE(o5_saveRestoreVerbs),
-		/* AC */
-		OPCODE(o5_expression),
-		OPCODE(o5_putActorInRoom),
-		OPCODE(o5_wait),
-		OPCODE(o5_ifNotState),
-		/* B0 */
-		OPCODE(o5_matrixOps),
-		OPCODE(o5_getInventoryCount),
-		OPCODE(o5_setCameraAt),
-		OPCODE(o5_roomOps),
-		/* B4 */
-		OPCODE(o5_getDist),
-		OPCODE(o5_findObject),
-		OPCODE(o5_walkActorToObject),
-		OPCODE(o5_startObject),
-		/* B8 */
-		OPCODE(o5_lessOrEqual),
-		OPCODE(o5_doSentence),
-		OPCODE(o5_subtract),
-		OPCODE(o5_getActorScale),
-		/* BC */
-		OPCODE(o5_stopSound),
-		OPCODE(o5_findInventory),
-		OPCODE(o5_walkActorTo),
-		OPCODE(o5_drawBox),
-		/* C0 */
-		OPCODE(o5_endCutscene),
-		OPCODE(o5_putActor),
-		OPCODE(o5_chainScript),
-		OPCODE(o5_getActorX),
-		/* C4 */
-		OPCODE(o5_isLess),
-		OPCODE(o5_drawObject),
-		OPCODE(o5_decrement),
-		OPCODE(o5_setState),
-		/* C8 */
-		OPCODE(o5_isEqual),
-		OPCODE(o5_faceActor),
-		OPCODE(o5_startScript),
-		OPCODE(o5_getVerbEntrypoint),
-		/* CC */
-		OPCODE(o5_pseudoRoom),
-		OPCODE(o5_walkActorToActor),
-		OPCODE(o5_putActorAtObject),
-		OPCODE(o5_ifState),
-		/* D0 */
-		OPCODE(o5_pickupObjectOld),
-		OPCODE(o5_animateActor),
-		OPCODE(o5_actorFollowCamera),
-		OPCODE(o5_actorOps),
-		/* D4 */
-		OPCODE(o5_setObjectName),
-		OPCODE(o5_actorFromPos),
-		OPCODE(o5_getActorMoving),
-		OPCODE(o5_or),
-		/* D8 */
-		OPCODE(o5_printEgo),
-		OPCODE(o5_doSentence),
-		OPCODE(o5_add),
-		OPCODE(o5_divide),
-		/* DC */
-		OPCODE(o5_oldRoomEffect),
-		OPCODE(o5_setClass),
-		OPCODE(o5_walkActorTo),
-		OPCODE(o5_isActorInBox),
-		/* E0 */
-		OPCODE(o5_freezeScripts),
-		OPCODE(o5_putActor),
-		OPCODE(o5_stopScript),
-		OPCODE(o5_getActorFacing),
-		/* E4 */
-		OPCODE(o5_loadRoomWithEgo),
-		OPCODE(o5_pickupObject),
-		OPCODE(o5_getClosestObjActor),
-		OPCODE(o5_getStringWidth),
-		/* E8 */
-		OPCODE(o5_isScriptRunning),
-		OPCODE(o5_setOwnerOf),
-		OPCODE(o5_startScript),
-		OPCODE(o5_debug),
-		/* EC */
-		OPCODE(o5_getActorWidth),
-		OPCODE(o5_putActorInRoom),
-		OPCODE(o5_stopObjectScript),
-		OPCODE(o5_ifNotState),
-		/* F0 */
-		OPCODE(o5_lights),
-		OPCODE(o5_getActorCostume),
-		OPCODE(o5_loadRoom),
-		OPCODE(o5_roomOps),
-		/* F4 */
-		OPCODE(o5_getDist),
-		OPCODE(o5_findObject),
-		OPCODE(o5_walkActorToObject),
-		OPCODE(o5_startObject),
-		/* F8 */
-		OPCODE(o5_isGreater),
-		OPCODE(o5_doSentence),
-		OPCODE(o5_verbOps),
-		OPCODE(o5_getActorWalkBox),
-		/* FC */
-		OPCODE(o5_isSoundRunning),
-		OPCODE(o5_findInventory),
-		OPCODE(o5_walkActorTo),
-		OPCODE(o5_drawBox)
-	};
-
-	_opcodesV5 = opcodes;
-}
-
-#define PARAM_1 0x80
-#define PARAM_2 0x40
-#define PARAM_3 0x20
-
-void ScummEngine_v5::executeOpcode(byte i) {
-	OpcodeProcV5 op = _opcodesV5[i].proc;
-	(this->*op) ();
-}
-
-const char *ScummEngine_v5::getOpcodeDesc(byte i) {
-	return _opcodesV5[i].desc;
+	/* 00 */
+	OPCODE(0x00, o5_stopObjectCode);
+	OPCODE(0x01, o5_putActor);
+	OPCODE(0x02, o5_startMusic);
+	OPCODE(0x03, o5_getActorRoom);
+	/* 04 */
+	OPCODE(0x04, o5_isGreaterEqual);
+	OPCODE(0x05, o5_drawObject);
+	OPCODE(0x06, o5_getActorElevation);
+	OPCODE(0x07, o5_setState);
+	/* 08 */
+	OPCODE(0x08, o5_isNotEqual);
+	OPCODE(0x09, o5_faceActor);
+	OPCODE(0x0a, o5_startScript);
+	OPCODE(0x0b, o5_getVerbEntrypoint);
+	/* 0C */
+	OPCODE(0x0c, o5_resourceRoutines);
+	OPCODE(0x0d, o5_walkActorToActor);
+	OPCODE(0x0e, o5_putActorAtObject);
+	OPCODE(0x0f, o5_getObjectState);
+	/* 10 */
+	OPCODE(0x10, o5_getObjectOwner);
+	OPCODE(0x11, o5_animateActor);
+	OPCODE(0x12, o5_panCameraTo);
+	OPCODE(0x13, o5_actorOps);
+	/* 14 */
+	OPCODE(0x14, o5_print);
+	OPCODE(0x15, o5_actorFromPos);
+	OPCODE(0x16, o5_getRandomNr);
+	OPCODE(0x17, o5_and);
+	/* 18 */
+	OPCODE(0x18, o5_jumpRelative);
+	OPCODE(0x19, o5_doSentence);
+	OPCODE(0x1a, o5_move);
+	OPCODE(0x1b, o5_multiply);
+	/* 1C */
+	OPCODE(0x1c, o5_startSound);
+	OPCODE(0x1d, o5_ifClassOfIs);
+	OPCODE(0x1e, o5_walkActorTo);
+	OPCODE(0x1f, o5_isActorInBox);
+	/* 20 */
+	OPCODE(0x20, o5_stopMusic);
+	OPCODE(0x21, o5_putActor);
+	OPCODE(0x22, o5_getAnimCounter);
+	OPCODE(0x23, o5_getActorY);
+	/* 24 */
+	OPCODE(0x24, o5_loadRoomWithEgo);
+	OPCODE(0x25, o5_pickupObject);
+	OPCODE(0x26, o5_setVarRange);
+	OPCODE(0x27, o5_stringOps);
+	/* 28 */
+	OPCODE(0x28, o5_equalZero);
+	OPCODE(0x29, o5_setOwnerOf);
+	OPCODE(0x2a, o5_startScript);
+	OPCODE(0x2b, o5_delayVariable);
+	/* 2C */
+	OPCODE(0x2c, o5_cursorCommand);
+	OPCODE(0x2d, o5_putActorInRoom);
+	OPCODE(0x2e, o5_delay);
+//	OPCODE(0x2f, o5_ifNotState);
+	/* 30 */
+	OPCODE(0x30, o5_matrixOps);
+	OPCODE(0x31, o5_getInventoryCount);
+	OPCODE(0x32, o5_setCameraAt);
+	OPCODE(0x33, o5_roomOps);
+	/* 34 */
+	OPCODE(0x34, o5_getDist);
+	OPCODE(0x35, o5_findObject);
+	OPCODE(0x36, o5_walkActorToObject);
+	OPCODE(0x37, o5_startObject);
+	/* 38 */
+	OPCODE(0x38, o5_isLessEqual);
+	OPCODE(0x39, o5_doSentence);
+	OPCODE(0x3a, o5_subtract);
+	OPCODE(0x3b, o5_getActorScale);
+	/* 3C */
+	OPCODE(0x3c, o5_stopSound);
+	OPCODE(0x3d, o5_findInventory);
+	OPCODE(0x3e, o5_walkActorTo);
+	OPCODE(0x3f, o5_drawBox);
+	/* 40 */
+	OPCODE(0x40, o5_cutscene);
+	OPCODE(0x41, o5_putActor);
+	OPCODE(0x42, o5_chainScript);
+	OPCODE(0x43, o5_getActorX);
+	/* 44 */
+	OPCODE(0x44, o5_isLess);
+//	OPCODE(0x45, o5_drawObject);
+	OPCODE(0x46, o5_increment);
+	OPCODE(0x47, o5_setState);
+	/* 48 */
+	OPCODE(0x48, o5_isEqual);
+	OPCODE(0x49, o5_faceActor);
+	OPCODE(0x4a, o5_startScript);
+	OPCODE(0x4b, o5_getVerbEntrypoint);
+	/* 4C */
+	OPCODE(0x4c, o5_soundKludge);
+	OPCODE(0x4d, o5_walkActorToActor);
+	OPCODE(0x4e, o5_putActorAtObject);
+//	OPCODE(0x4f, o5_ifState);
+	/* 50 */
+//	OPCODE(0x50, o5_pickupObjectOld);
+	OPCODE(0x51, o5_animateActor);
+	OPCODE(0x52, o5_actorFollowCamera);
+	OPCODE(0x53, o5_actorOps);
+	/* 54 */
+	OPCODE(0x54, o5_setObjectName);
+	OPCODE(0x55, o5_actorFromPos);
+	OPCODE(0x56, o5_getActorMoving);
+	OPCODE(0x57, o5_or);
+	/* 58 */
+	OPCODE(0x58, o5_beginOverride);
+	OPCODE(0x59, o5_doSentence);
+	OPCODE(0x5a, o5_add);
+	OPCODE(0x5b, o5_divide);
+	/* 5C */
+//	OPCODE(0x5c, o5_oldRoomEffect);
+	OPCODE(0x5d, o5_setClass);
+	OPCODE(0x5e, o5_walkActorTo);
+	OPCODE(0x5f, o5_isActorInBox);
+	/* 60 */
+	OPCODE(0x60, o5_freezeScripts);
+	OPCODE(0x61, o5_putActor);
+	OPCODE(0x62, o5_stopScript);
+	OPCODE(0x63, o5_getActorFacing);
+	/* 64 */
+	OPCODE(0x64, o5_loadRoomWithEgo);
+	OPCODE(0x65, o5_pickupObject);
+	OPCODE(0x66, o5_getClosestObjActor);
+	OPCODE(0x67, o5_getStringWidth);
+	/* 68 */
+	OPCODE(0x68, o5_isScriptRunning);
+	OPCODE(0x69, o5_setOwnerOf);
+	OPCODE(0x6a, o5_startScript);
+	OPCODE(0x6b, o5_debug);
+	/* 6C */
+	OPCODE(0x6c, o5_getActorWidth);
+	OPCODE(0x6d, o5_putActorInRoom);
+	OPCODE(0x6e, o5_stopObjectScript);
+//	OPCODE(0x6f, o5_ifNotState);
+	/* 70 */
+	OPCODE(0x70, o5_lights);
+	OPCODE(0x71, o5_getActorCostume);
+	OPCODE(0x72, o5_loadRoom);
+	OPCODE(0x73, o5_roomOps);
+	/* 74 */
+	OPCODE(0x74, o5_getDist);
+	OPCODE(0x75, o5_findObject);
+	OPCODE(0x76, o5_walkActorToObject);
+	OPCODE(0x77, o5_startObject);
+	/* 78 */
+	OPCODE(0x78, o5_isGreater);
+	OPCODE(0x79, o5_doSentence);
+	OPCODE(0x7a, o5_verbOps);
+	OPCODE(0x7b, o5_getActorWalkBox);
+	/* 7C */
+	OPCODE(0x7c, o5_isSoundRunning);
+	OPCODE(0x7d, o5_findInventory);
+	OPCODE(0x7e, o5_walkActorTo);
+	OPCODE(0x7f, o5_drawBox);
+	/* 80 */
+	OPCODE(0x80, o5_breakHere);
+	OPCODE(0x81, o5_putActor);
+	OPCODE(0x82, o5_startMusic);
+	OPCODE(0x83, o5_getActorRoom);
+	/* 84 */
+	OPCODE(0x84, o5_isGreaterEqual);
+	OPCODE(0x85, o5_drawObject);
+	OPCODE(0x86, o5_getActorElevation);
+	OPCODE(0x87, o5_setState);
+	/* 88 */
+	OPCODE(0x88, o5_isNotEqual);
+	OPCODE(0x89, o5_faceActor);
+	OPCODE(0x8a, o5_startScript);
+	OPCODE(0x8b, o5_getVerbEntrypoint);
+	/* 8C */
+	OPCODE(0x8c, o5_resourceRoutines);
+	OPCODE(0x8d, o5_walkActorToActor);
+	OPCODE(0x8e, o5_putActorAtObject);
+	OPCODE(0x8f, o5_getObjectState);
+	/* 90 */
+	OPCODE(0x90, o5_getObjectOwner);
+	OPCODE(0x91, o5_animateActor);
+	OPCODE(0x92, o5_panCameraTo);
+	OPCODE(0x93, o5_actorOps);
+	/* 94 */
+	OPCODE(0x94, o5_print);
+	OPCODE(0x95, o5_actorFromPos);
+	OPCODE(0x96, o5_getRandomNr);
+	OPCODE(0x97, o5_and);
+	/* 98 */
+	OPCODE(0x98, o5_systemOps);
+	OPCODE(0x99, o5_doSentence);
+	OPCODE(0x9a, o5_move);
+	OPCODE(0x9b, o5_multiply);
+	/* 9C */
+	OPCODE(0x9c, o5_startSound);
+	OPCODE(0x9d, o5_ifClassOfIs);
+	OPCODE(0x9e, o5_walkActorTo);
+	OPCODE(0x9f, o5_isActorInBox);
+	/* A0 */
+	OPCODE(0xa0, o5_stopObjectCode);
+	OPCODE(0xa1, o5_putActor);
+	OPCODE(0xa2, o5_getAnimCounter);
+	OPCODE(0xa3, o5_getActorY);
+	/* A4 */
+	OPCODE(0xa4, o5_loadRoomWithEgo);
+	OPCODE(0xa5, o5_pickupObject);
+	OPCODE(0xa6, o5_setVarRange);
+	OPCODE(0xa7, o5_dummy);
+	/* A8 */
+	OPCODE(0xa8, o5_notEqualZero);
+	OPCODE(0xa9, o5_setOwnerOf);
+	OPCODE(0xaa, o5_startScript);
+	OPCODE(0xab, o5_saveRestoreVerbs);
+	/* AC */
+	OPCODE(0xac, o5_expression);
+	OPCODE(0xad, o5_putActorInRoom);
+	OPCODE(0xae, o5_wait);
+//	OPCODE(0xaf, o5_ifNotState);
+	/* B0 */
+	OPCODE(0xb0, o5_matrixOps);
+	OPCODE(0xb1, o5_getInventoryCount);
+	OPCODE(0xb2, o5_setCameraAt);
+	OPCODE(0xb3, o5_roomOps);
+	/* B4 */
+	OPCODE(0xb4, o5_getDist);
+	OPCODE(0xb5, o5_findObject);
+	OPCODE(0xb6, o5_walkActorToObject);
+	OPCODE(0xb7, o5_startObject);
+	/* B8 */
+	OPCODE(0xb8, o5_isLessEqual);
+	OPCODE(0xb9, o5_doSentence);
+	OPCODE(0xba, o5_subtract);
+	OPCODE(0xbb, o5_getActorScale);
+	/* BC */
+	OPCODE(0xbc, o5_stopSound);
+	OPCODE(0xbd, o5_findInventory);
+	OPCODE(0xbe, o5_walkActorTo);
+	OPCODE(0xbf, o5_drawBox);
+	/* C0 */
+	OPCODE(0xc0, o5_endCutscene);
+	OPCODE(0xc1, o5_putActor);
+	OPCODE(0xc2, o5_chainScript);
+	OPCODE(0xc3, o5_getActorX);
+	/* C4 */
+	OPCODE(0xc4, o5_isLess);
+//	OPCODE(0xc5, o5_drawObject);
+	OPCODE(0xc6, o5_decrement);
+	OPCODE(0xc7, o5_setState);
+	/* C8 */
+	OPCODE(0xc8, o5_isEqual);
+	OPCODE(0xc9, o5_faceActor);
+	OPCODE(0xca, o5_startScript);
+	OPCODE(0xcb, o5_getVerbEntrypoint);
+	/* CC */
+	OPCODE(0xcc, o5_pseudoRoom);
+	OPCODE(0xcd, o5_walkActorToActor);
+	OPCODE(0xce, o5_putActorAtObject);
+//	OPCODE(0xcf, o5_ifState);
+	/* D0 */
+//	OPCODE(0xd0, o5_pickupObjectOld);
+	OPCODE(0xd1, o5_animateActor);
+	OPCODE(0xd2, o5_actorFollowCamera);
+	OPCODE(0xd3, o5_actorOps);
+	/* D4 */
+	OPCODE(0xd4, o5_setObjectName);
+	OPCODE(0xd5, o5_actorFromPos);
+	OPCODE(0xd6, o5_getActorMoving);
+	OPCODE(0xd7, o5_or);
+	/* D8 */
+	OPCODE(0xd8, o5_printEgo);
+	OPCODE(0xd9, o5_doSentence);
+	OPCODE(0xda, o5_add);
+	OPCODE(0xdb, o5_divide);
+	/* DC */
+//	OPCODE(0xdc, o5_oldRoomEffect);
+	OPCODE(0xdd, o5_setClass);
+	OPCODE(0xde, o5_walkActorTo);
+	OPCODE(0xdf, o5_isActorInBox);
+	/* E0 */
+	OPCODE(0xe0, o5_freezeScripts);
+	OPCODE(0xe1, o5_putActor);
+	OPCODE(0xe2, o5_stopScript);
+	OPCODE(0xe3, o5_getActorFacing);
+	/* E4 */
+	OPCODE(0xe4, o5_loadRoomWithEgo);
+	OPCODE(0xe5, o5_pickupObject);
+	OPCODE(0xe6, o5_getClosestObjActor);
+	OPCODE(0xe7, o5_getStringWidth);
+	/* E8 */
+	OPCODE(0xe8, o5_isScriptRunning);
+	OPCODE(0xe9, o5_setOwnerOf);
+	OPCODE(0xea, o5_startScript);
+	OPCODE(0xeb, o5_debug);
+	/* EC */
+	OPCODE(0xec, o5_getActorWidth);
+	OPCODE(0xed, o5_putActorInRoom);
+	OPCODE(0xee, o5_stopObjectScript);
+//	OPCODE(0xef, o5_ifNotState);
+	/* F0 */
+	OPCODE(0xf0, o5_lights);
+	OPCODE(0xf1, o5_getActorCostume);
+	OPCODE(0xf2, o5_loadRoom);
+	OPCODE(0xf3, o5_roomOps);
+	/* F4 */
+	OPCODE(0xf4, o5_getDist);
+	OPCODE(0xf5, o5_findObject);
+	OPCODE(0xf6, o5_walkActorToObject);
+	OPCODE(0xf7, o5_startObject);
+	/* F8 */
+	OPCODE(0xf8, o5_isGreater);
+	OPCODE(0xf9, o5_doSentence);
+	OPCODE(0xfa, o5_verbOps);
+	OPCODE(0xfb, o5_getActorWalkBox);
+	/* FC */
+	OPCODE(0xfc, o5_isSoundRunning);
+	OPCODE(0xfd, o5_findInventory);
+	OPCODE(0xfe, o5_walkActorTo);
+	OPCODE(0xff, o5_drawBox);
 }
 
 int ScummEngine_v5::getVar() {
@@ -392,7 +374,17 @@ int ScummEngine_v5::getVarOrDirectByte(byte mask) {
 int ScummEngine_v5::getVarOrDirectWord(byte mask) {
 	if (_opcode & mask)
 		return getVar();
-	return (int16)fetchScriptWord();
+	return fetchScriptWordSigned();
+}
+
+void ScummEngine_v5::jumpRelative(bool cond) {
+	// We explicitly call ScummEngine::fetchScriptWord()
+	// to make this method work also in v0, which overloads
+	// fetchScriptWord to only read bytes (which is the right thing
+	// to do for most opcodes, but not for jump offsets).
+	int16 offset = ScummEngine::fetchScriptWord();
+	if (!cond)
+		_scriptPointer += offset;
 }
 
 void ScummEngine_v5::o5_actorFollowCamera() {
@@ -849,6 +841,13 @@ void ScummEngine_v5::o5_drawObject() {
 	putState(obj, state);
 }
 
+void ScummEngine_v5::o5_dummy() {
+	// The KIXX XL release of Monkey Island 2 (Amiga disk) used opcode 0xa7
+	// as dummy, in order to remove copy protection and keep level selection.
+	if (_opcode != 0xa7 || _game.id == GID_MONKEY2)
+		warning("o5_dummy invoked (opcode %d)", _opcode);
+}
+
 void ScummEngine_v5::o5_getStringWidth() {
 	int string, width = 0;
 	byte *ptr;
@@ -861,171 +860,6 @@ void ScummEngine_v5::o5_getStringWidth() {
 	width = _charset->getStringWidth(0, ptr);
 
 	setResult(width);
-}
-
-enum StringIds {
-	// The string IDs used by Indy3 to store the episode resp. series IQ points.
-	// Note that we save the episode IQ points but load the series IQ points,
-	// which matches the original Indy3 save/load code. See also the notes
-	// on Feature Request #1666521.
-	STRINGID_IQ_EPISODE = 7,
-	STRINGID_IQ_SERIES = 9
-};
-
-void ScummEngine_v5::o5_saveLoadVars() {
-	// The KIXX XL release of Monkey Island 2 (Amiga disk) used this opcode
-	// as dummy, in order to remove copy protection and keep level selection.
-	if (_game.version == 5)
-		return;
-
-	if (fetchScriptByte() == 1)
-		saveVars();
-	else
-		loadVars();
-}
-
-void ScummEngine_v5::saveVars() {
-	int a, b;
-
-	while ((_opcode = fetchScriptByte()) != 0) {
-		switch (_opcode & 0x1F) {
-		case 0x01: // write a range of variables
-			getResultPos();
-			a = _resultVarNumber;
-			getResultPos();
-			b = _resultVarNumber;
-			debug(0, "stub saveVars: vars %d -> %d", a, b);
-			break;
-		case 0x02: // write a range of string variables
-			a = getVarOrDirectByte(PARAM_1);
-			b = getVarOrDirectByte(PARAM_2);
-
-			if (a == STRINGID_IQ_EPISODE && b == STRINGID_IQ_EPISODE) {
-				if (_game.id == GID_INDY3) {
-					saveIQPoints();
-				}
-				break;
-			}
-			// FIXME: changing savegame-names not supported
-			break;
-		case 0x03: // open file
-			a = resStrLen(_scriptPointer);
-			strncpy(_saveLoadVarsFilename, (const char *)_scriptPointer, a);
-			_saveLoadVarsFilename[a] = '\0';
-			_scriptPointer += a + 1;
-			break;
-		case 0x04:
-			return;
-		case 0x1F: // close file
-			_saveLoadVarsFilename[0] = '\0';
-			return;
-		}
-	}
-}
-
-void ScummEngine_v5::loadVars() {
-	int a, b;
-
-	while ((_opcode = fetchScriptByte()) != 0) {
-		switch (_opcode & 0x1F) {
-		case 0x01: // read a range of variables
-			getResultPos();
-			a = _resultVarNumber;
-			getResultPos();
-			b = _resultVarNumber;
-			debug(0, "stub loadVars: vars %d -> %d", a, b);
-			break;
-		case 0x02: // read a range of string variables
-			a = getVarOrDirectByte(PARAM_1);
-			b = getVarOrDirectByte(PARAM_2);
-
-			int slot;
-			int slotSize;
-			byte* slotContent;
-			int savegameId;
-			bool avail_saves[100];
-
-			if (a == STRINGID_IQ_SERIES && b == STRINGID_IQ_SERIES) {
-				// Zak256 loads the IQ script-slot but does not use it -> ignore it
-				if (_game.id == GID_INDY3) {
-					loadIQPoints();
-				}
-				break;
-			}
-
-			listSavegames(avail_saves, ARRAYSIZE(avail_saves));
-			for (slot = a; slot <= b; ++slot) {
-				slotSize = getResourceSize(rtString, slot);
-				slotContent = getResourceAddress(rtString, slot);
-
-				// load savegame names
-				savegameId = slot - a + 1;
-				Common::String name;
-				if (avail_saves[savegameId] && getSavegameName(savegameId, name)) {
-					int pos;
-					const char *ptr = name.c_str();
-					// slotContent ends with {'\0','@'} -> max. length = slotSize-2
-					for (pos = 0; pos < slotSize - 2; ++pos) {
-						if (!ptr[pos])
-							break;
-						// replace special characters
-						if (ptr[pos] >= 32 && ptr[pos] <= 122 && ptr[pos] != 64)
-							slotContent[pos] = ptr[pos];
-						else
-							slotContent[pos] = '_';
-					}
-					slotContent[pos] = '\0';
-				} else {
-					slotContent[0] = '\0';
-				}
-			}
-			break;
-		case 0x03: // open file
-			a = resStrLen(_scriptPointer);
-			strncpy(_saveLoadVarsFilename, (const char *)_scriptPointer, a);
-			_saveLoadVarsFilename[a] = '\0';
-			_scriptPointer += a + 1;
-			break;
-		case 0x04:
-			return;
-		case 0x1F: // close file
-			_saveLoadVarsFilename[0] = '\0';
-			return;
-		}
-	}
-}
-
-void ScummEngine_v5::saveIQPoints() {
-	// save Indy3 IQ-points
-	Common::OutSaveFile *file;
-	Common::String filename = _targetName + ".iq";
-
-	file = _saveFileMan->openForSaving(filename.c_str());
-	if (file != NULL) {
-		int size = getResourceSize(rtString, STRINGID_IQ_EPISODE);
-		byte *ptr = getResourceAddress(rtString, STRINGID_IQ_EPISODE);
-		file->write(ptr, size);
-		delete file;
-	}
-}
-
-void ScummEngine_v5::loadIQPoints() {
-	// load Indy3 IQ-points
-	Common::InSaveFile *file;
-	Common::String filename = _targetName + ".iq";
-
-	file = _saveFileMan->openForLoading(filename.c_str());
-	if (file != NULL) {
-		int size = getResourceSize(rtString, STRINGID_IQ_SERIES);
-		byte *ptr = getResourceAddress(rtString, STRINGID_IQ_SERIES);
-		byte *tmp = (byte*)malloc(size);
-		int nread = file->read(tmp, size);
-		if (nread == size) {
-			memcpy(ptr, tmp, size);
-		}
-		free(tmp);
-		delete file;
-	}
 }
 
 void ScummEngine_v5::o5_expression() {
@@ -1207,82 +1041,7 @@ void ScummEngine_v5::o5_getActorY() {
 	setResult(getObjY(a));
 }
 
-void ScummEngine_v5::o5_saveLoadGame() {
-	getResultPos();
-	byte a = getVarOrDirectByte(PARAM_1);
-	byte slot = a & 0x1F;
-	byte result = 0;
-
-	// Slot numbers in older games start with 0, in newer games with 1
-	if (_game.version <= 2)
-		slot++;
-
-	if ((_game.id == GID_MANIAC) && (_game.version <= 1)) {
-		// Convert older load/save screen
-		// 1 Load
-		// 2 Save
-		slot = 1;
-		if (a == 1)
-			_opcode = 0x40;
-		else if ((a == 2) || (_game.platform == Common::kPlatformNES))
-			_opcode = 0x80;
-	} else {
-		_opcode = a & 0xE0;
-	}
-
-	switch (_opcode) {
-	case 0x00: // num slots available
-		result = 100;
-		break;
-	case 0x20: // drive
-		if (_game.id == GID_INDY3) {
-			// 0 = hard drive
-			// 1 = disk drive
-			result = 0;
-		} else {
-			// set current drive
-			result = 1;
-		}
-		break;
-	case 0x40: // load
-		if (loadState(slot, _saveTemporaryState))
-			result = 3; // sucess
-		else
-			result = 5; // failed to load
-		break;
-	case 0x80: // save
-		//if (saveState(slot, _saveTemporaryState))
-		//	result = 0; // sucess
-		//else
-			result = 2; // failed to save
-		break;
-	case 0xC0: // test if save exists
-		{
-		Common::InSaveFile *file;
-		bool avail_saves[100];
-
-		listSavegames(avail_saves, ARRAYSIZE(avail_saves));
-		Common::String filename = makeSavegameName(slot, false);
-		if (avail_saves[slot] && (file = _saveFileMan->openForLoading(filename.c_str()))) {
-			result = 6; // save file exists
-			delete file;
-		} else
-			result = 7; // save file does not exist
-		}
-		break;
-	default:
-		error("o5_saveLoadGame: unknown subopcode %d", _opcode);
-	}
-
-	setResult(result);
-}
-
 void ScummEngine_v5::o5_getAnimCounter() {
-	if (_game.version == 3) {
-		o5_saveLoadGame();
-		return;
-	}
-
 	getResultPos();
 
 	int act = getVarOrDirectByte(PARAM_1);
@@ -1348,32 +1107,8 @@ void ScummEngine_v5::o5_getObjectOwner() {
 }
 
 void ScummEngine_v5::o5_getObjectState() {
-	if (_game.features & GF_SMALL_HEADER) {
-		o5_ifState();
-	} else {
-		getResultPos();
-		setResult(getState(getVarOrDirectWord(PARAM_1)));
-	}
-}
-
-void ScummEngine_v5::o5_ifState() {
-	int a = getVarOrDirectWord(PARAM_1);
-	int b = getVarOrDirectByte(PARAM_2);
-
-	if (getState(a) != b)
-		o5_jumpRelative();
-	else
-		ignoreScriptWord();
-}
-
-void ScummEngine_v5::o5_ifNotState() {
-	int a = getVarOrDirectWord(PARAM_1);
-	int b = getVarOrDirectByte(PARAM_2);
-
-	if (getState(a) == b)
-		o5_jumpRelative();
-	else
-		ignoreScriptWord();
+	getResultPos();
+	setResult(getState(getVarOrDirectWord(PARAM_1)));
 }
 
 void ScummEngine_v5::o5_getRandomNr() {
@@ -1396,21 +1131,28 @@ void ScummEngine_v5::o5_getVerbEntrypoint() {
 }
 
 void ScummEngine_v5::o5_ifClassOfIs() {
-	int act, cls, b = 0;
+	int obj, cls, b = 0;
 	bool cond = true;
 
-	act = getVarOrDirectWord(PARAM_1);
+	obj = getVarOrDirectWord(PARAM_1);
 
 	while ((_opcode = fetchScriptByte()) != 0xFF) {
 		cls = getVarOrDirectWord(PARAM_1);
-		b = getClass(act, cls);
-		if (((cls & 0x80) && !b) || (!(cls & 0x80) && b))
-			cond = false;
+
+		// WORKAROUND bug #1668393: Due to a script bug, the wrong opcode is used
+		// to check the state of the inside door (object 465) of the Hostel on Mars,
+		// when opening the Hostel door from the outside.
+		if (_game.id == GID_ZAK && _game.platform == Common::kPlatformFMTowns &&
+		    vm.slot[_currentScript].number == 205 && _currentRoom == 185 &&
+		    obj == 465 && cls == 0) {
+			cond = (getState(obj) == 0);
+		} else {
+			b = getClass(obj, cls);
+			if (((cls & 0x80) && !b) || (!(cls & 0x80) && b))
+				cond = false;
+		}
 	}
-	if (cond)
-		ignoreScriptWord();
-	else
-		o5_jumpRelative();
+	jumpRelative(cond);
 }
 
 void ScummEngine_v5::o5_increment() {
@@ -1423,10 +1165,7 @@ void ScummEngine_v5::o5_isActorInBox() {
 	int box = getVarOrDirectByte(PARAM_2);
 	Actor *a = derefActor(act, "o5_isActorInBox");
 
-	if (!checkXYInBoxBounds(box, a->getRealPos().x, a->getRealPos().y))
-		o5_jumpRelative();
-	else
-		ignoreScriptWord();
+	jumpRelative(checkXYInBoxBounds(box, a->getRealPos().x, a->getRealPos().y));
 }
 
 void ScummEngine_v5::o5_isEqual() {
@@ -1453,41 +1192,28 @@ void ScummEngine_v5::o5_isEqual() {
 	if (_game.id == GID_MANIAC && _game.version == 2 && (_game.features & GF_DEMO) && isScriptRunning(173) && b == 180)
 		b = 100;
 
-	if (b == a)
-		ignoreScriptWord();
-	else
-		o5_jumpRelative();
-
+	jumpRelative(b == a);
 }
 
 void ScummEngine_v5::o5_isGreater() {
 	int16 a = getVar();
 	int16 b = getVarOrDirectWord(PARAM_1);
-	if (b > a)
-		ignoreScriptWord();
-	else
-		o5_jumpRelative();
+	jumpRelative(b > a);
 }
 
 void ScummEngine_v5::o5_isGreaterEqual() {
 	int16 a = getVar();
 	int16 b = getVarOrDirectWord(PARAM_1);
-	if (b >= a)
-		ignoreScriptWord();
-	else
-		o5_jumpRelative();
+	jumpRelative(b >= a);
 }
 
 void ScummEngine_v5::o5_isLess() {
 	int16 a = getVar();
 	int16 b = getVarOrDirectWord(PARAM_1);
-	if (b < a)
-		ignoreScriptWord();
-	else
-		o5_jumpRelative();
+	jumpRelative(b < a);
 }
 
-void ScummEngine_v5::o5_lessOrEqual() {
+void ScummEngine_v5::o5_isLessEqual() {
 	int16 a = getVar();
 	int16 b = getVarOrDirectWord(PARAM_1);
 
@@ -1499,47 +1225,27 @@ void ScummEngine_v5::o5_lessOrEqual() {
 		return;
 	}
 
-	if (b <= a)
-		ignoreScriptWord();
-	else
-		o5_jumpRelative();
+	jumpRelative(b <= a);
 }
 
 void ScummEngine_v5::o5_isNotEqual() {
 	int16 a = getVar();
 	int16 b = getVarOrDirectWord(PARAM_1);
-	if (b != a)
-		ignoreScriptWord();
-	else
-		o5_jumpRelative();
+	jumpRelative(b != a);
 }
 
 void ScummEngine_v5::o5_notEqualZero() {
 	int a = getVar();
-	if (a != 0)
-		ignoreScriptWord();
-	else
-		o5_jumpRelative();
+	jumpRelative(a != 0);
 }
 
 void ScummEngine_v5::o5_equalZero() {
 	int a = getVar();
-	if (a == 0)
-		ignoreScriptWord();
-	else
-		o5_jumpRelative();
+	jumpRelative(a == 0);
 }
 
 void ScummEngine_v5::o5_jumpRelative() {
-	// Note that calling fetchScriptWord() will also modify _scriptPointer,
-	// so *don't* do this: _scriptPointer += (int16)fetchScriptWord();
-	//
-	// I'm not enough of a language lawyer to say for certain that this is
-	// undefined, but I do know that GCC 4.0 doesn't think it means what
-	// we want it to mean.
-
-	int16 offset = (int16)fetchScriptWord();
-	_scriptPointer += offset;
+	jumpRelative(false);
 }
 
 void ScummEngine_v5::o5_lights() {
@@ -1586,8 +1292,8 @@ void ScummEngine_v5::o5_loadRoomWithEgo() {
 	oldDir = a->getFacing();
 	_egoPositioned = false;
 
-	x = (int16)fetchScriptWord();
-	y = (int16)fetchScriptWord();
+	x = fetchScriptWordSigned();
+	y = fetchScriptWordSigned();
 
 	VAR(VAR_WALKTO_OBJ) = obj;
 	startScene(a->_room, a, obj);
@@ -1621,13 +1327,6 @@ void ScummEngine_v5::o5_loadRoomWithEgo() {
 
 void ScummEngine_v5::o5_matrixOps() {
 	int a, b;
-
-	if (_game.version == 3) {
-		a = getVarOrDirectByte(PARAM_1);
-		b = fetchScriptByte();
-		setBoxFlags(a, b);
-		return;
-	}
 
 	_opcode = fetchScriptByte();
 	switch (_opcode & 0x1F) {
@@ -1684,11 +1383,6 @@ void ScummEngine_v5::o5_panCameraTo() {
 
 void ScummEngine_v5::o5_pickupObject() {
 	int obj, room;
-	if (_game.version == 3 || _game.version == 4) {
-		o5_drawObject();
-		return;
-	}
-
 	obj = getVarOrDirectWord(PARAM_1);
 	room = getVarOrDirectByte(PARAM_2);
 	if (room == 0)
@@ -1809,16 +1503,15 @@ void ScummEngine_v5::o5_resourceRoutines() {
 		ensureResourceLoaded(resType[op - 1], resid);
 		break;
 	case 4:			// SO_LOAD_ROOM
+		ensureResourceLoaded(rtRoom, resid);
 		if (_game.version == 3) {
-			ensureResourceLoaded(rtRoom, resid);
 			if (resid > 0x7F)
 				resid = _resourceMapper[resid & 0x7F];
 
 			if (_currentRoom != resid) {
 				_res->setResourceCounter(rtRoom, resid, 1);
 			}
-		} else
-			ensureResourceLoaded(rtRoom, resid);
+		}
 		break;
 
 	case 5:			// SO_NUKE_SCRIPT
@@ -1918,8 +1611,9 @@ void ScummEngine_v5::o5_resourceRoutines() {
 
 void ScummEngine_v5::o5_roomOps() {
 	int a = 0, b = 0, c, d, e;
+	const bool paramsBeforeOpcode = (_game.version == 3 && _game.platform != Common::kPlatformPCEngine);
 
-	if (_game.version == 3 && _game.platform != Common::kPlatformPCEngine) {
+	if (paramsBeforeOpcode) {
 		a = getVarOrDirectWord(PARAM_1);
 		b = getVarOrDirectWord(PARAM_2);
 	}
@@ -1927,7 +1621,7 @@ void ScummEngine_v5::o5_roomOps() {
 	_opcode = fetchScriptByte();
 	switch (_opcode & 0x1F) {
 	case 1:		// SO_ROOM_SCROLL
-		if (_game.version != 3 || _game.platform == Common::kPlatformPCEngine) {
+		if (!paramsBeforeOpcode) {
 			a = getVarOrDirectWord(PARAM_1);
 			b = getVarOrDirectWord(PARAM_2);
 		}
@@ -1944,7 +1638,7 @@ void ScummEngine_v5::o5_roomOps() {
 		break;
 	case 2:		// SO_ROOM_COLOR
 		if (_game.features & GF_SMALL_HEADER) {
-			if (_game.version != 3 || _game.platform == Common::kPlatformPCEngine) {
+			if (!paramsBeforeOpcode) {
 				a = getVarOrDirectWord(PARAM_1);
 				b = getVarOrDirectWord(PARAM_2);
 			}
@@ -1957,7 +1651,7 @@ void ScummEngine_v5::o5_roomOps() {
 		break;
 
 	case 3:		// SO_ROOM_SCREEN
-		if (_game.version != 3 || _game.platform == Common::kPlatformPCEngine) {
+		if (!paramsBeforeOpcode) {
 			a = getVarOrDirectWord(PARAM_1);
 			b = getVarOrDirectWord(PARAM_2);
 		}
@@ -1965,7 +1659,7 @@ void ScummEngine_v5::o5_roomOps() {
 		break;
 	case 4:		// SO_ROOM_PALETTE
 		if (_game.features & GF_SMALL_HEADER) {
-			if (_game.version != 3 || _game.platform == Common::kPlatformPCEngine) {
+			if (!paramsBeforeOpcode) {
 				a = getVarOrDirectWord(PARAM_1);
 				b = getVarOrDirectWord(PARAM_2);
 			}
@@ -2059,15 +1753,20 @@ void ScummEngine_v5::o5_roomOps() {
 
 	case 13:	// SO_SAVE_STRING
 		{
-			Common::OutSaveFile *file;
-			char filename[256], *s;
+			Common::String filename;
+			char chr;
 
 			a = getVarOrDirectByte(PARAM_1);
-			s = filename;
-			while ((*s++ = fetchScriptByte()))
-				;
+			while ((chr = fetchScriptByte()))
+				filename += chr;
 
-			file = _saveFileMan->openForSaving(filename);
+			if (filename.hasPrefix("iq-") || filename.hasPrefix("IQ-") || filename.hasSuffix("-iq") || filename.hasSuffix("-IQ")) {
+				filename = _targetName + ".iq";
+			} else {
+				error("SO_SAVE_STRING: Unsupported filename %s", filename.c_str());
+			}
+
+			Common::OutSaveFile *file = _saveFileMan->openForSaving(filename);
 			if (file != NULL) {
 				byte *ptr;
 				ptr = getResourceAddress(rtString, a);
@@ -2079,15 +1778,20 @@ void ScummEngine_v5::o5_roomOps() {
 		}
 	case 14:	// SO_LOAD_STRING
 		{
-			Common::InSaveFile *file;
-			char filename[256], *s;
+			Common::String filename;
+			char chr;
 
 			a = getVarOrDirectByte(PARAM_1);
-			s = filename;
-			while ((*s++ = fetchScriptByte()))
-				;
+			while ((chr = fetchScriptByte()))
+				filename += chr;
 
-			file = _saveFileMan->openForLoading(filename);
+			if (filename.hasPrefix("iq-") || filename.hasPrefix("IQ-") || filename.hasSuffix("-iq") || filename.hasSuffix("-IQ")) {
+				filename = _targetName + ".iq";
+			} else {
+				error("SO_LOAD_STRING: Unsupported filename %s", filename.c_str());
+			}
+
+			Common::InSaveFile *file = _saveFileMan->openForLoading(filename);
 			if (file != NULL) {
 				byte *ptr;
 				int len = 256, cnt = 0;
@@ -2220,7 +1924,7 @@ void ScummEngine_v5::o5_setVarRange() {
 		_resultVarNumber++;
 	} while (--a);
 
-	// Macintosh verison of indy3ega used different interface, so adjust values.
+	// Macintosh version of indy3ega used different interface, so adjust values.
 	if (_game.id == GID_INDY3 && _game.platform == Common::kPlatformMacintosh) {
 		VAR(68) = 0;
 		VAR(69) = 0;
@@ -2370,6 +2074,11 @@ void ScummEngine_v5::o5_startScript() {
 	}
 
 	runScript(script, (op & 0x20) != 0, (op & 0x40) != 0, data);
+
+	// WORKAROUND: Indy3 does not save the series IQ automatically after changing it.
+	// Save on IQ increment (= script 125 was executed).
+	if (_game.id == GID_INDY3 && script == 125)
+		((ScummEngine_v4 *)this)->updateIQPoints();
 }
 
 void ScummEngine_v5::o5_stopObjectCode() {
@@ -2666,9 +2375,7 @@ void ScummEngine_v5::o5_wait() {
 		if (_sentenceNum) {
 			if (_sentence[_sentenceNum - 1].freezeCount && !isScriptInUse(VAR(VAR_SENTENCE_SCRIPT)))
 				return;
-			break;
-		}
-		if (!isScriptInUse(VAR(VAR_SENTENCE_SCRIPT)))
+		} else if (!isScriptInUse(VAR(VAR_SENTENCE_SCRIPT)))
 			return;
 		break;
 	default:
@@ -2907,104 +2614,5 @@ void ScummEngine_v5::decodeParseString() {
 
 	_string[textSlot].saveDefault();
 }
-
-void ScummEngine_v5::o5_oldRoomEffect() {
-	int a;
-
-	_opcode = fetchScriptByte();
-	if ((_opcode & 0x1F) == 3) {
-		a = getVarOrDirectWord(PARAM_1);
-
-#if 1
-		if (_game.platform == Common::kPlatformFMTowns && _game.version == 3) {
-			// FIXME / TODO: OK the first thing to note is: at least in Zak256,
-			// maybe also in other games, this opcode does a bit more. I added
-			// some stubs here, but somebody with a full IDA or more knowledge
-			// about this will have to fill in the gaps. At least now we know
-			// that something is missing here :-)
-
-			if (a == 4) {
-				//printf("o5_oldRoomEffect ODDBALL: _opcode = 0x%x, a = 0x%x\n", _opcode, a);
-				// No idea what byte_2FCCF is, but it's a globale boolean flag.
-				// I only add it here as a temporary hack to make the pseudo code compile.
-				// Maybe it is just there as a reentry protection guard, given
-				// how it is used? It might also correspond to _screenEffectFlag.
-				int byte_2FCCF = 0;
-
-				// For now, we force a redraw of the screen background. This
-				// way the Zak end credits seem to work mostly correct.
-				VirtScreen *vs = &_virtscr[kMainVirtScreen];
-				restoreBackground(Common::Rect(0, vs->topline, vs->w, vs->topline + vs->h));
-				vs->setDirtyRange(0, vs->h);
-				updateDirtyScreen(kMainVirtScreen);
-
-				if (byte_2FCCF) {
-					// Here now "sub_1C44" is called, which sets byte_2FCCF to 0 then
-					// calls yet another sub (which also reads byte_2FCCF):
-
-					byte_2FCCF = 0;
-					//call sub_0BB3
-
-
-					// Now sub_085C is called. This is quite simply: it sets
-					// 0xF000 bytes. starting at 0x40000 to 0. No idea what that
-					// buffer is, maybe a screen buffer, though. Note that
-					// 0xF000 = 320*192.
-					// Maybe this is also the charset mask being cleaned?
-
-					// call sub_085C
-
-
-					// And then sub_1C54 is called, which is almost identical to
-					// the above sub_1C44, only it sets byte_2FCCF to 1:
-
-					byte_2FCCF = 1;
-					// call sub_0BB3
-
-				} else {
-					// Here only sub_085C is called (see comment above)
-
-					// call sub_085C
-				}
-			return;
-			}
-#endif
-
-		}
-		if (a) {
-			_switchRoomEffect = (byte)(a & 0xFF);
-			_switchRoomEffect2 = (byte)(a >> 8);
-		} else {
-			fadeIn(_newEffect);
-		}
-	}
-}
-
-void ScummEngine_v5::o5_pickupObjectOld() {
-	int obj = getVarOrDirectWord(PARAM_1);
-
-	if (obj < 1) {
-		error("pickupObjectOld received invalid index %d (script %d)", obj, vm.slot[_currentScript].number);
-	}
-
-	if (getObjectIndex(obj) == -1)
-		return;
-
-	if (whereIsObject(obj) == WIO_INVENTORY)	/* Don't take an */
-		return;											/* object twice */
-
-	// debug(0, "adding %d from %d to inventoryOld", obj, _currentRoom);
-	addObjectToInventory(obj, _roomResource);
-	markObjectRectAsDirty(obj);
-	putOwner(obj, VAR(VAR_EGO));
-	putClass(obj, kObjectClassUntouchable, 1);
-	putState(obj, 1);
-	clearDrawObjectQueue();
-	runInventoryScript(1);
-}
-
-#undef PARAM_1
-#undef PARAM_2
-#undef PARAM_3
 
 } // End of namespace Scumm

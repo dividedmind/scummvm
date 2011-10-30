@@ -38,9 +38,10 @@
 #include "scumm/he/intern_he.h"
 #include "scumm/he/logic_he.h"
 #endif
-#include "scumm/scumm.h"
+#include "scumm/scumm_v0.h"
+#include "scumm/scumm_v6.h"
+#include "scumm/scumm_v8.h"
 #include "scumm/sound.h"
-#include "scumm/intern.h"
 
 
 #ifdef _WIN32_WCE
@@ -54,145 +55,173 @@ enum MouseButtonStatus {
 	msClicked = 2
 };
 
+#ifdef ENABLE_HE
+void ScummEngine_v80he::parseEvent(Common::Event event) {
+	ScummEngine::parseEvent(event);
+
+	// Keyboard is controlled via variable
+	switch (event.type) {
+	case Common::EVENT_KEYDOWN:
+		if (event.kbd.keycode == Common::KEYCODE_LEFT)
+			VAR(VAR_KEY_STATE) |= 1;
+
+		if (event.kbd.keycode == Common::KEYCODE_RIGHT)
+			VAR(VAR_KEY_STATE) |= 2;
+
+		if (event.kbd.keycode == Common::KEYCODE_UP)
+			VAR(VAR_KEY_STATE) |= 4;
+
+		if (event.kbd.keycode == Common::KEYCODE_DOWN)
+			VAR(VAR_KEY_STATE) |= 8;
+
+		if (event.kbd.keycode == Common::KEYCODE_LSHIFT || event.kbd.keycode == Common::KEYCODE_RSHIFT)
+			VAR(VAR_KEY_STATE) |= 16;
+
+		if (event.kbd.keycode == Common::KEYCODE_LCTRL || event.kbd.keycode == Common::KEYCODE_RCTRL)
+			VAR(VAR_KEY_STATE) |= 32;
+		break;
+
+	case Common::EVENT_KEYUP:
+		if (event.kbd.keycode == Common::KEYCODE_LEFT)
+			VAR(VAR_KEY_STATE) &= ~1;
+
+		if (event.kbd.keycode == Common::KEYCODE_RIGHT)
+			VAR(VAR_KEY_STATE) &= ~2;
+
+		if (event.kbd.keycode == Common::KEYCODE_UP)
+			VAR(VAR_KEY_STATE) &= ~4;
+
+		if (event.kbd.keycode == Common::KEYCODE_DOWN)
+			VAR(VAR_KEY_STATE) &= ~8;
+
+		if (event.kbd.keycode == Common::KEYCODE_LSHIFT || event.kbd.keycode == Common::KEYCODE_RSHIFT)
+			VAR(VAR_KEY_STATE) &= ~16;
+
+		if (event.kbd.keycode == Common::KEYCODE_LCTRL || event.kbd.keycode == Common::KEYCODE_RCTRL)
+			VAR(VAR_KEY_STATE) &= ~32;
+		break;
+
+	default:
+		break;
+	}
+}
+#endif
+
+void ScummEngine::parseEvent(Common::Event event) {
+	switch (event.type) {
+	case Common::EVENT_KEYDOWN:
+		if (event.kbd.keycode >= '0' && event.kbd.keycode <= '9' &&
+			((event.kbd.flags == Common::KBD_ALT && canSaveGameStateCurrently()) ||
+			(event.kbd.flags == Common::KBD_CTRL && canLoadGameStateCurrently()))) {
+			_saveLoadSlot = event.kbd.keycode - '0';
+
+			//  don't overwrite autosave (slot 0)
+			if (_saveLoadSlot == 0)
+				_saveLoadSlot = 10;
+
+			sprintf(_saveLoadName, "Quicksave %d", _saveLoadSlot);
+			_saveLoadFlag = (event.kbd.flags == Common::KBD_ALT) ? 1 : 2;
+			_saveTemporaryState = false;
+		} else if (event.kbd.flags == Common::KBD_CTRL && event.kbd.keycode == 'f') {
+			_fastMode ^= 1;
+		} else if (event.kbd.flags == Common::KBD_CTRL && event.kbd.keycode == 'g') {
+			_fastMode ^= 2;
+		} else if ((event.kbd.flags == Common::KBD_CTRL && event.kbd.keycode == 'd') ||
+				event.kbd.ascii == '~' || event.kbd.ascii == '#') {
+			_debugger->attach();
+		} else if (event.kbd.flags == Common::KBD_CTRL && event.kbd.keycode == 's') {
+			_res->resourceStats();
+		} else {
+			// Normal key press, pass on to the game.
+			_keyPressed = event.kbd;
+		}
+
+		// FIXME: We are using ASCII values to index the _keyDownMap here,
+		// yet later one code which checks _keyDownMap will use KEYCODEs
+		// to do so. That is, we are mixing ascii and keycode values here,
+		// which is bad. We probably should be only using keycodes, but at
+		// least INSANE checks for "Shift-V" by looking for the 'V' key
+		// being pressed. It would be easy to solve that by also storing
+		// the modifier flags. However, since getKeyState() is also called
+		// by scripts, we have to be careful with semantic changes.
+		if (_keyPressed.ascii >= 512)
+			debugC(DEBUG_GENERAL, "_keyPressed > 512 (%d)", _keyPressed.ascii);
+		else
+			_keyDownMap[_keyPressed.ascii] = true;
+		break;
+
+	case Common::EVENT_KEYUP:
+		if (event.kbd.ascii >= 512) {
+			debugC(DEBUG_GENERAL, "keyPressed > 512 (%d)", event.kbd.ascii);
+		} else {
+			_keyDownMap[event.kbd.ascii] = false;
+
+			// Due to some weird bug with capslock key pressed
+			// generated keydown event is for lower letter but
+			// keyup is for upper letter
+			// On most (all?) keyboards it is safe to assume that
+			// both upper and lower letters are unpressed on keyup event
+			//
+			// Fixes bug #1709430: "FT: CAPSLOCK + V enables cheating for all fights"
+			//
+			// Fingolfin remarks: This wouldn't be a problem if we used keycodes.
+			_keyDownMap[toupper(event.kbd.ascii)] = false;
+		}
+		break;
+
+
+	// We update the mouse position whenever the mouse moves or a click occurs.
+	// The latter is done to accomodate systems with a touchpad / pen controller.
+	case Common::EVENT_LBUTTONDOWN:
+	case Common::EVENT_RBUTTONDOWN:
+	case Common::EVENT_MOUSEMOVE:
+		if (event.type == Common::EVENT_LBUTTONDOWN)
+			_leftBtnPressed |= msClicked|msDown;
+		else if (event.type == Common::EVENT_RBUTTONDOWN)
+			_rightBtnPressed |= msClicked|msDown;
+		_mouse.x = event.mouse.x;
+		_mouse.y = event.mouse.y;
+
+		if (_renderMode == Common::kRenderHercA || _renderMode == Common::kRenderHercG) {
+			_mouse.x -= (Common::kHercW - _screenWidth * 2) / 2;
+			_mouse.x >>= 1;
+			_mouse.y = _mouse.y * 4 / 7;
+		} else if (_useCJKMode && _textSurfaceMultiplier == 2) {
+			_mouse.x >>= 1;
+			_mouse.y >>= 1;
+		}
+		break;
+	case Common::EVENT_LBUTTONUP:
+		_leftBtnPressed &= ~msDown;
+		break;
+
+	case Common::EVENT_RBUTTONUP:
+		_rightBtnPressed &= ~msDown;
+		break;
+
+	// The following two cases enable dialog choices to be scrolled
+	// through in the SegaCD version of MI. Values are taken from script-14.
+	// See bug report #1193185 for details.
+	case Common::EVENT_WHEELDOWN:
+		if (_game.id == GID_MONKEY && _game.platform == Common::kPlatformSegaCD)
+			_keyPressed = Common::KeyState(Common::KEYCODE_7, 55);	// '7'
+		break;
+
+	case Common::EVENT_WHEELUP:
+		if (_game.id == GID_MONKEY && _game.platform == Common::kPlatformSegaCD)
+			_keyPressed = Common::KeyState(Common::KEYCODE_6, 54);	// '6'
+		break;
+
+	default:
+		break;
+	}
+}
+
 void ScummEngine::parseEvents() {
 	Common::Event event;
 
 	while (_eventMan->pollEvent(event)) {
-
-		switch (event.type) {
-		case Common::EVENT_KEYDOWN:
-			if (event.kbd.keycode >= '0' && event.kbd.keycode <= '9'
-				&& (event.kbd.flags == Common::KBD_ALT ||
-					event.kbd.flags == Common::KBD_CTRL)) {
-				_saveLoadSlot = event.kbd.keycode - '0';
-
-				//  don't overwrite autosave (slot 0)
-				if (_saveLoadSlot == 0)
-					_saveLoadSlot = 10;
-
-				sprintf(_saveLoadName, "Quicksave %d", _saveLoadSlot);
-				_saveLoadFlag = (event.kbd.flags == Common::KBD_ALT) ? 1 : 2;
-				_saveTemporaryState = false;
-			} else if (event.kbd.flags == Common::KBD_CTRL && event.kbd.keycode == 'f') {
-				_fastMode ^= 1;
-			} else if (event.kbd.flags == Common::KBD_CTRL && event.kbd.keycode == 'g') {
-				_fastMode ^= 2;
-			} else if ((event.kbd.flags == Common::KBD_CTRL && event.kbd.keycode == 'd') ||
-					event.kbd.ascii == '~' || event.kbd.ascii == '#') {
-				_debugger->attach();
-			} else if (event.kbd.flags == Common::KBD_CTRL && event.kbd.keycode == 's') {
-				_res->resourceStats();
-			} else {
-				// Normal key press, pass on to the game.
-				_keyPressed = event.kbd;
-			}
-
-			if (_game.heversion >= 80) {
-				// FIXME: Move this code & VAR_KEY_STATE to class ScummEngine_v80he
-
-				// Keyboard is controlled via variable
-				int keyState = 0;
-
-				if (event.kbd.keycode == Common::KEYCODE_LEFT) // Left
-					keyState = 1;
-
-				if (event.kbd.keycode == Common::KEYCODE_RIGHT) // Right
-					keyState |= 2;
-
-				if (event.kbd.keycode == Common::KEYCODE_UP) // Up
-					keyState |= 4;
-
-				if (event.kbd.keycode == Common::KEYCODE_DOWN) // Down
-					keyState |= 8;
-
-				if (event.kbd.flags == Common::KBD_SHIFT)
-					keyState |= 16;
-
-				if (event.kbd.flags == Common::KBD_CTRL)
-					keyState |= 32;
-
-				VAR(VAR_KEY_STATE) = keyState;
-			}
-
-			// FIXME: We are using ASCII values to index the _keyDownMap here,
-			// yet later one code which checks _keyDownMap will use KEYCODEs
-			// to do so. That is, we are mixing ascii and keycode values here,
-			// which is bad. We probably should be only using keycodes, but at
-			// least INSANE checks for "Shift-V" by looking for the 'V' key
-			// being pressed. It would be easy to solve that by also storing
-			// the modifier flags. However, since getKeyState() is also called
-			// by scripts, we have to be careful with semantic changes.
-			if (_keyPressed.ascii >= 512)
-				debugC(DEBUG_GENERAL, "_keyPressed > 512 (%d)", _keyPressed.ascii);
-			else
-				_keyDownMap[_keyPressed.ascii] = true;
-			break;
-
-		case Common::EVENT_KEYUP:
-			if (event.kbd.ascii >= 512) {
-				debugC(DEBUG_GENERAL, "keyPressed > 512 (%d)", event.kbd.ascii);
-			} else {
-				_keyDownMap[event.kbd.ascii] = false;
-
-				// Due to some weird bug with capslock key pressed
-				// generated keydown event is for lower letter but
-				// keyup is for upper letter
-				// On most (all?) keyboards it is safe to assume that
-				// both upper and lower letters are unpressed on keyup event
-				//
-				// Fixes bug #1709430: "FT: CAPSLOCK + V enables cheating for all fights"
-				//
-				// Fingolfin remarks: This wouldn't be a problem if we used keycodes.
-				_keyDownMap[toupper(event.kbd.ascii)] = false;
-			}
-			break;
-
-
-		// We update the mouse position whenever the mouse moves or a click occurs.
-		// The latter is done to accomodate systems with a touchpad / pen controller.
-		case Common::EVENT_LBUTTONDOWN:
-		case Common::EVENT_RBUTTONDOWN:
-		case Common::EVENT_MOUSEMOVE:
-			if (event.type == Common::EVENT_LBUTTONDOWN)
-				_leftBtnPressed |= msClicked|msDown;
-			else if (event.type == Common::EVENT_RBUTTONDOWN)
-				_rightBtnPressed |= msClicked|msDown;
-			_mouse.x = event.mouse.x;
-			_mouse.y = event.mouse.y;
-
-			if (_renderMode == Common::kRenderHercA || _renderMode == Common::kRenderHercG) {
-				_mouse.x -= (Common::kHercW - _screenWidth * 2) / 2;
-				_mouse.x >>= 1;
-				_mouse.y = _mouse.y * 4 / 7;
-			} else if (_useCJKMode && _textSurfaceMultiplier == 2) {
-				_mouse.x >>= 1;
-				_mouse.y >>= 1;
-			}
-			break;
-		case Common::EVENT_LBUTTONUP:
-			_leftBtnPressed &= ~msDown;
-			break;
-
-		case Common::EVENT_RBUTTONUP:
-			_rightBtnPressed &= ~msDown;
-			break;
-
-		// The following two cases enable dialog choices to be scrolled
-		// through in the SegaCD version of MI. Values are taken from script-14.
-		// See bug report #1193185 for details.
-		case Common::EVENT_WHEELDOWN:
-			if (_game.id == GID_MONKEY && _game.platform == Common::kPlatformSegaCD)
-				_keyPressed = Common::KeyState(Common::KEYCODE_7, 55);	// '7'
-			break;
-
-		case Common::EVENT_WHEELUP:
-			if (_game.id == GID_MONKEY && _game.platform == Common::kPlatformSegaCD)
-				_keyPressed = Common::KeyState(Common::KEYCODE_6, 54);	// '6'
-			break;
-
-		default:
-			break;
-		}
+		parseEvent(event);
 	}
 }
 
@@ -229,6 +258,18 @@ void ScummEngine_v0::processInput() {
 	ScummEngine::processInput();
 }
 
+#ifdef ENABLE_SCUMM_7_8
+void ScummEngine_v7::processInput() {
+	ScummEngine::processInput();
+
+	if (_skipVideo && !_smushActive) {
+		abortCutscene();
+		_mouseAndKeyboardStat = Common::ASCII_ESCAPE;
+		_skipVideo = false;
+	}
+}
+#endif
+
 void ScummEngine::processInput() {
 	Common::KeyState lastKeyHit = _keyPressed;
 	_keyPressed.reset();
@@ -260,17 +301,6 @@ void ScummEngine::processInput() {
 	// Determine the mouse button state.
 	//
 	_mouseAndKeyboardStat = 0;
-
-	// Interpret 'return' as left click and 'tab' as right click
-	if (lastKeyHit.keycode && _cursor.state > 0) {
-		if (lastKeyHit.keycode == Common::KEYCODE_TAB) {
-			_mouseAndKeyboardStat = MBS_RIGHT_CLICK;
-			lastKeyHit.reset();
-		} else if (lastKeyHit.keycode == Common::KEYCODE_RETURN) {
-			_mouseAndKeyboardStat = MBS_LEFT_CLICK;
-			lastKeyHit.reset();
-		}
-	}
 
 	if ((_leftBtnPressed & msClicked) && (_rightBtnPressed & msClicked) && _game.version >= 4) {
 		// Pressing both mouse buttons is treated as if you pressed
@@ -324,6 +354,11 @@ void ScummEngine::processInput() {
 
 #ifdef ENABLE_SCUMM_7_8
 void ScummEngine_v8::processKeyboard(Common::KeyState lastKeyHit) {
+	// F1 (the trigger for the original save/load dialog) is mapped to F5
+	if (!(_game.features & GF_DEMO) && lastKeyHit.keycode == Common::KEYCODE_F1 && lastKeyHit.flags == 0) {
+		lastKeyHit = Common::KeyState(Common::KEYCODE_F5, 319);
+	}
+
 	// Alt-F5 should bring up the original save/load dialog, so map it to F1.
 	if (!(_game.features & GF_DEMO) && lastKeyHit.keycode == Common::KEYCODE_F5 && lastKeyHit.flags == Common::KBD_ALT) {
 		lastKeyHit = Common::KeyState(Common::KEYCODE_F1, 315);
@@ -343,11 +378,6 @@ void ScummEngine_v8::processKeyboard(Common::KeyState lastKeyHit) {
 void ScummEngine_v7::processKeyboard(Common::KeyState lastKeyHit) {
 	const bool cutsceneExitKeyEnabled = (VAR_CUTSCENEEXIT_KEY == 0xFF || VAR(VAR_CUTSCENEEXIT_KEY) != 0);
 
-	// F1 (the trigger for the original save/load dialog) is mapped to F5
-	if (!(_game.features & GF_DEMO) && lastKeyHit.keycode == Common::KEYCODE_F1 && lastKeyHit.flags == 0) {
-		lastKeyHit = Common::KeyState(Common::KEYCODE_F5, 319);
-	}
-
 	// VAR_VERSION_KEY (usually ctrl-v) is used in COMI, Dig and FT to trigger
 	// a version dialog, unless VAR_VERSION_KEY is set to 0. However, the COMI
 	// version string is hard coded in the engine, hence we don't invoke
@@ -363,9 +393,10 @@ void ScummEngine_v7::processKeyboard(Common::KeyState lastKeyHit) {
 				_insane->escapeKeyHandler();
 			else
 				_smushVideoShouldFinish = true;
-		}
-		if (!_smushActive || _smushVideoShouldFinish)
+			_skipVideo = true;
+		} else {
 			abortCutscene();
+		}
 
 		_mouseAndKeyboardStat = Common::ASCII_ESCAPE;
 
@@ -410,6 +441,11 @@ void ScummEngine_v2::processKeyboard(Common::KeyState lastKeyHit) {
 	// Fall back to default behavior
 	ScummEngine::processKeyboard(lastKeyHit);
 
+	// On Alt-F5 prepare savegame for the original save/load dialog.
+	if (lastKeyHit.keycode == Common::KEYCODE_F5 && lastKeyHit.flags == Common::KBD_ALT) {
+		prepareSavegame();
+	}
+
 	if (VAR_KEYPRESS != 0xFF && _mouseAndKeyboardStat) {		// Key Input
 		if (315 <= _mouseAndKeyboardStat && _mouseAndKeyboardStat <= 323) {
 			// Convert F-Keys for V1/V2 games (they start at 1)
@@ -424,21 +460,20 @@ void ScummEngine_v3::processKeyboard(Common::KeyState lastKeyHit) {
 	// Fall back to default behavior
 	ScummEngine::processKeyboard(lastKeyHit);
 
-	// 'i' brings up an IQ dialog in Indy3
-	if (lastKeyHit.ascii == 'i' && _game.id == GID_INDY3) {
+	// On Alt-F5 prepare savegame for the original save/load dialog.
+	if (lastKeyHit.keycode == Common::KEYCODE_F5 && lastKeyHit.flags == Common::KBD_ALT) {
+		prepareSavegame();
+	}
+
+	// 'i' brings up an IQ dialog in Indy3 (disabled in save/load dialog for input)
+	if (lastKeyHit.ascii == 'i' && _game.id == GID_INDY3 && _currentRoom != 14) {
 		// SCUMM var 244 is the episode score
 		// and var 245 is the series score
 		char text[50];
 
-		// FIXME: Currently, the series score does not work properly
-		// This workaround just sets it equal to the episode score
-		// However, at the end of the game, it does show the episode
-		// score by itself
-		int a = _scummVars[245];
-		if (!a)
-			a = _scummVars[244];
+		updateIQPoints();
 
-		sprintf(text, "IQ Points: Episode = %d, Series = %d", _scummVars[244], a);
+		sprintf(text, "IQ Points: Episode = %d, Series = %d", _scummVars[244], _scummVars[245]);
 		Indy3IQPointsDialog indy3IQPointsDialog(this, text);
 		runDialog(indy3IQPointsDialog);
 	}
@@ -451,6 +486,7 @@ void ScummEngine::processKeyboard(Common::KeyState lastKeyHit) {
 	bool talkstopKeyEnabled = (VAR_TALKSTOP_KEY == 0xFF || VAR(VAR_TALKSTOP_KEY) != 0);
 	bool cutsceneExitKeyEnabled = (VAR_CUTSCENEEXIT_KEY == 0xFF || VAR(VAR_CUTSCENEEXIT_KEY) != 0);
 	bool mainmenuKeyEnabled = (VAR_MAINMENU_KEY == 0xFF || VAR(VAR_MAINMENU_KEY) != 0);
+	bool snapScrollKeyEnabled = (_game.version <= 2 || VAR_CAMERA_FAST_X != 0xFF);
 
 	// In FM-TOWNS games F8 / restart is always enabled
 	if (_game.platform == Common::kPlatformFMTowns)
@@ -485,10 +521,20 @@ void ScummEngine::processKeyboard(Common::KeyState lastKeyHit) {
 	} else if (cutsceneExitKeyEnabled && (lastKeyHit.keycode == Common::KEYCODE_ESCAPE && lastKeyHit.flags == 0)) {
 		abortCutscene();
 
-		// FIXME: Is the following line really necessary?
+		// VAR_CUTSCENEEXIT_KEY doesn't exist in SCUMM0
 		if (VAR_CUTSCENEEXIT_KEY != 0xFF)
 			_mouseAndKeyboardStat = VAR(VAR_CUTSCENEEXIT_KEY);
+	} else if (snapScrollKeyEnabled && lastKeyHit.keycode == Common::KEYCODE_r &&
+		lastKeyHit.flags == Common::KBD_CTRL) {
+		_snapScroll ^= 1;
+		if (_snapScroll) {
+			messageDialog("Snap scroll on");
+		} else {
+			messageDialog("Snap scroll off");
+		}
 
+		if (VAR_CAMERA_FAST_X != 0xFF)
+			VAR(VAR_CAMERA_FAST_X) = _snapScroll;
 	} else if (lastKeyHit.ascii == '[' || lastKeyHit.ascii == ']') { // Change music volume
 		int vol = ConfMan.getInt("music_volume") / 16;
 		if (lastKeyHit.ascii == ']' && vol < 16)
@@ -518,7 +564,7 @@ void ScummEngine::processKeyboard(Common::KeyState lastKeyHit) {
 		_defaultTalkDelay = 9 - runDialog(dlg);
 
 		// Save the new talkspeed value to ConfMan
-		setTalkDelay(_defaultTalkDelay);
+		setTalkSpeed(_defaultTalkDelay);
 
 		if (VAR_CHARINC != 0xFF)
 			VAR(VAR_CHARINC) = _defaultTalkDelay;

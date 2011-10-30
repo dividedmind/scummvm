@@ -37,6 +37,7 @@
 #include "scumm/imuse_digi/dimuse.h"
 #include "scumm/imuse/imuse.h"
 #include "scumm/scumm.h"
+#include "scumm/scumm_v7.h"
 #include "scumm/sound.h"
 #include "scumm/util.h"
 #include "scumm/smush/channel.h"
@@ -984,7 +985,7 @@ void SmushPlayer::parseNextFrame() {
 				error("SmushPlayer: Unable to open file %s", _seekFile.c_str());
 			_base = tmp;
 			_base->readUint32BE();
-			_base->readUint32BE();
+			_baseSize = _base->readUint32BE();
 
 			if (_seekPos > 0) {
 				assert(_seekPos > 8);
@@ -1022,11 +1023,13 @@ void SmushPlayer::parseNextFrame() {
 	const int32 subSize = _base->readUint32BE();
 	const int32 subOffset = _base->pos();
 
-	if (_base->eos()) {
+	if (_base->pos() >= (int32)_baseSize) {
 		_vm->_smushVideoShouldFinish = true;
 		_endOfFile = true;
 		return;
 	}
+
+	debug(3, "Chunk: %s at %x", Common::tag2string(subType).c_str(), subOffset);
 
 	switch (subType) {
 	case MKID_BE('AHDR'): // FT INSANE may seek file to the beginning
@@ -1036,7 +1039,7 @@ void SmushPlayer::parseNextFrame() {
 		handleFrame(subSize, *_base);
 		break;
 	default:
-		error("Unknown Chunk found at %x: %x, %d", subOffset, subType, subSize);
+		error("Unknown Chunk found at %x: %s, %d", subOffset, Common::tag2string(subType).c_str(), subSize);
 	}
 
 	_base->seek(subOffset + subSize, SEEK_SET);

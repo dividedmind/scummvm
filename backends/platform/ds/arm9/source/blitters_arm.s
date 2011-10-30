@@ -15,14 +15,22 @@
 @ along with this program@ if not, write to the Free Software
 @ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 @
-@ $URL:  $
-@ $Id:  $
+@ $URL$
+@ $Id$
 @
 @ @author Robin Watts (robin@wss.co.uk)
 
+@	.global timerTickHandler
+@	.align 2
+@	.code 32
+
+@timerTickHandler:
+@	bx lr
+
+
 	.global	Rescale_320x256xPAL8_To_256x256x1555
 	.global	Rescale_320x256x1555_To_256x256x1555
-	.section .itcm,"ax", %progbits
+@	.section .itcm,"ax", %progbits
 	.align 2
 	.code 32
 

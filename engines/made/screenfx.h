@@ -40,11 +40,12 @@ namespace Made {
 class ScreenEffects {
 public:
 	ScreenEffects(Screen *screen);
+	~ScreenEffects();
 	void run(int16 effectNum, Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
 	void flash(int count, byte *palette, int colorCount);
 private:
 	Screen *_screen;
-	byte _fxPalette[768];
+	byte *_fxPalette;
 	static const byte vfxOffsTable[64];
 	static const byte vfxOffsIndexTable[8];
 	const byte *vfxOffsTablePtr;
@@ -52,9 +53,6 @@ private:
 	void setPalette(byte *palette);
 	void setBlendedPalette(byte *palette, byte *newPalette, int colorCount, int16 value, int16 maxValue);
 	void copyFxRect(Graphics::Surface *surface, int16 x1, int16 y1, int16 x2, int16 y2);
-	void copyRect(Graphics::Surface *surface, int16 x1, int16 y1, int16 x2, int16 y2,
-		int xd = -1, int yd = -1);
-	void reposition(int16 x1, int16 y1, int16 x2, int16 y2, int xd, int yd);
 
 	void vfx00(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);
 	void vfx01(Graphics::Surface *surface, byte *palette, byte *newPalette, int colorCount);

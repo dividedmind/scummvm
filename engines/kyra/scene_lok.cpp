@@ -41,14 +41,13 @@
 namespace Kyra {
 
 void KyraEngine_LoK::enterNewScene(int sceneId, int facing, int unk1, int unk2, int brandonAlive) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::enterNewScene(%d, %d, %d, %d, %d)", sceneId, facing, unk1, unk2, brandonAlive);
 	int unkVar1 = 1;
 	_screen->hideMouse();
 
 	// TODO: Check how the original handled sfx still playing
 	_sound->stopAllSoundEffects();
 
-	if (_flags.platform == Common::kPlatformFMTowns || _flags.platform == Common::kPlatformPC98) {
+	if (_flags.platform == Common::kPlatformFMTowns) {
 		int newSfxFile = -1;
 		if (_currentCharacter->sceneId == 7 && sceneId == 24)
 			newSfxFile = 2;
@@ -193,7 +192,6 @@ void KyraEngine_LoK::enterNewScene(int sceneId, int facing, int unk1, int unk2, 
 }
 
 void KyraEngine_LoK::transcendScenes(int roomIndex, int roomName) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::transcendScenes(%d, %d)", roomIndex, roomName);
 	assert(roomIndex < _roomTableSize);
 
 	if (_flags.isTalkie) {
@@ -219,13 +217,11 @@ void KyraEngine_LoK::transcendScenes(int roomIndex, int roomName) {
 }
 
 void KyraEngine_LoK::setSceneFile(int roomIndex, int roomName) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::setSceneFile(%d, %d)", roomIndex, roomName);
 	assert(roomIndex < _roomTableSize);
 	_roomTable[roomIndex].nameIndex = roomName;
 }
 
 void KyraEngine_LoK::moveCharacterToPos(int character, int facing, int xpos, int ypos) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::moveCharacterToPos(%d, %d, %d, %d)", character, facing, xpos, ypos);
 	Character *ch = &_characterList[character];
 	ch->facing = facing;
 	_screen->hideMouse();
@@ -280,7 +276,6 @@ void KyraEngine_LoK::moveCharacterToPos(int character, int facing, int xpos, int
 }
 
 void KyraEngine_LoK::setCharacterPositionWithUpdate(int character) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::setCharacterPositionWithUpdate(%d)", character);
 	setCharacterPosition(character, 0);
 	_sprites->updateSceneAnims();
 	_timer->update();
@@ -292,8 +287,6 @@ void KyraEngine_LoK::setCharacterPositionWithUpdate(int character) {
 }
 
 int KyraEngine_LoK::setCharacterPosition(int character, int *facingTable) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::setCharacterPosition(%d, %p)", character, (const void *)facingTable);
-
 	if (character == 0) {
 		_currentCharacter->x1 += _charAddXPosTable[_currentCharacter->facing];
 		_currentCharacter->y1 += _charAddYPosTable[_currentCharacter->facing];
@@ -309,7 +302,6 @@ int KyraEngine_LoK::setCharacterPosition(int character, int *facingTable) {
 }
 
 void KyraEngine_LoK::setCharacterPositionHelper(int character, int *facingTable) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::setCharacterPositionHelper(%d, %p)", character, (const void *)facingTable);
 	Character *ch = &_characterList[character];
 	++ch->currentAnimFrame;
 	int facing = ch->facing;
@@ -405,7 +397,6 @@ void KyraEngine_LoK::loadSceneMsc() {
 }
 
 void KyraEngine_LoK::startSceneScript(int brandonAlive) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::startSceneScript(%d)", brandonAlive);
 	assert(_currentCharacter->sceneId < _roomTableSize);
 	int tableId = _roomTable[_currentCharacter->sceneId].nameIndex;
 	assert(tableId < _roomFilenameTableSize);
@@ -415,7 +406,7 @@ void KyraEngine_LoK::startSceneScript(int brandonAlive) {
 	_screen->clearPage(3);
 	_res->exists(fileNameBuffer, true);
 	// FIXME: check this hack for amiga version
-	_screen->loadBitmap(fileNameBuffer, 3, 3, (_flags.platform == Common::kPlatformAmiga ? _screen->getPalette(0) : 0));
+	_screen->loadBitmap(fileNameBuffer, 3, 3, (_flags.platform == Common::kPlatformAmiga ? &_screen->getPalette(0) : 0));
 	_sprites->loadSceneShapes();
 	_exitListPtr = 0;
 
@@ -439,8 +430,6 @@ void KyraEngine_LoK::startSceneScript(int brandonAlive) {
 }
 
 void KyraEngine_LoK::initSceneData(int facing, int unk1, int brandonAlive) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::initSceneData(%d, %d, %d)", facing, unk1, brandonAlive);
-
 	int16 xpos2 = 0;
 	int setFacing = 1;
 
@@ -609,7 +598,6 @@ void KyraEngine_LoK::initSceneData(int facing, int unk1, int brandonAlive) {
 }
 
 void KyraEngine_LoK::initSceneObjectList(int brandonAlive) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::initSceneObjectList(%d)", brandonAlive);
 	for (int i = 0; i < 28; ++i)
 		_animator->actors()[i].active = 0;
 
@@ -782,7 +770,7 @@ void KyraEngine_LoK::initSceneObjectList(int brandonAlive) {
 void KyraEngine_LoK::initSceneScreen(int brandonAlive) {
 	if (_flags.platform == Common::kPlatformAmiga) {
 		if (_unkScreenVar1 && !queryGameFlag(0xF0)) {
-			memset(_screen->getPalette(2), 0, 32*3);
+			_screen->getPalette(2).clear();
 			if (_currentCharacter->sceneId != 117 || !queryGameFlag(0xB3))
 				_screen->setScreenPalette(_screen->getPalette(2));
 		}
@@ -794,10 +782,10 @@ void KyraEngine_LoK::initSceneScreen(int brandonAlive) {
 
 		if (_unkScreenVar1 && !queryGameFlag(0xA0)) {
 			if (_currentCharacter->sceneId == 45 && _paletteChanged)
-				memcpy(_screen->getPalette(0) + 12*3, _screen->getPalette(4) + 12*3, 2);
+				_screen->getPalette(0).copy(_screen->getPalette(4), 12, 1);
 
 			if (_currentCharacter->sceneId >= 229 && _currentCharacter->sceneId <= 245 && (_brandonStatusBit & 1))
-				memcpy(_screen->getPalette(0), _screen->getPalette(0) + 320*3, 64);
+				_screen->copyPalette(0, 10);
 
 			_screen->setScreenPalette(_screen->getPalette(0));
 		}
@@ -819,10 +807,10 @@ void KyraEngine_LoK::initSceneScreen(int brandonAlive) {
 
 		if (_unkScreenVar1 && _paletteChanged) {
 			if (!queryGameFlag(0xA0)) {
-				memcpy(_screen->getPalette(0) + 684, _screen->getPalette(1) + 684, 60);
+				_screen->getPalette(0).copy(_screen->getPalette(1), 228, 20);
 				_screen->setScreenPalette(_screen->getPalette(0));
 			} else {
-				memset(_screen->getPalette(0), 0, 768);
+				_screen->getPalette(0).clear();
 			}
 		}
 	}
@@ -850,7 +838,6 @@ void KyraEngine_LoK::initSceneScreen(int brandonAlive) {
 }
 
 int KyraEngine_LoK::handleSceneChange(int xpos, int ypos, int unk1, int frameReset) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::handleSceneChange(%d, %d, %d, %d)", xpos, ypos, unk1, frameReset);
 	if (queryGameFlag(0xEF))
 		unk1 = 0;
 
@@ -910,7 +897,6 @@ int KyraEngine_LoK::handleSceneChange(int xpos, int ypos, int unk1, int frameRes
 }
 
 int KyraEngine_LoK::processSceneChange(int *table, int unk1, int frameReset) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::processSceneChange(%p, %d, %d)", (const void *)table, unk1, frameReset);
 	if (queryGameFlag(0xEF))
 		unk1 = 0;
 
@@ -938,7 +924,6 @@ int KyraEngine_LoK::processSceneChange(int *table, int unk1, int frameReset) {
 		default:
 			++table;
 			forceContinue = true;
-			break;
 		}
 
 		returnValue = changeScene(_currentCharacter->facing);
@@ -992,7 +977,6 @@ int KyraEngine_LoK::processSceneChange(int *table, int unk1, int frameReset) {
 }
 
 int KyraEngine_LoK::changeScene(int facing) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::changeScene(%d)", facing);
 	if (queryGameFlag(0xEF)) {
 		if (_currentCharacter->sceneId == 5)
 			return 0;
@@ -1099,7 +1083,6 @@ int KyraEngine_LoK::changeScene(int facing) {
 
 	default:
 		sceneId = _roomTable[_currentCharacter->sceneId].westExit;
-		break;
 	}
 
 	if (sceneId == 0xFFFF)
@@ -1154,7 +1137,6 @@ void KyraEngine_LoK::setCharactersPositions(int character) {
 #pragma mark -
 
 int KyraEngine_LoK::findWay(int x, int y, int toX, int toY, int *moveTable, int moveTableSize) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::findWay(%d, %d, %d, %d, %p, %d)", x, y, toX, toY, (const void *)moveTable, moveTableSize);
 	int ret = KyraEngine_v1::findWay(x, y, toX, toY, moveTable, moveTableSize);
 	if (ret == 0x7D00)
 		return 0;
@@ -1162,7 +1144,6 @@ int KyraEngine_LoK::findWay(int x, int y, int toX, int toY, int *moveTable, int 
 }
 
 bool KyraEngine_LoK::lineIsPassable(int x, int y) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::lineIsPassable(%d, %d)", x, y);
 	if (queryGameFlag(0xEF)) {
 		if (_currentCharacter->sceneId == 5)
 			return true;
@@ -1223,7 +1204,6 @@ bool KyraEngine_LoK::lineIsPassable(int x, int y) {
 #pragma mark -
 
 void KyraEngine_LoK::setupSceneResource(int sceneId) {
-	debugC(9, kDebugLevelMain, "KyraEngine_LoK::setupSceneResource(%d)", sceneId);
 	if (!_flags.isTalkie)
 		return;
 

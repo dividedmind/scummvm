@@ -112,6 +112,9 @@ static bool ShowPosition = false;	// Set when showpos() has been called
 
 SCNHANDLE newestScene = 0;
 
+int sceneCtr = 0;
+static int initialMyEscape;
+
 static SCNHANDLE SceneHandle = 0;	// Current scene handle - stored in case of Save_Scene()
 
 static bool bWatchingOut = false;
@@ -128,17 +131,17 @@ const SCENE_STRUC *GetSceneStruc(const byte *pStruc) {
 		return (const SCENE_STRUC *)pStruc;
 
 	// Copy appropriate fields into tempStruc, and return a pointer to it
-	const uint32 *p = (const uint32 *)pStruc;
+	const byte *p = pStruc;
 	memset(&tempStruc, sizeof(SCENE_STRUC), 0);
 
-	tempStruc.numEntrance = *p++;
-	tempStruc.numPoly = *p++;
-	tempStruc.numTaggedActor = *p++;
-	tempStruc.defRefer = *p++;
-	tempStruc.hSceneScript = *p++;
-	tempStruc.hEntrance = *p++;
-	tempStruc.hPoly = *p++;
-	tempStruc.hTaggedActor = *p++;
+	tempStruc.numEntrance = READ_UINT32(p); p += sizeof(uint32);
+	tempStruc.numPoly = READ_UINT32(p); p += sizeof(uint32);
+	tempStruc.numTaggedActor = READ_UINT32(p); p += sizeof(uint32);
+	tempStruc.defRefer = READ_UINT32(p); p += sizeof(uint32);
+	tempStruc.hSceneScript = READ_UINT32(p); p += sizeof(uint32);
+	tempStruc.hEntrance = READ_UINT32(p); p += sizeof(uint32);
+	tempStruc.hPoly = READ_UINT32(p); p += sizeof(uint32);
+	tempStruc.hTaggedActor = READ_UINT32(p); p += sizeof(uint32);
 
 	return &tempStruc;
 }
@@ -152,9 +155,14 @@ static void SceneTinselProcess(CORO_PARAM, const void *param) {
 	CORO_BEGIN_CONTEXT;
 		INT_CONTEXT *pic;
 		const TP_INIT *pInit;
+		int myEscape;
 	CORO_END_CONTEXT(_ctx);
 
 	CORO_BEGIN_CODE(_ctx);
+
+	// The following myEscape value setting is used for enabling title screen skipping in DW1
+	if (TinselV1 && (sceneCtr == 1)) initialMyEscape = GetEscEvents();
+	_ctx->myEscape = (TinselV1 && (sceneCtr < 4)) ? initialMyEscape : 0;
 
 	// get the stuff copied to process when it was created
 	_ctx->pInit = (const TP_INIT *)param;
@@ -167,7 +175,7 @@ static void SceneTinselProcess(CORO_PARAM, const void *param) {
 		NOPOLY,			// No polygon
 		0,				// No actor
 		NULL,			// No object
-		0);
+		_ctx->myEscape);
 	CORO_INVOKE_1(Interpret, _ctx->pic);
 
 	if (_ctx->pInit->event == CLOSEDOWN || _ctx->pInit->event == LEAVE_T2)

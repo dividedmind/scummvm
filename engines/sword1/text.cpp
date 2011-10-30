@@ -32,6 +32,8 @@
 #include "sword1/objectman.h"
 #include "sword1/swordres.h"
 #include "sword1/sworddefs.h"
+#include "sword1/screen.h"
+#include "sword1/sword1.h"
 
 namespace Sword1 {
 
@@ -62,7 +64,7 @@ Text::~Text(void) {
 uint32 Text::lowTextManager(uint8 *ascii, int32 width, uint8 pen) {
 	_textCount++;
 	if (_textCount > MAX_TEXT_OBS)
-		error("Text::lowTextManager: MAX_TEXT_OBS exceeded!");
+		error("Text::lowTextManager: MAX_TEXT_OBS exceeded");
 	uint32 textObjId = (TEXT_sect * ITM_PER_SEC) - 1;
 	do {
 		textObjId++;
@@ -84,6 +86,7 @@ void Text::makeTextSprite(uint8 slot, uint8 *text, uint16 maxWidth, uint8 pen) {
 	for (lineCnt = 0; lineCnt < numLines; lineCnt++)
 		if (lines[lineCnt].width > sprWidth)
 			sprWidth = lines[lineCnt].width;
+
 	uint16 sprHeight = _charHeight * numLines;
 	uint32 sprSize = sprWidth * sprHeight;
 	assert(!_textBlocks[slot]); // if this triggers, the speechDriver failed to call Text::releaseText.
@@ -103,7 +106,10 @@ void Text::makeTextSprite(uint8 slot, uint8 *text, uint16 maxWidth, uint8 pen) {
 		for (uint16 pos = 0; pos < lines[lineCnt].length; pos++)
 			sprPtr += copyChar(*text++, sprPtr, sprWidth, pen) - OVERLAP;
 		text++; // skip space at the end of the line
-		linePtr += _charHeight * sprWidth;
+		if(SwordEngine::isPsx()) //Chars are half height in psx version
+			linePtr += (_charHeight / 2) * sprWidth;
+		else
+			linePtr += _charHeight * sprWidth;
 	}
 }
 
@@ -157,16 +163,34 @@ uint16 Text::copyChar(uint8 ch, uint8 *sprPtr, uint16 sprWidth, uint8 pen) {
 	FrameHeader *chFrame = _resMan->fetchFrame(_font, ch - SPACE);
 	uint8 *chData = ((uint8*)chFrame) + sizeof(FrameHeader);
 	uint8 *dest = sprPtr;
-	for (uint16 cnty = 0; cnty < _resMan->getUint16(chFrame->height); cnty++) {
+	uint8 *decBuf = NULL;
+	uint8 *decChr;
+	uint16 frameHeight = 0;
+
+	if(SwordEngine::isPsx()) {
+		frameHeight =  _resMan->getUint16(chFrame->height)/2;
+		if(_fontId == CZECH_GAME_FONT) { //Czech game fonts are compressed
+			decBuf = (uint8*) malloc((_resMan->getUint16(chFrame->width))*(_resMan->getUint16(chFrame->height)/2));
+			Screen::decompressHIF(chData, decBuf);
+			decChr = decBuf;
+		} else //Normal game fonts are not compressed
+			decChr = chData;
+	} else {
+		frameHeight =  _resMan->getUint16(chFrame->height);
+		decChr = chData;
+	}
+
+	for (uint16 cnty = 0; cnty < frameHeight; cnty++) {
 		for (uint16 cntx = 0; cntx < _resMan->getUint16(chFrame->width); cntx++) {
-			if (*chData == LETTER_COL)
+			if (*decChr == LETTER_COL)
 				dest[cntx] = pen;
-			else if ((*chData == BORDER_COL) && (!dest[cntx])) // don't do a border if there's already a color underneath (chars can overlap)
+			else if (((*decChr == BORDER_COL) || (*decChr == BORDER_COL_PSX)) && (!dest[cntx])) // don't do a border if there's already a color underneath (chars can overlap)
 				dest[cntx] = BORDER_COL;
-			chData++;
+			decChr++;
 		}
 		dest += sprWidth;
 	}
+	free(decBuf);
 	return _resMan->getUint16(chFrame->width);
 }
 

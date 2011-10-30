@@ -14,15 +14,18 @@ MODULE_OBJS := \
 	primitives.o \
 	scaler.o \
 	scaler/thumbnail_intern.o \
+	sjis.o \
 	surface.o \
 	thumbnail.o \
 	VectorRenderer.o \
 	VectorRendererSpec.o \
-	video/dxa_player.o \
-	video/flic_player.o \
+	video/dxa_decoder.o \
+	video/flic_decoder.o \
 	video/mpeg_player.o \
-	video/smk_player.o \
-	video/video_player.o
+	video/smk_decoder.o \
+	video/video_player.o \
+	video/coktelvideo/indeo3.o \
+	video/coktelvideo/coktelvideo.o
 
 ifndef DISABLE_SCALERS
 MODULE_OBJS += \
@@ -31,6 +34,12 @@ MODULE_OBJS += \
 	scaler/scale2x.o \
 	scaler/scale3x.o \
 	scaler/scalebit.o
+
+ifdef USE_ARM_SCALER_ASM
+MODULE_OBJS += \
+	scaler/scale2xARM.o \
+	scaler/Normal2xARM.o
+endif
 
 ifndef DISABLE_HQ_SCALERS
 MODULE_OBJS += \

@@ -316,7 +316,7 @@ void Script::setupScriptOpcodeList() {
 		// String manipulation
 		OPCODE(opDummy),		// 71: opStrCat, string concatenation (unused)
 		OPCODE(opDummy),		// 72: opStrFormat, string formatting (unused)
-		// Assignment 
+		// Assignment
 		OPCODE(opDummy),		// 73: assign (unused)
 		OPCODE(opDummy),		// 74: += (unused)
 		OPCODE(opDummy),		// 75: -= (unused)
@@ -434,7 +434,7 @@ void Script::setupScriptOpcodeList() {
 		// String manipulation
 		OPCODE(opDummy),		// 80: opStrCat, string concatenation (unused)
 		OPCODE(opDummy),		// 81: opStrFormat, string formatting (unused)
-		// Assignment 
+		// Assignment
 		OPCODE(opDummy),		// 82: assign (unused)
 		OPCODE(opDummy),		// 83: += (unused)
 		OPCODE(opDummy),		// 84: -= (unused)
@@ -614,12 +614,14 @@ void Script::opCcall(SCRIPTOP_PARAMS) {
 
 	if (scriptFunction == &Saga::Script::sfScriptGotoScene) {
 		stopParsing = true; // cause abortAllThreads called and _this_ thread destroyed
+		breakOut = true;
 		return;
 	}
 
 #ifdef ENABLE_IHNM
 	if (scriptFunction == &Saga::Script::sfVsetTrack) {
 		stopParsing = true;
+		breakOut = true;
 		return;		// cause abortAllThreads called and _this_ thread destroyed
 	}
 #endif
@@ -658,15 +660,17 @@ void Script::opCcallV(SCRIPTOP_PARAMS) {
 	(this->*scriptFunction)(thread, argumentsCount, stopParsing);
 	if (stopParsing)
 		return;
-	
+
 	if (scriptFunction == &Saga::Script::sfScriptGotoScene) {
 		stopParsing = true;
+		breakOut = true;
 		return;		// cause abortAllThreads called and _this_ thread destroyed
 	}
 
 #ifdef ENABLE_IHNM
 	if (scriptFunction == &Saga::Script::sfVsetTrack) {
 		stopParsing = true;
+		breakOut = true;
 		return;		// cause abortAllThreads called and _this_ thread destroyed
 	}
 #endif
@@ -691,6 +695,7 @@ void Script::opReturn(SCRIPTOP_PARAMS) {
 	if (thread->pushedSize() == 0) {
 		thread->_flags |= kTFlagFinished;
 		stopParsing = true;
+		breakOut = true;
 		return;
 	} else {
 		thread->pop(); //cause it 0
@@ -712,6 +717,7 @@ void Script::opReturnV(SCRIPTOP_PARAMS) {
 	if (thread->pushedSize() == 0) {
 		thread->_flags |= kTFlagFinished;
 		stopParsing = true;
+		breakOut = true;
 		return;
 	} else {
 		thread->pop(); //cause it 0
@@ -954,7 +960,8 @@ void Script::opLXor(SCRIPTOP_PARAMS) {
 void Script::opSpeak(SCRIPTOP_PARAMS) {
 	if (_vm->_actor->isSpeaking()) {
 		thread->wait(kWaitTypeSpeech);
-		stopParsing = false;
+		stopParsing = true;
+		breakOut = false;
 		return;
 	}
 
@@ -1007,7 +1014,8 @@ void Script::opSpeak(SCRIPTOP_PARAMS) {
 void Script::opDialogBegin(SCRIPTOP_PARAMS) {
 	if (_conversingThread) {
 		thread->wait(kWaitTypeDialogBegin);
-		stopParsing = false;
+		stopParsing = true;
+		breakOut = false;
 		return;
 	}
 	_conversingThread = thread;
@@ -1019,7 +1027,8 @@ void Script::opDialogEnd(SCRIPTOP_PARAMS) {
 		_vm->_interface->activate();
 		_vm->_interface->setMode(kPanelConverse);
 		thread->wait(kWaitTypeDialogEnd);
-		stopParsing = false;
+		stopParsing = true;
+		breakOut = false;
 		return;
 	}
 }

@@ -44,35 +44,32 @@ struct Program;
 
 typedef Common::SharedPtr<Zone> ZonePtr;
 typedef Common::List<ZonePtr> ZoneList;
-extern ZonePtr nullZonePtr;
 
 typedef Common::SharedPtr<Animation> AnimationPtr;
 typedef Common::List<AnimationPtr> AnimationList;
-extern AnimationPtr nullAnimationPtr;
 
 typedef Common::SharedPtr<Instruction> InstructionPtr;
-typedef Common::List<InstructionPtr> InstructionList;
-extern InstructionPtr nullInstructionPtr;
+typedef Common::Array<InstructionPtr> InstructionList;
 
 typedef Common::List<Common::Point> PointList;
 
 enum ZoneTypes {
 	kZoneExamine	   = 1,					// zone displays comment if activated
 	kZoneDoor		   = 2,					// zone activated on click (after some walk if needed)
-	kZoneGet		   = 4,					// for pickable items
-	kZoneMerge		   = 8,					// tags items which can be merged in inventory
-	kZoneTaste		   = 0x10,				// NEVER USED
-	kZoneHear		   = 0x20,				// NEVER USED: they ran out of time before integrating sfx
-	kZoneFeel		   = 0x40,				// NEVER USED
-	kZoneSpeak		   = 0x80,				// tags NPCs the character can talk with
-	kZoneNone		   = 0x100,				// used to prevent parsing on peculiar Animations
-	kZoneTrap		   = 0x200,				// zone activated when character enters
-	kZoneYou		   = 0x400,				// marks the character
-	kZoneCommand	   = 0x800,
+	kZoneGet		   = 3,					// for pickable items
+	kZoneMerge		   = 4,					// tags items which can be merged in inventory
+	kZoneTaste		   = 5,				// NEVER USED
+	kZoneHear		   = 6,				// NEVER USED: they ran out of time before integrating sfx
+	kZoneFeel		   = 7,				// NEVER USED
+	kZoneSpeak		   = 8,				// tags NPCs the character can talk with
+	kZoneNone		   = 9,				// used to prevent parsing on peculiar Animations
+	kZoneTrap		   = 10,				// zone activated when character enters
+	kZoneYou		   = 11,				// marks the character
+	kZoneCommand	   = 12,
 
 	// BRA specific
-	kZonePath          = 0x1000,			// defines nodes for assisting walk calculation routines
-	kZoneBox           = 0x2000
+	kZonePath          = 13,			// defines nodes for assisting walk calculation routines
+	kZoneBox           = 14
 };
 
 
@@ -111,10 +108,19 @@ enum CommandFlags {
 	kFlagsTestTrue		= 2
 };
 
+struct Command {
+	uint16			_id;
+	uint32			_flagsOn;
+	uint32			_flagsOff;
+	bool			_valid;
 
-struct CommandData {
+	Command();
+	~Command();
+
+	// Common fields
 	uint32			_flags;
 	ZonePtr			_zone;
+	Common::String	_zoneName;
 	char*			_string;
 	uint16			_callable;
 	uint16			_object;
@@ -132,26 +138,6 @@ struct CommandData {
 	char*			_string2;
 	int				_musicCommand;
 	int				_musicParm;
-
-
-	CommandData() {
-		memset(this, 0, sizeof(CommandData));
-	}
-
-	~CommandData() {
-		free(_string);
-		free(_string2);
-	}
-};
-
-struct Command {
-	uint16			_id;
-	CommandData		u;
-	uint32			_flagsOn;
-	uint32			_flagsOff;
-
-	Command();
-	~Command();
 };
 
 typedef Common::SharedPtr<Command> CommandPtr;
@@ -163,9 +149,8 @@ typedef Common::List<CommandPtr> CommandList;
 
 struct Answer {
 	Common::String	_text;
-	uint16		_mood;
-	Question*	_followingQuestion;
-	Common::String _followingName;
+	uint16			_mood;
+	Common::String 	_followingName;
 
 	CommandList	_commands;
 	uint32		_noFlags;
@@ -181,114 +166,97 @@ struct Answer {
 };
 
 struct Question {
+	Common::String	_name;
 	Common::String	_text;
-	uint16		_mood;
-	Answer*		_answers[NUM_ANSWERS];
+	uint16			_mood;
+	Answer*			_answers[NUM_ANSWERS];
 
-	Question();
+	Question(const Common::String &name);
 	~Question();
 };
 
 struct Dialogue {
 	Question	*_questions[NUM_QUESTIONS];
+	uint		_numQuestions;
+
+	Question *findQuestion(const Common::String &name) const;
+	void addQuestion(Question *q);
 
 	Dialogue();
 	~Dialogue();
 };
 
-struct GetData {
-	uint32			_icon;
-	GfxObj			*gfxobj;
-
-	GetData() {
-		_icon = 0;
-		gfxobj = NULL;
-	}
-};
-struct SpeakData {
-	char		_name[32];
-	Dialogue	*_dialogue;
-
-	SpeakData() {
-		_name[0] = '\0';
-		_dialogue = NULL;
-	}
-};
-struct ExamineData {
-	GfxObj	*_cnv;
-	Common::String	_description;
-	char*		_filename;
-
-	ExamineData() {
-		_filename = NULL;
-		_cnv = NULL;
-	}
-};
-struct DoorData {
-	char*	_location;
-	GfxObj	*gfxobj;
-	Common::Point	_startPos;
-	uint16	_startFrame;
-
-	DoorData() {
-		_location = NULL;
-		_startFrame = 0;
-		gfxobj = NULL;
-	}
-};
-struct HearData {	// size = 20
-	char		_name[20];
-	int			_channel;
-	int			_freq;
-
-	HearData() {
-		_channel = -1;
-		_freq = -1;
-		_name[0] = '\0';
-	}
-};
-struct MergeData {	// size = 12
-	uint32	_obj1;
-	uint32	_obj2;
-	uint32	_obj3;
-
-	MergeData() {
-		_obj1 = _obj2 = _obj3 = 0;
-	}
-};
 #define MAX_WALKPOINT_LISTS 20
-struct PathData {
-	int	_numLists;
-	PointList	_lists[MAX_WALKPOINT_LISTS];
-
-	PathData() {
-		_numLists = 0;
-	}
-};
 
 struct TypeData {
-	GetData		*get;
-	SpeakData	*speak;
-	ExamineData *examine;
-	DoorData	*door;
-	HearData	*hear;
-	MergeData	*merge;
-	// BRA specific field
-	PathData	*path;
+	// common
+	GfxObj		*_gfxobj;	// get, examine, door
+	Common::String	_filename; // speak, examine, hear
+
+	// get
+	uint32		_getIcon;
+
+	// speak
+	Dialogue		*_speakDialogue;
+
+	// examine
+	Common::String	_examineText;
+
+	// door
+	Common::String	_doorLocation;
+	Common::Point	_doorStartPos;
+	uint16		_doorStartFrame;
+	Common::Point	_doorStartPos2_br;
+	uint16		_doorStartFrame2_br;
+
+	// hear
+	int		_hearChannel;
+	int		_hearFreq;
+
+	// merge
+	uint32	_mergeObj1;
+	uint32	_mergeObj2;
+	uint32	_mergeObj3;
+
+	// path
+	int		_pathNumLists;
+	PointList	_pathLists[MAX_WALKPOINT_LISTS];
 
 	TypeData() {
-		get = NULL;
-		speak = NULL;
-		examine = NULL;
-		door = NULL;
-		hear = NULL;
-		merge = NULL;
-		path = NULL;
+		_gfxobj = 0;
+		_getIcon = 0;
+		_speakDialogue = 0;
+		_doorStartFrame = 0;
+		_doorStartPos.x = -1000;
+		_doorStartPos.y = -1000;
+		_doorStartFrame2_br = 0;
+		_doorStartPos2_br.x = -1000;
+		_doorStartPos2_br.y = -1000;
+		_hearChannel = -1;
+		_hearFreq = -1;
+		_mergeObj1 = 0;
+		_mergeObj2 = 0;
+		_mergeObj3 = 0;
+		_pathNumLists = 0;
+	}
+
+	~TypeData() {
+		if (_gfxobj) {
+			_gfxobj->release();
+		}
+		delete _speakDialogue;
 	}
 };
 
+#define ACTIONTYPE(z) ((z)->_type & 0xFFFF)
+#define ITEMTYPE(z) ((z)->_type & 0xFFFF0000)
+
+#define PACK_ZONETYPE(zt,it) (((zt) & 0xFFFF) | (((it) & 0xFFFF) << 16))
 
 #define ZONENAME_LENGTH 32
+
+#define INVALID_LOCATION_INDEX ((uint32)-1)
+#define INVALID_ZONE_INDEX ((uint32)-1)
 
 struct Zone {
 private:
@@ -312,7 +280,8 @@ public:
 
 	// BRA specific
 	uint			_index;
-	char			*_linkedName;
+	uint			_locationIndex;
+	Common::String	_linkedName;
 	AnimationPtr	_linkedAnim;
 
 	Zone();
@@ -336,10 +305,10 @@ public:
 
 
 	// getters/setters
-	virtual int16 getX() 			{ return _left; }
+	virtual int16 getX()			{ return _left; }
 	virtual void  setX(int16 value) { _left = value; }
 
-	virtual int16 getY() 			{ return _top; }
+	virtual int16 getY()			{ return _top; }
 	virtual void  setY(int16 value) { _top = value; }
 };
 
@@ -458,7 +427,7 @@ struct Instruction {
 	char		*_text;
 	char		*_text2;
 	int			_y;
-	InstructionList::iterator	_endif;
+	uint32		_endif;
 
 	Instruction();
 	~Instruction();
@@ -473,16 +442,14 @@ enum {
 
 struct Program {
 	AnimationPtr	_anim;
-
 	LocalVariable	*_locals;
 
-	uint16			_loopCounter;
+	uint16		_loopCounter;
+	uint16		_numLocals;
 
-	uint16	_numLocals;
-
-	InstructionList::iterator	_ip;
-	InstructionList::iterator	_loopStart;
-	InstructionList				_instructions;
+	uint32				_ip;
+	uint32 				_loopStart;
+	InstructionList		_instructions;
 
 	uint32	_status;
 
@@ -515,18 +482,28 @@ public:
 	void getFrameRect(Common::Rect &r) const;
 	int16 getBottom() const;
 
+	// HACK: this routine is only used to download initialisation
+	// parameter to a script used when moving sarcophagi around in
+	// the museum. It bypasses all the consistency checks that
+	// can be performed by the individual setters. See the comment
+	// in startMovingSarcophagus() in callables_ns.cpp
+	void forceXYZF(int16 x, int16 y, int16 z, int16 f);
+
 	// getters/setters used by scripts
-	int16 getX() 			{ return _left; }
+	int16 getX()			{ return _left; }
 	void  setX(int16 value) { _left = value; }
 
-	int16 getY() 			{ return _top; }
+	int16 getY()			{ return _top; }
 	void  setY(int16 value) { _top = value; }
 
-	int16 getZ() 			{ return _z; }
+	int16 getZ()			{ return _z; }
 	void  setZ(int16 value) { _z = value; }
 
-	int16 getF() 			{ return _frame; }
+	int16 getF()			{ return _frame; }
 	void  setF(int16 value);
+
+	void getFoot(Common::Point &foot);
+	void setFoot(const Common::Point &foot);
 };
 
 class Table {
@@ -564,7 +541,7 @@ public:
 	void clear();
 };
 
-Table* createTableFromStream(uint32 size, Common::SeekableReadStream &stream);
+Table* createTableFromStream(uint32 size, Common::SeekableReadStream *stream);
 
 } // namespace Parallaction
 

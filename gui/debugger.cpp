@@ -27,23 +27,27 @@
 #include "common/system.h"
 
 #include "gui/debugger.h"
-#if USE_CONSOLE
+#ifndef USE_TEXT_CONSOLE
 	#include "gui/console.h"
+#elif defined(USE_READLINE)
+	#include <readline/readline.h>
+	#include <readline/history.h>
 #endif
+
 
 namespace GUI {
 
 Debugger::Debugger() {
 	_frame_countdown = 0;
-	_dvar_count = 0;
-	_dcmd_count = 0;
 	_detach_now = false;
 	_isAttached = false;
 	_errStr = NULL;
 	_firstTime = true;
-	_debuggerDialog = new GUI::ConsoleDialog(1.0, 0.67F);
+#ifndef USE_TEXT_CONSOLE
+	_debuggerDialog = new GUI::ConsoleDialog(1.0f, 0.67f);
 	_debuggerDialog->setInputCallback(debuggerInputCallback, this);
 	_debuggerDialog->setCompletionCallback(debuggerCompletionCallback, this);
+#endif
 
 	//DCmd_Register("continue",			WRAP_METHOD(Debugger, Cmd_Exit));
 	DCmd_Register("exit",				WRAP_METHOD(Debugger, Cmd_Exit));
@@ -57,11 +61,9 @@ Debugger::Debugger() {
 }
 
 Debugger::~Debugger() {
-	for (int i = 0; i < _dcmd_count; i++) {
-		delete _dcmds[i].debuglet;
-		_dcmds[i].debuglet = 0;
-	}
+#ifndef USE_TEXT_CONSOLE
 	delete _debuggerDialog;
+#endif
 }
 
 
@@ -71,7 +73,7 @@ int Debugger::DebugPrintf(const char *format, ...) {
 
 	va_start(argptr, format);
 	int count;
-#if USE_CONSOLE
+#ifndef USE_TEXT_CONSOLE
 	count = _debuggerDialog->vprintf(format, argptr);
 #else
 	count = ::vprintf(format, argptr);
@@ -118,9 +120,22 @@ void Debugger::onFrame() {
 	}
 }
 
+#if defined(USE_TEXT_CONSOLE) && defined(USE_READLINE)
+namespace {
+Debugger *g_readline_debugger;
+
+char *readline_completionFunction(const char *text, int state) {
+	return g_readline_debugger->readlineComplete(text, state);
+}
+} // end of anonymous namespace
+#endif
+
 // Main Debugger Loop
 void Debugger::enter() {
-#if USE_CONSOLE
+	// TODO: Having three I/O methods #ifdef-ed in this file is not the
+	// cleanest approach to this...
+
+#ifndef USE_TEXT_CONSOLE
 	if (_firstTime) {
 		DebugPrintf("Debugger started, type 'exit' to return to the game.\n");
 		DebugPrintf("Type 'help' to see a little list of commands and variables.\n");
@@ -135,18 +150,28 @@ void Debugger::enter() {
 
 	_debuggerDialog->runModal();
 #else
-	// TODO: compared to the console input, this here is very bare bone.
-	// For example, no support for tab completion and no history. At least
-	// we should re-add (optional) support for the readline library.
-	// Or maybe instead of choosing between a console dialog and stdio,
-	// we should move that choice into the ConsoleDialog class - that is,
-	// the console dialog code could be #ifdef'ed to not print to the dialog
-	// but rather to stdio. This way, we could also reuse the command history
-	// and tab completion of the console. It would still require a lot of
-	// work, but at least no dependency on a 3rd party library...
-
 	printf("Debugger entered, please switch to this console for input.\n");
 
+#ifdef USE_READLINE
+	// TODO: add support for saving/loading history?
+
+	g_readline_debugger = this;
+	rl_completion_entry_function = &readline_completionFunction;
+	
+	char *line_read = 0;
+	do {
+		free(line_read);
+		line_read = readline("debug> ");
+
+		if (line_read && line_read[0])
+			add_history(line_read);
+
+	} while (line_read && parseCommand(line_read));
+
+	free(line_read);
+	line_read = 0;
+
+#else
 	int i;
 	char buf[256];
 
@@ -162,18 +187,17 @@ void Debugger::enter() {
 		if (i == 0)
 			continue;
 	} while (parseCommand(buf));
+#endif
 
 #endif
 }
 
 bool Debugger::handleCommand(int argc, const char **argv, bool &result) {
-	for (int i = 0; i < _dcmd_count; ++i) {
-		if (!strcmp(_dcmds[i].name, argv[0])) {
-			Debuglet *debuglet = _dcmds[i].debuglet;
-			assert(debuglet);
-			result = (*debuglet)(argc, argv);
-			return true;
-		}
+	if (_cmds.contains(argv[0])) {
+		Debuglet *debuglet = _cmds[argv[0]].get();
+		assert(debuglet);
+		result = (*debuglet)(argc, argv);
+		return true;
 	}
 
 	return false;
@@ -181,7 +205,7 @@ bool Debugger::handleCommand(int argc, const char **argv, bool &result) {
 
 // Command execution loop
 bool Debugger::parseCommand(const char *inputOrig) {
-	int i = 0, num_params = 0;
+	int num_params = 0;
 	const char *param[256];
 	char *input = strdup(inputOrig);	// One of the rare occasions using strdup is OK (although avoiding strtok might be more elegant here).
 
@@ -203,8 +227,8 @@ bool Debugger::parseCommand(const char *inputOrig) {
 	}
 
 	// It's not a command, so things get a little tricky for variables. Do fuzzy matching to ignore things like subscripts.
-	for (i = 0; i < _dvar_count; i++) {
-		if (!strncmp(_dvars[i].name, param[0], strlen(_dvars[i].name))) {
+	for (uint i = 0; i < _dvars.size(); i++) {
+		if (!strncmp(_dvars[i].name.c_str(), param[0], _dvars[i].name.size())) {
 			if (num_params > 1) {
 				// Alright, we need to check the TYPE of the variable to deref and stuff... the array stuff is a bit ugly :)
 				switch (_dvars[i].type) {
@@ -235,7 +259,7 @@ bool Debugger::parseCommand(const char *inputOrig) {
 					}
 					break;
 				default:
-					DebugPrintf("Failed to set variable %s to %s - unknown type\n", _dvars[i].name, param[1]);
+					DebugPrintf("Failed to set variable %s to %s - unknown type\n", _dvars[i].name.c_str(), param[1]);
 					break;
 				}
 			} else {
@@ -286,7 +310,7 @@ bool Debugger::parseCommand(const char *inputOrig) {
 
 // returns true if something has been completed
 // completion has to be delete[]-ed then
-bool Debugger::tabComplete(const char *input, char*& completion) {
+bool Debugger::tabComplete(const char *input, Common::String &completion) const {
 	// very basic tab completion
 	// for now it just supports command completions
 
@@ -297,63 +321,85 @@ bool Debugger::tabComplete(const char *input, char*& completion) {
 	if (strchr(input, ' '))
 		return false; // already finished the first word
 
-	unsigned int inputlen = strlen(input);
+	const uint inputlen = strlen(input);
 
-	unsigned int matchlen = 0;
-	char match[30]; // the max. command name is 30 chars
+	completion.clear();
 
-	for (int i = 0; i < _dcmd_count; i++) {
-		if (!strncmp(_dcmds[i].name, input, inputlen)) {
-			unsigned int commandlen = strlen(_dcmds[i].name);
-			if (commandlen == inputlen) { // perfect match
+	CommandsMap::const_iterator i, e = _cmds.end();
+	for (i = _cmds.begin(); i != e; ++i) {
+		if (i->_key.hasPrefix(input)) {
+			uint commandlen = i->_key.size();
+			if (commandlen == inputlen) { // perfect match, so no tab completion possible
 				return false;
 			}
 			if (commandlen > inputlen) { // possible match
 				// no previous match
-				if (matchlen == 0) {
-					strcpy(match, _dcmds[i].name + inputlen);
-					matchlen = commandlen - inputlen;
+				if (completion.empty()) {
+					completion = i->_key.c_str() + inputlen;
 				} else {
 					// take common prefix of previous match and this command
-					unsigned int j;
-					for (j = 0; j < matchlen; j++) {
-						if (match[j] != _dcmds[i].name[inputlen + j]) break;
+					for (uint j = 0; j < completion.size(); j++) {
+						if (inputlen + j >= i->_key.size() ||
+								completion[j] != i->_key[inputlen + j]) {
+							completion = Common::String(completion.begin(), completion.begin() + j);
+							// If there is no unambiguous completion, abort
+							if (completion.empty())
+								return false;
+							break;
+						}
 					}
-					matchlen = j;
 				}
-				if (matchlen == 0)
-					return false;
 			}
 		}
 	}
-	if (matchlen == 0)
+	if (completion.empty())
 		return false;
 
-	completion = new char[matchlen + 1];
-	memcpy(completion, match, matchlen);
-	completion[matchlen] = 0;
 	return true;
 }
 
-// Variable registration function
-void Debugger::DVar_Register(const char *varname, void *pointer, int type, int optional) {
-	assert(_dvar_count < ARRAYSIZE(_dvars));
-	strcpy(_dvars[_dvar_count].name, varname);
-	_dvars[_dvar_count].type = type;
-	_dvars[_dvar_count].variable = pointer;
-	_dvars[_dvar_count].optional = optional;
+#if defined(USE_TEXT_CONSOLE) && defined(USE_READLINE)
+char *Debugger::readlineComplete(const char *input, int state) {
+	static CommandsMap::const_iterator iter;
 
-	_dvar_count++;
+	// We assume that _cmds isn't changed between calls to readlineComplete,
+	// unless state is 0.
+	if (state == 0) {
+		iter = _cmds.begin();
+	} else {
+		++iter;
+	}
+
+	for (; iter != _cmds.end(); ++iter) {
+		if (iter->_key.hasPrefix(input)) {
+			char *ret = (char *)malloc(iter->_key.size() + 1);
+			strcpy(ret, iter->_key.c_str());
+			return ret;
+		}	
+	}
+	return 0;
+}
+#endif
+
+// Variable registration function
+void Debugger::DVar_Register(const Common::String &varname, void *pointer, int type, int optional) {
+	// TODO: Filter out duplicates
+	// TODO: Sort this list? Then we can do binary search later on when doing lookups.
+	assert(pointer);
+
+	DVar tmp;
+	tmp.name = varname;
+	tmp.type = type;
+	tmp.variable = pointer;
+	tmp.optional = optional;
+
+	_dvars.push_back(tmp);
 }
 
 // Command registration function
-void Debugger::DCmd_Register(const char *cmdname, Debuglet *debuglet) {
-	assert(debuglet->isValid());
-	assert(_dcmd_count < ARRAYSIZE(_dcmds));
-	strcpy(_dcmds[_dcmd_count].name, cmdname);
-	_dcmds[_dcmd_count].debuglet = debuglet;
-
-	_dcmd_count++;
+void Debugger::DCmd_Register(const Common::String &cmdname, Debuglet *debuglet) {
+	assert(debuglet && debuglet->isValid());
+	_cmds[cmdname] = Common::SharedPtr<Debuglet>(debuglet);
 }
 
 
@@ -366,14 +412,32 @@ bool Debugger::Cmd_Exit(int argc, const char **argv) {
 // Print a list of all registered commands (and variables, if any),
 // nicely word-wrapped.
 bool Debugger::Cmd_Help(int argc, const char **argv) {
-
+#ifndef USE_TEXT_CONSOLE
 	const int charsPerLine = _debuggerDialog->getCharsPerLine();
-	int width, size, i;
+#elif defined(USE_READLINE)
+	int charsPerLine, rows;
+	rl_get_screen_size(&rows, &charsPerLine);
+#else
+	// Can we do better?
+	const int charsPerLine = 80;
+#endif
+	int width, size;
+	uint i;
 
 	DebugPrintf("Commands are:\n");
+
+	// Obtain a list of sorted command names
+	Common::StringList cmds;
+	CommandsMap::const_iterator iter, e = _cmds.end();
+	for (iter = _cmds.begin(); iter != e; ++iter) {
+		cmds.push_back(iter->_key);
+	}
+	sort(cmds.begin(), cmds.end());
+
+	// Print them all
 	width = 0;
-	for (i = 0; i < _dcmd_count; i++) {
-		size = strlen(_dcmds[i].name) + 1;
+	for (i = 0; i < cmds.size(); i++) {
+		size = cmds[i].size() + 1;
 
 		if ((width + size) >= charsPerLine) {
 			DebugPrintf("\n");
@@ -381,16 +445,16 @@ bool Debugger::Cmd_Help(int argc, const char **argv) {
 		} else
 			width += size;
 
-		DebugPrintf("%s ", _dcmds[i].name);
+		DebugPrintf("%s ", cmds[i].c_str());
 	}
 	DebugPrintf("\n");
 
-	if (_dvar_count > 0) {
+	if (!_dvars.empty()) {
 		DebugPrintf("\n");
 		DebugPrintf("Variables are:\n");
 		width = 0;
-		for (i = 0; i < _dvar_count; i++) {
-			size = strlen(_dvars[i].name) + 1;
+		for (i = 0; i < _dvars.size(); i++) {
+			size = _dvars[i].name.size() + 1;
 
 			if ((width + size) >= charsPerLine) {
 				DebugPrintf("\n");
@@ -398,7 +462,7 @@ bool Debugger::Cmd_Help(int argc, const char **argv) {
 			} else
 				width += size;
 
-			DebugPrintf("%s ", _dvars[i].name);
+			DebugPrintf("%s ", _dvars[i].name.c_str());
 		}
 		DebugPrintf("\n");
 	}
@@ -451,7 +515,7 @@ bool Debugger::Cmd_DebugFlagDisable(int argc, const char **argv) {
 }
 
 // Console handler
-#if USE_CONSOLE
+#ifndef USE_TEXT_CONSOLE
 bool Debugger::debuggerInputCallback(GUI::ConsoleDialog *console, const char *input, void *refCon) {
 	Debugger *debugger = (Debugger *)refCon;
 
@@ -459,7 +523,7 @@ bool Debugger::debuggerInputCallback(GUI::ConsoleDialog *console, const char *in
 }
 
 
-bool Debugger::debuggerCompletionCallback(GUI::ConsoleDialog *console, const char *input, char*& completion, void *refCon) {
+bool Debugger::debuggerCompletionCallback(GUI::ConsoleDialog *console, const char *input, Common::String &completion, void *refCon) {
 	Debugger *debugger = (Debugger *)refCon;
 
 	return debugger->tabComplete(input, completion);

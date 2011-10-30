@@ -49,9 +49,6 @@ static SaveFileData emptySlot = {
 	 "", 0
 };
 
-//TODO:
-// - delete savegame
-
 char* SagaEngine::calcSaveFileName(uint slotNumber) {
 	static char name[MAX_FILE_NAME];
 	sprintf(name, "%s.s%02d", _targetName.c_str(), slotNumber);
@@ -106,6 +103,19 @@ uint SagaEngine::getNewSaveSlotNumber() {
 	error("getNewSaveSlotNumber save list is full");
 }
 
+static int compareSaveFileData(const void *a, const void *b) {
+	const SaveFileData *s1 = (const SaveFileData *)a;
+	const SaveFileData *s2 = (const SaveFileData *)b;
+
+	if (s1->slotNumber < s2->slotNumber) {
+		return -1;
+	} else if (s1->slotNumber > s2->slotNumber) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
 void SagaEngine::fillSaveList() {
 
 	int i;
@@ -155,6 +165,8 @@ void SagaEngine::fillSaveList() {
 			}
 		}
 	}
+
+	qsort(_saveFiles, _saveFilesCount, sizeof(_saveFiles[0]), compareSaveFileData);
 }
 
 void SagaEngine::save(const char *fileName, const char *saveName) {
@@ -235,7 +247,7 @@ void SagaEngine::save(const char *fileName, const char *saveName) {
 
 	out->finalize();
 
-	if (out->ioFailed())
+	if (out->err())
 		warning("Can't write file '%s'. (Disk full?)", fileName);
 
 	delete out;

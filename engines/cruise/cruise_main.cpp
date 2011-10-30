@@ -23,58 +23,31 @@
  *
  */
 
+#include "common/config-manager.h"
 #include "common/endian.h"
 #include "common/events.h"
 #include "common/system.h"	// for g_system->getEventManager()
 
+#include "cruise/cruise.h"
 #include "cruise/cruise_main.h"
 #include "cruise/cell.h"
 #include "cruise/staticres.h"
 
 namespace Cruise {
 
+enum RelationType {RT_REL = 30, RT_MSG = 50};
+
+static int playerDontAskQuit;
 unsigned int timer = 0;
 
 gfxEntryStruct* linkedMsgList = NULL;
-
-void drawSolidBox(int32 x1, int32 y1, int32 x2, int32 y2, uint8 color) {
-	int32 i;
-	int32 j;
-
-	for (i = x1; i < x2; i++) {
-		for (j = y1; j < y2; j++) {
-			globalScreen[j * 320 + i] = color;
-		}
-	}
-}
 
 void drawBlackSolidBoxSmall() {
 //  gfxModuleData.drawSolidBox(64,100,256,117,0);
 	drawSolidBox(64, 100, 256, 117, 0);
 }
 
-void resetRaster(uint8 *rasterPtr, int32 rasterSize) {
-	memset(rasterPtr, 0, rasterSize);
-}
-
-void drawInfoStringSmallBlackBox(uint8 *string) {
-	//uint8 buffer[256];
-
-	gfxModuleData_field_90();
-	gfxModuleData_gfxWaitVSync();
-	drawBlackSolidBoxSmall();
-
-	drawString(10, 100, string, gfxModuleData.pPage10, titleColor, 300);
-
-	gfxModuleData_flip();
-
-	flipScreen();
-
-	while (1)
-		;
-}
-
-void loadPakedFileToMem(int fileIdx, uint8 *buffer) {
+void loadPackedFileToMem(int fileIdx, uint8 *buffer) {
 	changeCursor(CURSOR_DISK);
 
 	currentVolumeFile.seek(volumePtrToFileDescriptor[fileIdx].offset, SEEK_SET);
@@ -108,28 +81,11 @@ int getNumObjectsByClass(int scriptIdx, int param) {
 	return (counter);
 }
 
-void saveShort(void *ptr, short int var) {
-	*(int16 *) ptr = var;
-
-	flipShort((int16 *) ptr);
-}
-
-int16 loadShort(void *ptr) {
-	short int temp;
-
-	temp = *(int16 *) ptr;
-
-	flipShort(&temp);
-
-	return (temp);
-}
-
-void resetFileEntryRange(int param1, int param2) {
+void resetFileEntryRange(int start, int count) {
 	int i;
 
-	for (i = param1; i < param2; i++) {
-		resetFileEntry(i);
-	}
+	for (i = 0; i < count; ++i)
+		resetFileEntry(start + i);
 }
 
 int getProcParam(int overlayIdx, int param2, const char *name) {
@@ -181,7 +137,7 @@ void changeScriptParamInList(int param1, int param2, scriptInstanceStruct *pScri
 void initBigVar3() {
 	int i;
 
-	for (i = 0; i < 257; i++) {
+	for (i = 0; i < NUM_FILE_ENTRIES; i++) {
 		if (filesDatabase[i].subData.ptr) {
 			free(filesDatabase[i].subData.ptr);
 		}
@@ -327,8 +283,7 @@ int loadFileSub1(uint8 **ptr, const char *name, uint8 *ptr2) {
 	for (i = 0; i < 64; i++) {
 		if (preloadData[i].ptr) {
 			if (!strcmp(preloadData[i].name, name)) {
-				printf("Unsupported code in loadFIleSub1 !\n");
-				exit(1);
+				error("Unsupported code in loadFIleSub1");
 			}
 		}
 	}
@@ -338,15 +293,15 @@ int loadFileSub1(uint8 **ptr, const char *name, uint8 *ptr2) {
 	if (!strcmp(buffer, ".SPL")) {
 		removeExtention(name, buffer);
 
-		// if (useH32)
-		{
-			strcat(buffer, ".H32");
-		}
-		/* else
+		/* if (useH32)
+		 *{
+		 *	strcat(buffer, ".H32");
+		 *}
+		 * else
 		 * if (useAdlib)
-		 * {
-		 * strcatuint8(buffer,".ADL");
-		 * }
+		 * { */
+		 strcat(buffer,".ADL");
+		/* }
 		 * else
 		 * {
 		 * strcatuint8(buffer,".HP");
@@ -374,7 +329,7 @@ int loadFileSub1(uint8 **ptr, const char *name, uint8 *ptr2) {
 	if (volumePtrToFileDescriptor[fileIdx].size + 2 != unpackedSize) {
 		uint8 *pakedBuffer = (uint8 *) mallocAndZero(volumePtrToFileDescriptor[fileIdx].size + 2);
 
-		loadPakedFileToMem(fileIdx, pakedBuffer);
+		loadPackedFileToMem(fileIdx, pakedBuffer);
 
 		uint32 realUnpackedSize = READ_BE_UINT32(pakedBuffer + volumePtrToFileDescriptor[fileIdx].size - 4);
 
@@ -384,7 +339,7 @@ int loadFileSub1(uint8 **ptr, const char *name, uint8 *ptr2) {
 
 		free(pakedBuffer);
 	} else {
-		loadPakedFileToMem(fileIdx, unpackedBuffer);
+		loadPackedFileToMem(fileIdx, unpackedBuffer);
 	}
 
 	*ptr = unpackedBuffer;
@@ -393,7 +348,7 @@ int loadFileSub1(uint8 **ptr, const char *name, uint8 *ptr2) {
 }
 
 void resetFileEntry(int32 entryNumber) {
-	if (entryNumber >= 257)
+	if (entryNumber >= NUM_FILE_ENTRIES)
 		return;
 
 	if (!filesDatabase[entryNumber].subData.ptr)
@@ -405,7 +360,7 @@ void resetFileEntry(int32 entryNumber) {
 	filesDatabase[entryNumber].subData.ptrMask = NULL;
 	filesDatabase[entryNumber].widthInColumn = 0;
 	filesDatabase[entryNumber].width = 0;
-	filesDatabase[entryNumber].resType = 0;
+	filesDatabase[entryNumber].resType = OBJ_TYPE_LINE;
 	filesDatabase[entryNumber].height = 0;
 	filesDatabase[entryNumber].subData.index = -1;
 	filesDatabase[entryNumber].subData.resourceType = 0;
@@ -420,11 +375,10 @@ uint8 *mainProc14(uint16 overlay, uint16 idx) {
 	return NULL;
 }
 
-int initAllData(void) {
+void CruiseEngine::initAllData(void) {
 	int i;
 
 	setupFuncArray();
-	setupOpcodeTable();
 	initOverlayTable();
 
 	stateID = 0;
@@ -432,10 +386,10 @@ int initAllData(void) {
 
 	freeDisk();
 
-	initVar5[0] = -1;
-	initVar5[3] = -1;
-	initVar5[6] = -1;
-	initVar5[9] = -1;
+	soundList[0].frameNum = -1;
+	soundList[1].frameNum = -1;
+	soundList[2].frameNum = -1;
+	soundList[3].frameNum = -1;
 
 	menuTable[0] = NULL;
 
@@ -447,7 +401,7 @@ int initAllData(void) {
 		backgroundTable[i].name[0] = 0;
 	}
 
-	for (i = 0; i < 257; i++) {
+	for (i = 0; i < NUM_FILE_ENTRIES; i++) {
 		filesDatabase[i].subData.ptr = NULL;
 		filesDatabase[i].subData.ptrMask = NULL;
 	}
@@ -559,7 +513,10 @@ int initAllData(void) {
 
 	strcpy(lastOverlay, "AUTO00");
 
-	return (bootOverlayNumber);
+	_gameSpeed = GAME_FRAME_DELAY_1;
+	_speedFlag = false;
+
+	return;
 }
 
 int removeFinishedScripts(scriptInstanceStruct *ptrHandle) {
@@ -609,7 +566,9 @@ int findObject(int mouseX, int mouseY, int *outObjOvl, int *outObjIdx) {
 	cellStruct *currentObject = cellHead.prev;
 
 	while (currentObject) {
-		if (currentObject->overlay > 0 && overlayTable[currentObject->overlay].alreadyLoaded && (currentObject->type == OBJ_TYPE_SPRITE || currentObject->type == OBJ_TYPE_MASK || currentObject->type == OBJ_TYPE_EXIT || currentObject->type == OBJ_TYPE_VIRTUEL)) {
+		if (currentObject->overlay > 0 && overlayTable[currentObject->overlay].alreadyLoaded &&
+				(currentObject->type == OBJ_TYPE_SPRITE || currentObject->type == OBJ_TYPE_MASK ||
+				currentObject->type == OBJ_TYPE_EXIT || currentObject->type == OBJ_TYPE_VIRTUAL)) {
 			const char* pObjectName = getObjectName(currentObject->idx, overlayTable[currentObject->overlay].ovlData->arrayNameObj);
 
 			strcpy(objectName, pObjectName);
@@ -658,19 +617,20 @@ int findObject(int mouseX, int mouseY, int *outObjOvl, int *outObjIdx) {
 
 								dataPtr ++;
 
-								offset = *(dataPtr++);
-								flipShort(&offset);
+								offset = (int16)READ_BE_UINT16(dataPtr);
+								dataPtr++;
 
-								newX = *(dataPtr++);
-								flipShort(&newX);
+								newX = (int16)READ_BE_UINT16(dataPtr);
+								dataPtr++;
 
-								newY = *(dataPtr++);
-								flipShort(&newY);
+								newY = (int16)READ_BE_UINT16(dataPtr);
+								dataPtr++;
 
 								offset += j;
 
 								if (offset >= 0) {
-									if (filesDatabase[offset].resType == 0 && filesDatabase[offset].subData.ptr) {
+									if (filesDatabase[offset].resType == OBJ_TYPE_LINE &&
+											filesDatabase[offset].subData.ptr) {
 										dataPtr = (int16 *)filesDatabase[offset].subData.ptr;
 									}
 								}
@@ -706,7 +666,7 @@ int findObject(int mouseX, int mouseY, int *outObjOvl, int *outObjIdx) {
 								}
 							}
 						}
-					} else if (currentObject->type == OBJ_TYPE_VIRTUEL) {
+					} else if (currentObject->type == OBJ_TYPE_VIRTUAL) {
 						int x = params.X + x2;
 						int y = params.Y + y2;
 						int width = params.fileIdx;
@@ -732,10 +692,10 @@ int findObject(int mouseX, int mouseY, int *outObjOvl, int *outObjIdx) {
 	return -1;
 }
 
-char keyboardVar = 0;
+Common::KeyCode keyboardCode = Common::KEYCODE_INVALID;
 
 void freeStuff2(void) {
-	printf("implement freeStuff2\n");
+	warning("implement freeStuff2");
 }
 
 void *allocAndZero(int size) {
@@ -747,37 +707,10 @@ void *allocAndZero(int size) {
 	return ptr;
 }
 
-const char *getObjectName(int index, const char *string) {
-	const char *ptr = string;
-
-	if (!string)
-		return NULL;
-
-	int i = 0;
-//	int j = 0;
-
-	while (i < index) {
-		ptr += strlen(ptr) + 1;
-		i++;
-	}
-	return ptr;
-}
-
-int getObjectClass(int overlayIdx, int objIdx) {
-	objDataStruct *pObjectData = getObjectDataFromOverlay(overlayIdx, objIdx);
-
-	if (pObjectData) {
-		return pObjectData->_class;
-	} else {
-		return -11;
-	}
-}
-
 void buildInventory(int X, int Y) {
 	menuStruct *pMenu;
 
-	const char **sl = getStringList();
-	pMenu = createMenu(X, Y, sl[SL_INVENTORY]);
+	pMenu = createMenu(X, Y, _vm->langString(ID_INVENTORY));
 	menuTable[1] = pMenu;
 
 	if (pMenu == NULL)
@@ -829,7 +762,7 @@ menuElementSubStruct *getSelectedEntryInMenu(menuStruct *pMenu) {
 	pMenuElement = pMenu->ptrNextElement;
 
 	while (pMenuElement) {
-		if (pMenuElement->varC) {
+		if (pMenuElement->selected) {
 			currentMenuElementX = pMenuElement->x;
 			currentMenuElementY = pMenuElement->y;
 			currentMenuElement = pMenuElement;
@@ -853,7 +786,7 @@ bool createDialog(int objOvl, int objIdx, int x, int y) {
 
 	getSingleObjectParam(objOvl, objIdx, 5, &objectState);
 
-	menuTable[0] = createMenu(x, y, "Parler de...");
+	menuTable[0] = createMenu(x, y, _vm->langString(ID_SPEAK_ABOUT));
 
 	for (j = 1; j < numOfLoadedOverlay; j++) {
 		if (overlayTable[j].alreadyLoaded) {
@@ -1093,8 +1026,8 @@ void callSubRelation(menuElementSubStruct *pMenuElement, int nOvl, int nObj) {
 		}
 
 		if ((obj2Ovl == nOvl) && (pHeader->obj2Number != -1) && (pHeader->obj2Number == nObj)) {
-//			int x = 60;
-//			int y = 60;
+			int x = 60;
+			int y = 60;
 
 			objectParamsQuery params;
 			memset(&params, 0, sizeof(objectParamsQuery)); // to remove warning
@@ -1104,7 +1037,7 @@ void callSubRelation(menuElementSubStruct *pMenuElement, int nOvl, int nObj) {
 			}
 
 			if ((pHeader->obj2OldState == -1) || (params.state == pHeader->obj2OldState)) {
-				if (pHeader->type == 30) { // REL
+				if (pHeader->type == RT_REL) { // REL
 					if (currentScriptPtr) {
 						attacheNewScriptToTail(&relHead, ovlIdx, pHeader->id, 30, currentScriptPtr->scriptNumber, currentScriptPtr->overlayNumber, scriptType_REL);
 					} else {
@@ -1142,8 +1075,69 @@ void callSubRelation(menuElementSubStruct *pMenuElement, int nOvl, int nObj) {
 							changeScriptParamInList(ovlIdx, pHeader->id, &relHead, 0, 9998);
 						}
 					}
-				} else if (pHeader->type == 50) {
-					ASSERT(0);
+				} else if (pHeader->type == RT_MSG) {
+
+					if (pHeader->obj2Number >= 0) {
+						if ((pHeader->trackX !=-1) && (pHeader->trackY !=-1) && 
+								(pHeader->trackX != 9999) && (pHeader->trackY != 9999)) {
+							x = pHeader->trackX - 100;
+							y = pHeader->trackY - 150;
+						} else if (params.scale >= 0) {
+							x = params.X - 100;
+							y = params.Y - 40;
+						}
+
+						if (pHeader->obj2NewState != -1) {
+							objInit(obj2Ovl, pHeader->obj2Number, pHeader->obj2NewState);
+						}
+					}
+
+					if ((pHeader->obj1Number >= 0) && (pHeader->obj1NewState != -1)) {
+						int obj1Ovl = pHeader->obj1Overlay;
+						if (!obj1Ovl) obj1Ovl = ovlIdx;
+						objInit(obj1Ovl, pHeader->obj1Number, pHeader->obj1NewState);
+					}
+
+					if (currentScriptPtr) {
+						createTextObject(&cellHead, ovlIdx, pHeader->id, x, y, 200, findHighColor(), masterScreen, currentScriptPtr->overlayNumber, currentScriptPtr->scriptNumber);
+					} else {
+						createTextObject(&cellHead, ovlIdx, pHeader->id, x, y, 200, findHighColor(), masterScreen, 0, 0);
+					}
+
+					userWait = 1;
+					autoOvl = ovlIdx;
+					autoMsg = pHeader->id;
+				
+					if ((narratorOvl > 0) && (pHeader->trackX != -1) && (pHeader->trackY != -1)) {
+						actorStruct *pTrack = findActor(&actorHead, narratorOvl, narratorIdx, 0);
+
+						if (pTrack)	 {
+							objectParamsQuery naratorParams;
+							animationStart = false;
+
+							if (pHeader->trackDirection == 9999) {
+								getMultipleObjectParam(narratorOvl, narratorIdx, &naratorParams);
+								pTrack->x_dest = naratorParams.X;
+								pTrack->y_dest = naratorParams.Y;
+								pTrack->endDirection = direction(naratorParams.X, naratorParams.Y, pHeader->trackX,pHeader->trackY, 0, 0);
+							} else if ((pHeader->trackX == 9999) && (pHeader->trackY == 9999)) {
+								getMultipleObjectParam(narratorOvl, narratorIdx, &naratorParams);
+								pTrack->x_dest = naratorParams.X;
+								pTrack->y_dest = naratorParams.Y;
+								pTrack->endDirection = pHeader->trackDirection;
+							} else {
+								pTrack->x_dest = pHeader->trackX;
+								pTrack->y_dest = pHeader->trackY;
+								pTrack->endDirection = pHeader->trackDirection;
+							}
+
+							pTrack->flag = 1;
+							autoTrack = true;
+							userWait = 0;
+							userEnabled = 0;
+							freezeCell(&cellHead, ovlIdx, pHeader->id, 5, -1, 0, 9998);
+						}
+					}
 				}
 			}
 		}
@@ -1181,7 +1175,7 @@ void callRelation(menuElementSubStruct *pMenuElement, int nObj2) {
 
 		if (pHeader->obj2Number == nObj2) {
 			// REL
-			if (pHeader->type == 30) {
+			if (pHeader->type == RT_REL) {
 				if (currentScriptPtr) {
 					attacheNewScriptToTail(&relHead, ovlIdx, pHeader->id, 30, currentScriptPtr->scriptNumber, currentScriptPtr->overlayNumber, scriptType_REL);
 				} else {
@@ -1219,7 +1213,7 @@ void callRelation(menuElementSubStruct *pMenuElement, int nObj2) {
 						changeScriptParamInList(ovlIdx, pHeader->id, &relHead, 0, 9998);
 					}
 				}
-			} else if (pHeader->type == 50) { // MSG
+			} else if (pHeader->type == RT_MSG) { // MSG
 				int obj1Ovl = pHeader->obj1Overlay;
 				if (!obj1Ovl)
 					obj1Ovl = ovlIdx;
@@ -1320,7 +1314,23 @@ void closeAllMenu(void) {
 	linkedRelation = NULL;
 }
 
-int processInput(void) {
+bool checkInput(int16 *buttonPtr) {
+	int16 handle, button;
+	Common::Point pt;
+
+	getMouseStatus(&handle, &pt.x, &button, &pt.y);
+
+	if (!button)
+		buttonDown = 0;
+	else if (!buttonDown && button) {
+		*buttonPtr = button;
+		buttonDown = 1;
+	}
+
+	return false;
+}
+
+int CruiseEngine::processInput(void) {
 	int16 mouseX = 0;
 	int16 mouseY = 0;
 	int16 button = 0;
@@ -1345,16 +1355,66 @@ int processInput(void) {
 		buttonDown = 0;
 	}
 
-	if (userDelay) {
-		userDelay--;
+	// Check for Exit 'X' key
+	if (keyboardCode == Common::KEYCODE_x)
+		return 1;
+
+	// Check for Pause 'P' key
+	if (keyboardCode == Common::KEYCODE_p) {
+		keyboardCode = Common::KEYCODE_INVALID;
+		_vm->pauseEngine(true);
+		mouseOff();
+
+		bool pausedButtonDown = false;
+		while (!_vm->shouldQuit()) {
+			getMouseStatus(&main10, &mouseX, &button, &mouseY);
+
+			if (button) pausedButtonDown = true;
+			else if (pausedButtonDown)
+				// Button released, so exit pause
+				break;
+			else if (keyboardCode != Common::KEYCODE_INVALID)
+				break;
+
+			g_system->delayMillis(10);
+		}
+
+		if (keyboardCode == Common::KEYCODE_x)
+			// Exit the game
+			return 1;
+
+		keyboardCode = Common::KEYCODE_INVALID;
+		_vm->pauseEngine(false);
+		mouseOn();
 		return 0;
 	}
 
-	// test both buttons
-	if (((button & 3) == 3) || keyboardVar == 0x44 || keyboardVar == 0x53) {
+	// Player Menu - test for both buttons or the F10 key
+	if (((button & CRS_MB_BOTH) == CRS_MB_BOTH) || (keyboardCode == Common::KEYCODE_F10)) {
 		changeCursor(CURSOR_NORMAL);
-		keyboardVar = 0;
+		keyboardCode = Common::KEYCODE_INVALID;
 		return (playerMenu(mouseX, mouseY));
+	}
+
+	if (userWait) {
+		// Check for left mouse button click or Space to end user waiting
+		if ((keyboardCode == Common::KEYCODE_SPACE) || (button == CRS_MB_LEFT))
+			userWait = 0;
+
+		keyboardCode = Common::KEYCODE_INVALID;
+		return 0;
+	}
+
+	// Handle any changes in game speed
+	if (_speedFlag) {
+		if ((keyboardCode == Common::KEYCODE_KP_PLUS) && (_gameSpeed >= 30)) {
+			_gameSpeed -= 10;
+			keyboardCode = Common::KEYCODE_INVALID;
+		}
+		if ((keyboardCode == Common::KEYCODE_KP_MINUS) && (_gameSpeed <= 200)) {
+			_gameSpeed += 10;
+			keyboardCode = Common::KEYCODE_INVALID;
+		}
 	}
 
 	if (!userEnabled) {
@@ -1390,7 +1450,7 @@ int processInput(void) {
 				menuDown = 0;
 			}
 		} else {
-			if ((button & 1) && (buttonDown == 0)) {
+			if ((button & CRS_MB_LEFT) && (buttonDown == 0)) {
 				if (menuTable[0]) {
 					callRelation(getSelectedEntryInMenu(menuTable[0]), dialogueObj);
 
@@ -1412,7 +1472,7 @@ int processInput(void) {
 			}
 		}
 
-	} else if ((button & 1) && (buttonDown == 0)) {
+	} else if ((button & CRS_MB_LEFT) && (buttonDown == 0)) {
 		// left click
 		buttonDown = 1;
 
@@ -1478,20 +1538,17 @@ int processInput(void) {
 								aniX = mouseX;
 								aniY = mouseY;
 								animationStart = true;
-								buttonDown = 0;
 							}
 						} else {
 							aniX = mouseX;
 							aniY = mouseY;
 							animationStart = true;
-							buttonDown = 0;
 						}
 					} else {
 						// No object found, we move the character to the cursor
 						aniX = mouseX;
 						aniY = mouseY;
 						animationStart = true;
-						buttonDown = 0;
 					}
 				} else {
 					// handle click in menu
@@ -1510,7 +1567,7 @@ int processInput(void) {
 							strcpy(text, menuTable[0]->stringPtr);
 							strcat(text, ":");
 							strcat(text, currentMenuElement->string);
-							linkedMsgList = renderText(320, (const uint8 *)text);
+							linkedMsgList = renderText(320, (const char *)text);
 							changeCursor(CURSOR_CROSS);
 						}
 					}
@@ -1530,9 +1587,9 @@ int processInput(void) {
 				}
 			}
 		}
-	} else if ((button & 2) || (keyboardVar == 0x43) || (keyboardVar == 0x52)) { // test right button
+	} else if ((button & CRS_MB_RIGHT) || (keyboardCode == Common::KEYCODE_F9)) {
 		if (buttonDown == 0) {
-			keyboardVar = 0;
+			keyboardCode = Common::KEYCODE_INVALID;
 
 			// close object menu if there is no linked relation
 			if ((linkedRelation == 0) && (menuTable[0])) {
@@ -1556,6 +1613,7 @@ int processInput(void) {
 			buttonDown = 1;
 		}
 	}
+
 	return 0;
 }
 
@@ -1565,35 +1623,39 @@ int currentMouseButton = 0;
 
 bool bFastMode = false;
 
-void manageEvents() {
+bool manageEvents() {
 	Common::Event event;
 
 	Common::EventManager * eventMan = g_system->getEventManager();
 	while (eventMan->pollEvent(event)) {
+		bool abortFlag = true;
+
 		switch (event.type) {
 		case Common::EVENT_LBUTTONDOWN:
-			currentMouseButton |= 1;
+			currentMouseButton |= CRS_MB_LEFT;
 			break;
 		case Common::EVENT_LBUTTONUP:
-			currentMouseButton &= ~1;
+			currentMouseButton &= ~CRS_MB_LEFT;
 			break;
 		case Common::EVENT_RBUTTONDOWN:
-			currentMouseButton |= 2;
+			currentMouseButton |= CRS_MB_RIGHT;
 			break;
 		case Common::EVENT_RBUTTONUP:
-			currentMouseButton &= ~2;
+			currentMouseButton &= ~CRS_MB_RIGHT;
 			break;
 		case Common::EVENT_MOUSEMOVE:
 			currentMouseX = event.mouse.x;
 			currentMouseY = event.mouse.y;
+			abortFlag = false;
 			break;
 		case Common::EVENT_QUIT:
-			g_system->quit();
+		case Common::EVENT_RTL:
+			playerDontAskQuit = 1;
 			break;
 		case Common::EVENT_KEYUP:
 			switch (event.kbd.keycode) {
-			case 27: // ESC
-				currentMouseButton &= ~4;
+			case Common::KEYCODE_ESCAPE:
+				currentMouseButton &= ~CRS_MB_MIDDLE;
 				break;
 			default:
 				break;
@@ -1601,113 +1663,49 @@ void manageEvents() {
 			break;
 		case Common::EVENT_KEYDOWN:
 			switch (event.kbd.keycode) {
-			case 27: // ESC
-				currentMouseButton |= 4;
+			case Common::KEYCODE_ESCAPE:
+				currentMouseButton |= CRS_MB_MIDDLE;
 				break;
 			default:
+				keyboardCode = event.kbd.keycode;
 				break;
 			}
 
-			/*
-			 * switch (event.kbd.keycode) {
-			 * case '\n':
-			 * case '\r':
-			 * case 261: // Keypad 5
-			 * if (allowPlayerInput) {
-			 * mouseLeft = 1;
-			 * }
-			 * break;
-			 * case 27:  // ESC
-			 * if (allowPlayerInput) {
-			 * mouseRight = 1;
-			 * }
-			 * break;
-			 * case 282: // F1
-			 * if (allowPlayerInput) {
-			 * playerCommand = 0; // EXAMINE
-			 * makeCommandLine();
-			 * }
-			 * break;
-			 * case 283: // F2
-			 * if (allowPlayerInput) {
-			 * playerCommand = 1; // TAKE
-			 * makeCommandLine();
-			 * }
-			 * break;
-			 * case 284: // F3
-			 * if (allowPlayerInput) {
-			 * playerCommand = 2; // INVENTORY
-			 * makeCommandLine();
-			 * }
-			 * break;
-			 * case 285: // F4
-			 * if (allowPlayerInput) {
-			 * playerCommand = 3; // USE
-			 * makeCommandLine();
-			 * }
-			 * break;
-			 * case 286: // F5
-			 * if (allowPlayerInput) {
-			 * playerCommand = 4; // ACTIVATE
-			 * makeCommandLine();
-			 * }
-			 * break;
-			 * case 287: // F6
-			 * if (allowPlayerInput) {
-			 * playerCommand = 5; // SPEAK
-			 * makeCommandLine();
-			 * }
-			 * break;
-			 * case 290: // F9
-			 * if (allowPlayerInput && !inMenu) {
-			 * makeActionMenu();
-			 * makeCommandLine();
-			 * }
-			 * break;
-			 * case 291: // F10
-			 * if (!disableSystemMenu && !inMenu) {
-			 * g_cine->makeSystemMenu();
-			 * }
-			 * break;
-			 * default:
-			 * //lastKeyStroke = event.kbd.keycode;
-			 * break;
-			 * }
-			 * break; */
 			if (event.kbd.flags == Common::KBD_CTRL) {
 				if (event.kbd.keycode == Common::KEYCODE_d) {
-					// enable debugging stuff ?
+					// Start the debugger
+					_vm->getDebugger()->attach();
+					keyboardCode = Common::KEYCODE_INVALID;
 				} else if (event.kbd.keycode == Common::KEYCODE_f) {
 					bFastMode = !bFastMode;
+					keyboardCode = Common::KEYCODE_INVALID;
 				}
 			}
 
 		default:
 			break;
 		}
+
+		if (abortFlag)
+			return true;
 	}
 
-	/*if (count) {
-	 * mouseData.left = mouseLeft;
-	 * mouseData.right = mouseRight;
-	 * mouseLeft = 0;
-	 * mouseRight = 0;
-	 * }
-	 */
+	return false;
 }
 
 void getMouseStatus(int16 *pMouseVar, int16 *pMouseX, int16 *pMouseButton, int16 *pMouseY) {
-	manageEvents();
 	*pMouseX = currentMouseX;
 	*pMouseY = currentMouseY;
 	*pMouseButton = currentMouseButton;
 }
 
-void mainLoop(void) {
-	int frames = 0;		/* Number of frames displayed */
+
+void CruiseEngine::mainLoop(void) {
 	//int32 t_start,t_left;
 	//uint32 t_end;
 	//int32 q=0;                     /* Dummy */
+	int16 mouseX, mouseY;
+	int16 mouseButton;
 
 	int enableUser = 0;
 
@@ -1721,218 +1719,196 @@ void mainLoop(void) {
 	main21 = 0;
 	main22 = 0;
 	userWait = 0;
-	autoTrack = 0;
-	autoTrack = 0;
+	autoTrack = false;
 
 	initAllData();
 
-	{
-		int playerDontAskQuit = 1;
-		int quitValue2 = 1;
-		int quitValue = 0;
+	playerDontAskQuit = 0;
+	int quitValue2 = 1;
+	int quitValue = 0;
 
-		do {
-			frames++;
+	if (ConfMan.hasKey("save_slot"))
+		loadGameState(ConfMan.getInt("save_slot"));
+
+	do {
+		// Handle frame delay
+		uint32 currentTick = g_system->getMillis();
+
+		if (!bFastMode) {
+			// Delay for the specified amount of time, but still respond to events
+			bool skipEvents = false;
+
+			while (currentTick < lastTick + _gameSpeed) {
+				g_system->delayMillis(10);
+				currentTick = g_system->getMillis();
+
+				if (!skipEvents)
+					skipEvents = manageEvents();
+
+				if (playerDontAskQuit) break;
+
+				if (_vm->getDebugger()->isAttached())
+					_vm->getDebugger()->onFrame();
+			}
+		} else {
+			manageEvents();
+
+			if (currentTick >= (lastTickDebug + 10)) {
+				lastTickDebug = currentTick;
+
+				if (_vm->getDebugger()->isAttached())
+					_vm->getDebugger()->onFrame();
+			}
+		}
+		if (playerDontAskQuit)
+			break;
+
+		lastTick = g_system->getMillis();
+
+		// Handle switchover in game speed after intro
+		if (!_speedFlag && canLoadGameStateCurrently()) {
+			_speedFlag = true;
+			_gameSpeed = GAME_FRAME_DELAY_2;
+		}
+
+		// Handle the next frame
+
+//		frames++;
 //      t_start=Osystem_GetTicks();
 
 //      readKeyboard();
-			playerDontAskQuit = processInput();
 
-			if (enableUser) {
-				userEnabled = 1;
-				enableUser = 0;
-			}
+		bool isUserWait = userWait != 0;
+		playerDontAskQuit = processInput();
+		if (playerDontAskQuit)
+			break;
 
-			manageScripts(&relHead);
-			manageScripts(&procHead);
+		if (enableUser) {
+			userEnabled = 1;
+			enableUser = 0;
+		}
 
-			removeFinishedScripts(&relHead);
-			removeFinishedScripts(&procHead);
+		if (userDelay && !userWait) {
+			userDelay--;
+			continue;
+		}
 
-			processAnimation();
+		if (isUserWait & !userWait) {
+			// User waiting has ended
+			changeScriptParamInList(-1, -1, &procHead, 9999, 0);
+			changeScriptParamInList(-1, -1, &relHead, 9999, 0);
 
-			if (remdo) {
-				// ASSERT(0);
-				/*    main3 = 0;
-				 * var24 = 0;
-				 * var23 = 0;
-				 *
-				 * freeStuff2(); */
-			}
+			// Disable any mouse click used to end the user wait
+			currentMouseButton = 0;
+		} 
 
-			if (cmdLine[0]) {
-				ASSERT(0);
-				/*        redrawStrings(0,&cmdLine,8);
+		manageScripts(&relHead);
+		manageScripts(&procHead);
 
-				        waitForPlayerInput();
+		removeFinishedScripts(&relHead);
+		removeFinishedScripts(&procHead);
 
-				        cmdLine = 0; */
-			}
+		processAnimation();
 
-			if (displayOn) {
-				if (doFade)
-					PCFadeFlag = 0;
+		if (remdo) {
+			// ASSERT(0);
+			/*    main3 = 0;
+			 * var24 = 0;
+			 * var23 = 0;
+			 *
+			 * freeStuff2(); */
+		}
 
-				/*if (!PCFadeFlag)*/
-				{
-					mainDraw(0);
-					flipScreen();
-				}
+		if (cmdLine[0]) {
+			ASSERT(0);
+			/*        redrawStrings(0,&cmdLine,8);
 
-				if (userEnabled && !userWait && !autoTrack) {
-					if (currentActiveMenu == -1) {
-						int16 mouseX;
-						int16 mouseY;
-						int16 mouseButton;
+			        waitForPlayerInput();
 
-						static int16 oldMouseX = -1;
-						static int16 oldMouseY = -1;
+			        cmdLine = 0; */
+		}
 
-						getMouseStatus(&main10, &mouseX, &mouseButton, &mouseY);
+		if (displayOn) {
+			if (doFade)
+				PCFadeFlag = 0;
 
-						if (mouseX != oldMouseX && mouseY != oldMouseY) {
-							int objectType;
-							int newCursor1;
-							int newCursor2;
+			/*if (!PCFadeFlag)*/
+			mainDraw(userWait);
+			flipScreen();
 
-							oldMouseX = mouseX;
-							oldMouseY = mouseY;
+			if (userEnabled && !userWait && !autoTrack) {
+				if (currentActiveMenu == -1) {
+					static int16 oldMouseX = -1;
+					static int16 oldMouseY = -1;
 
-							objectType = findObject(mouseX, mouseY, &newCursor1, &newCursor2);
+					getMouseStatus(&main10, &mouseX, &mouseButton, &mouseY);
 
-							if (objectType == 9) {
-								changeCursor(CURSOR_EXIT);
-							} else if (objectType != -1) {
-								changeCursor(CURSOR_MAGNIFYING_GLASS);
-							} else {
-								changeCursor(CURSOR_WALK);
-							}
+					if (mouseX != oldMouseX || mouseY != oldMouseY) {
+						int objectType;
+						int newCursor1;
+						int newCursor2;
+
+						oldMouseX = mouseX;
+						oldMouseY = mouseY;
+
+						objectType = findObject(mouseX, mouseY, &newCursor1, &newCursor2);
+
+						if (objectType == 9) {
+							changeCursor(CURSOR_EXIT);
+						} else if (objectType != -1) {
+							changeCursor(CURSOR_MAGNIFYING_GLASS);
+						} else {
+							changeCursor(CURSOR_WALK);
 						}
-					} else {
-						changeCursor(CURSOR_NORMAL);
 					}
 				} else {
 					changeCursor(CURSOR_NORMAL);
 				}
-
-				if (userWait) {
-					int16 mouseButton;
-					int16 mouseX;
-					int16 mouseY;
-
-					do {
-						getMouseStatus(&main10, &mouseX, &mouseButton, &mouseY);
-					} while (mouseButton);
-
-					while (!mouseButton) {
-						manageScripts(&relHead);
-						manageScripts(&procHead);
-
-						removeFinishedScripts(&relHead);
-						removeFinishedScripts(&procHead);
-
-						processAnimation();
-
-						// not exactly this
-						manageEvents();
-
-						int16 mouseVar;
-						getMouseStatus(&mouseVar, &mouseX, &mouseButton, &mouseY);
-
-						flip();
-					}
-
-					changeScriptParamInList(-1, -1, &procHead, 9999, 0);
-					changeScriptParamInList(-1, -1, &relHead, 9999, 0);
-					userWait = 0;
-				}
-
-				// wait for character to finish auto track
-				if (autoTrack) {
-					if (mainProc13(narratorOvl, narratorIdx, &actorHead, 0)) {
-						if (autoMsg != -1) {
-							freezeCell(&cellHead, autoOvl, autoMsg, 5, -1, 9998, 0);
-
-							char* pText = getText(autoMsg, autoOvl);
-
-							if (strlen(pText))
-								userWait = 1;
-						}
-
-						changeScriptParamInList(-1, -1, &relHead, 9998, 0);
-						autoTrack = 0;
-						enableUser = 1;
-					} else {
-						userEnabled = false;
-					}
-				} else if (autoMsg != -1) {
-					removeCell(&cellHead, autoOvl, autoMsg, 5, masterScreen);
-					autoMsg = -1;
-				}
+			} else {
+				changeCursor(CURSOR_NORMAL);
 			}
-			// t_end = t_start+SPEED;
-//      t_left=t_start-Osystem_GetTicks()+SPEED;
-#ifndef FASTDEBUG
-			/*    if (t_left>0)
-			 * if (t_left>SLEEP_MIN)
-			 * Osystem_Delay(t_left-SLEEP_GRAN);
-			 * while (Osystem_GetTicks()<t_end){q++;}; */
-#endif
-			manageEvents();
 
-		} while (!playerDontAskQuit && quitValue2 && quitValue != 7);
-	}
+			if (userWait == 1) {
+				// Waiting for press - original wait loop has been integrated into the
+				// main event loop
+				continue;
+			}
 
-}
+			// wait for character to finish auto track
+			if (autoTrack) {
+				if (isAnimFinished(narratorOvl, narratorIdx, &actorHead, ATP_MOUSE)) {
+					if (autoMsg != -1) {
+						freezeCell(&cellHead, autoOvl, autoMsg, 5, -1, 9998, 0);
 
-int oldmain(int argc, char *argv[]) {
-	printf("Cruise for a corpse recode\n");
+						char* pText = getText(autoMsg, autoOvl);
 
-//  OSystemInit();
-//  osystem = new OSystem;
+						if (strlen(pText))
+							userWait = 1;
+					}
 
-	printf("Osystem Initialized\n");
+					changeScriptParamInList(-1, -1, &relHead, 9998, 0);
+					autoTrack = false;
+					enableUser = 1;
+				} else {
+					userEnabled = false;
+				}
+			} else if (autoMsg != -1) {
+				removeCell(&cellHead, autoOvl, autoMsg, 5, masterScreen);
+				autoMsg = -1;
+			}
+		} else {
+			// Keep ScummVM being responsive even when displayOn is false
+			g_system->updateScreen();
+		}
 
-	printf("Initializing engine...\n");
-
-	PCFadeFlag = 0;
-
-	//lowLevelInit();
-
-	// arg parser stuff
-
-	workBuffer = (uint8 *) mallocAndZero(8192);
-
-	/*volVar1 = 0;
-	 * fileData1 = 0; */
-
-	/*PAL_fileHandle = -1; */
-
-	// video init stuff
-
-	initSystem();
-
-	// another bit of video init
-
-	if (!readVolCnf()) {
-		printf("Fatal: unable to load vol.cnf !\n");
-		return (-1);
-	}
-
-	printf("Entering main loop...\n");
-	mainLoop();
-
-	//freeStuff();
-
-	//freePtr(workBuffer);
-
-	return (0);
+	} while (!playerDontAskQuit && quitValue2 && quitValue != 7);
 }
 
 void *mallocAndZero(int32 size) {
 	void *ptr;
 
 	ptr = malloc(size);
+	assert(ptr);
 	memset(ptr, 0, size);
 	return ptr;
 }

@@ -61,7 +61,7 @@ void GraphicsMan::update() {
 
 			// Clear the buffer when ending the fade out
 			if (_fading == 2)
-				_foreground.fillRect(Common::Rect::Rect(640, 320), 0);
+				_foreground.fillRect(Common::Rect(640, 320), 0);
 		}
 	}
 

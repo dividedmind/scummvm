@@ -26,6 +26,8 @@
 #ifndef CRUISE_OBJECT_H
 #define CRUISE_OBJECT_H
 
+#include "cruise/overlay.h"
+
 namespace Cruise {
 
 struct gfxEntryStruct {
@@ -52,6 +54,9 @@ objDataStruct *getObjectDataFromOverlay(int ovlIdx, int objIdx);
 int16 getSingleObjectParam(int16 overlayIdx, int16 param2, int16 param3, int16 * returnParam);
 int16 getMultipleObjectParam(int16 overlayIdx, int16 objectIdx, objectParamsQuery * returnParam);
 void objectReset(void);
+const char *getObjectName(int index, const char *string);
+int getObjectClass(int overlayIdx, int objIdx);
+
 } // End of namespace Cruise
 
 #endif

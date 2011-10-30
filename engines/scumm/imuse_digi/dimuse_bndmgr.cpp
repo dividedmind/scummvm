@@ -225,7 +225,7 @@ bool BundleMgr::loadCompTable(int32 index) {
 	_file->seek(8, SEEK_CUR);
 
 	if (tag != MKID_BE('COMP')) {
-		error("BundleMgr::loadCompTable() Compressed sound %d invalid (%s)", index, tag2str(tag));
+		error("BundleMgr::loadCompTable() Compressed sound %d (%s:%d) invalid (%s)", index, _file->getName(), _bundleTable[index].offset, tag2str(tag));
 		return false;
 	}
 
@@ -258,7 +258,7 @@ int32 BundleMgr::decompressSampleByIndex(int32 index, int32 offset, int32 size, 
 	assert(0 <= index && index < _numFiles);
 
 	if (_file->isOpen() == false) {
-		error("BundleMgr::decompressSampleByIndex() File is not open!");
+		error("BundleMgr::decompressSampleByIndex() File is not open");
 		return 0;
 	}
 
@@ -335,7 +335,7 @@ int32 BundleMgr::decompressSampleByName(const char *name, int32 offset, int32 si
 	int32 final_size = 0;
 
 	if (!_file->isOpen()) {
-		error("BundleMgr::decompressSampleByName() File is not open!");
+		error("BundleMgr::decompressSampleByName() File is not open");
 		return 0;
 	}
 

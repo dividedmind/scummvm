@@ -23,316 +23,338 @@
  *
  */
 
+#ifdef ENABLE_LOL
+
 #include "kyra/lol.h"
 #include "kyra/screen_lol.h"
+#include "kyra/timer.h"
 #include "kyra/util.h"
 
 namespace Kyra {
 
 TextDisplayer_LoL::TextDisplayer_LoL(LoLEngine *vm, Screen_LoL *screen) : _vm(vm), _screen(screen),
-	_scriptParameter(0), _stringLength(0), _animWidth(0), _animColour1(0), _animColour2(0), _animFlag(true),
-	_printFlag(false), _lineWidth(0), _numChars(0), _numCharsPrinted(0), _posX(0), _posY(0), _colour1(0), _colour2(0) {
-	
-	memset(_stringParameters, 0, 15 * sizeof(char*));
+	_scriptParameter(0), _lineCount(0),	_printFlag(false), _lineWidth(0), _numCharsTotal(0),
+	_numCharsLeft(0), _numCharsPrinted(0) {
+
+	memset(_stringParameters, 0, 15 * sizeof(char *));
 	_buffer = new char[600];
 	memset(_buffer, 0, 600);
 
-	_out = new char[1024];
-	memset(_out, 0, 1024);
-
-	_backupBuffer = new byte[20];
-	memset(_backupBuffer, 0, 20);
+	_dialogueBuffer = new char[1024];
+	memset(_dialogueBuffer, 0, 1024);
 
 	_currentLine = new char[85];
 	memset(_currentLine, 0, 85);
 
-	_pageBuffer1 = new uint8[0xfa00];
-	_pageBuffer2 = new uint8[0xfa00];
+	for (int i = 0; i < 14; i++){
+		const ScreenDim *d = _screen->getScreenDim(i);
+		_textDimData[i].color1 = d->unk8;
+		_textDimData[i].color2 = d->unkA;
+		_textDimData[i].line = d->unkC;
+		_textDimData[i].column = d->unkE;
+	}
 }
 
 TextDisplayer_LoL::~TextDisplayer_LoL() {
 	delete[] _buffer;
-	delete[] _out;
-	delete[] _backupBuffer;
+	delete[] _dialogueBuffer;
 	delete[] _currentLine;
-	delete[] _pageBuffer1;
-	delete[] _pageBuffer2;
 }
 
 void TextDisplayer_LoL::setupField(bool mode) {
 	if (_vm->textEnabled()) {
 		if (mode) {
-			_screen->copyRegionToBuffer(3, 0, 0, 320, 200, _pageBuffer1);
+			_screen->copyRegionToBuffer(3, 0, 0, 320, 40, _vm->_pageBuffer1);
 			_screen->copyRegion(80, 142, 0, 0, 240, 37, 0, 3, Screen::CR_NO_P_CHECK);
-			_screen->copyRegionToBuffer(3, 0, 0, 320, 200, _pageBuffer2);
-			_screen->copyBlockToPage(3, 0, 0, 320, 200, _pageBuffer1);
+			_screen->copyRegionToBuffer(3, 0, 0, 320, 40, _vm->_pageBuffer2);
+			_screen->copyBlockToPage(3, 0, 0, 320, 40, _vm->_pageBuffer1);
 		} else {
-			_screen->clearDim(4);
+			_screen->setScreenDim(clearDim(4));
 			int cp = _screen->setCurPage(2);
-			_screen->copyRegionToBuffer(3, 0, 0, 320, 200, _pageBuffer1);
-			_screen->copyBlockToPage(3, 0, 0, 320, 200, _pageBuffer2);
-			_screen->copyRegion(80, 142, 0, 0, 240, 37, 3, 2, Screen::CR_NO_P_CHECK);
+			_screen->copyRegionToBuffer(3, 0, 0, 320, 40, _vm->_pageBuffer1);
+			_screen->copyBlockToPage(3, 0, 0, 320, 40, _vm->_pageBuffer2);
+			_screen->copyRegion(0, 0, 80, 142, 240, 37, 3, _screen->_curPage, Screen::CR_NO_P_CHECK);
 
 			for (int i = 177; i > 141; i--) {
 				uint32 endTime = _vm->_system->getMillis() + _vm->_tickLength;
-				_screen->hideMouse();
 				_screen->copyRegion(83, i, 83, i - 1, 235, 3, 0, 0, Screen::CR_NO_P_CHECK);
 				_screen->copyRegion(83, i + 1, 83, i + 1, 235, 1, 2, 0, Screen::CR_NO_P_CHECK);
+				_vm->updateInput();
 				_screen->updateScreen();
-				_screen->showMouse();
 				_vm->delayUntil(endTime);
 			}
 
-			_screen->copyBlockToPage(3, 0, 0, 320, 200, _pageBuffer1);
+			_screen->copyBlockToPage(3, 0, 0, 320, 200, _vm->_pageBuffer1);
 			_screen->setCurPage(cp);
 
 			_vm->_updateFlags &= 0xfffd;
 		}
 	} else {
 		if (!mode)
-			_screen->clearDim(4);
+			_screen->setScreenDim(clearDim(4));
 		_vm->toggleSelectedCharacterFrame(1);
 	}
 }
 
 void TextDisplayer_LoL::expandField() {
+	uint8 *tmp = _vm->_pageBuffer1 + 13000;
+
 	if (_vm->textEnabled()) {
-		_vm->_restorePalette = 0;
-		_vm->_updateCharV4 = 0;
-		//_vm->toggleGuiUnk(11, 0);
-		_screen->clearDim(3);
-		_screen->copyRegionToBuffer(3, 0, 0, 320, 200, _pageBuffer1);
+		_vm->_fadeText = false;
+		_vm->_textColorFlag = 0;
+		_vm->_timer->disable(11);
+		_screen->setScreenDim(clearDim(3));
+		_screen->copyRegionToBuffer(3, 0, 0, 320, 10, tmp);
 		_screen->copyRegion(83, 140, 0, 0, 235, 3, 0, 2, Screen::CR_NO_P_CHECK);
 
 		for (int i = 140; i < 177; i++) {
 			uint32 endTime = _vm->_system->getMillis() + _vm->_tickLength;
-			_screen->hideMouse();
 			_screen->copyRegion(0, 0, 83, i, 235, 3, 2, 0, Screen::CR_NO_P_CHECK);
+			_vm->updateInput();
 			_screen->updateScreen();
-			_screen->showMouse();
 			_vm->delayUntil(endTime);
 		}
 
-		_screen->copyBlockToPage(3, 0, 0, 320, 200, _pageBuffer1);
+		_screen->copyBlockToPage(3, 0, 0, 320, 10, tmp);
 		_vm->_updateFlags |= 2;
 
 	} else {
-		_screen->clearDim(3);
+		clearDim(3);
 		_vm->toggleSelectedCharacterFrame(0);
 	}
 }
-void TextDisplayer_LoL::setAnimParameters(const char *str, int x, uint8 col1, uint8 col2) {
+
+int TextDisplayer_LoL::clearDim(int dim) {
+	int res = _screen->curDimIndex();
+	_screen->setScreenDim(dim);
+	_textDimData[dim].color1 = _screen->_curDim->unk8;
+	_textDimData[dim].color2 = _screen->_curDim->unkA;
+	clearCurDim();
+	return res;
+}
+
+void TextDisplayer_LoL::resetDimTextPositions(int dim) {
+	_textDimData[dim].column = 0;
+	_textDimData[dim].line = 0;
+}
+
+/*void TextDisplayer_LoL::setAnimParameters(const char *str, int x, uint8 col1, uint8 col2) {
 	static const char defaultStr[] = "<MORE>";
 
 	if (str) {
 		_animString = str;
 		_animWidth = x;
-		_animColour1 = col1;
-		_animColour2 = col2;
+		_animColor1 = col1;
+		_animColor2 = col2;
 	} else {
 		_animString = defaultStr;
 		_animWidth = 7;
-		_animColour1 = 0;
-		_animColour2 = 0;
+		_animColor1 = 0;
+		_animColor2 = 0;
 	}
-}
+}*/
 
-void TextDisplayer_LoL::play(int dim, char *str, EMCState *script, int16 *paramList, int16 paramIndex) {
-	memcpy(_curPara, _stringParameters, 15 * sizeof(char*));
-	//char *cmds = _curPara[0];
+void TextDisplayer_LoL::printDialogueText(int dim, char *str, EMCState *script, const uint16 *paramList, int16 paramIndex) {
+	int oldDim = 0;
 
 	if (dim == 3) {
 		if (_vm->_updateFlags & 2) {
-			_screen->clearDim(4);
-			dim = _screen->curDimIndex();
-			_colour1 = 254;
+			oldDim = clearDim(4);
+			_textDimData[4].color1 = 254;
+			_textDimData[4].color2 = _screen->_curDim->unkA;
 		} else {
-			_screen->clearDim(3);
-			dim = _screen->curDimIndex();
-			_colour1 = 192;
-			uint8 col[3];
-			_screen->loadColour254(col);
-			_screen->setPaletteIndex(192, col[0], col[1], col[2]);
-			//toggleGuiUnk(11, 1);
-			_vm->_updateCharV4 = 0;
-			_vm->_restorePalette = 0;
+			oldDim = clearDim(3);
+			_textDimData[3].color1 = 192;
+			_textDimData[3].color2 = _screen->_curDim->unkA;
+			_screen->copyColor(192, 254);
+			_vm->enableTimer(11);
+			_vm->_textColorFlag = 0;
+			_vm->_fadeText = false;
 		}
-
 	} else {
+		oldDim = _screen->curDimIndex();
 		_screen->setScreenDim(dim);
-		_colour1 = 254;
+		_textDimData[dim].color1 = 254;
+		_textDimData[dim].color2 = _screen->_curDim->unkA;
 	}
 
 	int cp = _screen->setCurPage(0);
 	Screen::FontId of = _screen->setFont(Screen::FID_9_FNT);
 
-	memset(_backupBuffer, 0, 20);
+	preprocessString(str, script, paramList, paramIndex);
+	_numCharsTotal = strlen(_dialogueBuffer);
+	displayText(_dialogueBuffer);
 
-	if (preprocessString(str, script, paramList, paramIndex)) {
-		//vsnprintf(_out, 1024, str, cmds);
-		_stringLength = strlen(_out);
-		displayText(_out);
-	} else {
-		_stringLength = strlen(str);
-		displayText(str);
-		displayText(str);
-	}
-
-	for (int i = 0; i < 10; i++) {
-		if (!_backupBuffer[i << 1])
-			break;
-		str[_backupBuffer[(i << 1) + 1]] = _backupBuffer[i << 1];
-	}
-
-	_screen->setScreenDim(dim);
+	_screen->setScreenDim(oldDim);
 	_screen->setCurPage(cp);
 	_screen->setFont(of);
 
-	_vm->_restorePalette = 0;
+	_vm->_fadeText = false;
 }
 
-bool TextDisplayer_LoL::preprocessString(char *str, EMCState *script, int16 *paramList, int16 paramIndex) {
-	int cnt = 0;
-	bool res = false;
-	char *tmpd = _buffer;
-	char **cmds = _curPara;
+void TextDisplayer_LoL::printMessage(uint16 type, const char *str, ...) {
+	static uint8 textColors[] = { 0xfe, 0xa2, 0x84, 0x97, 0x9F };
+	static uint8 soundEffect[] = { 0x0B, 0x00, 0x2B, 0x1B, 0x00 };
+	if (type & 4)
+		type ^= 4;
+	else
+		_vm->updatePortraits();
 
-	for (char *s = str; *s;) {
-		if (*s++ != '%')
-			continue;
+	uint16 col = textColors[type & 0x7fff];
 
-		char pos = *s;
-		char para1 = 0;
-		bool eos = false;
+	int od = _screen->curDimIndex();
 
-		switch (pos) {
-			case '\0':
-				eos = true;
-				break;
-			case '#':
-				para1 = *++s;
-				switch (para1) {
-					case 'E':
-					case 'G':
-					case 'X':
-					case 'c':
-					case 'd':
-					case 'e':
-					case 'f':
-					case 'g':
-					case 's':
-					case 'u':
-					case 'x':
-						break;
-					default:
-						eos = true;
-						break;
-				}
-				break;
-			case ' ':
-			case '+':
-			case '-':
-				++s;
-			default:
-				break;
-		}
-
-		if (eos)
-			continue;
-
-		char para2 = *s;
-
-		switch (para2) {
-			case '\0':
-				eos = true;
-				break;
-			case '0':
-				++s;
-				break;
-			default:
-				while(para2 && para2 > 47 && para2 < 58)
-					para2 = *++s;
-				break;
-		}
-
-		if (eos)
-			continue;
-
-		char para3 = *++s;
-
-		switch (para3) {
-			case 'a':
-				_backupBuffer[cnt++] = para3;
-				_backupBuffer[cnt++] = (int16) (s - str);
-				snprintf(tmpd, 7, "%d", _scriptParameter);
-				*cmds++ = tmpd;
-				tmpd += strlen(tmpd) + 1;
-				res = true;
-				*s++ = 's';
-				break;
-
-			case 'n':
-				_backupBuffer[cnt++] = para3;
-				_backupBuffer[cnt++] = (int16) (s - str);				
-				*cmds++ = _vm->_characters[script ? script->stack[script->sp + paramIndex] : paramList[paramIndex]].name;
-				paramIndex++;
-				res = true;
-				*s++ = 's';		
-				break;
-
-			case 's':
-				*cmds++ = _vm->getLangString(script ? script->stack[script->sp + paramIndex] : paramList[paramIndex]);
-				paramIndex++;
-				res = true;
-				s++;	
-				break;
-
-			case 'X':
-			case 'd':
-			case 'u':
-			case 'x':
-				snprintf(tmpd, 7, "%d", script ? script->stack[script->sp + paramIndex] : paramList[paramIndex]);
-				*cmds++ = tmpd;
-				tmpd += strlen(tmpd) + 1;
-				paramIndex++;
-				res = true;
-				*s++ = 's';
-				break;
-
-			case '\0':
-			default:				
-				continue;
-		}
+	if (_vm->_updateFlags & 2) {
+		clearDim(4);
+		_textDimData[4].color1 = col;
+	} else {
+		clearDim(3);
+		_screen->copyColor(192, col);
+		_textDimData[3].color1 = 192;
+		_vm->enableTimer(11);
 	}
 
-	return res;
+	va_list args;
+	va_start(args, str);
+
+	vsnprintf((char *)_buffer, 240, str, args);
+
+	va_end(args);
+
+	displayText(_buffer);
+
+	_screen->setScreenDim(od);
+
+	if (!(type & 0x8000)) {
+		if (soundEffect[type])
+			_vm->sound()->playSoundEffect(soundEffect[type]);
+	}
+
+	_vm->_textColorFlag = type & 0x7fff;
+	_vm->_fadeText = false;
+}
+
+void TextDisplayer_LoL::preprocessString(char *str, EMCState *script, const uint16 *paramList, int16 paramIndex) {
+	char *dst = _dialogueBuffer;
+
+	for (char *s = str; *s;) {
+		if (*s != '%') {
+			*dst++ = *s++;
+			continue;
+		}
+
+		char para = *++s;
+		bool eos = false;
+
+		switch (para) {
+		case '\0':
+			eos = true;
+			break;
+		case '#':
+			para = *++s;
+			switch (para) {
+			case 'E':
+			case 'G':
+			case 'X':
+			case 'c':
+			case 'd':
+			case 'e':
+			case 'f':
+			case 'g':
+			case 's':
+			case 'u':
+			case 'x':
+				break;
+			default:
+				eos = true;
+			}
+			break;
+		case ' ':
+		case '+':
+		case '-':
+			++s;
+		default:
+			break;
+		}
+
+		if (eos)
+			continue;
+
+		para = *s;
+
+		switch (para) {
+		case '\0':
+			eos = true;
+			break;
+		case '0':
+			++s;
+			break;
+		default:
+			while(para && para > 47 && para < 58)
+				para = *++s;
+			break;
+		}
+
+		if (eos)
+			continue;
+
+		para = *s++;
+
+		switch (para) {
+		case 'a':
+			snprintf(dst, 7, "%d", _scriptParameter);
+			dst += strlen(dst);
+			break;
+
+		case 'n':
+			strcpy(dst, _vm->_characters[script ? script->stack[script->sp + paramIndex] : paramList[paramIndex]].name);
+			dst += strlen(dst);
+			break;
+
+		case 's':
+			strcpy(dst, _vm->getLangString(script ? script->stack[script->sp + paramIndex] : paramList[paramIndex]));
+			dst += strlen(dst);
+			break;
+
+		case 'X':
+		case 'd':
+		case 'u':
+		case 'x':
+			snprintf(dst, 7, "%d", script ? script->stack[script->sp + paramIndex] : paramList[paramIndex]);
+			dst += strlen(dst);
+			break;
+
+		case '\0':
+		default:
+			continue;
+		}
+	}
+	*dst = 0;
 }
 
 void TextDisplayer_LoL::displayText(char *str, ...) {
 	_printFlag = false;
-	
+
 	_lineWidth = 0;
-	_numChars = 0;
+	_numCharsLeft = 0;
 	_numCharsPrinted = 0;
 
 	_tempString1 = str;
 	_tempString2 = 0;
-	
+
 	_currentLine[0] = 0;
 
 	memset(_ctrl, 0, 3);
 
-	_colour1 = _screen->_curDim->unk8;
-	_colour2 = _screen->_curDim->unkA;
-	_posX = _screen->_curDim->unkC;
-	_posY = _screen->_curDim->unkE;
-	
 	char c = parseCommand();
-	
+
 	va_list args;
 	va_start(args, str);
 
 	const ScreenDim *sd = _screen->_curDim;
+	int sdx = _screen->curDimIndex();
+
+	uint16 charsPerLine = (sd->w << 3) / (_screen->getFontWidth() + _screen->_charWidth);
 
 	while (c) {
 		char a = tolower(_ctrl[1]);
@@ -342,88 +364,90 @@ void TextDisplayer_LoL::displayText(char *str, ...) {
 				snprintf(_scriptParaString, 11, "%d", va_arg(args, int));
 				_tempString2 = _scriptParaString;
 			} else if (a == 's') {
-				_tempString2 = va_arg(args, char*);
+				_tempString2 = va_arg(args, char *);
 			} else {
 				break;
 			}
-			
+
 			_ctrl[0] = _ctrl[2];
 			_ctrl[2] = _ctrl[1] = 0;
 			c = parseCommand();
 		}
 
+		uint16 dv = _textDimData[sdx].column / (_screen->getFontWidth() + _screen->_charWidth);
+
 		switch (c - 1) {
-			case 0:
+		case 0:
+			printLine(_currentLine);
+			textPageBreak();
+			_numCharsPrinted = 0;
+			break;
+
+		case 1:
+			printLine(_currentLine);
+			_textDimData[sdx].color2 = parseCommand();
+			break;
+
+		case 5:
+			printLine(_currentLine);
+			_textDimData[sdx].color1 = parseCommand();
+			break;
+
+		case 8:
+			printLine(_currentLine);
+			dv = _textDimData[sdx].column / (_screen->getFontWidth() + _screen->_charWidth);
+			dv = ((dv + 8) & 0xfff8) - 1;
+			if (dv >= charsPerLine)
+				dv = 0;
+			_textDimData[sdx].column = (_screen->getFontWidth() + _screen->_charWidth) * dv;
+			break;
+
+		case 11:
+			//TODO
+			break;
+
+		case 12:
+			printLine(_currentLine);
+			_lineCount++;
+			_textDimData[sdx].column = 0;
+			_textDimData[sdx].line++;
+			break;
+
+		case 18:
+			//TODO
+			break;
+
+		case 23:
+			//TODO
+			break;
+
+		case 24:
+			//TODO
+			break;
+
+		case 26:
+			//TODO
+			break;
+
+		case 28:
+			//TODO
+			break;
+
+		default:
+			_lineWidth += _screen->getCharWidth(c);
+			_currentLine[_numCharsLeft++] = c;
+			_currentLine[_numCharsLeft] = 0;
+
+			if ((_textDimData[sdx].column + _lineWidth) > (sd->w << 3))
 				printLine(_currentLine);
-				//if (!_dlgAnimCallback)
-				//	break;
-
-				portraitAnimation2();
-				_numCharsPrinted = 0;
-				break;
-
-			case 1:
-				printLine(_currentLine);
-				_colour2 = parseCommand();
-				break;
-
-			case 5:
-				printLine(_currentLine);
-				_colour1 = parseCommand();
-				break;
-
-			case 8:
-				//TODO
-				break;
-
-			case 11:
-				//TODO
-				break;
-
-			case 12:
-				printLine(_currentLine);
-				_screen->_dimLineCount++;
-				_posX = 0;
-				_posY++;
-				break;
-
-			case 18:
-				//TODO
-				break;
-
-			case 23:
-				//TODO
-				break;
-
-			case 24:
-				//TODO
-				break;
-
-			case 26:
-				//TODO
-				break;
-
-			case 28:
-				//TODO
-				break;
-
-			default:
-				_lineWidth += _screen->getCharWidth(c);
-				_currentLine[_numChars++] = c;
-				_currentLine[_numChars] = 0;
-
-				if ((_posX + _lineWidth) > (sd->w << 3))
-					printLine(_currentLine);
-				
-				break;
-		}		
+		}
 
 		c = parseCommand();
 	}
 
 	va_end(args);
 
-	if (_numChars)
+	if (_numCharsLeft)
 		printLine(_currentLine);
 }
 
@@ -466,42 +490,41 @@ void TextDisplayer_LoL::readNextPara() {
 
 void TextDisplayer_LoL::printLine(char *str) {
 	const ScreenDim *sd = _screen->_curDim;
-	
+	int sdx = _screen->curDimIndex();
+
 	int fh = (_screen->getFontHeight() + _screen->_charOffset);
 	int lines = (sd->h - _screen->_charOffset) / fh;
-	
-	while (_posY >= lines) {
-		if (lines <= _screen->_dimLineCount && _animFlag) {
-			_screen->_dimLineCount = 0;
-			//if (_dlgAnimCallback) {
-				portraitAnimation2();
-				_numCharsPrinted = 0;
-			//}
+
+	while (_textDimData[sdx].line >= lines) {
+		if (lines <= _lineCount) {
+			_lineCount = 0;
+			textPageBreak();
+			_numCharsPrinted = 0;
 		}
-		
+
 		int h1 = ((sd->h / fh) - 1) * fh;
 		int h2 = sd->h - fh;
 
 		if (h2)
 			_screen->copyRegion(sd->sx << 3, sd->sy + fh, sd->sx << 3, sd->sy, sd->w << 3, h2, _screen->_curPage, _screen->_curPage, Screen::CR_NO_P_CHECK);
 
-		_screen->fillRect(sd->sx << 3, sd->sy + h1, (sd->sx + sd->w - 1) << 3, sd->sy + sd->h - 1, _colour2);
-
-		_posY--;
+		_screen->fillRect(sd->sx << 3, sd->sy + h1, (sd->sx + sd->w - 1) << 3, sd->sy + sd->h - 1, _textDimData[sdx].color2);
+		if (_textDimData[sdx].line)
+			_textDimData[sdx].line--;
 	}
 
-	int x1 = (sd->sx << 3) + _posX;
-	int y = sd->sy + fh * _posY;
+	int x1 = (sd->sx << 3) + _textDimData[sdx].column;
+	int y = sd->sy + fh * _textDimData[sdx].line;
 	int w = sd->w << 3;
 	int lw = _lineWidth;
-	int s = _numChars;
+	int s = _numCharsLeft;
 	char c = 0;
 
-	if ((lw + _posX) > w) {
-		if ((lines - 1) <= _screen->_dimLineCount && _animFlag)
-			w -= (_animWidth * (_screen->getFontWidth() + _screen->_charWidth));
+	if ((lw + _textDimData[sdx].column) > w) {
+		if ((lines - 1) <= _lineCount)
+			w -= (10 * (_screen->getFontWidth() + _screen->_charWidth));
 
-		w -= _posX;
+		w -= _textDimData[sdx].column;
 
 		int n2 = 0;
 		int n1 = s - 1;
@@ -510,10 +533,10 @@ void TextDisplayer_LoL::printLine(char *str) {
 			//cut off line after last space
 			c = str[n1];
 			lw -= _screen->getCharWidth(c);
-			
+
 			if (!n2 && lw <= w)
 				n2 = n1;
-			
+
 			if (n2 && c == ' ') {
 				s = n1;
 				_printFlag = false;
@@ -524,7 +547,7 @@ void TextDisplayer_LoL::printLine(char *str) {
 		}
 
 		if (!n1) {
-			if (_posX && !_printFlag) {
+			if (_textDimData[sdx].column && !_printFlag) {
 				s = lw = 0;
 				_printFlag = true;
 			} else {
@@ -535,11 +558,11 @@ void TextDisplayer_LoL::printLine(char *str) {
 
 	c = str[s];
 	str[s] = 0;
-	
-	_screen->printText(str, x1, y, _colour1, _colour2);
-	_posX += lw;
+
+	_screen->printText(str, x1, y, _textDimData[sdx].color1, _textDimData[sdx].color2);
+	_textDimData[sdx].column += lw;
 	_numCharsPrinted += strlen(str);
-	
+
 	str[s] = c;
 
 	if (c == ' ')
@@ -548,26 +571,145 @@ void TextDisplayer_LoL::printLine(char *str) {
 	if (str[s] == ' ')
 		s++;
 
-	strcpy(str, &str[s]);
-	_numChars = strlen(str);
+	uint32 len = strlen(&str[s]);
+	for (uint32 i = 0; i < len; i++)
+		str[i] = str[s + i];
+	str[len] = 0;
+
+	_numCharsLeft = strlen(str);
 	_lineWidth = _screen->getTextWidth(str);
 
-	if (!_numChars && _posX < (sd->w << 3))
+	if (!_numCharsLeft && _textDimData[sdx].column < (sd->w << 3))
 		return;
 
-	_posX = 0;
-	_posY++;
-	_screen->_dimLineCount++;
+	_textDimData[sdx].column = 0;
+	_textDimData[sdx].line++;
+	_lineCount++;
 
 	printLine(str);
 }
 
-/*void TextDisplayer_LoL::portraitAnimation1(const char *str, uint16 lineWidth, uint8 col1, uint8 col2, uint16 numCharsPrinted) {
-	
-}*/
+void TextDisplayer_LoL::textPageBreak() {
+	int cp = _screen->setCurPage(0);
+	Screen::FontId cf = _screen->setFont(Screen::FID_6_FNT);
 
-void TextDisplayer_LoL::portraitAnimation2() {
-	// TODO
+	_vm->_timer->pauseSingleTimer(11, true);
+
+	_vm->_fadeText = false;
+	int updateCharV3 = 0;
+	int updatePortraitSpeechAnimDuration = 0;
+
+	if (_vm->_updateCharNum != -1)  {
+		updateCharV3 = _vm->_updateCharV3;
+		_vm->_updateCharV3 = 0;
+		updatePortraitSpeechAnimDuration = _vm->_updatePortraitSpeechAnimDuration;
+		if (_vm->_updatePortraitSpeechAnimDuration > 36)
+			_vm->_updatePortraitSpeechAnimDuration = 36;
+	}
+
+	uint32 speechPartTime = 0;
+	if (_vm->speechEnabled() && _vm->_activeVoiceFileTotalTime && _numCharsTotal)
+		speechPartTime = _vm->_system->getMillis() + ((_numCharsPrinted * _vm->_activeVoiceFileTotalTime) / _numCharsTotal);
+
+	const ScreenDim *dim = _screen->getScreenDim(_screen->curDimIndex());
+
+	int x = ((dim->sx + dim->w) << 3) - 77;
+	int y = 0;
+
+	if (_vm->_needSceneRestore && (_vm->_updateFlags & 2)) {
+		if (_vm->_currentControlMode || !(_vm->_updateFlags & 2)) {
+			y = dim->sy + dim->h - 5;
+		} else {
+			x += 6;
+			y = dim->sy + dim->h - 2;
+		}
+	} else {
+		y = dim->sy + dim->h - 10;
+	}
+
+	_vm->gui_drawBox(x, y, 74, 9, 136, 251, -1);
+	char *txt = _vm->getLangString(0x4073);
+	_vm->_screen->printText(txt, x + 37 - (_vm->_screen->getTextWidth(txt) >> 1), y + 2, 144, 0);
+
+	_vm->removeInputTop();
+
+	bool loop = true;
+	bool target = false;
+
+	do {
+		int inputFlag = _vm->checkInput(0, false) & 0xFF;
+		_vm->removeInputTop();
+
+		while (!inputFlag) {
+			_vm->update();
+
+			if (_vm->speechEnabled()) {
+				if (((_vm->_system->getMillis() > speechPartTime) || (_vm->snd_updateCharacterSpeech() != 2)) && speechPartTime) {
+					loop = false;
+					inputFlag = 43;
+					break;
+				}
+			}
+
+			inputFlag = _vm->checkInput(0, false) & 0xFF;
+			_vm->removeInputTop();
+		}
+
+		_vm->gui_notifyButtonListChanged();
+
+		switch (inputFlag) {
+		case 43:
+		case 61:
+			loop = false;
+			break;
+
+		case 199:
+		case 201:
+			if (_vm->posWithinRect(_vm->_mouseX, _vm->_mouseY, x, y, x + 74, y + 9))
+				target = true;
+			break;
+
+		case 200:
+		case 202:
+			if (target)
+				loop = false;
+			break;
+
+		default:
+			break;
+		}
+	} while (loop);
+
+
+	_screen->fillRect(x, y, x + 74, y + 9, _textDimData[_screen->curDimIndex()].color2);
+	clearCurDim();
+
+	_vm->_timer->pauseSingleTimer(11, false);
+
+	if (_vm->_updateCharNum != -1) {
+		_vm->_updateCharV3 = updateCharV3;
+		if (updatePortraitSpeechAnimDuration > 36)
+			updatePortraitSpeechAnimDuration -= 36;
+		else
+			updatePortraitSpeechAnimDuration >>= 1;
+
+		_vm->_updatePortraitSpeechAnimDuration = updatePortraitSpeechAnimDuration;
+	}
+
+	_screen->setFont(cf);
+	_screen->setCurPage(cp);
+	_vm->removeInputTop();
+}
+
+void TextDisplayer_LoL::clearCurDim() {
+	int d = _screen->curDimIndex();
+	const ScreenDim *tmp = _screen->getScreenDim(_screen->curDimIndex());
+	_screen->fillRect(tmp->sx << 3, tmp->sy, ((tmp->sx + tmp->w) << 3) - 1, (tmp->sy + tmp->h) - 1, _textDimData[d].color2);
+	_lineCount = 0;
+	_textDimData[d].column = _textDimData[d].line = 0;
 }
 
 } // end of namespace Kyra
+
+#endif // ENABLE_LOL
+

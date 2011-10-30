@@ -27,6 +27,8 @@
 #include <ogc/machine/processor.h>
 #include <fat.h>
 
+#include "osystem.h"
+
 #ifdef USE_WII_DI
 #include <di/di.h>
 #endif
@@ -34,8 +36,6 @@
 #ifdef DEBUG_WII_GDB
 #include <debug.h>
 #endif
-
-#include "osystem.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -118,11 +118,6 @@ int main(int argc, char *argv[]) {
 	if (!fatInitDefault()) {
 		printf("fatInitDefault failed\n");
 	} else {
-#ifdef LIBFAT_READAHEAD_CACHE
-		fatSetReadAheadDefault(16, 32);
-#else
-		printf("read ahead cache not available\n");
-#endif
 		// set the default path if libfat couldnt set it
 		// this allows loading over tcp/usbgecko
 		char cwd[MAXPATHLEN];
@@ -145,9 +140,7 @@ int main(int argc, char *argv[]) {
 
 	printf("shutdown\n");
 
-#ifdef LIBFAT_READAHEAD_CACHE
 	fatUnmountDefault();
-#endif
 
 #ifdef USE_WII_DI
 	DI_Close();

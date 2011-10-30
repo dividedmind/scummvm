@@ -32,6 +32,10 @@ namespace Made {
 
 Screen::Screen(MadeEngine *vm) : _vm(vm) {
 
+	_screenPalette = new byte[256 * 4];
+	_palette = new byte[768];
+	_newPalette = new byte[768];
+
 	_backgroundScreen = new Graphics::Surface();
 	_backgroundScreen->create(320, 200, 1);
 
@@ -90,6 +94,11 @@ Screen::Screen(MadeEngine *vm) : _vm(vm) {
 }
 
 Screen::~Screen() {
+
+	delete[] _screenPalette;
+	delete[] _palette;
+	delete[] _newPalette;
+
 	delete _backgroundScreen;
 	delete _workScreen;
 	if (_vm->getGameID() != GID_RTZ)
@@ -209,17 +218,14 @@ void Screen::drawSurface(Graphics::Surface *sourceSurface, int x, int y, int16 f
 
 }
 
-void Screen::loadRGBPalette(byte *palRGB, int count) {
+void Screen::setRGBPalette(byte *palRGB, int start, int count) {
 	for (int i = 0; i < count; i++) {
 		_screenPalette[i * 4 + 0] = palRGB[i * 3 + 0];
 		_screenPalette[i * 4 + 1] = palRGB[i * 3 + 1];
 		_screenPalette[i * 4 + 2] = palRGB[i * 3 + 2];
 		_screenPalette[i * 4 + 3] = 0;
 	}
-}
 
-void Screen::setRGBPalette(byte *palRGB, int start, int count) {
-	loadRGBPalette(palRGB, count);
 	_vm->_system->setPalette(_screenPalette, start, count);
 }
 
@@ -349,9 +355,7 @@ void Screen::updateSprites() {
 	drawSpriteChannels(_workScreenDrawCtx, 1, 2);
 
 	_vm->_system->copyRectToScreen((const byte*)_workScreen->pixels, _workScreen->pitch, 0, 0, _workScreen->w, _workScreen->h);
-
-	_vm->_system->updateScreen();
-
+	_vm->_screen->updateScreenAndWait(10);
 }
 
 void Screen::clearChannels() {
@@ -617,14 +621,13 @@ void Screen::show() {
 	_fx->run(_visualEffectNum, _workScreen, _palette, _newPalette, _paletteColorCount);
 	_visualEffectNum = 0;
 
-	_vm->_system->updateScreen();
-
 	if (!_paletteInitialized) {
 		memcpy(_newPalette, _palette, _paletteColorCount * 3);
 		_oldPaletteColorCount = _paletteColorCount;
 		_paletteInitialized = true;
 	}
 
+	updateScreenAndWait(10);
 }
 
 void Screen::flash(int flashCount) {
@@ -797,12 +800,15 @@ void Screen::showWorkScreen() {
 	_vm->_system->copyRectToScreen((const byte*)_workScreen->pixels, _workScreen->pitch, 0, 0, _workScreen->w, _workScreen->h);
 }
 
+void Screen::copyRectToScreen(const byte *buf, int pitch, int x, int y, int w, int h) {
+	_vm->_system->copyRectToScreen(buf, pitch, x, y, w, h);
+}
+
 void Screen::updateScreenAndWait(int delay) {
 	_vm->_system->updateScreen();
 	uint32 startTime = _vm->_system->getMillis();
 	while (_vm->_system->getMillis() < startTime + delay) {
 		_vm->handleEvents();
-		_vm->_system->updateScreen();
 		_vm->_system->delayMillis(5);
 	}
 }

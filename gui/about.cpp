@@ -58,7 +58,7 @@ enum {
 
 static const char *copyright_text[] = {
 "",
-"C0""Copyright (C) 2001-2008 The ScummVM project",
+"C0""Copyright (C) 2001-2009 The ScummVM project",
 "C0""http://www.scummvm.org",
 "",
 "C0""ScummVM is the legal property of its developers, whose names are too numerous to list here. Please refer to the COPYRIGHT file distributed with this binary.",
@@ -138,7 +138,7 @@ AboutDialog::AboutDialog()
 	  addLine(str.c_str());
 
 	  str = "C2";
-	  str += (**iter)->getCopyright();
+	  str += (**iter)->getOriginalCopyright();
 	  addLine(str.c_str());
 
 	  //addLine("");
@@ -247,7 +247,7 @@ void AboutDialog::drawDialog() {
 				str++;
 
 		if (*str && y > _y && y + g_gui.theme()->getFontHeight() < _y + _h)
-			g_gui.theme()->drawText(Common::Rect(_x + _xOff, y, _x + _w - _xOff, y + g_gui.theme()->getFontHeight()), str, state, align, false, 0, false);
+			g_gui.theme()->drawText(Common::Rect(_x + _xOff, y, _x + _w - _xOff, y + g_gui.theme()->getFontHeight()), str, state, align, ThemeEngine::kTextInversionNone, 0, false);
 		y += _lineHeight;
 	}
 }

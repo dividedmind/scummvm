@@ -41,7 +41,7 @@ namespace Groovie {
 
 class MusicPlayer;
 
-enum kDebugLevels {
+enum DebugLevels {
 	kGroovieDebugAll = 1 << 0,
 	kGroovieDebugVideo = 1 << 1,
 	kGroovieDebugResource = 1 << 2,
@@ -56,38 +56,33 @@ enum kDebugLevels {
 		// the current limitation is 32 debug levels (1 << 31 is the last one)
 };
 
-enum kEngineVersion {
-	kGroovieT7G,
-	kGroovieV2
-};
-
 struct GroovieGameDescription {
 	ADGameDescription desc;
 
-	kEngineVersion version; // Version of the engine
+	EngineVersion version; // Version of the engine
 	int indexEntry; // The index of the entry in disk.1 for V2 games
 };
 
 class GroovieEngine : public Engine {
 public:
-	GroovieEngine(OSystem *syst, GroovieGameDescription *gd);
+	GroovieEngine(OSystem *syst, const GroovieGameDescription *gd);
 	~GroovieEngine();
 
 protected:
-	Common::Error init();
-	Common::Error go();
 
-	void errorString(const char *buf_input, char *buf_output, int buf_output_size);
+	// Engine APIs
+	Common::Error run();
+	virtual void errorString(const char *buf_input, char *buf_output, int buf_output_size);
+
+	virtual bool hasFeature(EngineFeature f) const;
+
+	virtual bool canLoadGameStateCurrently();
+	virtual Common::Error loadGameState(int slot);
+	virtual void syncSoundSettings();
+
+	virtual Debugger *getDebugger() { return _debugger; }
 
 public:
-	bool hasFeature(EngineFeature f) const;
-
-	bool canLoadGameStateCurrently();
-	Common::Error loadGameState(int slot);
-	void syncSoundSettings();
-
-	Debugger *getDebugger() { return _debugger; }
-
 	void waitForInput();
 
 	Script _script;
@@ -98,7 +93,7 @@ public:
 	GraphicsMan *_graphicsMan;
 
 private:
-	GroovieGameDescription *_gameDescription;
+	const GroovieGameDescription *_gameDescription;
 	Debugger *_debugger;
 	bool _waitingForInput;
 };

@@ -69,7 +69,7 @@ bool MemoryReadStream::seek(int32 offs, int whence) {
 	case SEEK_END:
 		// SEEK_END works just like SEEK_SET, only 'reversed',
 		// i.e. from the end.
-		offs = _size - offs;
+		offs = _size + offs;
 		// Fall through
 	case SEEK_SET:
 		_ptr = _ptrOrig + offs;
@@ -204,7 +204,7 @@ bool SeekableSubReadStream::seek(int32 offset, int whence) {
 
 	switch(whence) {
 	case SEEK_END:
-		offset = size() - offset;
+		offset = size() + offset;
 		// fallthrough
 	case SEEK_SET:
 		_pos = _begin + offset;
@@ -237,7 +237,7 @@ BufferedReadStream::BufferedReadStream(ReadStream *parentStream, uint32 bufSize,
 BufferedReadStream::~BufferedReadStream() {
 	if (_disposeParentStream)
 		delete _parentStream;
-	delete _buf;
+	delete[] _buf;
 }
 
 uint32 BufferedReadStream::read(void *dataPtr, uint32 dataSize) {

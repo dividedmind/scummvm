@@ -34,6 +34,7 @@
 #include "lure/sound.h"
 #include "common/stack.h"
 #include "common/endian.h"
+#include "common/EventRecorder.h"
 
 namespace Lure {
 
@@ -484,7 +485,8 @@ void Script::makeGoewinFollow(uint16 v1, uint16 v2, uint16 v3) {
 
 void Script::doorClose(uint16 hotspotId, uint16 v2, uint16 v3) {
 	RoomExitJoinData *joinRec = Resources::getReference().getExitJoin(hotspotId);
-	if (!joinRec) error("Tried to close a non-door");
+	if (!joinRec)
+		error("Tried to close a non-door");
 	joinRec->blocked = 1;
 }
 
@@ -511,7 +513,8 @@ void Script::fixGoewin(uint16 v1, uint16 v2, uint16 v3) {
 
 void Script::doorOpen(uint16 hotspotId, uint16 v2, uint16 v3) {
 	RoomExitJoinData *joinRec = Resources::getReference().getExitJoin(hotspotId);
-	if (!joinRec) error("Tried to close a non-door");
+	if (!joinRec)
+		error("Tried to close a non-door");
 	joinRec->blocked = 0;
 }
 
@@ -737,7 +740,7 @@ void Script::addActions(uint16 hotspotId, uint16 actions, uint16 v3) {
 
 void Script::randomToGeneral(uint16 maxVal, uint16 minVal, uint16 v3) {
 	Common::RandomSource rnd;
-	g_system->getEventManager()->registerRandomSource(rnd, "lureScripts");
+	g_eventRec.registerRandomSource(rnd, "lureScripts");
 	uint16 v = minVal + rnd.getRandomNumber(maxVal - minVal);
 	Resources::getReference().fieldList().setField(GENERAL, v);
 }

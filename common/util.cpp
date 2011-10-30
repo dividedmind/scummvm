@@ -24,6 +24,7 @@
 
 #include "common/util.h"
 #include "common/system.h"
+#include "common/config-manager.h"
 #include "gui/debugger.h"
 #include "engines/engine.h"
 
@@ -91,11 +92,11 @@ String StringTokenizer::nextToken() {
 //
 // Print hexdump of the data passed in
 //
-void hexdump(const byte * data, int len, int bytesPerLine) {
+void hexdump(const byte * data, int len, int bytesPerLine, int startOffset) {
 	assert(1 <= bytesPerLine && bytesPerLine <= 32);
 	int i;
 	byte c;
-	int offset = 0;
+	int offset = startOffset;
 	while (len >= bytesPerLine) {
 		printf("%06x: ", offset);
 		for (i = 0; i < bytesPerLine; i++) {
@@ -211,6 +212,7 @@ const LanguageDescription g_languages[] = {
 	{"ru", "Russian", RU_RUS},
 	{"es", "Spanish", ES_ESP},
 	{"se", "Swedish", SE_SWE},
+	{"hu", "Hungarian", HU_HUN},
 	{0, 0, UNK_LANG}
 };
 
@@ -259,6 +261,7 @@ const PlatformDescription g_platforms[] = {
 	{"pc", "dos", "ibm", "DOS", kPlatformPC},
 	{"pc98", "pc98", "pc98", "PC-98", kPlatformPC98},
 	{"wii", "wii", "wii", "Nintendo Wii", kPlatformWii},
+	{"coco3", "coco3", "coco3", "CoCo3", kPlatformCoCo3},
 
 	// The 'official' spelling seems to be "FM-TOWNS" (e.g. in the Indy4 demo).
 	// However, on the net many variations can be seen, like "FMTOWNS",
@@ -271,6 +274,7 @@ const PlatformDescription g_platforms[] = {
 	{"nes", "nes", "nes", "NES", kPlatformNES},
 	{"segacd", "segacd", "sega", "SegaCD", kPlatformSegaCD},
 	{"windows", "win", "win", "Windows", kPlatformWindows},
+	{"playstation", "psx", "psx", "Sony PlayStation", kPlatformPSX},
 
 
 	{0, 0, 0, "Default", kPlatformUnknown}
@@ -370,6 +374,60 @@ const char *getRenderModeDescription(RenderMode id) {
 	return 0;
 }
 
+const struct GameOpt {
+	uint32 option;
+	const char *desc;
+} g_gameOptions[] = {
+	{ GUIO_NOSUBTITLES, "sndNoSubs" },
+	{ GUIO_NOMUSIC, "sndNoMusic" },
+	{ GUIO_NOSPEECH, "sndNoSpeech" },
+	{ GUIO_NOSFX, "sndNoSFX" },
+	{ GUIO_NOMIDI, "sndNoMIDI" },
+	{ GUIO_NOLAUNCHLOAD, "launchNoLoad" },
+	{ GUIO_NONE, 0 }
+};
+
+bool checkGameGUIOption(GameGUIOption option, const String &str) {
+	for (int i = 0; g_gameOptions[i].desc; i++) {
+		if (g_gameOptions[i].option & option) {
+			if (str.contains(g_gameOptions[i].desc))
+				return true;
+			else
+				return false;
+		}
+	}
+	return false;
+}
+
+uint32 parseGameGUIOptions(const String &str) {
+	uint32 res = 0;
+
+	for (int i = 0; g_gameOptions[i].desc; i++)
+		if (str.contains(g_gameOptions[i].desc))
+			res |= g_gameOptions[i].option;
+
+	return res;
+}
+
+String getGameGUIOptionsDescription(uint32 options) {
+	String res = "";
+
+	for (int i = 0; g_gameOptions[i].desc; i++)
+		if (options & g_gameOptions[i].option)
+			res += String(g_gameOptions[i].desc) + " ";
+
+	res.trim();
+
+	return res;
+}
+
+void updateGameGUIOptions(const uint32 options) {
+	if ((options && !ConfMan.hasKey("guioptions")) ||
+	    (ConfMan.hasKey("guioptions") && options != parseGameGUIOptions(ConfMan.get("guioptions")))) {
+		ConfMan.set("guioptions", getGameGUIOptionsDescription(options));
+		ConfMan.flushToDisk();
+	}
+}
 
 }	// End of namespace Common
 

@@ -34,13 +34,19 @@
 
 namespace Groovie {
 
+enum EngineVersion {
+	kGroovieT7G,
+	kGroovieV2
+};
+
 class GroovieEngine;
+class CellGame;
 
 class Script {
 	friend class Debugger;
 
 public:
-	Script(GroovieEngine *vm);
+	Script(GroovieEngine *vm, EngineVersion version);
 	~Script();
 
 	void setDebugger(Debugger *debugger);
@@ -107,12 +113,15 @@ private:
 	// Video
 	Font *_font;
 	Common::SeekableReadStream *_videoFile;
-	uint16 _videoRef;
+	uint32 _videoRef;
 	uint16 _bitflags;
 
 	// Debugging
 	Debugger *_debugger;
 	Common::String _debugString;
+	uint16 _oldInstruction;
+
+	CellGame *_staufsMove;
 
 	// Helper functions
 	uint8 getCodeByte(uint16 address);
@@ -128,11 +137,13 @@ private:
 
 	void loadgame(uint slot);
 	void savegame(uint slot);
-	bool playvideofromref(uint16 fileref);
+	bool playvideofromref(uint32 fileref);
 
 	// Opcodes
 	typedef void (Script::*OpcodeFunc)();
-	static OpcodeFunc _opcodes[];
+	OpcodeFunc *_opcodes;
+	static OpcodeFunc _opcodesT7G[];
+	static OpcodeFunc _opcodesV2[];
 
 	void o_invalid();
 
@@ -208,9 +219,16 @@ private:
 	void o_sethotspotleft();
 	void o_getcd();
 	void o_playcd();
+	void o_musicdelay();
 	void o_hotspot_outrect();
 	void o_stub56();
 	void o_stub59();
+
+	void o2_playsong();
+	void o2_setbackgroundsong();
+	void o2_videofromref();
+	void o2_vdxtransition();
+	void o2_stub52();
 };
 
 } // End of Groovie namespace

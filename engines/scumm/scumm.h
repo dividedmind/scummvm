@@ -28,7 +28,9 @@
 
 #include "engines/engine.h"
 #include "common/endian.h"
+#include "common/events.h"
 #include "common/file.h"
+#include "common/savefile.h"
 #include "common/keyboard.h"
 #include "common/rect.h"
 #include "common/str.h"
@@ -123,14 +125,11 @@ enum GameFeatures {
 	GF_HE_985             = 1 << 14,
 
 	/** HE games with 16 bit color */
-	GF_16BIT_COLOR         = 1 << 15,
-
-	/** HE games which use sprites for subtitles */
-	GF_HE_NOSUBTITLES      = 1 << 16
+	GF_16BIT_COLOR         = 1 << 15
 };
 
 /* SCUMM Debug Channels */
-void debugC(int level, const char *s, ...);
+void debugC(int level, const char *s, ...) GCC_PRINTF(2, 3);
 
 enum {
 	DEBUG_GENERAL	=	1 << 0,		// General debug
@@ -228,6 +227,7 @@ enum ScummGameId {
 	GID_FUNSHOP,	// Used for all three funshops
 	GID_FOOTBALL,
 	GID_SOCCER,
+	GID_BASKETBALL,
 	GID_MOONBASE,
 	GID_HECUP		// CUP demos
 };
@@ -447,8 +447,15 @@ public:
 	virtual ~ScummEngine();
 
 	// Engine APIs
-	virtual Common::Error init();
-	virtual Common::Error go();
+	Common::Error init();
+	Common::Error go();
+	virtual Common::Error run() {
+		Common::Error err;
+		err = init();
+		if (err != Common::kNoError)
+			return err;
+		return go();
+	}
 	virtual void errorString(const char *buf_input, char *buf_output, int buf_output_size);
 	virtual GUI::Debugger *getDebugger();
 	virtual bool hasFeature(EngineFeature f) const;
@@ -474,8 +481,8 @@ protected:
 	virtual void loadLanguageBundle() {}
 	void loadCJKFont();
 	void setupMusic(int midi);
-	void setTalkDelay(int talkdelay);
-	int getTalkDelay();
+	void setTalkSpeed(int talkspeed);
+	int getTalkSpeed();
 
 	// Scumm main loop & helper functions.
 	virtual void scummLoop(int delta);
@@ -492,6 +499,8 @@ protected:
 public:
 	void parseEvents();	// Used by IMuseDigital::startSound
 protected:
+	virtual void parseEvent(Common::Event event);
+
 	void waitForTimer(int msec_delay);
 	virtual void processInput();
 	virtual void processKeyboard(Common::KeyState lastKeyHit);
@@ -510,6 +519,7 @@ public:
 
 protected:
 	Dialog *_pauseDialog;
+	Dialog *_messageDialog;
 	Dialog *_versionDialog;
 	Dialog *_scummMenuDialog;
 
@@ -517,10 +527,11 @@ protected:
 	void confirmExitDialog();
 	void confirmRestartDialog();
 	void pauseDialog();
+	void messageDialog(const char *message);
 	void versionDialog();
 	void scummMenuDialog();
 
-	char displayMessage(const char *altButton, const char *message, ...);
+	char displayMessage(const char *altButton, const char *message, ...) GCC_PRINTF(3, 4);
 
 	byte _fastMode;
 
@@ -535,15 +546,13 @@ public:
 	// VAR is a wrapper around scummVar, which attempts to include additional
 	// useful information should an illegal var access be detected.
 	#define VAR(x)	scummVar(x, #x, __FILE__, __LINE__)
-	int32& scummVar(byte var, const char *varName, const char *file, int line)
-	{
+	int32& scummVar(byte var, const char *varName, const char *file, int line) {
 		if (var == 0xFF) {
 			error("Illegal access to variable %s in file %s, line %d", varName, file, line);
 		}
 		return _scummVars[var];
 	}
-	int32 scummVar(byte var, const char *varName, const char *file, int line) const
-	{
+	int32 scummVar(byte var, const char *varName, const char *file, int line) const {
 		if (var == 0xFF) {
 			error("Illegal access to variable %s in file %s, line %d", varName, file, line);
 		}
@@ -555,6 +564,9 @@ protected:
 	int32 *_roomVars;
 	int32 *_scummVars;
 	byte *_bitVars;
+
+	bool _v0ObjectIndex;			// V0 Use object index, instead of object number
+	bool _v0ObjectInInventory;		// V0 Use object number from inventory
 
 	/* Global resource tables */
 	int _numVariables, _numBitVariables, _numLocalObjects;
@@ -603,6 +615,12 @@ protected:
 	uint16 _mouseAndKeyboardStat;
 	byte _leftBtnPressed, _rightBtnPressed;
 
+	/**
+	 * Last time runInputScript was run (measured in terms of OSystem::getMillis()).
+	 * This is currently only used for Indy3 mac to detect "double clicks".
+	 */
+	uint32 _lastInputScriptTime;
+
 	/** The bootparam, to be passed to the script 1, the bootscript. */
 	int _bootParam;
 
@@ -619,6 +637,7 @@ protected:
 	char _saveLoadFileName[32];
 	char _saveLoadName[32];
 
+	bool saveState(Common::OutSaveFile *out, bool writeHeader = true);
 	bool saveState(int slot, bool compat);
 	bool loadState(int slot, bool compat);
 	virtual void saveOrLoad(Serializer *s);
@@ -669,9 +688,11 @@ protected:
 	int _resultVarNumber, _scummStackPos;
 	int _vmStack[150];
 
+	OpcodeEntry _opcodes[256];
+
 	virtual void setupOpcodes() = 0;
-	virtual void executeOpcode(byte i) = 0;
-	virtual const char *getOpcodeDesc(byte i) = 0;
+	void executeOpcode(byte i);
+	const char *getOpcodeDesc(byte i);
 
 	void initializeLocals(int slot, int *vars);
 	int	getScriptSlot();
@@ -846,12 +867,14 @@ protected:
 	int getObjNewDir(int obj);
 	int getObjectIndex(int object) const;
 	int getObjectImageCount(int object);
+	int whereIsObjectInventory(int object);
 	int whereIsObject(int object) const;
 	int findObject(int x, int y);
 	void findObjectInRoom(FindObjectInRoom *fo, byte findWhat, uint object, uint room);
 public:
 	int getObjectOrActorXY(int object, int &x, int &y);	// Used in actor.cpp, hence public
 protected:
+	int getDist(int x, int y, int x2, int y2);
 	int getObjActToObjActDist(int a, int b); // Not sure how to handle
 	const byte *getObjOrActorName(int obj);		 // these three..
 	void setObjectName(int obj);
@@ -872,7 +895,6 @@ protected:
 protected:
 	/* Should be in Verb class */
 	uint16 _verbMouseOver;
-	int _inventoryOffset;
 	int8 _userPut;
 	uint16 _userState;
 
@@ -969,6 +991,7 @@ protected:
 	byte _newEffect, _switchRoomEffect2, _switchRoomEffect;
 	bool _doEffect;
 
+	bool _snapScroll;
 public:
 	bool isLightOn() const;
 
@@ -1363,8 +1386,6 @@ public:
 
 	byte VAR_SCRIPT_CYCLE;			// Used in runScript()/runObjectScript()
 	byte VAR_NUM_SCRIPT_CYCLES;		// Used in runAllScripts()
-
-	byte VAR_KEY_STATE;			// Used in parseEvents()
 
 	// Exists both in V7 and in V72HE:
 	byte VAR_NUM_GLOBAL_OBJS;

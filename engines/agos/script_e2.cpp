@@ -312,7 +312,7 @@ void AGOSEngine_Elvira2::oe2_pObj() {
 	SubObject *subObject = (SubObject *)findChildOfType(getNextItemPtr(), kObjectType);
 
 	if (subObject != NULL && subObject->objectFlags & kOFText)
-		showMessageFormat("%s\n", (const char *)getStringPtrByID(subObject->objectFlagValue[0])); // Difference
+		showMessageFormat("%s", (const char *)getStringPtrByID(subObject->objectFlagValue[0]));
 }
 
 void AGOSEngine_Elvira2::oe2_isCalled() {
@@ -414,6 +414,16 @@ void AGOSEngine_Elvira2::oe2_ifDoorOpen() {
 	// 148: if door open
 	Item *i = getNextItemPtr();
 	uint16 d = getVarOrByte();
+
+	if (getGameType() == GType_WW) {
+		// WORKAROUND bug #2686883: A NULL item can occur when
+		// walking through Jack the Ripper scene
+		if (i == NULL) {
+			setScriptCondition(false);
+			return;
+		}
+	}
+
 	setScriptCondition(getDoorState(i, d) == 1);
 }
 
@@ -574,9 +584,7 @@ void AGOSEngine_Elvira2::oe2_ifExitLocked() {
 void AGOSEngine_Elvira2::oe2_playEffect() {
 	// 174: play sound
 	uint soundId = getVarOrWord();
-	loadSound(soundId);
-
-	debug(0, "oe2_playEffect: stub (%d)", soundId);
+	loadSound(soundId, 0, 0);
 }
 
 void AGOSEngine_Elvira2::oe2_getDollar2() {
@@ -636,7 +644,7 @@ void AGOSEngine_Elvira2::oe2_printMonsterDamage() {
 void AGOSEngine_Elvira2::oe2_isAdjNoun() {
 	// 179: item unk1 unk2 is
 	Item *item = getNextItemPtr();
-	int16 a = getNextWord(), b = getNextWord();
+	int16 a = getNextWord(), n = getNextWord();
 
 	if (getGameType() == GType_ELVIRA2) {
 		// WORKAROUND bug #1745996: A NULL item can occur when
@@ -647,7 +655,7 @@ void AGOSEngine_Elvira2::oe2_isAdjNoun() {
 		}
 	}
 
-	setScriptCondition(item->adjective == a && item->noun == b);
+	setScriptCondition(item->adjective == a && item->noun == n);
 }
 
 void AGOSEngine_Elvira2::oe2_b2Set() {
@@ -677,7 +685,7 @@ void AGOSEngine_Elvira2::oe2_b2NotZero() {
 void AGOSEngine_Elvira2::printStats() {
 	WindowBlock *window = _dummyWindow;
 	int val;
-	const uint8 y = (getPlatform() == Common::kPlatformAtariST) ? 131 : 134;
+	const uint8 y = (getPlatform() == Common::kPlatformAtariST) ? 132 : 134;
 
 	window->flags = 1;
 

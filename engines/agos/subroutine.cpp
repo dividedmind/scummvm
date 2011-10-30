@@ -220,13 +220,13 @@ Subroutine *AGOSEngine::getSubroutineByID(uint subroutineId) {
 }
 
 void AGOSEngine::alignTableMem() {
-	if ((unsigned long)_tablesHeapPtr & 3) {
+	if (!IS_ALIGNED(_tablesHeapPtr, 4)) {
 		_tablesHeapPtr += 2;
 		_tablesHeapCurPos += 2;
 	}
 }
 
-byte *AGOSEngine::allocateTable(uint size) {
+void *AGOSEngine::allocateTable(uint size) {
 	byte *org = _tablesHeapPtr;
 
 	size = (size + 1) & ~1;
@@ -540,9 +540,9 @@ int AGOSEngine::startSubroutine(Subroutine *sub) {
 
 	// WORKAROUND: If the game is saved, right after Simon is thrown in the dungeon of Sordid's Fortress of Doom,
 	// the saved game fails to load correctly. When loading the saved game, the sequence of Simon waking is started,
-	// before the scene is actually reloaded, due to a script bug. We manually add the extra script code from DOS CD
-	// release, which fixed this particular script bug.
-	if (getGameType() == GType_SIMON2 && !(getFeatures() & GF_TALKIE) && sub->id == 12101) {
+	// before the scene is actually reloaded, due to a script bug. We manually add the extra script code from the
+	// updated DOS CD release, which fixed this particular script bug.
+	if (getGameType() == GType_SIMON2 && sub->id == 12101) {
 		const byte bit = 228;
 		if ((_bitArrayTwo[bit / 16] & (1 << (bit & 15))) != 0 && (int)readVariable(34) == -1) {
 			_bitArrayTwo[228 / 16] &= ~(1 << (bit & 15));
@@ -574,6 +574,22 @@ restart:
 			}
 		}
 		sl = (SubroutineLine *)((byte *)sub + sl->next);
+	}
+
+	// WORKAROUND: Feeble walks in the incorrect direction, when looking at the Vent in the Research and Testing area of
+	// the Company Central Command Compound. We manually add the extra script code from the updated English 2CD release,
+	// which fixed this particular script bug.
+	if (getGameType() == GType_FF && _language == Common::EN_ANY) {
+		if (sub->id == 39125 && readVariable(84) == 2) {
+			writeVariable(1, 1136);
+			writeVariable(2, 346);
+		}
+		if (sub->id == 39126 && readVariable(84) == 2) {
+			Subroutine *tmpSub = getSubroutineByID(80);
+			if (tmpSub != NULL) {
+				startSubroutine(tmpSub);
+			}
+		}
 	}
 
 	if (_classMode1) {

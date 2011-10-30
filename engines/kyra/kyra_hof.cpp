@@ -283,9 +283,11 @@ Common::Error KyraEngine_HoF::go() {
 			seq_showStarcraftLogo();
 
 		if (_flags.isDemo && !_flags.isTalkie) {
+#ifdef ENABLE_LOL
 			if (_flags.gameID == GI_LOL)
 				seq_playSequences(kSequenceLolDemoScene1, kSequenceLolDemoScene6);
 			else
+#endif // ENABLE_LOL
 				seq_playSequences(kSequenceDemoVirgin, kSequenceDemoFisher);
 			_menuChoice = 4;
 		} else {
@@ -379,10 +381,10 @@ void KyraEngine_HoF::startup() {
 
 	memset(_sceneAnims, 0, sizeof(_sceneAnims));
 	for (int i = 0; i < ARRAYSIZE(_sceneAnimMovie); ++i)
-		_sceneAnimMovie[i] = new WSAMovie_v2(this, _screen);
+		_sceneAnimMovie[i] = new WSAMovie_v2(this);
 	memset(_wsaSlots, 0, sizeof(_wsaSlots));
 	for (int i = 0; i < ARRAYSIZE(_wsaSlots); ++i)
-		_wsaSlots[i] = new WSAMovie_v2(this, _screen);
+		_wsaSlots[i] = new WSAMovie_v2(this);
 
 	_screen->_curPage = 0;
 
@@ -413,7 +415,7 @@ void KyraEngine_HoF::startup() {
 	setupLangButtonShapes();
 	loadInventoryShapes();
 
-	_res->loadFileToBuf("PALETTE.COL", _screen->_currentPalette, 0x300);
+	_screen->loadPalette("PALETTE.COL", _screen->getPalette(0));
 	_screen->loadBitmap("_PLAYFLD.CPS", 3, 3, 0);
 	_screen->copyPage(3, 0);
 	_screen->showMouse();
@@ -449,7 +451,6 @@ void KyraEngine_HoF::startup() {
 		(*_inventoryButtons[0].buttonCallback)(&_inventoryButtons[0]);
 
 	setNextIdleAnimTimer();
-	//XXX
 	setWalkspeed(_configWalkspeed);
 }
 
@@ -468,8 +469,6 @@ void KyraEngine_HoF::runLoop() {
 			if (!_runFlag || shouldQuit())
 				break;
 		}
-
-		checkAutosave();
 
 		if (_system->getMillis() > _nextIdleAnim)
 			showIdleAnim();
@@ -642,8 +641,6 @@ bool KyraEngine_HoF::handleInputUnkSub(int x, int y) {
 
 		while (_emc->isValid(&_sceneScriptState))
 			_emc->run(&_sceneScriptState);
-
-		//XXXsys_unkKeyboad (flush? wait? whatever...)
 
 		if (queryGameFlag(0x1ED)) {
 			_sound->beginFadeOut();
@@ -886,7 +883,7 @@ uint8 *KyraEngine_HoF::getTableEntry(uint8 *buffer, int id) {
 }
 
 char *KyraEngine_HoF::getTableString(int id, uint8 *buffer, int decode) {
-	char *string = (char*)getTableEntry(buffer, id);
+	char *string = (char *)getTableEntry(buffer, id);
 
 	if (decode && _flags.lang != Common::JA_JPN) {
 		Util::decodeString1(string, _internStringBuf);
@@ -919,9 +916,9 @@ void KyraEngine_HoF::showMessage(const char *string, int16 palIndex) {
 	if (string) {
 		if (palIndex != -1 || _fadeMessagePalette) {
 			palIndex *= 3;
-			memcpy(_messagePal, _screen->_currentPalette + palIndex, 3);
-			memmove(_screen->_currentPalette + 765, _screen->_currentPalette + palIndex, 3);
-			_screen->setScreenPalette(_screen->_currentPalette);
+			memcpy(_messagePal, _screen->getPalette(0).getData() + palIndex, 3);
+			_screen->getPalette(0).copy(_screen->getPalette(0), palIndex / 3, 1, 255);
+			_screen->setScreenPalette(_screen->getPalette(0));
 		}
 
 		int x = _text->getCenterStringX(string, 0, 320);
@@ -951,15 +948,15 @@ void KyraEngine_HoF::updateCommandLineEx(int str1, int str2, int16 palIndex) {
 		*src = toupper(*src);
 	}
 
-	strcpy((char*)_unkBuf500Bytes, src);
+	strcpy((char *)_unkBuf500Bytes, src);
 
 	if (str2 > 0) {
 		if (_flags.lang != Common::JA_JPN)
-			strcat((char*)_unkBuf500Bytes, " ");
-		strcat((char*)_unkBuf500Bytes, getTableString(str2, _cCodeBuffer, 1));
+			strcat((char *)_unkBuf500Bytes, " ");
+		strcat((char *)_unkBuf500Bytes, getTableString(str2, _cCodeBuffer, 1));
 	}
 
-	showMessage((char*)_unkBuf500Bytes, palIndex);
+	showMessage((char *)_unkBuf500Bytes, palIndex);
 }
 
 void KyraEngine_HoF::fadeMessagePalette() {
@@ -978,7 +975,7 @@ void KyraEngine_HoF::fadeMessagePalette() {
 	}
 
 	if (updatePalette) {
-		memcpy(_screen->getPalette(0) + 765, _messagePal, 3);
+		_screen->getPalette(0).copy(_messagePal, 0, 1, 255);
 		_screen->setScreenPalette(_screen->getPalette(0));
 	} else {
 		_fadeMessagePalette = false;
@@ -1139,7 +1136,7 @@ void KyraEngine_HoF::updateCharPal(int unk1) {
 
 	if (palEntry != _charPalEntry && unk1) {
 		const uint8 *src = &_scenePal[(palEntry << 4) * 3];
-		uint8 *ptr = _screen->getPalette(0) + 336;
+		uint8 *ptr = _screen->getPalette(0).getData() + 336;
 		for (int i = 0; i < 48; ++i) {
 			*ptr -= (*ptr - *src) >> 1;
 			++ptr;
@@ -1149,7 +1146,7 @@ void KyraEngine_HoF::updateCharPal(int unk1) {
 		unkVar1 = true;
 		_charPalEntry = palEntry;
 	} else if (unkVar1 || !unk1) {
-		memcpy(_screen->getPalette(0) + 336, &_scenePal[(palEntry << 4) * 3], 48);
+		_screen->getPalette(0).copy(_scenePal, palEntry << 4, 16, 112);
 		_screen->setScreenPalette(_screen->getPalette(0));
 		unkVar1 = false;
 	}
@@ -1451,7 +1448,6 @@ void KyraEngine_HoF::restoreGfxRect32x32(int x, int y) {
 #pragma mark -
 
 void KyraEngine_HoF::openTalkFile(int newFile) {
-	debugC(9, kDebugLevelMain | kDebugLevelSound, "KyraEngine_HoF::openTalkFile(%d)", newFile);
 	char talkFilename[16];
 
 	if (_oldTalkFile > 0) {
@@ -1479,24 +1475,20 @@ void KyraEngine_HoF::openTalkFile(int newFile) {
 }
 
 void KyraEngine_HoF::snd_playVoiceFile(int id) {
-	debugC(9, kDebugLevelMain | kDebugLevelSound, "KyraEngine_HoF::snd_playVoiceFile(%d)", id);
 	char vocFile[9];
 	assert(id >= 0 && id <= 9999999);
 	sprintf(vocFile, "%07d", id);
 	if (_sound->voiceFileIsPresent(vocFile)) {
 		snd_stopVoice();
 
-		while (!_sound->voicePlay(vocFile)) {
+		while (!_sound->voicePlay(vocFile, &_speechHandle)) {
 			updateWithText();
 			_system->delayMillis(10);
 		}
-
-		_speechFile = vocFile;
 	}
 }
 
 void KyraEngine_HoF::snd_loadSoundFile(int id) {
-	debugC(9, kDebugLevelMain | kDebugLevelSound, "KyraEngine_HoF::snd_loadSoundFile(%d)", id);
 	if (id < 0 || !_trackMap)
 		return;
 
@@ -1507,7 +1499,6 @@ void KyraEngine_HoF::snd_loadSoundFile(int id) {
 }
 
 void KyraEngine_HoF::playVoice(int high, int low) {
-	debugC(9, kDebugLevelMain | kDebugLevelSound, "KyraEngine_HoF::playVoice(%d, %d)", high, low);
 	if (!_flags.isTalkie)
 		return;
 	int vocFile = high * 10000 + low * 10;
@@ -1516,8 +1507,6 @@ void KyraEngine_HoF::playVoice(int high, int low) {
 }
 
 void KyraEngine_HoF::snd_playSoundEffect(int track, int volume) {
-	debugC(9, kDebugLevelMain | kDebugLevelSound, "KyraEngine_HoF::snd_playSoundEffect(%d, %d)", track, volume);
-
 	if (_flags.platform == Common::kPlatformFMTowns || _flags.platform == Common::kPlatformPC98) {
 		if (track == 10)
 			track = _lastSfxTrack;
@@ -1530,12 +1519,14 @@ void KyraEngine_HoF::snd_playSoundEffect(int track, int volume) {
 
 	int16 vocIndex = (int16)READ_LE_UINT16(&_ingameSoundIndex[track * 2]);
 	if (vocIndex != -1) {
-		_sound->voicePlay(_ingameSoundList[vocIndex], 255, true);
+		_sound->voicePlay(_ingameSoundList[vocIndex], 0, 255, true);
 	} else if (_flags.platform == Common::kPlatformPC) {
 		if (_sound->getSfxType() == Sound::kMidiMT32)
 			track = track < _mt32SfxMapSize ? _mt32SfxMap[track] - 1 : -1;
 		else if (_sound->getSfxType() == Sound::kMidiGM)
-			track = track < _gmSfxMapSize ? _gmSfxMap[track] - 1: -1;
+			track = track < _gmSfxMapSize ? _gmSfxMap[track] - 1 : -1;
+		else if (_sound->getSfxType() == Sound::kPCSpkr)
+			track = track < _pcSpkSfxMapSize ? _pcSpkSfxMap[track] - 1 : -1;
 
 		if (track != -1)
 			KyraEngine_v1::snd_playSoundEffect(track);
@@ -1550,13 +1541,13 @@ void KyraEngine_HoF::snd_playSoundEffect(int track, int volume) {
 
 #pragma mark -
 
-void KyraEngine_HoF::loadInvWsa(const char *filename, int run, int delayTime, int page, int sfx, int sFrame, int flags) {
+void KyraEngine_HoF::loadInvWsa(const char *filename, int run_, int delayTime, int page, int sfx, int sFrame, int flags) {
 	int wsaFlags = 1;
 	if (flags)
 		wsaFlags |= 2;
 
 	if (!_invWsa.wsa)
-		_invWsa.wsa = new WSAMovie_v2(this, _screen);
+		_invWsa.wsa = new WSAMovie_v2(this);
 
 	if (!_invWsa.wsa->open(filename, wsaFlags, 0))
 		error("Couldn't open inventory WSA file '%s'", filename);
@@ -1583,7 +1574,7 @@ void KyraEngine_HoF::loadInvWsa(const char *filename, int run, int delayTime, in
 	_invWsa.running = true;
 	_invWsa.timer = _system->getMillis();
 
-	if (run) {
+	if (run_) {
 		while (_invWsa.running && !skipFlag() && !shouldQuit()) {
 			update();
 			_system->delayMillis(10);
@@ -1610,10 +1601,7 @@ void KyraEngine_HoF::updateInvWsa() {
 	if (_invWsa.timer > _system->getMillis())
 		return;
 
-	_invWsa.wsa->setX(0);
-	_invWsa.wsa->setY(0);
-	_invWsa.wsa->setDrawPage(_invWsa.page);
-	_invWsa.wsa->displayFrame(_invWsa.curFrame, 0, 0, 0);
+	_invWsa.wsa->displayFrame(_invWsa.curFrame, _invWsa.page, 0, 0, 0, 0, 0);
 
 	if (_invWsa.page)
 		_screen->copyRegion(_invWsa.x, _invWsa.y, _invWsa.x, _invWsa.y, _invWsa.w, _invWsa.h, _invWsa.page, 0, Screen::CR_NO_P_CHECK);
@@ -1651,10 +1639,7 @@ void KyraEngine_HoF::displayInvWsaLastFrame() {
 	if (!_invWsa.wsa)
 		return;
 
-	_invWsa.wsa->setX(0);
-	_invWsa.wsa->setY(0);
-	_invWsa.wsa->setDrawPage(_invWsa.page);
-	_invWsa.wsa->displayFrame(_invWsa.lastFrame-1, 0, 0, 0);
+	_invWsa.wsa->displayFrame(_invWsa.lastFrame-1, _invWsa.page, 0, 0, 0, 0, 0);
 
 	if (_invWsa.page)
 		_screen->copyRegion(_invWsa.x, _invWsa.y, _invWsa.x, _invWsa.y, _invWsa.w, _invWsa.h, _invWsa.page, 0, Screen::CR_NO_P_CHECK);
@@ -1668,12 +1653,12 @@ void KyraEngine_HoF::displayInvWsaLastFrame() {
 #pragma mark -
 
 void KyraEngine_HoF::setCauldronState(uint8 state, bool paletteFade) {
-	memcpy(_screen->getPalette(2), _screen->getPalette(0), 768);
+	_screen->copyPalette(2, 0);
 	Common::SeekableReadStream *file = _res->createReadStream("_POTIONS.PAL");
 	if (!file)
 		error("Couldn't load cauldron palette");
 	file->seek(state*18, SEEK_SET);
-	file->read(_screen->getPalette(2)+723, 18);
+	_screen->getPalette(2).loadVGAPalette(*file, 241, 6);
 	delete file;
 	file = 0;
 
@@ -1685,11 +1670,11 @@ void KyraEngine_HoF::setCauldronState(uint8 state, bool paletteFade) {
 		_screen->updateScreen();
 	}
 
-	memcpy(_screen->getPalette(0)+723, _screen->getPalette(2)+723, 18);
+	_screen->getPalette(0).copy(_screen->getPalette(2), 241, 6);
 	_cauldronState = state;
 	_cauldronUseCount = 0;
-	//if (state == 5)
-	// sub_27149();
+	if (state == 5)
+		setDlgIndex(5);
 }
 
 void KyraEngine_HoF::clearCauldronTable() {
@@ -1845,11 +1830,11 @@ void KyraEngine_HoF::cauldronRndPaletteFade() {
 	if (!file)
 		error("Couldn't load cauldron palette");
 	file->seek(index*18, SEEK_SET);
-	file->read(_screen->getPalette(0)+723, 18);
+	_screen->getPalette(0).loadVGAPalette(*file, 241, 6);
 	snd_playSoundEffect(0x6A);
 	_screen->fadePalette(_screen->getPalette(0), 0x1E, &_updateFunctor);
 	file->seek(0, SEEK_SET);
-	file->read(_screen->getPalette(0)+723, 18);
+	_screen->getPalette(0).loadVGAPalette(*file, 241, 6);
 	delete file;
 	_screen->fadePalette(_screen->getPalette(0), 0x1E, &_updateFunctor);
 }
@@ -1894,10 +1879,10 @@ void KyraEngine_HoF::listItemsInCauldron() {
 				if (*str == 37)
 					str += 2;
 			}
-			strcpy((char*)_unkBuf500Bytes, "...");
-			strcat((char*)_unkBuf500Bytes, str);
-			strcat((char*)_unkBuf500Bytes, "...");
-			objectChat((const char*)_unkBuf500Bytes, 0, 0x83, _cauldronTable[i]+54);
+			strcpy((char *)_unkBuf500Bytes, "...");
+			strcat((char *)_unkBuf500Bytes, str);
+			strcat((char *)_unkBuf500Bytes, "...");
+			objectChat((const char *)_unkBuf500Bytes, 0, 0x83, _cauldronTable[i]+54);
 		}
 
 		char *str = buffer;
@@ -1906,10 +1891,10 @@ void KyraEngine_HoF::listItemsInCauldron() {
 			if (*str == 37)
 				str += 2;
 		}
-		strcpy((char*)_unkBuf500Bytes, "...");
-		strcat((char*)_unkBuf500Bytes, str);
-		strcat((char*)_unkBuf500Bytes, ".");
-		objectChat((const char*)_unkBuf500Bytes, 0, 0x83, _cauldronTable[itemsInCauldron-1]+54);
+		strcpy((char *)_unkBuf500Bytes, "...");
+		strcat((char *)_unkBuf500Bytes, str);
+		strcat((char *)_unkBuf500Bytes, ".");
+		objectChat((const char *)_unkBuf500Bytes, 0, 0x83, _cauldronTable[itemsInCauldron-1]+54);
 	}
 }
 
@@ -1999,7 +1984,6 @@ void KyraEngine_HoF::writeSettings() {
 	case 0:
 	default:
 		_flags.lang = Common::EN_ANY;
-		break;
 	}
 
 	if (_flags.lang == _flags.replacedLang && _flags.fanLang != Common::UNK_LANG)

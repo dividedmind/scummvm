@@ -27,7 +27,7 @@
 
 namespace Cruise {
 
-uint8 *_systemFNT;
+uint8 *_systemFNT = NULL;
 
 uint8 itemColor = 1;
 uint8 selectColor = 3;
@@ -51,7 +51,6 @@ int32 volumeDataLoaded = 0;
 
 int16 numOfDisks;
 
-char musicName[15];
 char lastOverlay[15];
 char nextOverlay[15];
 
@@ -80,13 +79,15 @@ int16 volumeNumberOfEntry;
 
 int16 displayOn = 1;
 
+int16 protectionCode = 0;
+
 int16 globalVars[2000];
 
-dataFileEntry filesDatabase[257];
+dataFileEntry filesDatabase[NUM_FILE_ENTRIES];
 
 int16 bootOverlayNumber;
 
-int16 initVar5[12];
+SoundEntry soundList[4];
 
 opcodeTypeFunction opcodeTypeTable[64];
 
@@ -125,8 +126,6 @@ int16 sysY = 0;
 int16 automoveInc;
 int16 automoveMax;
 int16 isMessage;
-int16 playMusic;
-int16 playMusic2;
 int16 automaticMode;
 int16 aniX;
 int16 aniY;
@@ -134,7 +133,7 @@ bool animationStart;
 
 int16 autoOvl;
 int16 var39;
-int16 entrerMenuJoueur;
+int16 playerMenuEnabled = 0;
 int16 var41;
 int16 var42;
 int16 var45;

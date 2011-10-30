@@ -23,20 +23,20 @@
  */
 
 #include "common/system.h"
-#include "scumm/scumm.h"
 #include "scumm/actor.h"
 #include "scumm/charset.h"
-#include "scumm/intern.h"
 #ifdef ENABLE_HE
 #include "scumm/he/intern_he.h"
 #endif
 #include "scumm/resource.h"
+#include "scumm/scumm_v5.h"
+#include "scumm/scumm_v6.h"
 #include "scumm/usage_bits.h"
 #include "scumm/he/wiz_he.h"
 #include "scumm/util.h"
 
 #ifdef USE_ARM_GFX_ASM
-extern "C" void asmDrawStripToScreen(int height, int width, byte const* text, byte const* src, byte* dst,
+extern "C" void asmDrawStripToScreen(int height, int width, void const* text, void const* src, byte* dst,
 	int vsPitch, int vmScreenWidth, int textSurfacePitch);
 extern "C" void asmCopy8Col(byte* dst, int dstPitch, const byte* src, int height);
 #endif /* USE_ARM_GFX_ASM */
@@ -574,13 +574,13 @@ void ScummEngine::drawStripToScreen(VirtScreen *vs, int x, int width, int top, i
 	if (width <= 0 || height <= 0)
 		return;
 
-	const byte *src = vs->getPixels(x, top);
+	const void *src = vs->getPixels(x, top);
 	int m = _textSurfaceMultiplier;
 	int vsPitch;
 	int pitch = vs->pitch;
 
 	if (_useCJKMode && _textSurfaceMultiplier == 2) {
-		scale2x(_fmtownsBuf, _screenWidth * m, src, vs->pitch,  width, height);
+		scale2x(_fmtownsBuf, _screenWidth * m, (const byte *)src, vs->pitch,  width, height);
 		src = _fmtownsBuf;
 
 		vsPitch = _screenWidth * m - width * m;
@@ -599,11 +599,11 @@ void ScummEngine::drawStripToScreen(VirtScreen *vs, int x, int width, int top, i
 
 		// Compute pointer to the text surface
 		assert(_compositeBuf);
-		const byte *text = (byte *)_textSurface.getBasePtr(x * m, y * m);
+		const void *text = _textSurface.getBasePtr(x * m, y * m);
 
 		// The values x, width, etc. are all multiples of 8 at this point,
 		// so loop unrolloing might be a good idea...
-		assert(0 == ((long)text & 3));
+		assert(IS_ALIGNED(text, 4));
 		assert(0 == (width & 3));
 
 		// Compose the text over the game graphics
@@ -677,7 +677,7 @@ void ScummEngine::drawStripToScreen(VirtScreen *vs, int x, int width, int top, i
 	}
 
 	// Finally blit the whole thing to the screen
-	_system->copyRectToScreen(src, pitch, x, y, width, height);
+	_system->copyRectToScreen((const byte *)src, pitch, x, y, width, height);
 }
 
 // CGA
@@ -758,18 +758,18 @@ void ditherHerc(byte *src, byte *hercbuf, int srcPitch, int *x, int *y, int *wid
 }
 
 void scale2x(byte *dst, int dstPitch, const byte *src, int srcPitch, int w, int h) {
-	byte *dstL1 = dst;
-	byte *dstL2 = dst + dstPitch;
+	uint16 *dstL1 = (uint16 *)dst;
+	uint16 *dstL2 = (uint16 *)(dst + dstPitch);
 
-	int dstAdd = dstPitch * 2 - w * 2;
-	int srcAdd = srcPitch - w;
+	const int dstAdd = dstPitch - w;
+	const int srcAdd = srcPitch - w;
 
 	while (h--) {
-		for (int x = 0; x < w; ++x, dstL1 += 2, dstL2 += 2) {
+		for (int x = 0; x < w; ++x) {
 			uint16 col = *src++;
 			col |= col << 8;
-			*(uint16*)(dstL1) = col;
-			*(uint16*)(dstL2) = col;
+			*dstL1++ = col;
+			*dstL2++ = col;
 		}
 		dstL1 += dstAdd; dstL2 += dstAdd;
 		src += srcAdd;

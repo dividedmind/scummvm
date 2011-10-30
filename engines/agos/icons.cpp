@@ -56,6 +56,14 @@ void AGOSEngine::loadIconFile() {
 
 		decrunchFile(srcBuf, _iconFilePtr, srcSize);
 		free(srcBuf);
+	} else if (getGameType() == GType_PN && getPlatform() == Common::kPlatformAtariST) {
+		// The icon data is hard coded in the program file.
+		_iconFilePtr = (byte *)malloc(15038);
+		if (_iconFilePtr == NULL)
+			error("Out of icon memory");
+
+		in.seek(48414);
+		in.read(_iconFilePtr, 15038);
 	} else {
 		_iconFilePtr = (byte *)malloc(srcSize);
 		if (_iconFilePtr == NULL)
@@ -196,137 +204,174 @@ void AGOSEngine_Simon2::drawIcon(WindowBlock *window, uint icon, uint x, uint y)
 	byte *dst;
 	byte *src;
 
-	_lockWord |= 0x8000;
+	_videoLockOut |= 0x8000;
 
 	Graphics::Surface *screen = _system->lockScreen();
 	dst = (byte *)screen->pixels;
 
 	dst += 110;
 	dst += x;
-	dst += (y + window->y) * _dxSurfacePitch;
+	dst += (y + window->y) * screen->pitch;
 
 	src = _iconFilePtr;
 	src += READ_LE_UINT16(src + icon * 4 + 0);
-	decompressIcon(dst, src, 20, 10, 224, _dxSurfacePitch);
+	decompressIcon(dst, src, 20, 10, 224, screen->pitch);
 
 	src = _iconFilePtr;
 	src += READ_LE_UINT16(src + icon * 4 + 2);
-	decompressIcon(dst, src, 20, 10, 208, _dxSurfacePitch);
+	decompressIcon(dst, src, 20, 10, 208, screen->pitch);
 
 	_system->unlockScreen();
 
-	_lockWord &= ~0x8000;
+	_videoLockOut &= ~0x8000;
 }
 
 void AGOSEngine_Simon1::drawIcon(WindowBlock *window, uint icon, uint x, uint y) {
 	byte *dst;
 	byte *src;
 
-	_lockWord |= 0x8000;
+	_videoLockOut |= 0x8000;
 
 	Graphics::Surface *screen = _system->lockScreen();
 	dst = (byte *)screen->pixels;
 
 	dst += (x + window->x) * 8;
-	dst += (y * 25 + window->y) * _dxSurfacePitch;
+	dst += (y * 25 + window->y) * screen->pitch;
 
 	if (getPlatform() == Common::kPlatformAmiga) {
 		src = _iconFilePtr;
 		src += READ_BE_UINT32(src + icon * 4);
 		uint8 color = (getFeatures() & GF_32COLOR) ? 224 : 240;
-		decompressIconPlanar(dst, src, 24, 12, color, _dxSurfacePitch);
+		decompressIconPlanar(dst, src, 24, 12, color, screen->pitch);
 	} else {
 		src = _iconFilePtr;
 		src += READ_LE_UINT16(src + icon * 2);
-		decompressIcon(dst, src, 24, 12, 224, _dxSurfacePitch);
+		decompressIcon(dst, src, 24, 12, 224, screen->pitch);
 	}
 
 	_system->unlockScreen();
 
-	_lockWord &= ~0x8000;
+	_videoLockOut &= ~0x8000;
 }
 
 void AGOSEngine_Waxworks::drawIcon(WindowBlock *window, uint icon, uint x, uint y) {
 	byte *dst;
 	byte *src;
 
-	_lockWord |= 0x8000;
+	_videoLockOut |= 0x8000;
 
 	Graphics::Surface *screen = _system->lockScreen();
 	dst = (byte *)screen->pixels;
 
 	dst += (x + window->x) * 8;
-	dst += (y * 20 + window->y) * _dxSurfacePitch;
+	dst += (y * 20 + window->y) * screen->pitch;
 
 	uint8 color = dst[0] & 0xF0;
 	if (getPlatform() == Common::kPlatformAmiga) {
 		src = _iconFilePtr;
 		src += READ_BE_UINT32(src + icon * 4);
-		decompressIconPlanar(dst, src, 24, 10, color, _dxSurfacePitch);
+		decompressIconPlanar(dst, src, 24, 10, color, screen->pitch);
 	} else {
 		src = _iconFilePtr;
 		src += READ_LE_UINT16(src + icon * 2);
-		decompressIcon(dst, src, 24, 10, color, _dxSurfacePitch);
+		decompressIcon(dst, src, 24, 10, color, screen->pitch);
 	}
 
 	_system->unlockScreen();
 
-	_lockWord &= ~0x8000;
+	_videoLockOut &= ~0x8000;
 }
 
 void AGOSEngine_Elvira2::drawIcon(WindowBlock *window, uint icon, uint x, uint y) {
 	byte *dst;
 	byte *src;
 
-	_lockWord |= 0x8000;
+	_videoLockOut |= 0x8000;
 
 	Graphics::Surface *screen = _system->lockScreen();
 	dst = (byte *)screen->pixels;
 
 	dst += (x + window->x) * 8;
-	dst += (y * 8 + window->y) * _dxSurfacePitch;
+	dst += (y * 8 + window->y) * screen->pitch;
 
 	uint color = dst[0] & 0xF0;
 	if (getFeatures() & GF_PLANAR) {
 		src = _iconFilePtr;
 		src += READ_BE_UINT32(src + icon * 4);
-		decompressIconPlanar(dst, src, 24, 12, color, _dxSurfacePitch);
+		decompressIconPlanar(dst, src, 24, 12, color, screen->pitch);
 	} else {
 		src = _iconFilePtr;
 		src += READ_LE_UINT16(src + icon * 2);
-		decompressIcon(dst, src, 24, 12, color, _dxSurfacePitch);
+		decompressIcon(dst, src, 24, 12, color, screen->pitch);
 	}
 
 	_system->unlockScreen();
 
-	_lockWord &= ~0x8000;
+	_videoLockOut &= ~0x8000;
+}
+
+void AGOSEngine_Elvira1::drawIcon(WindowBlock *window, uint icon, uint x, uint y) {
+	byte *dst;
+	byte *src;
+
+	_videoLockOut |= 0x8000;
+
+	Graphics::Surface *screen = _system->lockScreen();
+	dst = (byte *)screen->pixels;
+
+	dst += (x + window->x) * 8;
+	dst += (y * 8 + window->y) * screen->pitch;
+
+	if (getFeatures() & GF_PLANAR) {
+		src = _iconFilePtr;
+		src += READ_BE_UINT16(src + icon * 2);
+		decompressIconPlanar(dst, src, 24, 12, 16, screen->pitch);
+	} else {
+		src = _iconFilePtr;
+		src += icon * 288;
+		decompressIconPlanar(dst, src, 24, 12, 16, screen->pitch, false);
+	}
+
+	_system->unlockScreen();
+
+	_videoLockOut &= ~0x8000;
 }
 
 void AGOSEngine::drawIcon(WindowBlock *window, uint icon, uint x, uint y) {
 	byte *dst;
 	byte *src;
 
-	_lockWord |= 0x8000;
+	_videoLockOut |= 0x8000;
 
 	Graphics::Surface *screen = _system->lockScreen();
-	dst = (byte *)screen->pixels;
+	dst = (byte *)screen->pixels + y * screen->pitch + x * 8;
+	src = _iconFilePtr + icon * 146;
 
-	dst += (x + window->x) * 8;
-	dst += (y * 8 + window->y) * _dxSurfacePitch;
-
-	if (getFeatures() & GF_PLANAR) {
-		src = _iconFilePtr;
-		src += READ_BE_UINT16(src + icon * 2);
-		decompressIconPlanar(dst, src, 24, 12, 16, _dxSurfacePitch);
+	if (icon == 0xFF) {
+		// Draw Blank Icon
+		for (int yp = 0; yp < 24; yp++) {
+			memset(dst, 0, 24);
+			dst += screen->pitch;
+		}
 	} else {
-		src = _iconFilePtr;
-		src += icon * 288;
-		decompressIconPlanar(dst, src, 24, 12, 16, _dxSurfacePitch, false);
+		uint8 palette[4];
+		palette[0] = *src >> 4;
+		palette[1] = *src++ & 0xf;
+		palette[2] = *src >> 4;
+		palette[3] = *src++ & 0xf;
+		for (int yp = 0; yp < 24; ++yp, src += 6) {
+			// Get bit-set representing the 24 pixels for the line
+			uint32 v1 = (READ_BE_UINT16(src) << 8) | *(src + 4);
+			uint32 v2 = (READ_BE_UINT16(src + 2) << 8) | *(src + 5);
+			for (int xp = 0; xp < 24; ++xp, v1 >>= 1, v2 >>= 1) {
+				dst[yp * screen->pitch + (23 - xp)] = palette[((v1 & 1) << 1) | (v2 & 1)];
+			}
+		}
 	}
 
 	_system->unlockScreen();
 
-	_lockWord &= ~0x8000;
+	_videoLockOut &= ~0x8000;
 }
 
 void AGOSEngine_Feeble::drawIconArray(uint num, Item *itemRef, int line, int classMask) {
@@ -727,7 +772,7 @@ void AGOSEngine_Simon1::addArrows(WindowBlock *window, uint8 num) {
 	ha->window = window;
 	ha->verb = 1;
 
-	_lockWord |= 0x8;
+	_videoLockOut |= 0x8;
 
 	VgaPointersEntry *vpe = &_vgaBufferPointers[1];
 	byte *curVgaFile2Orig = _curVgaFile2;
@@ -741,7 +786,7 @@ void AGOSEngine_Simon1::addArrows(WindowBlock *window, uint8 num) {
 	_curVgaFile2 = curVgaFile2Orig;
 	_windowNum = windowNumOrig;
 
-	_lockWord &= ~0x8;
+	_videoLockOut &= ~0x8;
 }
 
 void AGOSEngine_Waxworks::addArrows(WindowBlock *window, uint8 num) {
@@ -907,7 +952,7 @@ void AGOSEngine::drawArrow(uint16 x, uint16 y, int8 dir) {
 	}
 
 	Graphics::Surface *screen = _system->lockScreen();
-	byte *dst = (byte *)screen->pixels + y * _screenWidth + x * 8;
+	byte *dst = (byte *)screen->pixels + y * screen->pitch + x * 8;
 
 	for (h = 0; h < 19; h++) {
 		for (w = 0; w < 16; w++) {
@@ -915,7 +960,7 @@ void AGOSEngine::drawArrow(uint16 x, uint16 y, int8 dir) {
 		}
 
 		src += dir;
-		dst+= _screenWidth;
+		dst+= screen->pitch;
 	}
 
 	_system->unlockScreen();
@@ -923,7 +968,7 @@ void AGOSEngine::drawArrow(uint16 x, uint16 y, int8 dir) {
 
 void AGOSEngine_Simon1::removeArrows(WindowBlock *window, uint num) {
 	if (getGameType() == GType_SIMON1) {
-		restoreBlock(200, 320, 146, 304);
+		restoreBlock(304, 146, 320, 200);
 	}
 }
 
@@ -941,7 +986,7 @@ void AGOSEngine::removeArrows(WindowBlock *window, uint num) {
 	if (num != 2) {
 		uint y = window->height * 4 + window->y - 19;
 		uint x = window->width + window->x;
-		restoreBlock(y + 38, x + 16, y, x);
+		restoreBlock(x, y, x + 16, y + 38);
 	} else {
 		colorBlock(window, 240, 151, 16, 38);
 	}
@@ -983,5 +1028,97 @@ void AGOSEngine::removeIconArray(uint num) {
 	_fcsData1[num] = 0;
 	_fcsData2[num] = 0;
 }
+
+static const byte hitBarData[12 * 7] = {
+	0x3C, 0x00, 0x80, 0x00, 0x88, 0x00, 0x00, 0x03, 0x80, 0x00, 0x00, 0x00,
+	0x20, 0x00, 0x04, 0x00, 0xD8, 0x00, 0x00, 0x04, 0x48, 0x00, 0x00, 0x00,
+	0x20, 0x89, 0x8E, 0x00, 0xA8, 0x86, 0x10, 0x04, 0x08, 0x21, 0x88, 0x00,
+	0x38, 0x50, 0x84, 0x00, 0x89, 0x49, 0x28, 0x04, 0x08, 0x52, 0x14, 0x00,
+	0x20, 0x20, 0x84, 0x00, 0x89, 0x48, 0x38, 0x04, 0x08, 0x53, 0x9C, 0x00,
+	0x20, 0x50, 0x84, 0x00, 0x89, 0x48, 0x20, 0x04, 0x48, 0x50, 0x90, 0x00,
+	0x3C, 0x89, 0xC3, 0x00, 0x88, 0x88, 0x18, 0x03, 0x86, 0x23, 0x0C, 0x00
+};
+
+#ifdef ENABLE_PN
+// Personal Nightmare specific
+void AGOSEngine_PN::drawIconHitBar() {
+	Graphics::Surface *screen = _system->lockScreen();
+	byte *dst = (byte *)screen->pixels + 3 * screen->pitch + 6 * 8;
+	const byte *src = hitBarData;
+	uint8 color = (getPlatform() == Common::kPlatformPC) ? 7 : 15;
+
+	for (int h = 0; h < 7; h++) {
+		for (int w = 0; w < 12; w++) {
+			int8 b = *src++;
+			for (int i = 0; i < 8; i++) {
+				if (b < 0) {
+					dst[w * 8 + i] = color;
+				}
+
+				b <<= 1;
+			}
+		}
+		dst += screen->pitch;
+	}
+
+	_system->unlockScreen();
+}
+
+void AGOSEngine_PN::iconPage() {
+	_objectCountS = -1;
+
+	mouseOff();
+
+	uint8 objRoom = getptr(_quickptr[12] + _variableArray[210] * _quickshort[5] + 20);
+	uint8 iconNum = getptr(_quickptr[0] + objRoom * _quickshort[0] + 4);
+
+	drawIcon(NULL, iconNum, 6, 12);
+
+	HitArea *ha = _invHitAreas + 5;
+	for (uint8 r = 0; r < 5; r++) {
+		for (uint8 i = 0; i < 7; i++) {
+			printIcon(ha, i, r);
+			ha++;
+		}
+	}
+
+	mouseOn();
+}
+
+bool AGOSEngine_PN::ifObjectInInv(uint16 a) {
+	return _variableArray[210] == getptr(_quickptr[11] + a * _quickshort[4] + 2);
+}
+
+bool AGOSEngine_PN::testContainer(uint16 a) {
+	return 	bitextract(_quickptr[1] + a * _quickshort[1], 0) != 0;
+}
+
+bool AGOSEngine_PN::testObvious(uint16 a) {
+	return 	bitextract(_quickptr[1] + a * _quickshort[1], 4) != 0;
+}
+
+bool AGOSEngine_PN::testSeen(uint16 a) {
+	return 	bitextract(_quickptr[1] + a * _quickshort[1], 3) != 0;
+}
+
+void AGOSEngine_PN::printIcon(HitArea *ha, uint8 i, uint8 r) {
+	 if (_objects == _objectCountS) {
+		ha->flags |= kOBFBoxDisabled;
+		drawIcon(NULL, 0xFF, 12 + i * 3, 12 + 24 * r);
+	} else {
+		_objectCountS++;
+		if (!ifObjectInInv(_objectCountS) || !testObvious(_objectCountS)) {
+			printIcon(ha, i, r);
+		} else {
+
+			uint8 iconNum = getptr(_quickptr[0] + _objectCountS * _quickshort[0] + 4);
+			drawIcon(NULL, iconNum, 12 + i * 3, 12 + 24 * r);
+
+			ha->msg1 = _objectCountS | 0x8000;
+			ha->flags &= ~kOBFBoxDisabled;
+		}
+	}
+}
+#endif
 
 } // End of namespace AGOS

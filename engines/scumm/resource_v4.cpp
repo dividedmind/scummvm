@@ -24,8 +24,7 @@
  */
 
 
-#include "scumm/scumm.h"
-#include "scumm/intern.h"
+#include "scumm/scumm_v4.h"
 #include "scumm/file.h"
 #include "scumm/resource.h"
 #include "scumm/util.h"
@@ -62,11 +61,11 @@ void ScummEngine_v4::readIndexFile() {
 	closeRoom();
 	openRoom(0);
 
-	while (!_fileHandle->eos()) {
+	while (true) {
 		// Figure out the sizes of various resources
 		itemsize = _fileHandle->readUint32LE();
 		blocktype = _fileHandle->readUint16LE();
-		if (_fileHandle->ioFailed())
+		if (_fileHandle->eos() || _fileHandle->err())
 			break;
 
 		switch (blocktype) {
@@ -96,16 +95,15 @@ void ScummEngine_v4::readIndexFile() {
 		_fileHandle->seek(itemsize - 8, SEEK_CUR);
 	}
 
-	_fileHandle->clearIOFailed();
 	_fileHandle->seek(0, SEEK_SET);
 
 	readMAXS(0);
 	allocateArrays();
 
-	while (1) {
+	while (true) {
 		itemsize = _fileHandle->readUint32LE();
 
-		if (_fileHandle->ioFailed())
+		if (_fileHandle->eos() || _fileHandle->err())
 			break;
 
 		blocktype = _fileHandle->readUint16LE();
@@ -147,7 +145,7 @@ void ScummEngine_v4::readIndexFile() {
 			break;
 
 		default:
-			error("Bad ID %c%c found in directory!", blocktype & 0xFF, blocktype >> 8);
+			error("Bad ID %c%c found in directory", blocktype & 0xFF, blocktype >> 8);
 		}
 	}
 	closeRoom();

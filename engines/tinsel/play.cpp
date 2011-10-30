@@ -50,7 +50,7 @@ struct PPINIT {
 	int16	y;			// } - set to (-1, -1) if none.
 	int16	z;			// normally 0, set if from restore
 	int16	speed;		// Film speed
-	int16 	actorid;	// Set if called from an actor code block
+	int16	actorid;	// Set if called from an actor code block
 	uint8	splay;		// Set if called from splay()
 	uint8	bTop;		// Set if called from topplay()
 	uint8	bRestore;
@@ -257,7 +257,7 @@ static void SoundReel(CORO_PARAM, SCNHANDLE hFilm, int column, int speed,
 		pAni = (ANI_SCRIPT *)LockMem(FROM_LE_32(pReel->script));
 
 		if (_ctx->speed == -1) {
-			_ctx->speed = (ONE_SECOND/pFilm->frate);
+			_ctx->speed = (ONE_SECOND/FROM_LE_32(pFilm->frate));
 
 			// Restored reel
 			for (;;) {
@@ -713,7 +713,7 @@ static void t2PlayReel(CORO_PARAM, int x, int y, bool bRestore, int speed, SCNHA
 
 	if ((int32)FROM_LE_32(_ctx->pmi->mulID) == -2) {
 		CORO_INVOKE_ARGS(SoundReel, (CORO_SUBCTX, hFilm, column, speed, myescEvent,
-			_ctx->pmi->otherFlags & OTH_RELATEDACTOR));
+			FROM_LE_32(_ctx->pmi->otherFlags) & OTH_RELATEDACTOR));
 		return;
 	}
 
@@ -996,7 +996,7 @@ void PlayFilm(CORO_PARAM, SCNHANDLE hFilm, int x, int y, int actorid, bool splay
 	ppi.bTop = bTop;
 	ppi.sf = sfact;
 	ppi.escOn = escOn;
- 	ppi.myescEvent = myescEvent;
+	ppi.myescEvent = myescEvent;
 
 	// Start display process for each reel in the film
 	for (int i = FROM_LE_32(pFilm->numreels) - 1; i >= 0; i--) {

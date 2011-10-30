@@ -29,6 +29,7 @@
 #include "common/config-manager.h"
 #include "common/system.h"
 #include "common/events.h"
+#include "common/EventRecorder.h"
 
 #include "sound/mixer.h"
 
@@ -107,8 +108,14 @@ SagaEngine::SagaEngine(OSystem *syst, const SAGAGameDescription *gameDesc)
 	// Mac CD Wyrmkeep
 	Common::File::addDefaultDirectory(_gameDataDir.getChild("patch"));
 
+	// Dinotopia
+	Common::File::addDefaultDirectory(_gameDataDir.getChild("smack"));
+
+	// FTA2
+	Common::File::addDefaultDirectory(_gameDataDir.getChild("video"));
+
 	_displayClip.left = _displayClip.top = 0;
-	syst->getEventManager()->registerRandomSource(_rnd, "saga");
+	g_eventRec.registerRandomSource(_rnd, "saga");
 }
 
 SagaEngine::~SagaEngine() {
@@ -147,7 +154,7 @@ SagaEngine::~SagaEngine() {
 	delete _resource;
 }
 
-Common::Error SagaEngine::init() {
+Common::Error SagaEngine::run() {
 	// Assign default values to the config manager, in case settings are missing
 	ConfMan.registerDefault("talkspeed", "255");
 	ConfMan.registerDefault("subtitles", "true");
@@ -279,10 +286,6 @@ Common::Error SagaEngine::init() {
 		_system->setFeatureState(OSystem::kFeatureAutoComputeDirtyRects, true);
 #endif
 
-	return Common::kNoError;
-}
-
-Common::Error SagaEngine::go() {
 	int msec = 0;
 
 	_previousTicks = _system->getMillis();

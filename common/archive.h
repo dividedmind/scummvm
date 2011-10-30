@@ -26,7 +26,6 @@
 #ifndef COMMON_ARCHIVE_H
 #define COMMON_ARCHIVE_H
 
-//#include "common/fs.h"
 #include "common/str.h"
 #include "common/hash-str.h"
 #include "common/list.h"
@@ -117,7 +116,8 @@ public:
 	virtual ArchiveMemberPtr getMember(const String &name) = 0;
 
 	/**
-	 * Create a stream bound to a file in the archive.
+	 * Create a stream bound to a member in the archive. If no member with the
+	 * specified name exists, then 0 is returned.
 	 * @return the newly created input stream
 	 */
 	virtual SeekableReadStream *createReadStreamForMember(const String &name) const = 0;
@@ -144,7 +144,8 @@ class SearchSet : public Archive {
 	typedef List<Node> ArchiveNodeList;
 	ArchiveNodeList _list;
 
-	ArchiveNodeList::iterator find(const String &name) const;
+	ArchiveNodeList::iterator find(const String &name);
+	ArchiveNodeList::const_iterator find(const String &name) const;
 
 	// Add an archive keeping the list sorted by ascending priorities.
 	void insert(const Node& node);
@@ -160,12 +161,12 @@ public:
 	/**
 	 * Create and add a FSDirectory by name
 	 */
-	void addDirectory(const String &name, const String &directory, int priority = 0, int depth = 1);
+	void addDirectory(const String &name, const String &directory, int priority = 0, int depth = 1, bool flat = false);
 
 	/**
 	 * Create and add a FSDirectory by FSNode
 	 */
-	void addDirectory(const String &name, const FSNode &directory, int priority = 0, int depth = 1);
+	void addDirectory(const String &name, const FSNode &directory, int priority = 0, int depth = 1, bool flat = false);
 
 	/**
 	 * Remove an archive from the searchable set.

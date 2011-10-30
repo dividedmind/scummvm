@@ -27,6 +27,7 @@
 #include "common/system.h"
 #include "common/endian.h"
 
+#include "cruise/cruise.h"
 #include "cruise/cruise_main.h"
 
 namespace Cruise {
@@ -41,7 +42,6 @@ int palDirtyMin = 256;
 int palDirtyMax = -1;
 
 gfxModuleDataStruct gfxModuleData = {
-	0,			// field_1
 	0,			// use Tandy
 	0,			// use EGA
 	1,			// use VGA
@@ -54,15 +54,15 @@ void gfxModuleData_gfxClearFrameBuffer(uint8 *ptr) {
 	memset(ptr, 0, 64000);
 }
 
-void gfxModuleData_gfxCopyScreen(char *sourcePtr, char *destPtr) {
-	memcpy(destPtr, sourcePtr, 64000);
+void gfxModuleData_gfxCopyScreen(const uint8 *sourcePtr, uint8 *destPtr) {
+	memcpy(destPtr, sourcePtr, 320 * 200);
 }
 
 void outputBit(char *buffer, int bitPlaneNumber, uint8 data) {
 	*(buffer + (8000 * bitPlaneNumber)) = data;
 }
 
-void convertGfxFromMode4(uint8 *sourcePtr, int width, int height, uint8 *destPtr) {
+void convertGfxFromMode4(const uint8 *sourcePtr, int width, int height, uint8 *destPtr) {
 	for (int y = 0; y < height; ++y) {
 		for (int x = 0; x < width / 16; ++x) {
 			for (int bit = 0; bit < 16; ++bit) {
@@ -79,7 +79,7 @@ void convertGfxFromMode4(uint8 *sourcePtr, int width, int height, uint8 *destPtr
 	}
 }
 
-void convertGfxFromMode5(uint8 *sourcePtr, int width, int height, uint8 *destPtr) {
+void convertGfxFromMode5(const uint8 *sourcePtr, int width, int height, uint8 *destPtr) {
 	int range = (width / 8) * height;
 
 	for (int line = 0; line < 200; line++) {
@@ -117,13 +117,10 @@ void gfxModuleData_setPalColor(int idx, int r, int g, int b) {
 	gfxModuleData_setDirtyColors(idx, idx);
 }
 
-void gfxModuleData_setPal256(uint8 *ptr) {
-	int R;
-	int G;
-	int B;
-	int i;
+void gfxModuleData_setPalEntries(const byte *ptr, int start, int num) {
+	int R, G, B, i;
 
-	for (i = 0; i < 256; i++) {
+	for (i = start; i < start + num; i++) {
 		R = *(ptr++);
 		G = *(ptr++);
 		B = *(ptr++);
@@ -134,7 +131,11 @@ void gfxModuleData_setPal256(uint8 *ptr) {
 		lpalette[i].A = 255;
 	}
 
-	gfxModuleData_setDirtyColors(0, 255);
+	gfxModuleData_setDirtyColors(start, start + num - 1);
+}
+
+void gfxModuleData_setPal256(const byte *ptr) {
+	gfxModuleData_setPalEntries(ptr, 0, 256);
 }
 
 /*void gfxModuleData_setPal(uint8 *ptr) {
@@ -146,7 +147,7 @@ void gfxModuleData_setPal256(uint8 *ptr) {
 	for (i = 0; i < 256; i++) {
 #define convertRatio 36.571428571428571428571428571429
 		uint16 atariColor = *ptr;
-		//flipShort(&atariColor);
+		//bigEndianShortToNative(&atariColor);
 		ptr ++;
 
 		R = (int)(convertRatio * ((atariColor & 0x700) >> 8));
@@ -169,7 +170,7 @@ void gfxModuleData_setPal256(uint8 *ptr) {
 	gfxModuleData_setDirtyColors(0, 16);
 }*/
 
-void gfxModuleData_convertOldPalColor(uint16 oldColor, uint8* pOutput) {
+void gfxModuleData_convertOldPalColor(uint16 oldColor, uint8 *pOutput) {
 	int R;
 	int G;
 	int B;
@@ -192,27 +193,34 @@ void gfxModuleData_convertOldPalColor(uint16 oldColor, uint8* pOutput) {
 	*(pOutput++) = B;
 }
 
-void gfxModuleData_field_90(void) {
-}
-
 void gfxModuleData_gfxWaitVSync(void) {
 }
 
 void gfxModuleData_flip(void) {
 }
 
-void gfxModuleData_field_64(char *sourceBuffer, int width, int height, char *dest, int x, int y, int color) {
-	int i;
-	int j;
+void gfxCopyRect(const uint8 *sourceBuffer, int width, int height, byte *dest, int x, int y, int colour) {
+	int xp, yp;
 
-	x = 0;
-	y = 0;
+	for (yp = 0; yp < height; ++yp) {
+		const uint8 *srcP = &sourceBuffer[yp * width];
+		uint8 *destP = &dest[(y + yp) * 320 + x];
 
-	for (i = 0; i < height; i++) {
-		for (j = 0; j < width; j++) {
-			dest[(y + i) * 320 / 4 + x + j] = sourceBuffer[i * width + j];
+		for (xp = 0; xp < width; ++xp, ++srcP, ++destP) {
+			uint8 v = *srcP;
+			int xDest = x + xp;
+			int yDest = y + yp;
+
+			if ((v != 0) && (xDest >= 0) && (yDest >= 0) && (xDest < 320) && (yDest < 200))
+				*destP = (v == 1) ? 0 : colour;
 		}
 	}
+}
+
+void gfxModuleData_Init(void) {
+	memset(globalScreen, 0, 320 * 200);
+	memset(page00, 0, 320 * 200);
+	memset(page10, 0, 320 * 200);
 }
 
 void gfxModuleData_flipScreen(void) {
@@ -220,10 +228,6 @@ void gfxModuleData_flipScreen(void) {
 
 	flip();
 }
-
-extern bool bFastMode;
-
-static uint32 lastTick;
 
 void flip() {
 	int i;
@@ -243,17 +247,17 @@ void flip() {
 
 	g_system->copyRectToScreen(globalScreen, 320, 0, 0, 320, 200);
 	g_system->updateScreen();
+}
 
-	uint32 currentTick = g_system->getMillis();
-
-	if (!bFastMode) {
-		uint32 speed = 50;
-		if (lastTick + speed > currentTick) {
-			g_system->delayMillis(lastTick + speed - currentTick);
-		}
+void drawSolidBox(int32 x1, int32 y1, int32 x2, int32 y2, uint8 colour) {
+	for (int y = y1; y < y2; ++y) {
+		byte *p = &gfxModuleData.pPage00[y * 320 + x1];
+		Common::set_to(p, p + (x2 - x1), colour);
 	}
+}
 
-	lastTick = g_system->getMillis();
+void resetBitmap(uint8 *dataPtr, int32 dataSize) {
+	memset(dataPtr, 0, dataSize);
 }
 
 } // End of namespace Cruise

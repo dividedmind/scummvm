@@ -24,6 +24,8 @@
 
 #include "common/system.h"
 #include "common/events.h"
+#include "common/frac.h"
+
 #include "gui/ListWidget.h"
 #include "gui/ScrollBarWidget.h"
 #include "gui/dialog.h"
@@ -33,8 +35,8 @@
 
 namespace GUI {
 
-ListWidget::ListWidget(GuiObject *boss, const String &name)
-	: EditableWidget(boss, name), CommandSender(boss) {
+ListWidget::ListWidget(GuiObject *boss, const String &name, uint32 cmd)
+	: EditableWidget(boss, name), _cmd(cmd) {
 
 	_scrollBar = NULL;
 	_textWidth = NULL;
@@ -60,10 +62,12 @@ ListWidget::ListWidget(GuiObject *boss, const String &name)
 
 	// FIXME: This flag should come from widget definition
 	_editable = true;
+
+	_quickSelect = true;
 }
 
-ListWidget::ListWidget(GuiObject *boss, int x, int y, int w, int h)
-	: EditableWidget(boss, x, y, w, h), CommandSender(boss) {
+ListWidget::ListWidget(GuiObject *boss, int x, int y, int w, int h, uint32 cmd)
+	: EditableWidget(boss, x, y, w, h), _cmd(cmd) {
 
 	_scrollBar = NULL;
 	_textWidth = NULL;
@@ -103,13 +107,32 @@ Widget *ListWidget::findWidget(int x, int y) {
 }
 
 void ListWidget::setSelected(int item) {
+	// HACK/FIXME: If our _listIndex has a non zero size,
+	// we will need to look up, whether the user selected
+	// item is present in that list
+	if (_listIndex.size()) {
+		int filteredItem = -1;
+
+		for (uint i = 0; i < _listIndex.size(); ++i) {
+			if (_listIndex[i] == item) {
+				filteredItem = i;
+				break;
+			}
+		}
+
+		item = filteredItem;
+	}
+
 	assert(item >= -1 && item < (int)_list.size());
 
+	// We only have to do something if the widget is enabled and the selection actually changes
 	if (isEnabled() && _selectedItem != item) {
 		if (_editMode)
 			abortEditMode();
 
 		_selectedItem = item;
+
+		// Notify clients that the selection changed.
 		sendCommand(kListSelectionChangedCmd, _selectedItem);
 
 		_currentPos = _selectedItem - _entriesPerPage / 2;
@@ -121,8 +144,14 @@ void ListWidget::setSelected(int item) {
 void ListWidget::setList(const StringList &list) {
 	if (_editMode && _caretVisible)
 		drawCaret(true);
-	int size = list.size();
+
+	// Copy everything
+	_dataList = list;
 	_list = list;
+	_filter.clear();
+	_listIndex.clear();
+
+	int size = list.size();
 	if (_currentPos >= size)
 		_currentPos = size - 1;
 	if (_currentPos < 0)
@@ -130,6 +159,15 @@ void ListWidget::setList(const StringList &list) {
 	_selectedItem = -1;
 	_editMode = false;
 	g_system->setFeatureState(OSystem::kFeatureVirtualKeyboard, false);
+	scrollBarRecalc();
+}
+
+void ListWidget::append(const String &s) {
+	_dataList.push_back(s);
+	_list.push_back(s);
+
+	setFilter(_filter, false);
+
 	scrollBarRecalc();
 }
 
@@ -205,12 +243,12 @@ int ListWidget::findItem(int x, int y) const {
 
 static int matchingCharsIgnoringCase(const char *x, const char *y, bool &stop) {
 	int match = 0;
-	while (*x && *y && toupper(*x) == toupper(*y)) {
+	while (*x && *y && tolower(*x) == tolower(*y)) {
 		++x;
 		++y;
 		++match;
 	}
-	stop = !*y || (*x && (toupper(*x) >= toupper(*y)));
+	stop = !*y || (*x && (tolower(*x) >= tolower(*y)));
 	return match;
 }
 
@@ -223,8 +261,6 @@ bool ListWidget::handleKeyDown(Common::KeyState state) {
 		// Quick selection mode: Go to first list item starting with this key
 		// (or a substring accumulated from the last couple key presses).
 		// Only works in a useful fashion if the list entries are sorted.
-		// TODO: Maybe this should be off by default, and instead we add a
-		// method "enableQuickSelect()" or so ?
 		uint32 time = getMillis();
 		if (_quickSelectTime < time) {
 			_quickSelectStr = (char)state.ascii;
@@ -233,26 +269,29 @@ bool ListWidget::handleKeyDown(Common::KeyState state) {
 		}
 		_quickSelectTime = time + 300;	// TODO: Turn this into a proper constant (kQuickSelectDelay ?)
 
-
-		// FIXME: This is bad slow code (it scans the list linearly each time a
-		// key is pressed); it could be much faster. Only of importance if we have
-		// quite big lists to deal with -- so for now we can live with this lazy
-		// implementation :-)
-		int newSelectedItem = 0;
-		int bestMatch = 0;
-		bool stop;
-		for (StringList::const_iterator i = _list.begin(); i != _list.end(); ++i) {
-			const int match = matchingCharsIgnoringCase(i->c_str(), _quickSelectStr.c_str(), stop);
-			if (match > bestMatch || stop) {
-				_selectedItem = newSelectedItem;
-				bestMatch = match;
-				if (stop)
-					break;
+		if (_quickSelect) {
+			// FIXME: This is bad slow code (it scans the list linearly each time a
+			// key is pressed); it could be much faster. Only of importance if we have
+			// quite big lists to deal with -- so for now we can live with this lazy
+			// implementation :-)
+			int newSelectedItem = 0;
+			int bestMatch = 0;
+			bool stop;
+			for (StringList::const_iterator i = _list.begin(); i != _list.end(); ++i) {
+				const int match = matchingCharsIgnoringCase(i->c_str(), _quickSelectStr.c_str(), stop);
+				if (match > bestMatch || stop) {
+					_selectedItem = newSelectedItem;
+					bestMatch = match;
+					if (stop)
+						break;
+				}
+				newSelectedItem++;
 			}
-			newSelectedItem++;
-		}
 
-		scrollToCurrent();
+			scrollToCurrent();
+		} else {
+			sendCommand(_cmd, 0);
+		}
 	} else if (_editMode) {
 		// Class EditableWidget handles all text editing related key presses for us
 		handled = EditableWidget::handleKeyDown(state);
@@ -367,15 +406,14 @@ void ListWidget::drawWidget() {
 	for (i = 0, pos = _currentPos; i < _entriesPerPage && pos < len; i++, pos++) {
 		const int y = _y + _topPadding + kLineHeight * i;
 		const int fontHeight = kLineHeight;
-		bool inverted = false;
+		ThemeEngine::TextInversionState inverted = ThemeEngine::kTextInversionNone;
 
 		// Draw the selected item inverted, on a highlighted background.
 		if (_selectedItem == pos) {
 			if (_hasFocus)
-				inverted = true;
+				inverted = ThemeEngine::kTextInversionFocus;
 			else
-				g_gui.theme()->drawWidgetBackground(Common::Rect(_x, y - 1, _x + _w - 1, y + fontHeight - 1),
-													0, ThemeEngine::kWidgetBackgroundBorderSmall);
+				inverted = ThemeEngine::kTextInversion;
 		}
 
 		Common::Rect r(getEditRect());
@@ -387,7 +425,7 @@ void ListWidget::drawWidget() {
 			sprintf(temp, "%2d. ", (pos + _numberingMode));
 			buffer = temp;
 			g_gui.theme()->drawText(Common::Rect(_x, y, _x + r.left + _leftPadding, y + fontHeight - 2),
-									buffer, _state, Graphics::kTextAlignLeft, inverted, _leftPadding);
+									buffer, _state, Graphics::kTextAlignLeft, inverted, _leftPadding, true);
 			pad = 0;
 		}
 
@@ -397,21 +435,13 @@ void ListWidget::drawWidget() {
 			buffer = _editString;
 			adjustOffset();
 			width = _w - r.left - _hlRightPadding - _leftPadding - scrollbarW;
-			g_gui.theme()->drawText(Common::Rect(_x + r.left, y, _x + r.left + width, y + fontHeight-2),
-									buffer, _state, Graphics::kTextAlignLeft, inverted, pad);
+			g_gui.theme()->drawText(Common::Rect(_x + r.left, y, _x + r.left + width, y + fontHeight - 2),
+									buffer, _state, Graphics::kTextAlignLeft, inverted, pad, true);
 		} else {
-			int maxWidth = _textWidth[i];
 			buffer = _list[pos];
-			if (_selectedItem != pos) {
-				width = g_gui.getStringWidth(buffer) + pad;
-				if (width > _w - r.left)
-					width = _w - r.left - _hlRightPadding - scrollbarW;
-			} else
-				width = _w - r.left - _hlRightPadding - scrollbarW;
-			if (width > maxWidth)
-				maxWidth = width;
-			g_gui.theme()->drawText(Common::Rect(_x + r.left, y, _x + r.left + maxWidth, y + fontHeight-2),
-									buffer, _state, Graphics::kTextAlignLeft, inverted, pad);
+			width = _w - r.left - scrollbarW;
+			g_gui.theme()->drawText(Common::Rect(_x + r.left, y, _x + r.left + width, y + fontHeight - 2),
+									buffer, _state, Graphics::kTextAlignLeft, inverted, pad, true);
 		}
 
 		_textWidth[i] = width;
@@ -451,6 +481,18 @@ void ListWidget::scrollToCurrent() {
 
 	_scrollBar->_currentPos = _currentPos;
 	_scrollBar->recalc();
+}
+
+void ListWidget::scrollToEnd() {
+	if (_currentPos + _entriesPerPage < (int)_list.size()) {
+		_currentPos = _list.size() - _entriesPerPage;
+	} else {
+		return;
+	}
+
+	_scrollBar->_currentPos = _currentPos;
+	_scrollBar->recalc();
+	_scrollBar->draw();
 }
 
 void ListWidget::startEditMode() {
@@ -498,13 +540,15 @@ void ListWidget::reflowLayout() {
 	// of the list.
 	// We do a rough rounding on the decimal places of Entries Per Page,
 	// to add another entry even if it goes a tad over the padding.
-	_entriesPerPage = ((_h - _topPadding - _bottomPadding) << 16) / kLineHeight;
+	frac_t entriesPerPage = intToFrac(_h - _topPadding - _bottomPadding) / kLineHeight;
 
-	if ((uint)(_entriesPerPage & 0xFFFF) >= 0xF000)
-		_entriesPerPage += (1 << 16);
+	// Our threshold before we add another entry is 0.9375 (0xF000 with FRAC_BITS being 16).
+	const frac_t threshold = intToFrac(15) / 16;
 
-	_entriesPerPage >>= 16;
+	if ((frac_t)(entriesPerPage & FRAC_LO_MASK) >= threshold)
+		entriesPerPage += FRAC_ONE;
 
+	_entriesPerPage = fracToInt(entriesPerPage);
 	assert(_entriesPerPage > 0);
 
 	delete[] _textWidth;
@@ -517,6 +561,73 @@ void ListWidget::reflowLayout() {
 		_scrollBar->resize(_w - _scrollBarWidth + 1, 0, _scrollBarWidth, _h);
 		scrollBarRecalc();
 		scrollToCurrent();
+	}
+}
+
+void ListWidget::setFilter(const String &filter, bool redraw) {
+	// FIXME: This method does not deal correctly with edit mode!
+	// Until we fix that, let's make sure it isn't called while editing takes place
+	assert(!_editMode);
+
+	String filt = filter;
+	filt.toLowercase();
+
+	if (_filter == filt) // Filter was not changed
+		return;
+
+	_filter = filt;
+
+	if (_filter.empty()) {
+		// No filter -> display everything
+		_list = _dataList;
+		_listIndex.clear();
+	} else {
+		// Restrict the list to everything which contains all words in _filter
+		// as substrings, ignoring case.
+		
+		Common::StringTokenizer tok(_filter);
+		String tmp;
+		int n = 0;
+
+		_list.clear();
+		_listIndex.clear();
+
+		for (StringList::iterator i = _dataList.begin(); i != _dataList.end(); ++i, ++n) {
+			tmp = *i;
+			tmp.toLowercase();
+			bool matches = true;
+			tok.reset();
+			while (!tok.empty()) {
+				if (!tmp.contains(tok.nextToken())) {
+					matches = false;
+					break;
+				}
+			}
+
+			if (matches) {
+				_list.push_back(*i);
+				_listIndex.push_back(n);
+			}
+		}
+	}
+
+	_currentPos = 0;
+	_selectedItem = -1;
+
+	if (redraw) {
+		scrollBarRecalc();
+		// Redraw the whole dialog. This is annoying, as this might be rather
+		// expensive when really only the list widget and its scroll bar area
+		// to be redrawn. However, since the scrollbar might change its
+		// visibility status, and the list its width, we cannot just redraw
+		// the two.
+		// TODO: A more efficient (and elegant?) way to handle this would be to
+		// introduce a kind of "BoxWidget" or "GroupWidget" which defines a
+		// rectangular region and subwidgets can be placed within it.
+		// Such a widget could also (optionally) draw a border (or even different
+		// kinds of borders) around the objects it groups; and also a 'title'
+		// (I am borrowing these "ideas" from the NSBox class in Cocoa :).
+		_boss->draw();
 	}
 }
 

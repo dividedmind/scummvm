@@ -72,7 +72,10 @@ int32 Logic::fnInitBackground(int32 *params) {
 	// params:	0 res id of normal background layer - cannot be 0
 	//		1 1 yes 0 no for a new palette
 
-	_vm->_screen->initBackground(params[0], params[1]);
+	if (Sword2Engine::isPsx())
+		_vm->_screen->initPsxBackground(params[0], params[1]);
+	else
+		_vm->_screen->initBackground(params[0], params[1]);
 	return IR_CONT;
 }
 
@@ -2139,9 +2142,9 @@ int32 Logic::fnPlaySequence(int32 *params) {
 	// pause sfx during sequence
 	_vm->_sound->pauseFx();
 
-	_moviePlayer = makeMoviePlayer(_vm, filename);
+	_moviePlayer = makeMoviePlayer(filename, _vm, _vm->_mixer, _vm->_system);
 
-	if (_moviePlayer->load()) {
+	if (_moviePlayer && _moviePlayer->load(filename)) {
 		_moviePlayer->play(_sequenceTextList, _sequenceTextLines, _smackerLeadIn, _smackerLeadOut);
 	}
 
@@ -2230,9 +2233,10 @@ int32 Logic::fnAddSequenceText(int32 *params) {
 	if (!readVar(DEMO)) {
 		assert(_sequenceTextLines < MAX_SEQUENCE_TEXT_LINES);
 
-		_sequenceTextList[_sequenceTextLines].textNumber = params[0];
-		_sequenceTextList[_sequenceTextLines].startFrame = params[1];
-		_sequenceTextList[_sequenceTextLines].endFrame = params[2];
+		_sequenceTextList[_sequenceTextLines].reset();
+		_sequenceTextList[_sequenceTextLines]._textNumber = params[0];
+		_sequenceTextList[_sequenceTextLines]._startFrame = params[1];
+		_sequenceTextList[_sequenceTextLines]._endFrame = params[2];
 		_sequenceTextLines++;
 	}
 

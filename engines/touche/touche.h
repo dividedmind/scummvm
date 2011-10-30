@@ -370,8 +370,7 @@ public:
 	virtual ~ToucheEngine();
 
 	// Engine APIs
-	virtual Common::Error init();
-	virtual Common::Error go();
+	virtual Common::Error run();
 	virtual bool hasFeature(EngineFeature f) const;
 	virtual void syncSoundSettings();
 

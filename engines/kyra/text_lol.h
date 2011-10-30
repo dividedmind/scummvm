@@ -23,6 +23,8 @@
  *
  */
 
+#ifdef ENABLE_LOL
+
 #ifndef KYRA_TEXT_LOL_H
 #define KYRA_TEXT_LOL_H
 
@@ -38,14 +40,15 @@ public:
 	TextDisplayer_LoL(LoLEngine *vm, Screen_LoL *screen);
 	~TextDisplayer_LoL();
 
-	void setAnimParameters(const char *str, int x, uint8 col1, uint8 col2);
-	void setAnimFlag(bool flag) { _animFlag = flag; }
-	
 	void setupField(bool mode);
 	void expandField();
 
-	void play(int dim, char *str, EMCState *script, int16 *paramList, int16 paramIndex);
-	
+	int clearDim(int dim);
+	void resetDimTextPositions(int dim);
+
+	void printDialogueText(int dim, char *str, EMCState *script, const uint16 *paramList, int16 paramIndex);
+	void printMessage(uint16 type, const char *str, ...) GCC_PRINTF(3, 4);
+
 	int16 _scriptParameter;
 
 private:
@@ -53,52 +56,45 @@ private:
 	char parseCommand();
 	void readNextPara();
 	void printLine(char *str);
-	bool preprocessString(char *str, EMCState *script, int16 *paramList, int16 paramIndex);
-	
-	//typedef void (LoLEngine::*DialogueAnimCallback)(const char *str, uint16 lineWidth, uint8 col1, uint8 col2);
-	//DialogueAnimCallback _dlgAnimCallback;
-	//void portraitAnimation1(const char *str);
-	void portraitAnimation2();
-	
+	void preprocessString(char *str, EMCState *script, const uint16 *paramList, int16 paramIndex);
+	void textPageBreak();
+
+	void clearCurDim();
 
 	char *_stringParameters[15];
-	char *_curPara[15];
 	char *_buffer;
-	char *_out;
-	byte *_backupBuffer;
+	char *_dialogueBuffer;
 	char *_tempString1;
 	char *_tempString2;
 	char *_currentLine;
 	char _ctrl[3];
 
 	char _scriptParaString[11];
-	uint32 _stringLength;
 
 	uint16 _lineWidth;
-	uint32 _numChars;
+	int _lineCount;
+	uint32 _numCharsTotal;
+	uint32 _numCharsLeft;
 	uint32 _numCharsPrinted;
-	
-	const char *_animString;
-	int16 _animWidth;
-	uint8 _animColour1;
-	uint8 _animColour2;
 
-	bool _animFlag;
 	bool _printFlag;
-
-	uint8 _posX;
-	uint8 _posY;
-	uint8 _colour1;
-	uint8 _colour2;
-
-	uint8 *_pageBuffer1;
-	uint8 *_pageBuffer2;
 
 	LoLEngine *_vm;
 	Screen_LoL *_screen;
+
+	struct TextDimData {
+		uint8 color1;
+		uint8 color2;
+		uint16 column;
+		uint8 line;
+	};
+
+	TextDimData _textDimData[14];
 };
 
 } // end of namespace Kyra
 
 #endif
+
+#endif // ENABLE_LOL
 

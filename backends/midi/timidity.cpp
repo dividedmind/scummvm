@@ -37,6 +37,7 @@
 #if defined (UNIX)
 
 #include "common/util.h"
+#include "common/endian.h"
 #include "sound/musicplugin.h"
 #include "sound/mpu401.h"
 
@@ -98,7 +99,7 @@ private:
 	int	connect_to_server(const char* hostname, unsigned short tcp_port);
 
 	/* send command to the server; printf-like; returns reply string */
-	char	*timidity_ctl_command(const char *fmt, ...);
+	char	*timidity_ctl_command(const char *fmt, ...) GCC_PRINTF(2, 3);
 
 	/* timidity data socket-related stuff */
 	void	timidity_meta_seq(int p1, int p2, int p3);
@@ -220,7 +221,7 @@ int MidiDriver_TIMIDITY::open() {
 	 * "200 Ready data connection" */
 	res = timidity_ctl_command(NULL);
 	if (atoi(res) != 200) {
-		fprintf(stderr, "Can't connect timidity: %s\t(host=%s, port=%d)\n", res, timidity_host, data_port);
+		warning("Can't connect timidity: %s\t(host=%s, port=%d)", res, timidity_host, data_port);
 		close_all();
 		return -1;
 	}
@@ -333,7 +334,7 @@ char *MidiDriver_TIMIDITY::timidity_ctl_command(const char *fmt, ...) {
 			buff[len++] = '\n';
 
 		/* write command to control socket */
-		write(_control_fd, buff, len);
+		(void)write(_control_fd, buff, len);
 	}
 
 	while (1) {
@@ -367,7 +368,7 @@ void MidiDriver_TIMIDITY::timidity_meta_seq(int p1, int p2, int p3) {
 	seqbuf[3] = 0x7f;
 	seqbuf[4] = p1;
 	seqbuf[5] = p2;
-	*(short *)&seqbuf[6] = p3;
+	WRITE_UINT16(&seqbuf[6], p3);
 
 	timidity_write_data(seqbuf, sizeof(seqbuf));
 }

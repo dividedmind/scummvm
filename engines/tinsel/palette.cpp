@@ -92,6 +92,42 @@ static int maxDACQ = 0;
 #endif
 
 /**
+ * Map PSX palettes to original palette from resource file
+ */
+void psxPaletteMapper(PALQ *originalPal, uint8 *psxClut, byte *mapperTable) {
+	PALETTE *pal = (PALETTE *)LockMem(originalPal->hPal);
+	bool colorFound = false;
+	uint16 clutEntry = 0;
+
+	// Empty the table with color correspondences
+	memset(mapperTable, 0, 16);
+
+	for (int j = 1; j < 16; j++) {
+		clutEntry = READ_LE_UINT16(psxClut + (sizeof(uint16) * j));
+		if (clutEntry) {
+			if (clutEntry == 0x7EC0) { // This is an already known value, used by the in-game text
+				mapperTable[j] = 232; 
+				continue;
+			}
+			
+			// Check for correspondent color
+			for (uint i = 0; (i < FROM_LE_32(pal->numColours)) && !colorFound; i++) {
+				// get R G B values in the same way as psx format converters
+				uint16 psxEquivalent = TINSEL_PSX_RGB(TINSEL_GetRValue(pal->palRGB[i]) >> 3, TINSEL_GetGValue(pal->palRGB[i]) >> 3, TINSEL_GetBValue(pal->palRGB[i]) >> 3); 
+
+				if (psxEquivalent == clutEntry) {
+					mapperTable[j] = i + 1; // Add entry in the table for the found color
+					colorFound = true;
+				}
+			}
+			colorFound = false;
+		} else { // The rest of the entries are zeroes
+			return;
+		}
+	}
+}
+
+/**
  * Transfer palettes in the palette Q to Video DAC.
  */
 void PalettesToVideoDAC(void) {
@@ -280,8 +316,8 @@ PALQ *AllocPalette(SCNHANDLE hNewPal) {
 						break;
 
 					// move palette down - indicate change
-					pNxtPal->posInDAC = pPrev->posInDAC
-						+ pPrev->numColours | PALETTE_MOVED;
+					pNxtPal->posInDAC = (pPrev->posInDAC
+						+ pPrev->numColours) | PALETTE_MOVED;
 
 					// Q the palette change in position to the video DAC
 					if (!TinselV2)
@@ -396,8 +432,8 @@ void SwapPalette(PALQ *pPalQ, SCNHANDLE hNewPal) {
 				break;
 
 			// move palette down
-			pNxtPalQ->posInDAC = pPalQ->posInDAC
-				+ pPalQ->numColours | PALETTE_MOVED;
+			pNxtPalQ->posInDAC = (pPalQ->posInDAC
+				+ pPalQ->numColours) | PALETTE_MOVED;
 
 			// Q the palette change in position to the video DAC
 			UpdateDACqueueHandle(pNxtPalQ->posInDAC,
@@ -486,9 +522,9 @@ void CreateTranslucentPalette(SCNHANDLE hPalette) {
 
 	for (uint i = 0; i < FROM_LE_32(pPal->numColours); i++) {
 		// get the RGB colour model values
-		uint8 red   = GetRValue(pPal->palRGB[i]);
-		uint8 green = GetGValue(pPal->palRGB[i]);
-		uint8 blue  = GetBValue(pPal->palRGB[i]);
+		uint8 red   = TINSEL_GetRValue(pPal->palRGB[i]);
+		uint8 green = TINSEL_GetGValue(pPal->palRGB[i]);
+		uint8 blue  = TINSEL_GetBValue(pPal->palRGB[i]);
 
 		// calculate the Value field of the HSV colour model
 		unsigned val = (red > green) ? red : green;
@@ -514,9 +550,9 @@ void CreateGhostPalette(SCNHANDLE hPalette) {
 
 	for (i = 0; i < (int)FROM_LE_32(pPal->numColours); i++) {
 		// get the RGB colour model values
-		uint8 red   = GetRValue(pPal->palRGB[i]);
-		uint8 green = GetGValue(pPal->palRGB[i]);
-		uint8 blue  = GetBValue(pPal->palRGB[i]);
+		uint8 red   = TINSEL_GetRValue(pPal->palRGB[i]);
+		uint8 green = TINSEL_GetGValue(pPal->palRGB[i]);
+		uint8 blue  = TINSEL_GetBValue(pPal->palRGB[i]);
 
 		// calculate the Value field of the HSV colour model
 		unsigned val = (red > green) ? red : green;
@@ -545,12 +581,12 @@ static COLORREF DimColour(COLORREF colour, int factor) {
 		return 0;
 	} else {
 		// apply multiplier to RGB components
-		red   = GetRValue(colour) * factor / 10;
-		green = GetGValue(colour) * factor / 10;
-		blue  = GetBValue(colour) * factor / 10;
+		red   = TINSEL_GetRValue(colour) * factor / 10;
+		green = TINSEL_GetGValue(colour) * factor / 10;
+		blue  = TINSEL_GetBValue(colour) * factor / 10;
 
 		// return new colour
-		return RGB(red, green, blue);
+		return TINSEL_RGB(red, green, blue);
 	}
 }
 

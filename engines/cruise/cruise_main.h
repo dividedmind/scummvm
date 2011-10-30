@@ -26,11 +26,6 @@
 #ifndef CRUISE_CRUISE_MAIN_H
 #define CRUISE_CRUISE_MAIN_H
 
-#include <string.h>
-#include <stdlib.h>
-#include <assert.h>	// FIXME: WINCE: this is not needed/not portable (probably applies to all above includes)
-
-
 #include "common/scummsys.h"
 #include "common/savefile.h"
 
@@ -41,7 +36,6 @@
 #include "cruise/vars.h"
 #include "cruise/font.h"
 #include "cruise/volume.h"
-#include "cruise/fontCharacterTable.h"
 #include "cruise/stack.h"
 #include "cruise/script.h"
 #include "cruise/various.h"
@@ -61,22 +55,31 @@
 
 namespace Cruise {
 
+enum MouseButton {
+	CRS_MB_LEFT = 1,
+	CRS_MB_RIGHT = 2,
+	CRS_MB_MIDDLE = 4,
+	CRS_MB_BOTH = CRS_MB_LEFT | CRS_MB_RIGHT
+};
+
 /*#define DUMP_SCRIPT
 #define DUMP_OBJECT*/
 
 #define ASSERT_PTR assert
 #define ASSERT assert
 
-#define	OBJ_TYPE_LINE		  0
-#define	OBJ_TYPE_MASK		  1
-#define	OBJ_TYPE_BGMK		  2
-#define	OBJ_TYPE_VIRTUEL	  3
-#define	OBJ_TYPE_SPRITE		  4
-#define	OBJ_TYPE_MSG		  5
-#define	OBJ_TYPE_SOUND		  6
-#define	OBJ_TYPE_FONT		  7
-#define	OBJ_TYPE_POLY		  8
-#define	OBJ_TYPE_EXIT		  9
+enum ResType {
+	OBJ_TYPE_LINE = 0,
+	OBJ_TYPE_MASK = 1,
+	OBJ_TYPE_BGMASK = 2,
+	OBJ_TYPE_VIRTUAL = 3,
+	OBJ_TYPE_SPRITE = 4,
+	OBJ_TYPE_MESSAGE = 5,
+	OBJ_TYPE_SOUND = 6,
+	OBJ_TYPE_FONT = 7,
+	OBJ_TYPE_POLY = 8,
+	OBJ_TYPE_EXIT = 9
+};
 
 extern gfxEntryStruct* linkedMsgList;
 
@@ -88,28 +91,22 @@ bool delphineUnpack(byte *dst, const byte *src, int len);
 int findHighColor();
 ovlData3Struct *getOvlData3Entry(int32 scriptNumber, int32 param);
 ovlData3Struct *scriptFunc1Sub2(int32 scriptNumber, int32 param);
-int16 loadShort(void *ptr);
 void resetFileEntry(int32 entryNumber);
-void saveShort(void *ptr, int16 var);
 void *mallocAndZero(int32 size);
 uint8 *mainProc14(uint16 overlay, uint16 idx);
 void printInfoBlackBox(const char *string);
 void waitForPlayerInput(void);
-int initCt(const char * ctpName);
-void loadPakedFileToMem(int fileIdx, uint8 * buffer);
+void loadPackedFileToMem(int fileIdx, uint8 * buffer);
 int getNumObjectsByClass(int scriptIdx, int param);
 void resetFileEntryRange(int param1, int param2);
 int getProcParam(int overlayIdx, int param2, const char * name);
 void changeScriptParamInList(int param1, int param2, scriptInstanceStruct * pScriptInstance, int newValue, int param3);
 uint8 *getDataFromData3(ovlData3Struct * ptr, int param);
-int32 prepareWordRender(int32 param, int32 var1, int16 * out2, uint8 * ptr3, const uint8 * string);
 void removeExtention(const char *name, char *buffer);
-void resetRaster(uint8 * rasterPtr, int32 rasterSize);
 void resetPtr2(scriptInstanceStruct * ptr);
 void getFileExtention(const char *name, char *buffer);
 void *allocAndZero(int size);
 void freeStuff2(void);
-const char *getObjectName(int index, const char * string);
 void mainLoop(void);
 void getMouseStatus(int16 *pMouseVar, int16 *pMouseX, int16 *pMouseButton, int16 *pMouseY);
 bool testMask(int x, int y, unsigned char* pData, int stride);

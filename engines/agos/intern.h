@@ -201,15 +201,33 @@ struct GameSpecificSettings {
 };
 
 enum BoxFlags {
-	kBFTextBox        = 0x1,
+	kBFToggleBox      = 0x1, // Elvira 1/2
+	kBFTextBox        = 0x1, // Others
 	kBFBoxSelected    = 0x2,
-	kBFNoTouchName    = 0x4,
+	kBFInvertSelect   = 0x4, // Elvira 1/2
+	kBFNoTouchName    = 0x4, // Others
 	kBFInvertTouch    = 0x8,
-	kBFDragBox        = 0x10, // Simon 1/2
 	kBFHyperBox       = 0x10, // Feeble Files
+	kBFDragBox        = 0x10, // Others
 	kBFBoxInUse       = 0x20,
 	kBFBoxDead        = 0x40,
 	kBFBoxItem        = 0x80
+};
+
+enum OldBoxFlags_PN {
+	kOBFObject         = 0x1,
+	kOBFExit           = 0x2,
+	kOBFDraggable      = 0x4,
+	kOBFUseEmptyLine   = 0x8,
+	kOBFBoxDisabled    = 0x10,
+	kOBFInventoryBox   = 0x20,
+	kOBFRoomBox        = 0x40,
+	kOBFMoreBox        = 0x80,
+	kOBFNoShowName     = 0x100,
+	kOBFUseMessageList = 0x400,
+	// ScummVM specific
+	kOBFBoxSelected    = 0x800,
+	kOBFInvertTouch    = 0x1000
 };
 
 enum SubObjectFlags {
@@ -234,8 +252,9 @@ enum GameFeatures {
 	GF_CRUNCHED_GAMEPC = 1 << 3,
 	GF_ZLIBCOMP        = 1 << 4,
 	GF_32COLOR         = 1 << 5,
-	GF_PLANAR          = 1 << 6,
-	GF_DEMO            = 1 << 7
+	GF_EGA             = 1 << 6,
+	GF_PLANAR          = 1 << 7,
+	GF_DEMO            = 1 << 8
 };
 
 enum GameFileTypes {
@@ -249,11 +268,14 @@ enum GameFileTypes {
 	GAME_TBLFILE  = 1 << 7,
 	GAME_XTBLFILE = 1 << 8,
 	GAME_RESTFILE = 1 << 9,
+	GAME_TEXTFILE = 1 << 10,
+	GAME_VGAFILE  = 1 << 11,
 
-	GAME_GFXIDXFILE = 1 << 10
+	GAME_GFXIDXFILE = 1 << 12
 };
 
 enum GameIds {
+	GID_PN,
 	GID_ELVIRA1,
 	GID_ELVIRA2,
 	GID_WAXWORKS,

@@ -72,6 +72,10 @@ void DrasculaEngine::volumeControls() {
 
 		updateEvents();
 
+		// we're ignoring keypresses, so just empty the keyboard buffer
+		while (getScan())
+			;
+
 		if (rightMouseButton == 1) {
 			delay(100);
 			break;
@@ -96,7 +100,7 @@ void DrasculaEngine::volumeControls() {
 	if (_lang == kSpanish)
 		loadPic(974, tableSurface);
 
-	selectVerb(0);
+	selectVerb(kVerbNone);
 
 	updateEvents();
 }

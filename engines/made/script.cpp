@@ -34,61 +34,6 @@
 
 namespace Made {
 
-/* ScriptStack */
-
-ScriptStack::ScriptStack() {
-	for (int16 i = 0; i < kScriptStackSize; i++)
-		_stack[i] = 0;
-	_stackPos = kScriptStackSize;
-}
-
-ScriptStack::~ScriptStack() {
-}
-
-inline int16 ScriptStack::top() {
-	return _stack[_stackPos];
-}
-
-inline int16 ScriptStack::pop() {
-	if (_stackPos == kScriptStackSize)
-		error("ScriptStack::pop() Stack underflow");
-	return _stack[_stackPos++];
-}
-
-inline void ScriptStack::push(int16 value) {
-	if (_stackPos == 0)
-		error("ScriptStack::push() Stack overflow");
-	_stack[--_stackPos] = value;
-}
-
-inline void ScriptStack::setTop(int16 value) {
-	_stack[_stackPos] = value;
-}
-
-inline int16 ScriptStack::peek(int16 index) {
-	return _stack[index];
-}
-
-inline void ScriptStack::poke(int16 index, int16 value) {
-	_stack[index] = value;
-}
-
-inline void ScriptStack::alloc(int16 count) {
-	_stackPos -= count;
-}
-
-inline void ScriptStack::free(int16 count) {
-	_stackPos += count;
-}
-
-inline void ScriptStack::setStackPos(int16 stackPtr) {
-	_stackPos = stackPtr;
-}
-
-inline int16 *ScriptStack::getStackPtr() {
-	return &_stack[_stackPos];
-}
-
 /* ScriptInterpreter */
 
 ScriptInterpreter::ScriptInterpreter(MadeEngine *vm) : _vm(vm) {
@@ -199,9 +144,6 @@ void ScriptInterpreter::runScript(int16 scriptObjectIndex) {
 	_codeIp = _codeBase;
 
 	while (!_vm->shouldQuit()) {
-
-		_vm->handleEvents();
-
 		byte opcode = readByte();
 
 		if (opcode >= 1 && opcode <= _commandsMax) {
@@ -585,9 +527,9 @@ void ScriptInterpreter::cmd_send() {
 	_stack.push(_codeIp - _codeBase);
 	_stack.push(_runningScriptObjectIndex);
 	_stack.push(kScriptStackLimit - _localStackPos);
- 	_localStackPos = _stack.getStackPos();
+	_localStackPos = _stack.getStackPos();
 
- 	int16 propertyId = _stack.peek(_localStackPos + argc + 2);
+	int16 propertyId = _stack.peek(_localStackPos + argc + 2);
 	int16 objectIndex = _stack.peek(_localStackPos + argc + 4);
 
 	debug(4, "objectIndex = %d (%04X); propertyId = %d(%04X)", objectIndex, objectIndex, propertyId, propertyId);
@@ -708,25 +650,25 @@ void ScriptInterpreter::dumpScript(int16 objectIndex, int *opcodeStats, int *ext
 				switch (*sig) {
 				case 'b':
 					valueType = 0;
-	 				value = *code++;
+					value = *code++;
 					break;
 				case 'B':
-	 				valueType = 1;
-	 				value = *code++;
+					valueType = 1;
+					value = *code++;
 					break;
 				case 'w':
 					valueType = 0;
-	 				value = READ_LE_UINT16(code);
-	 				code += 2;
+					value = READ_LE_UINT16(code);
+					code += 2;
 					break;
 				case 'W':
-	 				valueType = 1;
-	 				value = READ_LE_UINT16(code);
-	 				code += 2;
+					valueType = 1;
+					value = READ_LE_UINT16(code);
+					code += 2;
 					break;
 				case 'E':
-	 				valueType = 2;
-	 				value = *code++;
+					valueType = 2;
+					value = *code++;
 					break;
 				}
 				switch (valueType) {
@@ -742,7 +684,7 @@ void ScriptInterpreter::dumpScript(int16 objectIndex, int *opcodeStats, int *ext
 						externStats[value]++;
 					} else {
 						snprintf(tempStr, 32, "invalid: %d", value);
-	 				}
+					}
 					break;
 				}
 				codeLine += tempStr;

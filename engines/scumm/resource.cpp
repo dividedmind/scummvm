@@ -23,7 +23,6 @@
  *
  */
 
-
 #include "common/str.h"
 
 #include "scumm/charset.h"
@@ -31,11 +30,12 @@
 #include "scumm/file.h"
 #include "scumm/imuse/imuse.h"
 #include "scumm/imuse_digi/dimuse.h"
-#include "scumm/intern.h"
 #include "scumm/he/intern_he.h"
 #include "scumm/object.h"
 #include "scumm/resource.h"
 #include "scumm/scumm.h"
+#include "scumm/scumm_v5.h"
+#include "scumm/scumm_v8.h"
 #include "scumm/sound.h"
 #include "scumm/util.h"
 #include "scumm/verbs.h"
@@ -229,7 +229,7 @@ void ScummEngine::askForDisk(const char *filename, int disknum) {
 		sprintf(buf, "Cannot find file: '%s'\nInsert disc %d into drive %s\nPress OK to retry, Quit to exit", filename, disknum, _gameDataDir.getPath().c_str());
 #endif
 
-		result = displayMessage("Quit", buf);
+		result = displayMessage("Quit", "%s", buf);
 		if (!result) {
 			error("Cannot find file: '%s'", filename);
 		}
@@ -253,10 +253,10 @@ void ScummEngine::readIndexFile() {
 
 	if (_game.version <= 5) {
 		// Figure out the sizes of various resources
-		while (!_fileHandle->eos()) {
+		while (true) {
 			blocktype = _fileHandle->readUint32BE();
 			itemsize = _fileHandle->readUint32BE();
-			if (_fileHandle->ioFailed())
+			if (_fileHandle->eos() || _fileHandle->err())
 				break;
 			switch (blocktype) {
 			case MKID_BE('DOBJ'):
@@ -285,7 +285,6 @@ void ScummEngine::readIndexFile() {
 			}
 			_fileHandle->seek(itemsize - 8, SEEK_CUR);
 		}
-		_fileHandle->clearIOFailed();
 		_fileHandle->seek(0, SEEK_SET);
 	}
 
@@ -300,7 +299,7 @@ void ScummEngine::readIndexFile() {
 		blocktype = _fileHandle->readUint32BE();
 		itemsize = _fileHandle->readUint32BE();
 
-		if (_fileHandle->ioFailed())
+		if (_fileHandle->eos() || _fileHandle->err())
 			break;
 
 		numblock++;
@@ -480,7 +479,7 @@ void ScummEngine::readIndexBlock(uint32 blocktype, uint32 itemsize) {
 		break;
 
 	default:
-		error("Bad ID %04X('%s') found in index file directory!", blocktype,
+		error("Bad ID %04X('%s') found in index file directory", blocktype,
 				tag2str(blocktype));
 	}
 }
@@ -689,7 +688,7 @@ int ScummEngine::loadResource(int type, int idx) {
 		dumpResource("script-", idx, getResourceAddress(rtScript, idx));
 	}
 
-	if (!_fileHandle->ioFailed()) {
+	if (!_fileHandle->err() && !_fileHandle->eos()) {
 		return 1;
 	}
 
@@ -787,8 +786,6 @@ void ResourceManager::setResourceCounter(int type, int idx, byte flag) {
 #define SAFETY_AREA 2
 
 byte *ResourceManager::createResource(int type, int idx, uint32 size) {
-	byte *ptr;
-
 	debugC(DEBUG_RESOURCE, "_res->createResource(%s,%d,%d)", resTypeFromId(type), idx, size);
 
 	if (!validateResource("allocating", type, idx))
@@ -807,17 +804,17 @@ byte *ResourceManager::createResource(int type, int idx, uint32 size) {
 
 	expireResources(size);
 
-	ptr = (byte *)calloc(size + sizeof(MemBlkHeader) + SAFETY_AREA, 1);
+	void *ptr = calloc(size + sizeof(MemBlkHeader) + SAFETY_AREA, 1);
 	if (ptr == NULL) {
 		error("createResource(%s,%d): Out of memory while allocating %d", resTypeFromId(type), idx, size);
 	}
 
 	_allocatedSize += size;
 
-	address[type][idx] = ptr;
+	address[type][idx] = (byte *)ptr;
 	((MemBlkHeader *)ptr)->size = size;
 	setResourceCounter(type, idx, 1);
-	return ptr + sizeof(MemBlkHeader);	/* skip header */
+	return (byte *)ptr + sizeof(MemBlkHeader);	/* skip header */
 }
 
 ResourceManager::ResourceManager(ScummEngine *vm) {
@@ -1374,7 +1371,7 @@ const byte *ResourceIterator::findNext(uint32 tag) {
 const byte *ScummEngine::findResource(uint32 tag, const byte *searchin) {
 	uint32 curpos, totalsize, size;
 
-	debugC(DEBUG_RESOURCE, "findResource(%s, %lx)", tag2str(tag), searchin);
+	debugC(DEBUG_RESOURCE, "findResource(%s, %p)", tag2str(tag), (const void *)searchin);
 
 	if (!searchin) {
 		if (_game.heversion >= 70) {

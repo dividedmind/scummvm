@@ -30,18 +30,16 @@
 #include "common/system.h"
 
 #include "graphics/surface.h"
-#include "graphics/colormasks.h"
+#include "graphics/pixelformat.h"
 
 #include "gui/ThemeEngine.h"
 
-// To assure we have VECTOR_RENDERER_FORMAT specified when
-// DISABLE_FANCY_THEMES is defined, we error out elsewise
-#if defined(DISABLE_FANCY_THEMES) && !defined(VECTOR_RENDERER_FORMAT)
-#error "You need to specify a fixed overlay format via VECTOR_RENDERER_FORMAT"
-#endif
-
 namespace Graphics {
 class VectorRenderer;
+
+
+typedef void (VectorRenderer::*DrawingFunctionCallback)(const Common::Rect &, const Graphics::DrawStep &);
+
 
 struct DrawStep {
 	struct Color {
@@ -65,7 +63,10 @@ struct DrawStep {
 		kVectorAlignBottom,
 		kVectorAlignTop,
 		kVectorAlignCenter
-	} xAlign, yAlign;
+	};
+
+	VectorAlignment xAlign;
+	VectorAlignment yAlign;
 
 	uint8 shadow, stroke, factor, radius, bevel; /**< Misc options... */
 
@@ -74,7 +75,7 @@ struct DrawStep {
 
 	uint32 scale; /**< scale of all the coordinates in FIXED POINT with 16 bits mantissa */
 
-	void (VectorRenderer::*drawingCall)(const Common::Rect &, const DrawStep &); /** Pointer to drawing function */
+	DrawingFunctionCallback drawingCall; /**< Pointer to drawing function */
 	Graphics::Surface *blitSrc;
 };
 
@@ -92,11 +93,6 @@ VectorRenderer *createRenderer(int mode);
  *
  * When specifying define DISABLE_FANCY_THEMES eye candy related code
  * gets stripped off. This is especially useful for small devices like NDS.
- * Also note that if you specify DISABLE_FANCY_THEMES, you'll need to
- * specify a forced overlay bit format via VECTOR_RENDERER_FORMAT define.
- * The value looks like 'XYZ' for RXGYBZ mode, so R5G5B5 would be specified
- * via:
- * #define VECTOR_RENDERER_FORMAT 565
  *
  * TODO: Expand documentation.
  *

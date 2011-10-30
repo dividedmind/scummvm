@@ -20,6 +20,10 @@ endif
 ifdef ENABLE_AGOS
 DEFINES += -DENABLE_AGOS=$(ENABLE_AGOS)
 MODULES += engines/agos
+
+ifdef ENABLE_PN
+DEFINES += -DENABLE_PN
+endif
 endif
 
 ifdef ENABLE_CINE
@@ -55,6 +59,10 @@ endif
 ifdef ENABLE_KYRA
 DEFINES += -DENABLE_KYRA=$(ENABLE_KYRA)
 MODULES += engines/kyra
+endif
+
+ifdef ENABLE_LOL
+DEFINES += -DENABLE_LOL
 endif
 
 ifdef ENABLE_LURE
@@ -93,7 +101,15 @@ endif
 ifdef ENABLE_SAGA2
 DEFINES += -DENABLE_SAGA2
 endif
+endif
 
+ifdef ENABLE_SCI
+DEFINES += -DENABLE_SCI=$(ENABLE_SCI)
+MODULES += engines/sci
+
+ifdef ENABLE_SCI32
+DEFINES += -DENABLE_SCI32
+endif
 endif
 
 ifdef ENABLE_SKY

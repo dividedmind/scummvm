@@ -25,7 +25,7 @@
 #ifndef COMMON_LIST_H
 #define COMMON_LIST_H
 
-#include "common/scummsys.h"
+#include "common/list_intern.h"
 
 namespace Common {
 
@@ -33,100 +33,17 @@ namespace Common {
  * Simple double linked list, modeled after the list template of the standard
  * C++ library.
  */
-template<class t_T>
+template<typename t_T>
 class List {
 protected:
-#if defined (_WIN32_WCE) || defined (_MSC_VER)
-//FIXME evc4 and msvc7 doesn't like it as protected member
-public:
-#endif
-	struct NodeBase {
-		NodeBase *_prev;
-		NodeBase *_next;
-	};
-
-	template <class t_T2>
-	struct Node : public NodeBase {
-		t_T2 _data;
-
-		Node(const t_T2 &x) : _data(x) {}
-	};
-
-	template<class t_T2>
-	class Iterator {
-		template<class T> friend class Iterator;
-		friend class List<t_T>;
-		NodeBase *_node;
-
-#if !defined (__WINSCW__)
-		explicit Iterator(NodeBase *node) : _node(node) {}
-#else
-		Iterator(NodeBase *node) : _node(node) {}
-#endif
-
-	public:
-		Iterator() : _node(0) {}
-		template<class T>
-		Iterator(const Iterator<T> &c) : _node(c._node) {}
-
-		template<class T>
-		Iterator<t_T2> &operator=(const Iterator<T> &c) {
-			_node = c._node;
-			return *this;
-		}
-
-		// Prefix inc
-		Iterator<t_T2> &operator++() {
-			if (_node)
-				_node = _node->_next;
-			return *this;
-		}
-		// Postfix inc
-		Iterator<t_T2> operator++(int) {
-			Iterator tmp(_node);
-			++(*this);
-			return tmp;
-		}
-		// Prefix dec
-		Iterator<t_T2> &operator--() {
-			if (_node)
-				_node = _node->_prev;
-			return *this;
-		}
-		// Postfix dec
-		Iterator<t_T2> operator--(int) {
-			Iterator tmp(_node);
-			--(*this);
-			return tmp;
-		}
-		t_T2 &operator*() const {
-			assert(_node);
-#if (__GNUC__ == 2) && (__GNUC_MINOR__ >= 95)
-			return static_cast<List<t_T>::Node<t_T2> *>(_node)->_data;
-#else
-			return static_cast<Node<t_T2> *>(_node)->_data;
-#endif
-		}
-		t_T2 *operator->() const {
-			return &(operator*());
-		}
-
-		template<class T>
-		bool operator==(const Iterator<T> &x) const {
-			return _node == x._node;
-		}
-
-		template<class T>
-		bool operator!=(const Iterator<T> &x) const {
-			return _node != x._node;
-		}
-	};
+	typedef ListInternal::NodeBase		NodeBase;
+	typedef ListInternal::Node<t_T>		Node;
 
 	NodeBase _anchor;
 
 public:
-	typedef Iterator<t_T>			iterator;
-	typedef Iterator<const t_T>	const_iterator;
+	typedef ListInternal::Iterator<t_T>		iterator;
+	typedef ListInternal::ConstIterator<t_T>	const_iterator;
 
 	typedef t_T value_type;
 
@@ -146,88 +63,122 @@ public:
 		clear();
 	}
 
-	void push_front(const t_T &element) {
-		insert(begin(), element);
-	}
-
-	void push_back(const t_T &element) {
-		insert(end(), element);
-	}
-
+	/**
+	 * Inserts element before pos.
+	 */
 	void insert(iterator pos, const t_T &element) {
-		NodeBase *newNode = new Node<t_T>(element);
-
-		newNode->_next = pos._node;
-		newNode->_prev = pos._node->_prev;
-		newNode->_prev->_next = newNode;
-		newNode->_next->_prev = newNode;
+		insert(pos._node, element);
 	}
 
+	/**
+	 * Inserts the elements from first to last before pos.
+	 */
 	template<typename iterator2>
 	void insert(iterator pos, iterator2 first, iterator2 last) {
 		for (; first != last; ++first)
 			insert(pos, *first);
 	}
 
+	/**
+	 * Deletes the element at location pos and returns an iterator pointing
+	 * to the element after the one which was deleted.
+	 */
 	iterator erase(iterator pos) {
 		assert(pos != end());
-
-		NodeBase *next = pos._node->_next;
-		NodeBase *prev = pos._node->_prev;
-		Node<t_T> *node = static_cast<Node<t_T> *>(pos._node);
-		prev->_next = next;
-		next->_prev = prev;
-		delete node;
-		return iterator(next);
+		return iterator(erase(pos._node)._next);
 	}
 
+	/**
+	 * Deletes the element at location pos and returns an iterator pointing
+	 * to the element before the one which was deleted.
+	 */
 	iterator reverse_erase(iterator pos) {
 		assert(pos != end());
-
-		NodeBase *next = pos._node->_next;
-		NodeBase *prev = pos._node->_prev;
-		Node<t_T> *node = static_cast<Node<t_T> *>(pos._node);
-		prev->_next = next;
-		next->_prev = prev;
-		delete node;
-		return iterator(prev);
+		return iterator(erase(pos._node)._prev);
 	}
 
+	/**
+	 * Deletes the elements between first and last (including first but not
+	 * last) and returns an iterator pointing to the element after the one
+	 * which was deleted (i.e., last).
+	 */
 	iterator erase(iterator first, iterator last) {
-		while (first != last)
-			erase(first++);
-
+		NodeBase *f = first._node;
+		NodeBase *l = last._node;
+		while (f != l)
+			f = erase(f)._next;
 		return last;
 	}
 
+	/**
+	 * Removes all elements that are equal to val from the list.
+	 */
 	void remove(const t_T &val) {
-		iterator i = begin();
-		while (i != end())
-			if (val == i.operator*())
-				i = erase(i);
+		NodeBase *i = _anchor._next;
+		while (i != &_anchor)
+			if (val == static_cast<Node *>(i)->_data)
+				i = erase(i)._next;
 			else
-				++i;
+				i = i->_next;
 	}
 
+	/** Inserts element at the start of the list. */
+	void push_front(const t_T &element) {
+		insert(_anchor._next, element);
+	}
+
+	/** Appends element to the end of the list. */
+	void push_back(const t_T &element) {
+		insert(&_anchor, element);
+	}
+
+	/** Removes the first element of the list. */
 	void pop_front() {
-		iterator i = begin();
-		i = erase(i);
+		assert(!empty());
+		erase(_anchor._next);
 	}
 
+	/** Removes the last element of the list. */
+	void pop_back() {
+		assert(!empty());
+		erase(_anchor._prev);
+	}
+
+	/** Returns a reference to the first element of the list. */
+	t_T &front() {
+		return static_cast<Node *>(_anchor._next)->_data;
+	}
+
+	/** Returns a reference to the first element of the list. */
+	const t_T &front() const {
+		return static_cast<Node *>(_anchor._next)->_data;
+	}
+
+	/** Returns a reference to the last element of the list. */
+	t_T &back() {
+		return static_cast<Node *>(_anchor._prev)->_data;
+	}
+
+	/** Returns a reference to the last element of the list. */
+	const t_T &back() const {
+		return static_cast<Node *>(_anchor._prev)->_data;
+	}
 
 	List<t_T> &operator=(const List<t_T> &list) {
 		if (this != &list) {
 			iterator i;
-			const_iterator j;
+			const iterator e = end();
+			const_iterator i2;
+			const_iterator e2 = list.end();
 
-			for (i = begin(), j = list.begin();  (i != end()) && (j != list.end()) ; ++i, ++j) {
-				static_cast<Node<t_T> *>(i._node)->_data = static_cast<Node<t_T> *>(j._node)->_data;
+			for (i = begin(), i2 = list.begin();  (i != e) && (i2 != e2) ; ++i, ++i2) {
+				static_cast<Node *>(i._node)->_data = static_cast<const Node *>(i2._node)->_data;
 			}
 
-			if (i == end())
-				insert(i, j, list.end());
+			if (i == e)
+				insert(i, i2, e2);
 			else
-				erase(i, end());
+				erase(i, e);
 		}
 
 		return *this;
@@ -235,13 +186,21 @@ public:
 
 	uint size() const {
 		int n = 0;
-		for (const_iterator i = begin(); i != end(); ++i)
+		for (const NodeBase *cur = _anchor._next; cur != &_anchor; cur = cur->_next)
 			++n;
 		return n;
 	}
 
 	void clear() {
-		erase(begin(), end());
+		NodeBase *pos = _anchor._next;
+		while (pos != &_anchor) {
+			Node *node = static_cast<Node *>(pos);
+			pos = pos->_next;
+			delete node;
+		}
+
+		_anchor._prev = &_anchor;
+		_anchor._next = &_anchor;
 	}
 
 	bool empty() const {
@@ -271,6 +230,29 @@ public:
 
 	const_iterator	end() const {
 		return const_iterator(const_cast<NodeBase*>(&_anchor));
+	}
+
+protected:
+	NodeBase erase(NodeBase *pos) {
+		NodeBase n = *pos;
+		Node *node = static_cast<Node *>(pos);
+		n._prev->_next = n._next;
+		n._next->_prev = n._prev;
+		delete node;
+		return n;
+	}
+
+	/**
+	 * Inserts element before pos.
+	 */
+	void insert(NodeBase *pos, const t_T &element) {
+		ListInternal::NodeBase *newNode = new Node(element);
+		assert(newNode);
+
+		newNode->_next = pos;
+		newNode->_prev = pos->_prev;
+		newNode->_prev->_next = newNode;
+		newNode->_next->_prev = newNode;
 	}
 };
 

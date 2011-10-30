@@ -26,10 +26,12 @@
 #include "common/endian.h"
 #include "common/error.h"
 #include "common/events.h"
+#include "common/EventRecorder.h"
 #include "common/keyboard.h"
 #include "common/file.h"
 #include "common/savefile.h"
 #include "common/config-manager.h"
+#include "common/serializer.h"
 #include "common/stream.h"
 
 #include "graphics/cursorman.h"
@@ -60,7 +62,6 @@
 #include "tinsel/polygons.h"
 #include "tinsel/savescn.h"
 #include "tinsel/scn.h"
-#include "tinsel/serializer.h"
 #include "tinsel/sound.h"
 #include "tinsel/strres.h"
 #include "tinsel/sysvar.h"
@@ -92,10 +93,6 @@ extern void InventoryProcess(CORO_PARAM, const void *);
 // In SCENE.CPP
 extern void PrimeBackground();
 extern SCNHANDLE GetSceneHandle(void);
-
-// In TIMER.CPP
-extern void FettleTimers(void);
-extern void RebootTimers(void);
 
 //----------------- FORWARD DECLARATIONS  ---------------------
 void SetNewScene(SCNHANDLE scene, int entrance, int transition);
@@ -220,36 +217,7 @@ void KeyboardProcess(CORO_PARAM, const void *) {
 			continue;
 
 		case Common::KEYCODE_ESCAPE:
-#if 0
-			if (!TinselV2) {
-				// WORKAROUND: For Discworld 1, check if any of the starting logo screens are
-				// active, and if so manually skip to the title screen, allowing them to be bypassed
-				int sceneOffset = (_vm->getFeatures() & GF_SCNFILES) ? 1 : 0;
-				int sceneNumber = (GetSceneHandle() >> SCNHANDLE_SHIFT) - sceneOffset;
-				if ((g_language == TXT_GERMAN) &&
-					((sceneNumber >= 25 && sceneNumber <= 27) || (sceneNumber == 17))) {
-					// Skip to title screen
-					// It seems the German CD version uses scenes 25,26,27,17 for the intro,
-					// instead of 13,14,15,11;  also, the title screen is 11 instead of 10
-					SetNewScene((11 + sceneOffset) << SCNHANDLE_SHIFT, 1, TRANS_CUT);
-				} else if ((sceneNumber >= 13) && (sceneNumber <= 15) || (sceneNumber == 11)) {
-					// Skip to title screen
-					SetNewScene((10 + sceneOffset) << SCNHANDLE_SHIFT, 1, TRANS_CUT);
-				} else {
-					// Not on an intro screen, so process the key normally
-					ProcessKeyEvent(PLR_ESCAPE);
-				}
-			} else {
-				// Running Discworld 2, so process the key normally
-				ProcessKeyEvent(PLR_ESCAPE);
-			}
-#else
-	// The above workaround is used to skip the title screens in DW1, but it can throw assertions
-	// in certain versions of the game, e.g. the multilingual version with English speech and several
-	// subtitles (French, German, Italian, Spanish)
-	// FIXME: Add that workaround again, once we make sure it works properly in all versions of the game
-	ProcessKeyEvent(PLR_ESCAPE);
-#endif
+			ProcessKeyEvent(PLR_ESCAPE);
 			continue;
 
 #ifdef SLOW_RINCE_DOWN
@@ -550,6 +518,19 @@ void SetNewScene(SCNHANDLE scene, int entrance, int transition) {
 
 		HookScene.scene = 0;
 	}
+
+	// Workaround for "Missing Red Dragon in square" bug in Discworld 1 PSX, act IV.
+	// This happens with the original interpreter on PSX too: the red dragon in Act IV 
+	// doesn't show up inside the square at the right time. Original game required the
+	// player to go in and out the square until the dragon appears (wasting hours).
+	// I'm forcing the load of the right scene by checking that the player has (or has not) the
+	// right items: player must have Mambo the swamp dragon, and mustn't have fireworks (used on
+	// the swamp dragon previously to "load it up").
+	if (TinselV1PSX && NextScene.scene == 0x1800000 && NextScene.entry == 2) {
+		if ((IsInInventory(261, INV_1) || IsInInventory(261, INV_2)) && 
+			(!IsInInventory(232, INV_1) && !IsInInventory(232, INV_2)))
+			NextScene.entry = 1;
+	}
 }
 
 /**
@@ -614,7 +595,7 @@ void UnSuspendHook(void) {
 	bCuttingScene = false;
 }
 
-void syncSCdata(Serializer &s) {
+void syncSCdata(Common::Serializer &s) {
 	s.syncAsUint32LE(HookScene.scene);
 	s.syncAsSint32LE(HookScene.entry);
 	s.syncAsSint32LE(HookScene.trans);
@@ -701,7 +682,7 @@ bool ChangeScene(bool bReset) {
 		} else if (--CountOut == 0) {
 			if (!TinselV2)
 				ClearScreen();
-
+		
 			StartNewScene(NextScene.scene, NextScene.entry);
 			NextScene.scene = 0;
 
@@ -862,6 +843,13 @@ TinselEngine::TinselEngine(OSystem *syst, const TinselGameDescription *gameDesc)
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));
 	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, ConfMan.getInt("music_volume"));
 
+	// Add DW2 subfolder to search path in case user is running directly from the CDs
+	Common::File::addDefaultDirectory(_gameDataDir.getChild("dw2"));
+
+	// Add subfolders needed for psx versions of Discworld 1	
+	if (TinselV1PSX)
+		SearchMan.addDirectory(_gameDataDir.getPath(), _gameDataDir, 0, 3, true);
+
 	const GameSettings *g;
 
 	const char *gameid = ConfMan.get("gameid").c_str();
@@ -916,7 +904,24 @@ TinselEngine::~TinselEngine() {
 	delete _scheduler;
 }
 
-Common::Error TinselEngine::init() {
+void TinselEngine::syncSoundSettings() {
+	// Sync the engine with the config manager
+	int soundVolumeMusic = ConfMan.getInt("music_volume");
+	int soundVolumeSFX = ConfMan.getInt("sfx_volume");
+	int soundVolumeSpeech = ConfMan.getInt("speech_volume");
+
+	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, soundVolumeMusic);
+	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, soundVolumeSFX);
+	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, soundVolumeSpeech);
+}
+
+Common::String TinselEngine::getSavegameFilename(int16 saveNum) const {
+	char filename[256];
+	snprintf(filename, 256, "%s.%03d", getTargetName().c_str(), saveNum);
+	return filename;
+}
+
+Common::Error TinselEngine::run() {
 	// Initialize backend
 	if (getGameID() == GID_DW2) {
 #ifndef DW2_EXACT_SIZE
@@ -930,7 +935,7 @@ Common::Error TinselEngine::init() {
 		_screenSurface.create(320, 200, 1);
 	}
 
-	g_system->getEventManager()->registerRandomSource(_random, "tinsel");
+	g_eventRec.registerRandomSource(_random, "tinsel");
 
 	_console = new Console();
 
@@ -971,29 +976,6 @@ Common::Error TinselEngine::init() {
 	// Actors, globals and inventory icons
 	LoadBasicChunks();
 
-	return Common::kNoError;
-}
-
-void TinselEngine::syncSoundSettings() {
-	// Sync the engine with the config manager
-	int soundVolumeMusic = ConfMan.getInt("music_volume");
-	int soundVolumeSFX = ConfMan.getInt("sfx_volume");
-	int soundVolumeSpeech = ConfMan.getInt("speech_volume");
-
-	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, soundVolumeMusic);
-	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, soundVolumeSFX);
-	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, soundVolumeSpeech);
-}
-
-Common::String TinselEngine::getSavegameFilename(int16 saveNum) const {
-	char filename[256];
-	snprintf(filename, 256, "%s.%03d", getTargetName().c_str(), saveNum);
-	return filename;
-}
-
-Common::Error TinselEngine::go() {
-	uint32 timerVal = 0;
-
 	// Continuous game processes
 	CreateConstProcesses();
 
@@ -1004,16 +986,16 @@ Common::Error TinselEngine::go() {
 
 	// Load game from specified slot, if any
 	//
-	// TODO: We might want to think about taking care of possible errors
-	// when loading the save state.
+	// TODO: We might want to think about properly taking care of possible
+	// errors when loading the save state.
 
 	if (ConfMan.hasKey("save_slot")) {
-		loadGameState(ConfMan.getInt("save_slot"));
-		loadingFromGMM = true;
+		if (loadGameState(ConfMan.getInt("save_slot")) == Common::kNoError)
+			loadingFromGMM = true;
 	}
 
 	// Foreground loop
-
+	uint32 timerVal = 0;
 	while (!shouldQuit()) {
 		assert(_console);
 		if (_console->isAttached())
@@ -1105,9 +1087,9 @@ bool TinselEngine::pollEvent() {
 		{
 			// This fragment takes care of Tinsel 2 when it's been compiled with
 			// blank areas at the top and bottom of thes creen
-			int ySize = (g_system->getHeight() - _vm->screen().h) / 2;
-			if ((event.mouse.y >= ySize) && (event.mouse.y < (g_system->getHeight() - ySize)))
-				_mousePos = Common::Point(event.mouse.x, event.mouse.y - ySize);
+			int ySkip = TinselV2 ? (g_system->getHeight() - _vm->screen().h) / 2 : 0;
+			if ((event.mouse.y >= ySkip) && (event.mouse.y < (g_system->getHeight() - ySkip)))
+				_mousePos = Common::Point(event.mouse.x, event.mouse.y - ySkip);
 		}
 		break;
 

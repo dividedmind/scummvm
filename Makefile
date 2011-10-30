@@ -24,8 +24,14 @@ CXXFLAGS:= -Wall $(CXXFLAGS)
 # Turn off some annoying and not-so-useful warnings
 CXXFLAGS+= -Wno-long-long -Wno-multichar -Wno-unknown-pragmas -Wno-reorder
 # Enable even more warnings...
-CXXFLAGS+= -pedantic -Wpointer-arith -Wcast-qual -Wcast-align
+CXXFLAGS+= -Wpointer-arith -Wcast-qual -Wcast-align
 CXXFLAGS+= -Wshadow -Wimplicit -Wnon-virtual-dtor -Wwrite-strings
+
+# Currently we disable this gcc flag, since it will also warn in cases,
+# where using GCC_PRINTF (means: __attribute__((format(printf, x, y))))
+# is not possible, thus it would fail compiliation with -Werror without
+# being helpful.
+#CXXFLAGS+= -Wmissing-format-attribute
 
 # Disable RTTI and exceptions, and enabled checking of pointers returned by "new"
 CXXFLAGS+= -fno-rtti -fno-exceptions -fcheck-new
@@ -61,7 +67,7 @@ include $(srcdir)/Makefile.common
 config.h config.mk: $(srcdir)/configure
 ifeq "$(findstring config.mk,$(MAKEFILE_LIST))" "config.mk"
 	@echo "Running $(srcdir)/configure with the last specified parameters"
-	@sleep 2s
+	@sleep 2
 	LDFLAGS="$(SAVED_LDFLAGS)" CXX="$(SAVED_CXX)" CXXFLAGS="$(SAVED_CXXFLAGS)" CPPFLAGS="$(SAVED_CPPFLAGS)" \
 		$(srcdir)/configure $(SAVED_CONFIGFLAGS)
 else

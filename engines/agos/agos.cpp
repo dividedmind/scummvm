@@ -27,11 +27,14 @@
 #include "common/file.h"
 #include "common/system.h"
 #include "common/events.h"
+#include "common/EventRecorder.h"
 
 #include "agos/debugger.h"
 #include "agos/intern.h"
 #include "agos/agos.h"
 #include "agos/vga.h"
+
+#include "graphics/surface.h"
 
 #include "sound/mididrv.h"
 #include "sound/mods/protracker.h"
@@ -51,11 +54,6 @@ static const GameSpecificSettings simon2_settings = {
 	"SIMON2",                               // speech_filename
 };
 
-static const GameSpecificSettings feeblefiles_settings = {
-	"",                                     // effects_filename
-	"VOICES",                               // speech_filename
-};
-
 static const GameSpecificSettings puzzlepack_settings = {
 	"",                                     // effects_filename
 	"MUSIC",                               // speech_filename
@@ -64,17 +62,15 @@ static const GameSpecificSettings puzzlepack_settings = {
 AGOSEngine_PuzzlePack::AGOSEngine_PuzzlePack(OSystem *system)
 	: AGOSEngine_Feeble(system) {
 
+	_oopsValid = false;
 	_iconToggleCount = 0;
 	_voiceCount = 0;
 
+	_gameTime = 0;
 	_lastTickCount = 0;
 	_thisTickCount = 0;
 	_startSecondCount = 0;
 	_tSecondCount = 0;
-}
-
-AGOSEngine_Feeble::AGOSEngine_Feeble(OSystem *system)
-	: AGOSEngine_Simon2(system) {
 }
 
 AGOSEngine_Simon2::AGOSEngine_Simon2(OSystem *system)
@@ -87,6 +83,19 @@ AGOSEngine_Simon1::AGOSEngine_Simon1(OSystem *system)
 
 AGOSEngine_Waxworks::AGOSEngine_Waxworks(OSystem *system)
 	: AGOSEngine_Elvira2(system) {
+
+	_boxCR = false;
+	_boxLineCount = 0;
+	memset(_boxBuffer, 0, sizeof(_boxBuffer));
+	_boxBufferPtr = _boxBuffer;
+
+	_linePtrs[0] = 0;
+	_linePtrs[1] = 0;
+	_linePtrs[2] = 0;
+	_linePtrs[3] = 0;
+	_linePtrs[4] = 0;
+	_linePtrs[5] = 0;
+	memset(_lineCounts, 0, sizeof(_lineCounts));
 }
 
 AGOSEngine_Elvira2::AGOSEngine_Elvira2(OSystem *system)
@@ -99,6 +108,7 @@ AGOSEngine_Elvira1::AGOSEngine_Elvira1(OSystem *system)
 
 AGOSEngine::AGOSEngine(OSystem *syst)
 	: Engine(syst) {
+
 	_vcPtr = 0;
 	_vcGetOutOfCode = 0;
 	_gameOffsetsPtr = 0;
@@ -175,13 +185,12 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 
 	_subroutineList = 0;
 
-	_dxSurfacePitch = 0;
-
 	_recursionDepth = 0;
 
 	_lastVgaTick = 0;
 
 	_marks = 0;
+	_scanFlag = false;
 
 	_scriptVar2 = 0;
 	_runScriptReturn1 = 0;
@@ -268,7 +277,7 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	_dragAccept = false;
 	_dragEnd = false;
 	_dragFlag = false;
-	_dragMode = 0;
+	_dragMode = false;
 	_dragCount = 0;
 	_lastClickRem = 0;
 
@@ -281,18 +290,19 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 
 	_clockStopped = 0;
 	_gameStoppedClock = 0;
-	_gameTime = 0;
 	_lastTime = 0;
 	_lastMinute = 0;
 
 	_firstTimeStruct = 0;
 	_pendingDeleteTimeEvent = 0;
 
-	_leftButtonDown = 0;
-	_rightButtonDown = 0;
-	_clickOnly = 0;
-	_leftClick = 0;
+	_initMouse = 0;
+	_leftButtonDown = false;
+	_rightButtonDown = false;
+	_clickOnly = false;
 	_oneClick = 0;
+	_leftClick = 0;
+	_rightClick = 0;
 	_noRightClick = false;
 
 	_leftButton = 0;
@@ -303,7 +313,7 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	_dummyItem2 = new Item();
 	_dummyItem3 = new Item();
 
-	_lockWord = 0;
+	_videoLockOut = 0;
 	_scrollUpHitArea = 0;
 	_scrollDownHitArea = 0;
 
@@ -321,11 +331,14 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	_soundFileId = 0;
 	_lastMusicPlayed = 0;
 	_nextMusicToPlay = 0;
+	_sampleEnd = 0;
+	_sampleWait = 0;
 
 	_showPreposition = 0;
 	_showMessageFlag = 0;
 
 	_newDirtyClip = false;
+	_wiped = false;
 	_copyScnFlag = 0;
 	_vgaSpriteChanged = 0;
 
@@ -341,6 +354,7 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	_curVgaFile1 = 0;
 	_curVgaFile2 = 0;
 	_curSfxFile = 0;
+	_curSfxFileSize = 0;
 
 	_syncCount = 0;
 
@@ -353,7 +367,6 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 
 	_vgaCurZoneNum = 0;
 	_vgaCurSpriteId = 0;
-	_vgaCurSpritePriority = 0;
 
 	_baseY = 0;
 	_scale = 0;
@@ -387,19 +400,6 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	_currentRoom = 0;
 	_superRoomNumber = 0;
 	_wallOn = 0;
-
-	_boxCR = false;
-	_boxLineCount = 0;
-	memset(_boxBuffer, 0, sizeof(_boxBuffer));
-	_boxBufferPtr = _boxBuffer;
-
-	_linePtrs[0] = 0;
-	_linePtrs[1] = 0;
-	_linePtrs[2] = 0;
-	_linePtrs[3] = 0;
-	_linePtrs[4] = 0;
-	_linePtrs[5] = 0;
-	memset(_lineCounts, 0, sizeof(_lineCounts));
 
 	memset(_objectArray, 0, sizeof(_objectArray));
 	memset(_itemStore, 0, sizeof(_itemStore));
@@ -466,7 +466,6 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 
 	_vgaTickCounter = 0;
 
-	_moviePlayer = 0;
 	_sound = 0;
 
 	_effectsPaused = false;
@@ -484,8 +483,6 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	_saveOrLoad = false;
 	_saveLoadEdit = false;
 
-	_oopsValid = false;
-
 	_hyperLink = 0;
 	_interactY = 0;
 	_oracleMaxScrollY = 0;
@@ -494,12 +491,12 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	_backGroundBuf = 0;
 	_backBuf = 0;
 	_scaleBuf = 0;
+	_window4BackScn = 0;
+	_window6BackScn = 0;
 
 	_window3Flag = 0;
 	_window4Flag = 0;
 	_window6Flag = 0;
-	_window4BackScn = 0;
-	_window6BackScn = 0;
 
 	_moveXMin = 0;
 	_moveYMin = 0;
@@ -532,7 +529,7 @@ AGOSEngine::AGOSEngine(OSystem *syst)
 	File::addDefaultDirectory(_gameDataDir.getChild("speech"));
 	File::addDefaultDirectory(_gameDataDir.getChild("SPEECH"));
 
-	syst->getEventManager()->registerRandomSource(_rnd, "agos");
+	g_eventRec.registerRandomSource(_rnd, "agos");
 }
 
 Common::Error AGOSEngine::init() {
@@ -584,26 +581,34 @@ Common::Error AGOSEngine::init() {
 	syncSoundSettings();
 
 	// allocate buffers
-	_backGroundBuf = (byte *)calloc(_screenWidth * _screenHeight, 1);
+	_backGroundBuf = new Graphics::Surface();
+	_backGroundBuf->create(_screenWidth, _screenHeight, 1);
 
 	if (getGameType() == GType_FF || getGameType() == GType_PP) {
-		_backBuf = (byte *)calloc(_screenWidth * _screenHeight, 1);
-		_scaleBuf = (byte *)calloc(_screenWidth * _screenHeight, 1);
+		_backBuf = new Graphics::Surface();
+		_backBuf->create(_screenWidth, _screenHeight, 1);
+		_scaleBuf = new Graphics::Surface();
+		_scaleBuf->create(_screenWidth, _screenHeight, 1);
 	}
 
 	if (getGameType() == GType_SIMON2) {
-		_window4BackScn = (byte *)calloc(_screenWidth * _screenHeight, 1);
+		_window4BackScn = new Graphics::Surface();
+		_window4BackScn->create(_screenWidth, _screenHeight, 1);
 	} else if (getGameType() == GType_SIMON1) {
-		_window4BackScn = (byte *)calloc(_screenWidth * 134, 1);
+		_window4BackScn = new Graphics::Surface();
+		_window4BackScn->create(_screenWidth, 134, 1);
 	} else if (getGameType() == GType_WW || getGameType() == GType_ELVIRA2) {
-		_window4BackScn = (byte *)calloc(224 * 127, 1);
+		_window4BackScn = new Graphics::Surface();
+		_window4BackScn->create(224, 127, 1);
 	} else if (getGameType() == GType_ELVIRA1) {
+		_window4BackScn = new Graphics::Surface();
 		if (getPlatform() == Common::kPlatformAmiga && (getFeatures() & GF_DEMO)) {
-			_window4BackScn = (byte *)calloc(224 * 196, 1);
+			_window4BackScn->create(224, 196, 1);
 		} else {
-			_window4BackScn = (byte *)calloc(224 * 144, 1);
+			_window4BackScn->create(224, 144, 1);
 		}
-		_window6BackScn = (byte *)calloc(48 * 80, 1);
+		_window6BackScn = new Graphics::Surface();
+		_window6BackScn->create(48, 80, 1);
 	}
 
 	setupGame();
@@ -683,6 +688,14 @@ static const uint16 initialVideoWindows_Common[20] = {
 	 3, 3, 14, 127,
 };
 
+static const uint16 initialVideoWindows_PN[20] = {
+	 3, 0, 14, 136,
+	 0, 0,  3, 136,
+	17, 0,  3, 136,
+	 0, 0, 20, 200,
+	 3, 2, 14, 129,
+};
+
 void AGOSEngine_PuzzlePack::setupGame() {
 	gss = &puzzlepack_settings;
 	_numVideoOpcodes = 85;
@@ -696,27 +709,6 @@ void AGOSEngine_PuzzlePack::setupGame() {
 	_numItemStore = 10;
 	_numTextBoxes = 40;
 	_numVars = 2048;
-
-	AGOSEngine::setupGame();
-}
-
-void AGOSEngine_Feeble::setupGame() {
-	gss = &feeblefiles_settings;
-	_numVideoOpcodes = 85;
-	_vgaMemSize = 7500000;
-	_itemMemSize = 20000;
-	_tableMemSize = 200000;
-	_frameCount = 1;
-	_vgaBaseDelay = 5;
-	_vgaPeriod = 50;
-	_numBitArray1 = 16;
-	_numBitArray2 = 16;
-	_numBitArray3 = 16;
-	_numItemStore = 10;
-	_numTextBoxes = 40;
-	_numVars = 255;
-
-	_numSpeech = 10000;
 
 	AGOSEngine::setupGame();
 }
@@ -836,6 +828,20 @@ void AGOSEngine_Elvira1::setupGame() {
 	AGOSEngine::setupGame();
 }
 
+#ifdef ENABLE_PN
+void AGOSEngine_PN::setupGame() {
+	gss = &simon1_settings;
+	_numVideoOpcodes = 57;
+	_vgaMemSize = 1000000;
+	_frameCount = 4;
+	_vgaBaseDelay = 1;
+	_vgaPeriod = 50;
+	_numVars = 256;
+
+	AGOSEngine::setupGame();
+}
+#endif
+
 void AGOSEngine::setupGame() {
 	allocItemHeap();
 	allocTablesHeap();
@@ -870,9 +876,15 @@ void AGOSEngine::setupGame() {
 	for (int i = 0; i < 20; i++) {
 		if (getGameType() == GType_SIMON1 || getGameType() == GType_SIMON2) {
 			_videoWindows[i] = initialVideoWindows_Simon[i];
+		} else if (getGameType() == GType_PN) {
+			_videoWindows[i] = initialVideoWindows_PN[i];
 		} else {
 			_videoWindows[i] = initialVideoWindows_Common[i];
 		}
+	}
+
+	if (getGameType() == GType_ELVIRA2 && getPlatform() == Common::kPlatformAtariST) {
+		_videoWindows[9] = 75;
 	}
 }
 
@@ -899,18 +911,26 @@ AGOSEngine::~AGOSEngine() {
 	free(_gameOffsetsPtr);
 	free(_iconFilePtr);
 	free(_itemArrayPtr);
+	free(_menuBase);
+	free(_roomsList);
+	free(_roomStates);
 	free(_stringTabPtr);
 	free(_strippedTxtMem);
 	free(_tblList);
 	free(_textMem);
+	free(_xtblList);
 
 	free(_backGroundBuf);
 	free(_backBuf);
+	free(_planarBuf);
 	free(_scaleBuf);
 	free(_zoneBuffers);
 
 	free(_window4BackScn);
 	free(_window6BackScn);
+
+	free(_firstTimeStruct);
+	free(_pendingDeleteTimeEvent);
 
 	free(_variableArray);
 	free(_variableArray2);
@@ -923,7 +943,6 @@ AGOSEngine::~AGOSEngine() {
 	delete[] _windowList;
 
 	delete _debugger;
-	delete _moviePlayer;
 	delete _sound;
 }
 
@@ -938,13 +957,11 @@ void AGOSEngine::pauseEngineIntern(bool pauseIt) {
 
 		_midi.pause(true);
 		_mixer->pauseAll(true);
-		_sound->ambientPause(true);
 	} else {
 		_pause = false;
 
 		_midi.pause(_musicPaused);
 		_mixer->pauseAll(false);
-		_sound->ambientPause(_ambientPaused);
 	}
 }
 
@@ -953,8 +970,10 @@ void AGOSEngine::pause() {
 
 	while (_pause && !shouldQuit()) {
 		delay(1);
-		if (_keyPressed.keycode == Common::KEYCODE_p)
+		if (_keyPressed.keycode == Common::KEYCODE_PAUSE) {
 			pauseEngine(false);
+			_keyPressed.reset();
+		}
 	}
 }
 
@@ -989,23 +1008,11 @@ Common::Error AGOSEngine::go() {
 		setWindowImage(3, 9900);
 		while (!shouldQuit())
 			delay(0);
-
 	}
 
-	if (getGameType() == GType_ELVIRA1 && getFeatures() & GF_DEMO) {
+	if (getGameType() == GType_ELVIRA1 && getPlatform() == Common::kPlatformAmiga &&
+		(getFeatures() & GF_DEMO)) {
 		playMusic(0, 0);
-	}
-
-	if ((getPlatform() == Common::kPlatformAmiga || getPlatform() == Common::kPlatformMacintosh) &&
-		getGameType() == GType_FF) {
-		_moviePlayer = makeMoviePlayer(this, (const char *)"epic.dxa");
-		assert(_moviePlayer);
-
-		_moviePlayer->load();
-		_moviePlayer->play();
-
-		delete _moviePlayer;
-		_moviePlayer = NULL;
 	}
 
 	runSubroutine101();
@@ -1024,7 +1031,6 @@ Common::Error AGOSEngine::go() {
 uint32 AGOSEngine::getTime() const {
 	return _system->getMillis() / 1000;
 }
-
 
 void AGOSEngine::syncSoundSettings() {
 	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));

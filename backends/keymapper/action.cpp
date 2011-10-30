@@ -31,7 +31,7 @@
 
 namespace Common {
 
-Action::Action(Keymap *boss, const char *i,	String des, ActionType typ, 
+Action::Action(Keymap *boss, const char *i,	String des, ActionType typ,
 			   KeyType prefKey, int pri, int flg)
 	: _boss(boss), description(des), type(typ), preferredKey(prefKey),
 	priority(pri), flags(flg), _hwKey(0) {
@@ -44,9 +44,13 @@ Action::Action(Keymap *boss, const char *i,	String des, ActionType typ,
 }
 
 void Action::mapKey(const HardwareKey *key) {
-	if (_hwKey) _boss->unregisterMapping(this);
+	if (_hwKey)
+		_boss->unregisterMapping(this);
+
 	_hwKey = key;
-	if (_hwKey) _boss->registerMapping(this, _hwKey);
+
+	if (_hwKey)
+		_boss->registerMapping(this, _hwKey);
 }
 
 const HardwareKey *Action::getMappedKey() const {

@@ -360,15 +360,15 @@ void AGOSEngine_PuzzlePack::handleMouseMoved() {
 	_mouse = _eventMan->getMousePos();
 
 	x = 0;
-	if (_lastHitArea3 == 0 && _leftButtonDown != 0) {
+	if (_lastHitArea3 == 0 && _leftButtonDown) {
 		_verbHitArea = 300;
-		_leftButtonDown = 0;
+		_leftButtonDown = false;
 		x = 1;
 	}
 
-	if (_rightButtonDown != 0) {
+	if (_rightButtonDown) {
 		_verbHitArea = (getGameId() == GID_DIMP) ? 301 : 300;
-		_rightButtonDown = 0;
+		_rightButtonDown = false;
 		x = 1;
 	}
 
@@ -419,7 +419,7 @@ void AGOSEngine_Simon1::handleMouseMoved() {
 		}
 
 		if (_rightButtonDown) {
-			_rightButtonDown = 0;
+			_rightButtonDown = false;
 			setVerb(NULL);
 		}
 	} else if (getGameType() == GType_SIMON2) {
@@ -453,8 +453,8 @@ void AGOSEngine_Simon1::handleMouseMoved() {
 	_leftButtonOld = _leftButton;
 
 	x = 0;
-	if (_lastHitArea3 == 0 && _leftButtonDown != 0) {
-		_leftButtonDown = 0;
+	if (_lastHitArea3 == 0 && _leftButtonDown) {
+		_leftButtonDown = false;
 		x = 1;
 	} else {
 		if (_litBoxFlag == 0 && _needHitAreaRecalc == 0)
@@ -473,6 +473,73 @@ get_out:
 	_needHitAreaRecalc = 0;
 	_litBoxFlag = 0;
 }
+
+#ifdef ENABLE_PN
+void AGOSEngine_PN::handleMouseMoved() {
+	if (_mouseHideCount) {
+		CursorMan.showMouse(false);
+		return;
+	}
+
+	CursorMan.showMouse(true);
+	_mouse = _eventMan->getMousePos();
+
+	if (_leftClick == true) {
+		_leftClick = false;
+		if (_dragFlag) {
+			_hitCalled = 4;
+		} else if (_videoLockOut & 0x10) {
+			if (_oneClick != 0) {
+				_hitCalled = 2;
+				_oneClick = 0;
+			} else {
+				_oneClick++;
+			}
+		} else {
+			_hitCalled = 1;
+		}
+		_dragCount = 0;
+	}
+
+	if (_rightClick == true) {
+		_rightClick = false;
+		if (_hitCalled == 0)
+			_hitCalled = 5;
+	}
+
+	if (_mouse != _mouseOld)
+		_needHitAreaRecalc++;
+
+	if (_leftButton != 0) {
+		if (_dragCount <= 20) {
+			_dragCount++;
+			if (_dragCount > 20) {
+				if (_videoLockOut & 0x10) {
+					if (_oneClick == 0)
+						_hitCalled = 3;
+				} else {
+					_hitCalled = 3;
+				}
+			}
+		}
+	} else if ((_videoLockOut & 0x10) && _oneClick != 0) {
+		_oneClick++;
+		if (_oneClick > 10) {
+			_hitCalled = 1;
+			_oneClick = 0;
+		}
+	}
+
+	if (!_wiped)
+		boxController(_mouse.x, _mouse.y, 0);
+
+	_mouseOld = _mouse;
+	drawMousePointer();
+
+	_needHitAreaRecalc = 0;
+	_litBoxFlag = 0;
+}
+#endif
 
 void AGOSEngine::handleMouseMoved() {
 	uint x;
@@ -504,10 +571,10 @@ void AGOSEngine::handleMouseMoved() {
 
 	if (_leftClick == true) {
 		_leftClick = false;
-		if (_dragMode != 0) {
-			_dragEnd = 1;
+		if (_dragMode) {
+			_dragEnd = true;
 		} else {
-			_oneClick = true;
+			_oneClick = 1;
 		}
 		_dragCount = 0;
 	}
@@ -521,7 +588,7 @@ void AGOSEngine::handleMouseMoved() {
 	}
 	_leftButtonOld = _leftButton;
 
-	if (_dragMode != 0 || _lastHitArea3 != 0) {
+	if (_dragMode || _lastHitArea3) {
 		x = 0;
 		if (_needHitAreaRecalc == 0)
 			goto get_out;
@@ -529,18 +596,18 @@ void AGOSEngine::handleMouseMoved() {
 			goto boxstuff;
 	}
 
-	if (_leftButton != 0 && _dragAccept != 0 && _lastClickRem != NULL) {
+	if (_leftButton != 0 && _dragAccept && _lastClickRem != NULL) {
 		_dragCount++;
 		if (_dragCount == 20) {
-			_dragMode = 1;
-			_dragFlag = 1;
+			_dragMode = true;
+			_dragFlag = true;
 			_needHitAreaRecalc++;
 		}
 	}
 
 	x = 0;
-	if (_oneClick == true) {
-		_oneClick = false;
+	if (_oneClick > 0) {
+		_oneClick = 0;
 		x = 1;
 	} else {
 		if (_litBoxFlag == 0 && _needHitAreaRecalc == 0)
@@ -563,19 +630,33 @@ void AGOSEngine::mouseOff() {
 }
 
 void AGOSEngine::mouseOn() {
-	_lockWord |= 1;
+	_videoLockOut |= 1;
 
 	if (_mouseHideCount != 0)
 		_mouseHideCount--;
 
-	_lockWord &= ~1;
+	_videoLockOut &= ~1;
 }
 
 void AGOSEngine_PuzzlePack::initMouse() {
-	_maxCursorWidth = 75;
-	_maxCursorHeight = 97;
-	_mouseData = (byte *)calloc(_maxCursorWidth * _maxCursorHeight, 1);
+	if (getGameId() == GID_DIMP) {
+		AGOSEngine_Simon1::initMouse();
+	} else {
+		_maxCursorWidth = 75;
+		_maxCursorHeight = 97;
+		_mouseData = (byte *)calloc(_maxCursorWidth * _maxCursorHeight, 1);
+	}
 }
+
+void AGOSEngine_FeebleDemo::initMouse() {
+	// TODO: Add larger cursor
+	AGOSEngine_Simon1::initMouse();
+}
+
+static const byte mouseCursorPalette[] = {
+	0x00, 0x00, 0x00, 0x00, // Black
+	0xFF, 0xFF, 0xFF, 0x00, // White
+};
 
 void AGOSEngine_Feeble::initMouse() {
 	_maxCursorWidth = 40;
@@ -584,21 +665,14 @@ void AGOSEngine_Feeble::initMouse() {
 }
 
 void AGOSEngine_Simon1::initMouse() {
-	_maxCursorWidth = 16;
-	_maxCursorHeight = 16;
-	_mouseData = (byte *)calloc(_maxCursorWidth * _maxCursorHeight, 1);
-	memset(_mouseData, 0xFF, _maxCursorWidth * _maxCursorHeight);
-
-	uint8 color = 225;
-	if (getPlatform() == Common::kPlatformAmiga)
-		color = (getFeatures() & GF_32COLOR) ? 17 : 241;
+	AGOSEngine::initMouse();
 
 	const uint16 *src = _common_mouseInfo;
 	for (int i = 0; i < 16; i++) {
 		for (int j = 0; j < 16; j++) {
 			if (src[0] & (1 << (15 - (j % 16)))) {
 				if (src[1] & (1 << (15 - (j % 16)))) {
-					_mouseData[16 * i + j] = color;
+					_mouseData[16 * i + j] = 1;
 				} else {
 					_mouseData[16 * i + j] = 0;
 				}
@@ -606,12 +680,18 @@ void AGOSEngine_Simon1::initMouse() {
 		}
 		src += 2;
 	}
+
+	CursorMan.replaceCursor(_mouseData, 16, 16, 0, 0, 0xFF);
 }
 
 void AGOSEngine::initMouse() {
 	_maxCursorWidth = 16;
 	_maxCursorHeight = 16;
 	_mouseData = (byte *)calloc(_maxCursorWidth * _maxCursorHeight, 1);
+
+	memset(_mouseData, 0xFF, _maxCursorWidth * _maxCursorHeight);
+
+	CursorMan.replaceCursorPalette(mouseCursorPalette, 0, ARRAYSIZE(mouseCursorPalette) / 4);
 }
 
 void AGOSEngine_PuzzlePack::loadMouseImage() {
@@ -623,9 +703,7 @@ void AGOSEngine_PuzzlePack::loadMouseImage() {
 }
 
 void AGOSEngine_PuzzlePack::drawMousePointer() {
-	if (getGameId() == GID_DIMP) {
-		AGOSEngine::drawMousePointer();
-	} else {
+	if (getGameId() != GID_DIMP) {
 		CursorMan.replaceCursor(_mouseData, _maxCursorWidth, _maxCursorHeight, 37, 48, 0);
 	}
 }
@@ -654,6 +732,9 @@ void AGOSEngine_Feeble::drawMousePart(int image, byte x, byte y) {
 		src += width;
 		dst += _maxCursorWidth;
 	}
+}
+
+void AGOSEngine_FeebleDemo::drawMousePointer() {
 }
 
 void AGOSEngine_Feeble::drawMousePointer() {
@@ -716,13 +797,10 @@ void AGOSEngine_Feeble::drawMousePointer() {
 void AGOSEngine::drawMousePointer() {
 	if (getGameType() == GType_SIMON2) {
 		CursorMan.replaceCursor(_simon2_cursors[_mouseCursor], 16, 16, 7, 7);
-	} else if (getGameType() == GType_SIMON1) {
-		CursorMan.replaceCursor(_mouseData, 16, 16, 0, 0, 0xFF);
-	} else {
+	} else if (getGameType() != GType_SIMON1) {
 		const uint16 *src;
 		int i, j;
 
-		const uint8 color = (getGameType() == GType_ELVIRA1) ? 15: 65;
 		memset(_mouseData, 0xFF, _maxCursorWidth * _maxCursorHeight);
 
 		if (getGameType() == GType_WW) {
@@ -773,14 +851,14 @@ void AGOSEngine::drawMousePointer() {
 			}
 		}
 
-		if (_dragFlag != 0)
+		if (_dragFlag)
 			src = _common_handInfo;
 
 		for (i = 0; i < 16; i++) {
 			for (j = 0; j < 16; j++) {
 				if (src[0] & (1 << (15 - (j % 16)))) {
 					if (src[1] & (1 << (15 - (j % 16)))) {
-						_mouseData[16 * i + j] = color;
+						_mouseData[16 * i + j] = 1;
 					} else {
 						_mouseData[16 * i + j] = 0;
 					}

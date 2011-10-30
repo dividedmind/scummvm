@@ -174,7 +174,7 @@ bool DrasculaEngine::saveLoadScreen() {
 		delay(5);
 	}
 
-	selectVerb(0);
+	selectVerb(kVerbNone);
 
 	clearRoom();
 	loadPic(roomNumber, bgSurface, HALF_PAL);
@@ -190,7 +190,7 @@ bool DrasculaEngine::loadGame(const char *gameName) {
 	Common::InSaveFile *sav;
 
 	previousMusic = roomMusic;
-	menuScreen = 0;
+	_menuScreen = false;
 	if (currentChapter != 1)
 		clearRoom();
 
@@ -223,7 +223,7 @@ bool DrasculaEngine::loadGame(const char *gameName) {
 	loadedDifferentChapter = 0;
 	sscanf(currentData, "%d.ald", &roomNum);
 	enterRoom(roomNum);
-	selectVerb(0);
+	selectVerb(kVerbNone);
 
 	return true;
 }
@@ -253,7 +253,7 @@ void DrasculaEngine::saveGame(char gameName[]) {
 	out->writeSint32LE(pickedObject);
 
 	out->finalize();
-	if (out->ioFailed())
+	if (out->err())
 		warning("Can't write file '%s'. (Disk full?)", gameName);
 
 	delete out;

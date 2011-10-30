@@ -167,6 +167,9 @@ static const GamePatchDescription ITEMacPatch_Files[] = {
 	{             NULL,              0,       0}
 };
 
+using Common::GUIO_NONE;
+using Common::GUIO_NOSPEECH;
+
 static const SAGAGameDescription gameDescriptions[] = {
 	// ITE Section ////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -192,7 +195,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DEMO
+			ADGF_DEMO,
+			GUIO_NOSPEECH
 		},
 		GID_ITE, // Game id
 		GF_OLD_ITE_DOS, // features
@@ -216,7 +220,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformMacintosh,
-			ADGF_DEMO
+			ADGF_DEMO,
+			GUIO_NOSPEECH
 		},
 		GID_ITE,
 		GF_WYRMKEEP | GF_SCENE_SUBSTITUTES | GF_MONO_MUSIC | GF_LE_VOICES,
@@ -241,7 +246,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformMacintosh,
-			ADGF_DEMO
+			ADGF_DEMO,
+			GUIO_NOSPEECH
 		},
 		GID_ITE,
 		GF_WYRMKEEP | GF_NON_INTERACTIVE | GF_LE_VOICES,
@@ -266,7 +272,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformWindows,
-			ADGF_DEMO
+			ADGF_DEMO,
+			GUIO_NONE
 		},
 		GID_ITE,
 		GF_WYRMKEEP | GF_SCENE_SUBSTITUTES,
@@ -291,7 +298,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformWindows,
-			ADGF_DEMO
+			ADGF_DEMO,
+			GUIO_NONE
 		},
 		GID_ITE,
 		GF_WYRMKEEP | GF_NON_INTERACTIVE | GF_8BIT_UNSIGNED_PCM,
@@ -323,7 +331,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformMacintosh,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GID_ITE,
 		GF_8BIT_UNSIGNED_PCM,
@@ -346,7 +355,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformMacintosh,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GID_ITE,
 		GF_WYRMKEEP,
@@ -377,7 +387,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformUnknown,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GID_ITE,
 		GF_WYRMKEEP,
@@ -406,7 +417,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::IT_ITA,
 			Common::kPlatformUnknown,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GID_ITE,
 		GF_WYRMKEEP,
@@ -429,7 +441,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GID_ITE,
 		GF_EXTRA_ITE_CREDITS,
@@ -452,7 +465,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::IT_ITA,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GID_ITE,
 		0,
@@ -475,7 +489,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GID_ITE,
 		0,
@@ -499,7 +514,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GID_ITE,
 		0,
@@ -525,7 +541,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NOSPEECH
 		},
 		GID_ITE,
 		GF_ITE_FLOPPY,
@@ -548,7 +565,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NOSPEECH
 		},
 		GID_ITE,
 		GF_ITE_FLOPPY,
@@ -565,13 +583,14 @@ static const SAGAGameDescription gameDescriptions[] = {
 			"ite",
 			"Floppy",
 			{
-	{"ite.rsc",		GAME_RESOURCEFILE,					"8f4315a9bb10ec839253108a032c8b54", 8905102},
+	{"ite.rsc",		GAME_RESOURCEFILE,					"8f4315a9bb10ec839253108a032c8b54", 8905108},
 	{"scripts.rsc",	GAME_SCRIPTFILE,					"516f7330f8410057b834424ea719d1ef", -1},
 	{ NULL, 0, NULL, 0}
 			},
 			Common::IT_ITA,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NOSPEECH
 		},
 		GID_ITE,
 		GF_ITE_FLOPPY,
@@ -603,7 +622,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_DEMO
+			ADGF_DEMO,
+			GUIO_NONE
 		},
 		GID_IHNM,
 		GF_IHNM_DEMO,
@@ -634,7 +654,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GID_IHNM,
 		0,
@@ -663,7 +684,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::DE_DEU,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GID_IHNM,
 		0,
@@ -690,7 +712,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::ES_ESP,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GID_IHNM,
 		0,
@@ -718,7 +741,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::FR_FRA,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GID_IHNM,
 		0,
@@ -745,7 +769,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::IT_ITA,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GID_IHNM,
 		0,
@@ -769,7 +794,8 @@ static const SAGAGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformMacintosh,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GID_IHNM,
 		0,
@@ -784,8 +810,32 @@ static const SAGAGameDescription gameDescriptions[] = {
 #ifdef ENABLE_SAGA2
 
 	// Dinotopia Section //////////////////////////////////////////////////////////////////////////////////////
-
-	// TODO
+	{
+		{
+			"dino",
+			"",
+			{
+	{"dinodata.hrs", GAME_RESOURCEFILE,				    "45aa7026d441dd69957385c25d2fd33e", 2698},
+	{"dino.hrs",     GAME_OBJRESOURCEFILE,				"7cf3665887a4a18e2fff6938a954c050", 66018},
+	{"scripts.hrs",	 GAME_SCRIPTFILE,					"d405841a249a365cf92fc65dd52fb953", 164181},
+	{"dinosnd.hrs",  GAME_SOUNDFILE | GAME_VOICEFILE,	"dcf4ade416614b8a64f99dacfd3bd071", 199163997},
+	{"dinoimag.hrs", GAME_IMAGEFILE,					"d24d80676f7afcfaca0b61c95056044f", 42342931},
+	{ NULL, 0, NULL, 0}
+			},
+			Common::EN_ANY,
+			Common::kPlatformPC,
+			ADGF_NO_FLAGS,
+			GUIO_NONE
+		},
+		GID_DINO,
+		0,
+		// TODO: fill out the data below
+		-1,		// default scene
+		NULL,	// game resources
+		0,		// number of fonts
+		NULL,	// font array
+		NULL,
+	},
 
 	// Faery Tale Adventure II: Halls of the Dead Section /////////////////////////////////////////////////////
 
@@ -795,15 +845,17 @@ static const SAGAGameDescription gameDescriptions[] = {
 			"fta2",
 			"",
 			{
-	// TODO: this is still quite incomplete
-	{"fta.hrs",	GAME_RESOURCEFILE,						"c34a5ee5f1a14a87712a35c4a209a033", 213376},
-	{"scripts.hrs",	GAME_SCRIPTFILE,					"95f33928f6c4f02ee04d2ec5c3314c30", 1041948},
+	{"ftadata.hrs",	 GAME_RESOURCEFILE,					"6dc3cbed8df2ddd9f060a7dba4d33ef8", 15042},
+	{"fta.hrs",	     GAME_OBJRESOURCEFILE,				"c34a5ee5f1a14a87712a35c4a209a033", 213376},
+	{"scripts.hrs",	 GAME_SCRIPTFILE,					"95f33928f6c4f02ee04d2ec5c3314c30", 1041948},
 	{"ftasound.hrs", GAME_SOUNDFILE,					"ce930cb38922e6a03461f55d51b4e165", 12403350},
+	{"ftaimage.hrs", GAME_IMAGEFILE,					"09bb003733b20f924e2e373d2ddcd394", 21127397},
 	{ NULL, 0, NULL, 0}
 			},
 			Common::EN_ANY,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NONE
 		},
 		GID_FTA2,
 		0,

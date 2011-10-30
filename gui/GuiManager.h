@@ -120,9 +120,9 @@ protected:
 	// mouse cursor state
 	int		_cursorAnimateCounter;
 	int		_cursorAnimateTimer;
-	byte		_cursor[2048];
+	byte	_cursor[2048];
 
-	bool _themeChange;
+	void initKeymap();
 
 	void saveState();
 	void restoreState();

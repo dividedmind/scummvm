@@ -141,7 +141,7 @@ const int enhancedAudioSCNVersion[] = {
 	  84,  85,  86, 3124,  88,  89,  90,  88,   2,   2,	// 121-130
 	   2,   2,   2,    2,   2,   2,   2,   2,   2,   2,	// 131-140
 	3141,  91,  92,   93,  94,  94,  95,  96,  52,   4,	// 141-150
-	  97,  98,  99,   99                              	// 151-154
+	  97,  98,  99,   99                             	// 151-154
 };
 
 int GetTrackNumber(SCNHANDLE hMidi) {
@@ -179,6 +179,11 @@ bool PlayMidiSequence(uint32 dwFileOffset, bool bLoop) {
 	currentMidi = dwFileOffset;
 	currentLoop = bLoop;
 
+	// Tinsel V1 PSX uses a different music format, so i
+	// disable it here.
+	// TODO: Maybe this should be moved to a better place...
+	if (TinselV1PSX) return false;
+
 	if (volMusic != 0) {
 		SetMidiVolume(volMusic);
 	}
@@ -201,6 +206,10 @@ bool PlayMidiSequence(uint32 dwFileOffset, bool bLoop) {
 
 			if (track > 0) {
 				StopMidi();
+
+				// StopMidi resets these fields, so set them again
+				currentMidi = dwFileOffset;
+				currentLoop = bLoop;
 
 				// try to play track, but don't fall back to a true CD
 				AudioCD.play(track, bLoop ? -1 : 1, 0, 0, true);
@@ -252,7 +261,7 @@ bool PlayMidiSequence(uint32 dwFileOffset, bool bLoop) {
 		// Store the length
 		//dwLastSeqLen = dwSeqLen;
 	} else {
-	  	// dwFileOffset == dwLastMidiIndex
+	 	// dwFileOffset == dwLastMidiIndex
 		_vm->_midiMusic->stop();
 		_vm->_midiMusic->playXMIDI(midiBuffer.pDat, dwSeqLen, bLoop);
 	}
@@ -294,6 +303,8 @@ int GetMidiVolume() {
 	return volMusic;
 }
 
+static int priorVolMusic = 0;
+
 /**
  * Sets the volume of the MIDI music.
  * @param vol			New volume - 0..MAXMIDIVOL
@@ -301,23 +312,24 @@ int GetMidiVolume() {
 void SetMidiVolume(int vol)	{
 	assert(vol >= 0 && vol <= Audio::Mixer::kMaxChannelVolume);
 
-	if (vol == 0 && volMusic == 0) 	{
+	if (vol == 0 && priorVolMusic == 0)	{
 		// Nothing to do
-	} else if (vol == 0 && volMusic != 0) {
+	} else if (vol == 0 && priorVolMusic != 0) {
 		// Stop current midi sequence
 		StopMidi();
-	} else if (vol != 0 && volMusic == 0) {
+		_vm->_midiMusic->setVolume(vol);
+	} else if (vol != 0 && priorVolMusic == 0) {
 		// Perhaps restart last midi sequence
 		if (currentLoop) {
 			PlayMidiSequence(currentMidi, true);
 			_vm->_midiMusic->setVolume(vol);
 		}
-	} else if (vol != 0 && volMusic != 0) {
+	} else if (vol != 0 && priorVolMusic != 0) {
 		// Alter current volume
 		_vm->_midiMusic->setVolume(vol);
 	}
 
-	volMusic = vol;
+	priorVolMusic = vol;
 }
 
 /**
@@ -327,7 +339,8 @@ void OpenMidiFiles(void) {
 	Common::File midiStream;
 
 	// Demo version has no midi file
-	if ((_vm->getFeatures() & GF_DEMO) || (TinselVersion == TINSEL_V2))
+	// Also, Discworld PSX uses still unsupported psx SEQ format for music...
+	if ((_vm->getFeatures() & GF_DEMO) || (TinselVersion == TINSEL_V2) || TinselV1PSX)
 		return;
 
 	if (midiBuffer.pDat)
@@ -839,6 +852,10 @@ bool PCMMusicPlayer::getNextChunk() {
 		if (file.read(buffer, sampleCLength) != sampleCLength)
 			error(FILE_IS_CORRUPT, _fileName);
 
+		debugC(DEBUG_DETAILED, kTinselDebugMusic, "Creating ADPCM music chunk with size %d, "
+				"offset %d (script %d.%d)", sampleCLength, sampleOffset,
+				_scriptNum, _scriptIndex - 1);
+
 		sampleStream = new Common::MemoryReadStream(buffer, sampleCLength, true);
 
 		delete _curChunk;
@@ -849,6 +866,9 @@ bool PCMMusicPlayer::getNextChunk() {
 		return true;
 
 	case S_END1:
+		debugC(DEBUG_DETAILED, kTinselDebugMusic, "Music reached state S_END1 (script %d.%d)",
+				_scriptNum, _scriptIndex);
+
 		script = scriptBuffer = (int32 *) LockMem(_hScript);
 
 		id = _scriptNum;
@@ -869,10 +889,16 @@ bool PCMMusicPlayer::getNextChunk() {
 		return true;
 
 	case S_END2:
+		debugC(DEBUG_DETAILED, kTinselDebugMusic, "Music reached state S_END2 (script %d.%d)",
+				_scriptNum, _scriptIndex);
+
 		_silenceSamples = 11025; // Half a second of silence
 		return true;
 
 	case S_END3:
+		debugC(DEBUG_DETAILED, kTinselDebugMusic, "Music reached state S_END3 (script %d.%d)",
+				_scriptNum, _scriptIndex);
+
 		stop();
 		_state = S_IDLE;
 		return false;

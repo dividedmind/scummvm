@@ -47,6 +47,7 @@
 #include "sword2/sound.h"
 
 #include "sound/wave.h"
+#include "sound/vag.h"
 
 namespace Sword2 {
 
@@ -209,12 +210,26 @@ void Sound::playMovieSound(int32 res, int type) {
 	}
 
 	byte *data = _vm->_resman->openResource(res);
-	uint32 len = _vm->_resman->fetchLen(res) - ResHeader::size();
+	uint32 len = _vm->_resman->fetchLen(res);
 
 	assert(_vm->_resman->fetchType(data) == WAV_FILE);
-	data += ResHeader::size();
+
+	// In PSX version we have nothing to skip here, as data starts right away
+	if (!Sword2Engine::isPsx()) {
+		data += ResHeader::size();
+		len -= ResHeader::size();
+	}
 
 	_vm->_sound->playFx(handle, data, len, Audio::Mixer::kMaxChannelVolume, 0, false, Audio::Mixer::kMusicSoundType);
+}
+
+void Sound::stopMovieSounds() {
+	if (_vm->_mixer->isSoundHandleActive(_leadInHandle)) {
+		_vm->_mixer->stopHandle(_leadInHandle);
+	}
+	if (_vm->_mixer->isSoundHandleActive(_leadOutHandle)) {
+		_vm->_mixer->stopHandle(_leadOutHandle);
+	}
 }
 
 /**
@@ -252,9 +267,17 @@ void Sound::queueFx(int32 res, int32 type, int32 delay, int32 volume, int32 pan)
 		if (!_fxQueue[i].resource) {
 			byte *data = _vm->_resman->openResource(res);
 
-			assert(_vm->_resman->fetchType(data) == WAV_FILE);
+			// Check that we really have a WAV file here, alas this
+			// check is useless with psx demo game, because psx audio files
+			// are headerless and there is no way to check the type
+			if (!(Sword2Engine::isPsx() && (_vm->_features & GF_DEMO)))
+				assert(_vm->_resman->fetchType(data) == WAV_FILE);
 
-			uint32 len = _vm->_resman->fetchLen(res) - ResHeader::size();
+			uint32 len = _vm->_resman->fetchLen(res);
+
+			// Skip the header if using PC version
+			if (!Sword2Engine::isPsx())
+				len -= ResHeader::size();
 
 			if (type == FX_RANDOM) {
 				// For spot effects and loops the delay is the
@@ -272,7 +295,12 @@ void Sound::queueFx(int32 res, int32 type, int32 delay, int32 volume, int32 pan)
 				pan = -pan;
 
 			_fxQueue[i].resource = res;
-			_fxQueue[i].data = data + ResHeader::size();
+
+			if (Sword2Engine::isPsx())
+				_fxQueue[i].data = data;
+			else
+				_fxQueue[i].data = data + ResHeader::size();
+
 			_fxQueue[i].len = len;
 			_fxQueue[i].delay = delay;
 			_fxQueue[i].volume = volume;
@@ -302,22 +330,27 @@ int32 Sound::playFx(Audio::SoundHandle *handle, byte *data, uint32 len, uint8 vo
 	if (_vm->_mixer->isSoundHandleActive(*handle))
 		return RDERR_FXALREADYOPEN;
 
-	Common::MemoryReadStream stream(data, len);
+	Common::MemoryReadStream *stream = new Common::MemoryReadStream(data, len);
 	int rate, size;
 	byte flags;
 
-	if (!Audio::loadWAVFromStream(stream, size, rate, flags)) {
-		warning("playFX: Not a valid WAV file");
-		return RDERR_INVALIDWAV;
+	if (Sword2Engine::isPsx()) {
+		_vm->_mixer->playInputStream(soundType, handle, new Audio::VagStream(stream, loop), -1, vol, pan, true, false, isReverseStereo());
+	} else {
+		if (!Audio::loadWAVFromStream(*stream, size, rate, flags)) {
+			warning("playFX: Not a valid WAV file");
+			return RDERR_INVALIDWAV;
+		}
+
+		if (isReverseStereo())
+			flags |= Audio::Mixer::FLAG_REVERSE_STEREO;
+
+		if (loop)
+			flags |= Audio::Mixer::FLAG_LOOP;
+
+		_vm->_mixer->playRaw(soundType, handle, data + stream->pos(), size, rate, flags, -1, vol, pan, 0, 0);
 	}
 
-	if (isReverseStereo())
-		flags |= Audio::Mixer::FLAG_REVERSE_STEREO;
-
-	if (loop)
-		flags |= Audio::Mixer::FLAG_LOOP;
-
-	_vm->_mixer->playRaw(soundType, handle, data + stream.pos(), size, rate, flags, -1, vol, pan, 0, 0);
 	return RD_OK;
 }
 

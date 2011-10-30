@@ -39,7 +39,7 @@
 #include "tinsel/polygons.h"
 #include "tinsel/rince.h"
 #include "tinsel/sched.h"
-#include "tinsel/serializer.h"
+#include "common/serializer.h"
 #include "tinsel/sysvar.h"
 #include "tinsel/tinsel.h"
 #include "tinsel/token.h"
@@ -95,7 +95,7 @@ struct ACTORINFO {
 
 	const FREEL	*presReel;	// the present reel
 	int			presRnum;	// the present reel number
-	SCNHANDLE 	presFilm;	// the film that reel belongs to
+	SCNHANDLE	presFilm;	// the film that reel belongs to
 	OBJECT		*presObj;	// reference for position information
 	int			presPlayX, presPlayY;
 
@@ -108,9 +108,9 @@ struct ACTORINFO {
 
 	COLORREF	textColour;	// Text colour
 
-	SCNHANDLE 	playFilm;	// revert to this after talks
-	SCNHANDLE 	talkFilm;	// this be deleted in the future!
-	SCNHANDLE 	latestFilm;	// the last film ordered
+	SCNHANDLE	playFilm;	// revert to this after talks
+	SCNHANDLE	talkFilm;	// this be deleted in the future!
+	SCNHANDLE	latestFilm;	// the last film ordered
 	bool		bTalking;
 
 	int			steps;
@@ -162,7 +162,7 @@ static Z_POSITIONS zPositions[NUM_ZPOSITIONS];
  * @param num			Chunk Id
  */
 void RegisterActors(int num) {
-	if (actorInfo == NULL) 	{
+	if (actorInfo == NULL)	{
 		// Store the total number of actors in the game
 		NumActors = num;
 
@@ -1283,9 +1283,9 @@ void storeActorAttr(int ano, int r1, int g1, int b1) {
 	if (b1 > MAX_INTENSITY)	b1 = MAX_INTENSITY;	// }
 
 	if (ano == -1)
-		defaultColour = RGB(r1, g1, b1);
+		defaultColour = TINSEL_RGB(r1, g1, b1);
 	else
-		actorInfo[ano - 1].textColour = RGB(r1, g1, b1);
+		actorInfo[ano - 1].textColour = TINSEL_RGB(r1, g1, b1);
 }
 
 /**
@@ -1417,7 +1417,7 @@ void ActorsLife(int ano, bool bAlive) {
 }
 
 
-void syncAllActorsAlive(Serializer &s) {
+void syncAllActorsAlive(Common::Serializer &s) {
 	for (int i = 0; i < MAX_SAVED_ALIVES; i++) {
 		s.syncAsByte(actorInfo[i].bAlive);
 		s.syncAsByte(actorInfo[i].tagged);

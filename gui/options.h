@@ -53,6 +53,7 @@ public:
 	void open();
 	void close();
 	void handleCommand(CommandSender *sender, uint32 cmd, uint32 data);
+	const Common::String& getDomain() const { return _domain; }
 
 	virtual void reflowLayout();
 
@@ -90,16 +91,22 @@ private:
 	// Graphics controls
 	//
 	bool _enableGraphicSettings;
+	StaticTextWidget *_gfxPopUpDesc;
 	PopUpWidget *_gfxPopUp;
 	CheckboxWidget *_fullscreenCheckbox;
 	CheckboxWidget *_aspectCheckbox;
+	StaticTextWidget *_renderModePopUpDesc;
 	PopUpWidget *_renderModePopUp;
 
 	//
 	// Audio controls
 	//
 	bool _enableAudioSettings;
+	StaticTextWidget *_midiPopUpDesc;
 	PopUpWidget *_midiPopUp;
+	StaticTextWidget *_oplPopUpDesc;
+	PopUpWidget *_oplPopUp;
+	StaticTextWidget *_outputRatePopUpDesc;
 	PopUpWidget *_outputRatePopUp;
 
 	//
@@ -143,6 +150,14 @@ private:
 	StaticTextWidget *_speechVolumeDesc;
 	SliderWidget *_speechVolumeSlider;
 	StaticTextWidget *_speechVolumeLabel;
+
+	CheckboxWidget *_muteCheckbox;
+
+protected:
+	//
+	// Game GUI options
+	//
+	uint32 _guioptions;
 };
 
 
@@ -171,7 +186,9 @@ protected:
 	// Misc controls
 	//
 	StaticTextWidget *_curTheme;
+	StaticTextWidget *_rendererPopUpDesc;
 	PopUpWidget *_rendererPopUp;
+	StaticTextWidget *_autosavePeriodPopUpDesc;
 	PopUpWidget *_autosavePeriodPopUp;
 };
 

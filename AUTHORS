@@ -15,14 +15,19 @@ ScummVM Team
   ------------
     SCUMM:
        Torbjorn Andersson   
+       James Brown           - (retired)
+       Jonathan Gray         - (retired)
+       Vincent Hamm          - (retired)
        Max Horn             
        Travis Howell        
        Pawel Kolodziejski    - Codecs, iMUSE, Smush, etc.
        Gregory Montoir      
        Eugene Sandulenko     - FT INSANE, MM NES, MM C64, game detection,
                                Herc/CGA
+       Ludvig Strigeus       - (retired)
 
     HE:
+       Jonathan Gray         - (retired)
        Travis Howell        
        Gregory Montoir      
        Eugene Sandulenko    
@@ -32,38 +37,56 @@ ScummVM Team
        Matthew Hoops        
        Filippos Karapetis   
        Pawel Kolodziejski   
+       Walter van Niftrik   
        Kari Salminen        
        Eugene Sandulenko    
+       David Symonds         - (retired)
 
     AGOS:
        Torbjorn Andersson   
+       Paul Gilbert         
        Travis Howell        
+       Oliver Kiehl          - (retired)
+       Ludvig Strigeus       - (retired)
 
     BASS:
+       Robert Goeffringmann  - (retired)
+       Oliver Kiehl          - (retired)
        Joost Peters         
 
     Broken Sword 1:
+       Fabio Battaglia       - PSX version support
+       Robert Goeffringmann  - (retired)
 
     Broken Sword 2:
        Torbjorn Andersson   
+       Fabio Battaglia       - PSX version support
+       Jonathan Gray         - (retired)
 
     Cinematique evo 1:
-       Vincent Hamm          - original CinE engine author
+       Vincent Hamm          - (retired)
        Pawel Kolodziejski   
        Gregory Montoir      
+       Kari Salminen        
        Eugene Sandulenko    
 
     Cinematique evo 2:
-       Vincent Hamm          - original CruisE engine author
+       Paul Gilbert         
+       Vincent Hamm          - (retired)
+
+    Drascula:
+       Filippos Karapetis   
+       Pawel Kolodziejski   
 
     FOTAQ:
+       David Eriksson        - (retired)
        Gregory Montoir      
        Joost Peters         
 
     Gob:
        Torbjorn Andersson   
+       Arnaud Boutonne      
        Sven Hesse           
-       Willem Jan Palenstijn
        Eugene Sandulenko    
 
 <<<<<<< HEAD
@@ -93,19 +116,30 @@ ScummVM Team
 
     MADE:
        Benjamin Haisch      
+       Filippos Karapetis   
 
     Parallaction:
        peres                
 
     SAGA:
        Torbjorn Andersson   
-       Sven Hesse           
        Filippos Karapetis   
        Andrew Kurushin      
        Eugene Sandulenko    
 
+    SCI:
+       Greg Frieger         
+       Paul Gilbert         
+       Max Horn             
+       Filippos Karapetis   
+       Walter van Niftrik   
+       Willem Jan Palenstijn
+       Jordi Vilalta Prat   
+       Lars Skovlund        
+
     Tinsel:
        Torbjorn Andersson   
+       Fabio Battaglia       - PSX version support
        Paul Gilbert         
        Sven Hesse           
        Max Horn             
@@ -139,9 +173,11 @@ ScummVM Team
        Chris Apers          
 
     PocketPC / WinCE:
+       Nicolas Bacca         - (retired)
        Kostas Nakos         
 
     PlayStation 2:
+       Robert Goeffringmann  - (retired)
        Max Lingua           
 
     PSP (PlayStation Portable):
@@ -166,18 +202,25 @@ ScummVM Team
        Eugene Sandulenko    
 
     GUI:
+       Vicent Marti         
        Eugene Sandulenko    
        Johannes Schickel    
 
     Miscellaneous:
        David Corrales-Lopez  - Filesystem access improvements (GSoC 2007
-                               task)
-       Jerome Fisher         - MT-32 emulator
-       Jochen Hoenicke       - Speaker & PCjr sound support, Adlib work
+                               task) (retired)
+       Jerome Fisher         - MT-32 emulator (retired)
+       Benjamin Haisch       - Heavily improved de-/encoder for DXA videos
+       Jochen Hoenicke       - Speaker & PCjr sound support, AdLib work
+                               (retired)
        Chris Page            - Return to launcher, savestate improvements,
-                               leak fixes, ... (GSoC 2008 task)
+                               leak fixes, ... (GSoC 2008 task) (retired)
        Robin Watts           - ARM assembly routines for nice speedups on
                                several ports; improvements to the sound mixer
+
+  Website (code)
+  --------------
+     Fredrik Wendel       
 
   Website (content)
   -----------------
@@ -190,31 +233,23 @@ ScummVM Team
 
   Retired Team Members
   --------------------
-     Tore Anderson         - Former Debian GNU/Linux maintainer
-     Nicolas Bacca         - Former WinCE porter
      Ralph Brorsen         - Help with GUI implementation
      Jamieson Christian    - iMUSE, MIDI, all things musical
-     David Eriksson        - Engines: FOTAQ
-     Hans-Jorg Frieden     - Former AmigaOS 4 packager
-     Robert Goeffringmann  - Original PS2 porter; Engines: BASS, BS1
-     Jonathan Gray         - Engines: SCUMM, HE, BS2
-     Ruediger Hanke        - Port: MorphOS
      Felix Jakschitsch     - Zak256 reverse engineering
-     Oliver Kiehl          - Engines: AGOS, BASS
      Mutwin Kraus          - Original MacOS porter
      Peter Moraliyski      - Port: GP32
-     Juha Niemimaki        - Former AmigaOS 4 packager
      Jeremy Newman         - Former webmaster
      Lionel Ulmer          - Port: X11
      Won Star              - Former GP32 porter
-     David Symonds         - Engines: AGI
 
 Other contributions
 *******************
   Packages
   --------
     AmigaOS 4:
+       Hans-Jorg Frieden     - (retired)
        Hubert Maier         
+       Juha Niemimaki        - (retired)
 
     Atari/FreeMiNT:
        Keith Scroggins      
@@ -224,6 +259,7 @@ Other contributions
        Luc Schrijvers       
 
     Debian GNU/Linux:
+       Tore Anderson         - (retired)
        David Weinehall      
 
     Fedora / RedHat:
@@ -238,6 +274,7 @@ Other contributions
 
     MorphOS:
        Fabien Coeurjoly     
+       Ruediger Hanke        - (retired)
 
     OS/2:
        Paul Smedley         
@@ -262,20 +299,19 @@ Other contributions
      Dobo Balazs           - Website design
      Yaroslav Fedevych     - HTML/CSS for the website
      David Jensen          - SVG logo conversion
-     Jean Marc             - ScummVM logo
+     Jean Marc Gimenez     - ScummVM logo
      Raina                 - ScummVM forum buttons
-     Clemens Steinhuber    - ScummVM forum theme
 
   Code contributions
   ------------------
      Ori Avtalion          - Subtitle control options in the GUI; BASS GUI
                              fixes
-     Stuart Caie           - Decoders for Simon 1 Amiga data files
+     Stuart Caie           - Decoders for Amiga and AtariST data files (AGOS
+                             engine)
      Paolo Costabel        - PSP port contributions
      Thierry Crozat        - Support for Broken Sword 1 Macintosh version
      Martin Doucha         - CinE engine objectification
      Thomas Fach-Pedersen  - ProTracker module player
-     Benjamin Haisch       - Heavily improved de-/encoder for DXA videos
      Janne Huttunen        - V3 actor mask support, Dig/FT SMUSH audio
      Kovacs Endre Janos    - Several fixes for Simon1
      Jeroen Janssen        - Numerous readability and bugfix patches
@@ -290,11 +326,65 @@ Other contributions
      Tim Phillips          - Initial MI1 CD music support
      Quietust              - Sound support for Amiga SCUMM V2/V3 games, MM
                              NES support
+     segra                 - Improved support for Apple II/C64 versions of MM
      Andreas Roever        - Broken Sword 1/2 MPEG2 cutscene support
      Edward Rudd           - Fixes for playing MP3 versions of MI1/Loom audio
      Daniel Schepler       - Final MI1 CD music support, initial Ogg Vorbis
                              support
      Andre Souza           - SDL-based OpenGL renderer
+
+  FreeSCI Contributors
+  --------------------
+     Anders Baden Nielsen  - PPC testing
+     Bas Zoetekouw         - Man pages, debian package management, CVS
+                             maintenance
+     Carl Muckenhoupt      - Sources to the SCI resource viewer tools that
+                             started it all
+     Chris Kehler          - Makefile enhancements
+     Christoph Reichenbach - UN*X code, VM/Graphics/Sound/other
+                             infrastructure
+     Christopher T. Lansdo - Original CVS maintainer, Alpha compatibility
+                             fixes
+     Claudio Matsuoka      - CVS snapshots, daily builds, BeOS and cygwin
+                             ports
+     Dark Minister         - SCI research (bytecode and parser)
+     Dmitry Jemerov        - Port to the Win32 platform, numerous bugfixes
+     Emmanuel Jeandel      - Bugfixes and bug reports
+     Francois-R Boyer      - MT-32 information and mapping code
+     George Reid           - FreeBSD package management
+     Hubert Maier          - AmigaOS 4 port
+     Hugues Valois         - Game selection menu
+     Johannes Manhave      - Document format translation
+     Jordi Vilalta         - Numerous code and website clean-up patches
+     Lars Skovlund         - Project maintenance, most documentation,
+                             bugfixes, SCI1 support
+     Magnus Reftel         - Heap implementation, Python class viewer,
+                             bugfixes
+     Matt Hargett          - Clean-ups, bugfixes, Hardcore QA, Win32
+     Max Horn              - SetJump implementation
+     Paul David Doherty    - Game version information
+     Petr Vyhnak           - The DCL-INFLATE algorithm, many Win32
+                             improvements
+     Rainer Canavan        - IRIX MIDI driver and bug fixes
+     Rainer De Temple      - SCI research
+     Ravi I.               - SCI0 sound resource specification
+     Ruediger Hanke        - Port to the MorphOS platform
+     Rune Orsval           - Configuration file editor
+     Rickard Lind          - MT32->GM MIDI mapping magic, sound research
+     Rink Springer         - Port to the DOS platform, several bug fixes
+     Robey Pointer         - Bug tracking system hosting
+     Sergey Lapin          - Port of Carl's type 2 decompression code
+     Solomon Peachy        - SDL ports and much of the sound subsystem
+     Vyacheslav Dikonov    - Config script improvements
+     Walter van Niftrik    - Ports to the Dreamcast and GP32 platforms
+     Xiaojun Chen         
+     Sean Terrell         
+
+     Special thanks to Prof. Dr. Gary Nutt for allowing the FreeSCI VM
+     extension as a course project in his Advanced OS course.
+
+     Special thanks to Bob Heitman and Corey Cole for their support of
+     FreeSCI.
 
    And to all the contributors, users, and beta testers we've missed. Thanks!
 
@@ -334,6 +424,5 @@ Special thanks to
    is today. Feel free to drop us a line and tell us what you think, guys!
 
    Alan Bridgman, Simon Woodroffe and everyone at Adventure Soft for sharing
-   the source code of The Feeble Files and Simon the Sorcerer's Puzzle Pack
-   with us.
+   the source code of some of their games with us.
 

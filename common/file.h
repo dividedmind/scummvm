@@ -126,16 +126,14 @@ public:
 	 */
 	const char *getName() const { return _name.c_str(); }
 
-	bool ioFailed() const;
-	void clearIOFailed();
-	bool err() const;
-	void clearErr();
-	bool eos() const;
+	bool err() const;	// implement abstract Stream method
+	void clearErr();	// implement abstract Stream method
+	bool eos() const;	// implement abstract SeekableReadStream method
 
-	virtual int32 pos() const;
-	virtual int32 size() const;
-	bool seek(int32 offs, int whence = SEEK_SET);
-	uint32 read(void *dataPtr, uint32 dataSize);
+	int32 pos() const;	// implement abstract SeekableReadStream method
+	int32 size() const;	// implement abstract SeekableReadStream method
+	bool seek(int32 offs, int whence = SEEK_SET);	// implement abstract SeekableReadStream method
+	uint32 read(void *dataPtr, uint32 dataSize);	// implement abstract SeekableReadStream method
 };
 
 

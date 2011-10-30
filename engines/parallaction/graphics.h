@@ -131,7 +131,7 @@ struct Cnv : public Frames {
 	uint16	_height;	//
 	byte**	field_8;	// unused
 	byte*	_data;
-	bool 	_freeData;
+	bool	_freeData;
 
 public:
 	Cnv() {
@@ -273,15 +273,13 @@ class Disk;
 enum {
 	kGfxObjVisible = 1,
 
-	kGfxObjNormal = 2,
-	kGfxObjCharacter = 4,
-
 	kGfxObjTypeDoor = 0,
 	kGfxObjTypeGet = 1,
 	kGfxObjTypeAnim = 2,
 	kGfxObjTypeLabel = 3,
 	kGfxObjTypeBalloon = 4,
-	kGfxObjTypeCharacter = 8
+	kGfxObjTypeCharacter = 8,
+	kGfxObjTypeMenu = 16
 };
 
 enum {
@@ -299,6 +297,7 @@ public:
 	int16 x, y;
 
 	int32 z;
+	uint32 _prog;	// this value is used when sorting, in case that comparing z is not enough to tell which object goes on front
 
 	uint32 _flags;
 
@@ -345,12 +344,12 @@ public:
 struct BackgroundInfo {
 protected:
 	typedef Common::Array<MaskBuffer*> MaskPatches;
-	MaskPatches 	_maskPatches;
+	MaskPatches	_maskPatches;
 	MaskBuffer		_maskBackup;
 	void clearMaskData();
 
 	typedef Common::Array<PathBuffer*> PathPatches;
-	PathPatches 	_pathPatches;
+	PathPatches	_pathPatches;
 	PathBuffer		_pathBackup;
 	void clearPathData();
 
@@ -365,7 +364,7 @@ public:
 
 	Palette				palette;
 
-	int 				layers[4];
+	int				layers[4];
 	PaletteFxRange		ranges[6];
 
 
@@ -419,26 +418,28 @@ public:
 
 
 typedef Common::Array<GfxObj*> GfxObjArray;
-
+#define SCENE_DRAWLIST_SIZE 100
 
 class Gfx {
 
 protected:
 	Parallaction*		_vm;
+	void resetSceneDrawList();
 
 public:
 	Disk *_disk;
 
+	void beginFrame();
+	void addObjectToScene(GfxObj *obj);
 	GfxObjArray _sceneObjects;
 	GfxObj* loadAnim(const char *name);
 	GfxObj* loadGet(const char *name);
 	GfxObj* loadDoor(const char *name);
 	GfxObj* loadCharacterAnim(const char *name);
+	void sortScene();
 	void freeCharacterObjects();
 	void freeLocationObjects();
 	void showGfxObj(GfxObj* obj, bool visible);
-	void clearGfxObjects(uint filter);
-	void sortScene();
     void blt(const Common::Rect& r, byte *data, Graphics::Surface *surf, uint16 z, uint scale, byte transparentColor);
 	void unpackBlt(const Common::Rect& r, byte *data, uint size, Graphics::Surface *surf, uint16 z, uint scale, byte transparentColor);
 
@@ -478,8 +479,13 @@ public:
 	void setProjectorProgram(int16 *data);
 	int16 *_nextProjectorPos;
 
-	int getScrollPos();
-	void setScrollPos(int scrollX);
+	// start programmatic relative scroll
+	void initiateScroll(int deltaX, int deltaY);
+	// immediate and absolute x,y scroll
+	void setScrollPosX(int scrollX);
+	void setScrollPosY(int scrollY);
+	// return current scroll position
+	void getScrollPos(Common::Point &p);
 
 	// init
 	Gfx(Parallaction* vm);
@@ -505,16 +511,21 @@ protected:
 
 	Graphics::Surface	*lockScreen();
 	void				unlockScreen();
-	void 				updateScreenIntern();
+	void				updateScreenIntern();
 
 	bool				_doubleBuffering;
 	int					_gameType;
 	Graphics::Surface	_backBuffer;
-	void 				copyRectToScreen(const byte *buf, int pitch, int x, int y, int w, int h);
+	void				copyRectToScreen(const byte *buf, int pitch, int x, int y, int w, int h);
 
-	int					_scrollPos;
-	int					_minScroll, _maxScroll;
+	int					_scrollPosX, _scrollPosY;
+	int					_minScrollX, _maxScrollX, _minScrollY, _maxScrollY;
 
+	uint32				_requestedHScrollSteps;
+	uint32				_requestedVScrollSteps;
+	int32				_requestedHScrollDir;
+	int32				_requestedVScrollDir;
+	void				scroll();
 	#define NO_FLOATING_LABEL	1000
 
 	GfxObjArray	_labels;
@@ -526,7 +537,7 @@ protected:
 	// overlay mode enables drawing of graphics with automatic screen-to-game coordinate translation
 	bool				_overlayMode;
 	void				drawOverlay(Graphics::Surface &surf);
-	void 				drawInventory();
+	void				drawInventory();
 
 	void drawList(Graphics::Surface &surface, GfxObjArray &list);
 	void updateFloatingLabel();

@@ -28,7 +28,6 @@
 #ifndef SAGA_FONT_H
 #define SAGA_FONT_H
 
-#include "saga/list.h"
 #include "saga/gfx.h"
 
 namespace Saga {
@@ -88,13 +87,18 @@ struct TextListEntry {
 	TextListEntry() {
 		memset(this, 0, sizeof(*this));
 	}
+
+	bool operator==(const TextListEntry &e) const {
+		return 0 == memcmp(this, &e, sizeof(*this));
+	}
 };
 
-class TextList: public SortedList<TextListEntry> {
+class TextList: public Common::List<TextListEntry> {
 public:
 
 	TextListEntry *addEntry(const TextListEntry &entry) {
-		return pushBack(entry).operator->();
+		Common::List<TextListEntry>::push_back(entry);
+		return &*--Common::List<TextListEntry>::end();
 	}
 };
 

@@ -32,7 +32,7 @@
 #include "graphics/surface.h"
 #include "graphics/fontman.h"
 
-#define SCUMMVM_THEME_VERSION_STR "SCUMMVM_STX0.4"
+#define SCUMMVM_THEME_VERSION_STR "SCUMMVM_STX0.6"
 
 namespace Graphics {
 	struct DrawStep;
@@ -62,6 +62,7 @@ enum DrawData {
 	kDDPlainColorBackground,
 	kDDDefaultBackground,
 	kDDTextSelectionBackground,
+	kDDTextSelectionFocusBackground,
 
 	kDDWidgetBackgroundDefault,
 	kDDWidgetBackgroundSmall,
@@ -123,6 +124,7 @@ protected:
 public:
 	//! Vertical alignment of the text.
 	enum TextAlignVertical {
+		kTextAlignVInvalid,
 		kTextAlignVBottom,
 		kTextAlignVCenter,
 		kTextAlignVTop
@@ -155,6 +157,13 @@ public:
 
 	typedef State WidgetStateInfo;
 
+	//! Text inversion state of the text to be draw
+	enum TextInversionState {
+		kTextInversionNone,	//!< Indicates that the text should not be drawn inverted
+		kTextInversion,		//!< Indicates that the text should be drawn inverted, but not focused
+		kTextInversionFocus	//!< Indicates thte the test should be drawn inverted, and focused
+	};
+
 	enum ScrollbarState {
 		kScrollbarStateNo,
 		kScrollbarStateUp,
@@ -181,11 +190,10 @@ public:
 		kShadingLuminance	//!< Converting colors to luminance for unused areas
 	};
 
-	//! Special image ids for images used in the GUI
-	enum kThemeImages {
-		kImageLogo = 0,		//!< ScummVM Logo used in the launcher
-		kImageLogoSmall		//!< ScummVM logo used in the GMM
-	};
+	// Special image ids for images used in the GUI
+	static const char * const kImageLogo;		//!< ScummVM logo used in the launcher
+	static const char * const kImageLogoSmall;	//!< ScummVM logo used in the GMM
+	static const char * const kImageSearch;	//!< Search tool image used in the launcher
 
 	/**
 	 * Graphics mode enumeration.
@@ -302,7 +310,7 @@ public:
 
 	void drawDialogBackground(const Common::Rect &r, DialogBackground type, WidgetStateInfo state = kStateEnabled);
 
-	void drawText(const Common::Rect &r, const Common::String &str, WidgetStateInfo state = kStateEnabled, Graphics::TextAlign align = Graphics::kTextAlignCenter, bool inverted = false, int deltax = 0, bool useEllipsis = true, FontStyle font = kFontStyleBold);
+	void drawText(const Common::Rect &r, const Common::String &str, WidgetStateInfo state = kStateEnabled, Graphics::TextAlign align = Graphics::kTextAlignCenter, TextInversionState inverted = kTextInversionNone, int deltax = 0, bool useEllipsis = true, FontStyle font = kFontStyleBold);
 
 	void drawChar(const Common::Rect &r, byte ch, const Graphics::Font *font, WidgetStateInfo state = kStateEnabled);
 
@@ -311,19 +319,13 @@ public:
 
 
 	/**
-	 *	Actual implementation of a Dirty Rect drawing routine.
-	 *	Dirty rectangles are queued on a list and are later merged/calculated
-	 *	before the actual drawing.
+	 * Actual implementation of a dirty rect handling.
+	 * Dirty rectangles are queued on a list and are later used for the
+	 * actual drawing.
 	 *
-	 *	@param r Area of the dirty rect.
-	 *	@param backup Deprecated.
-	 *	@param special Deprecated.
+	 * @param r Area of the dirty rect.
 	 */
-	bool addDirtyRect(Common::Rect r, bool backup = false, bool special = false) {
-		r.clip(_screen.w, _screen.h);
-		_dirtyScreen.push_back(r);
-		return true;
-	}
+	void addDirtyRect(Common::Rect r);
 
 
 	/**
@@ -426,13 +428,8 @@ public:
 		return _bitmaps.contains(name) ? _bitmaps[name] : 0;
 	}
 
-	const Graphics::Surface *getImageSurface(const kThemeImages n) const {
-		if (n == kImageLogo)
-			return _bitmaps.contains("logo.bmp") ? _bitmaps["logo.bmp"] : 0;
-		else if (n == kImageLogoSmall)
-			return _bitmaps.contains("logo_small.bmp") ? _bitmaps["logo_small.bmp"] : 0;
-
-		return 0;
+	const Graphics::Surface *getImageSurface(const Common::String &name) const {
+		return _bitmaps.contains(name) ? _bitmaps[name] : 0;
 	}
 
 	/**
@@ -540,7 +537,7 @@ private:
 
 	static Common::String getThemeFile(const Common::String &id);
 	static Common::String getThemeId(const Common::String &filename);
-	static void listUsableThemes(Common::FSNode node, Common::List<ThemeDescriptor> &list, int depth=-1);
+	static void listUsableThemes(const Common::FSNode &node, Common::List<ThemeDescriptor> &list, int depth = -1);
 
 protected:
 	OSystem *_system; /** Global system object. */

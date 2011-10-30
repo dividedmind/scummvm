@@ -193,15 +193,20 @@ void Engine::checkCD() {
 	// if it's running from CD.
 
 #ifdef USE_VORBIS
-	if (Common::File::exists("track1.ogg"))
+	if (Common::File::exists("track1.ogg") ||
+	    Common::File::exists("track01.ogg"))
 		return;
 #endif
 #ifdef USE_FLAC
-	if (Common::File::exists("track1.fla") || Common::File::exists("track1.flac"))
+	if (Common::File::exists("track1.fla") ||
+            Common::File::exists("track1.flac") ||
+	    Common::File::exists("track01.fla") ||
+	    Common::File::exists("track01.flac"))
 		return;
 #endif
 #ifdef USE_MAD
-	if (Common::File::exists("track1.mp3"))
+	if (Common::File::exists("track1.mp3") ||
+	    Common::File::exists("track01.mp3"))
 		return;
 #endif
 
@@ -299,9 +304,25 @@ void Engine::syncSoundSettings() {
 	int soundVolumeSFX = ConfMan.getInt("sfx_volume");
 	int soundVolumeSpeech = ConfMan.getInt("speech_volume");
 
-	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, soundVolumeMusic);
-	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, soundVolumeSFX);
-	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, soundVolumeSpeech);
+	bool mute = false;
+	if (ConfMan.hasKey("mute"))
+		mute = ConfMan.getBool("mute");
+
+	_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, (mute ? 0 : soundVolumeMusic));
+	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, (mute ? 0 : soundVolumeSFX));
+	_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, (mute ? 0 : soundVolumeSpeech));
+}
+
+void Engine::flipMute() {
+	bool mute = false;
+
+	if (ConfMan.hasKey("mute")) {
+		mute = !ConfMan.getBool("mute");
+	}
+	
+	ConfMan.setBool("mute", mute);
+
+	syncSoundSettings();
 }
 
 Common::Error Engine::loadGameState(int slot) {

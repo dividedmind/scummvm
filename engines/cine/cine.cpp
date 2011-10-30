@@ -24,6 +24,7 @@
  */
 
 #include "common/events.h"
+#include "common/EventRecorder.h"
 #include "common/file.h"
 #include "common/savefile.h"
 #include "common/config-manager.h"
@@ -64,7 +65,7 @@ CineEngine::CineEngine(OSystem *syst, const CINEGameDescription *gameDesc) : Eng
 
 	g_cine = this;
 
-	syst->getEventManager()->registerRandomSource(_rnd, "cine");
+	g_eventRec.registerRandomSource(_rnd, "cine");
 }
 
 CineEngine::~CineEngine() {
@@ -74,7 +75,7 @@ CineEngine::~CineEngine() {
 	Common::clearAllDebugChannels();
 }
 
-Common::Error CineEngine::init() {
+Common::Error CineEngine::run() {
 	// Initialize backend
 	initGraphics(320, 200, false);
 
@@ -88,10 +89,6 @@ Common::Error CineEngine::init() {
 
 	initialize();
 
-	return Common::kNoError;
-}
-
-Common::Error CineEngine::go() {
 	CursorMan.showMouse(true);
 	mainLoop(1);
 
@@ -117,6 +114,9 @@ int CineEngine::modifyGameSpeed(int speedChange) {
 }
 
 void CineEngine::initialize() {
+	// Initialize all savegames' descriptions to empty strings
+	memset(currentSaveName, 0, sizeof(currentSaveName));
+
 	// Resize object table to its correct size and reset all its elements
 	objectTable.resize(NUM_MAX_OBJECT);
 	resetObjectTable();
@@ -175,6 +175,9 @@ void CineEngine::initialize() {
 	var8 = 0;
 
 	var2 = var3 = var4 = var5 = 0;
+
+	musicIsPlaying = 0;
+	currentDatName[0] = 0;
 
 	_preLoad = false;
 	if (ConfMan.hasKey("save_slot")) {

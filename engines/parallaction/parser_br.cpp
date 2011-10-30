@@ -25,7 +25,7 @@
 
 
 #include "parallaction/parallaction.h"
-
+#include "parallaction/parser.h"
 #include "parallaction/sound.h"
 
 namespace Parallaction {
@@ -340,40 +340,38 @@ DECLARE_LOCATION_PARSER(location)  {
 		_vm->_char._ani->setF(atoi(_tokens[nextToken]));
 	}
 
-	_vm->_disk->loadScenery(*ctxt.info, _tokens[1], 0, 0);
+	_out->_backgroundName = _tokens[1];
 }
-
-
 
 DECLARE_LOCATION_PARSER(zone)  {
 	debugC(7, kDebugParser, "LOCATION_PARSER(zone) ");
 
+	ctxt.z.reset();
 	parseZone(_vm->_location._zones, _tokens[1]);
-
-	ctxt.z->_index = ctxt.numZones++;
-
-	if (_vm->getLocationFlags() & kFlagsVisited) {
-		ctxt.z->_flags = _vm->_zoneFlags[_vm->_currentLocationIndex][ctxt.z->_index];
-	} else {
-		_vm->_zoneFlags[_vm->_currentLocationIndex][ctxt.z->_index] = ctxt.z->_flags;
+	if (!ctxt.z) {
+		return;
 	}
 
+	ctxt.z->_index = _zoneProg;
+	ctxt.z->_locationIndex = _vm->_currentLocationIndex;
+
+	_vm->restoreOrSaveZoneFlags(ctxt.z, _vm->getLocationFlags() & kFlagsVisited);
 }
 
 
 DECLARE_LOCATION_PARSER(animation)  {
 	debugC(7, kDebugParser, "LOCATION_PARSER(animation) ");
 
+	ctxt.a.reset();
 	parseAnimation(_vm->_location._animations, _tokens[1]);
-
-	ctxt.a->_index = ctxt.numZones++;
-
-	if (_vm->getLocationFlags() & kFlagsVisited) {
-		ctxt.a->_flags = _vm->_zoneFlags[_vm->_currentLocationIndex][ctxt.a->_index];
-	} else {
-		_vm->_zoneFlags[_vm->_currentLocationIndex][ctxt.a->_index] = ctxt.a->_flags;
+	if (!ctxt.a) {
+		return;
 	}
 
+	ctxt.a->_index = _zoneProg;
+	ctxt.a->_locationIndex = _vm->_currentLocationIndex;
+
+	_vm->restoreOrSaveZoneFlags(ctxt.a, _vm->getLocationFlags() & kFlagsVisited);
 }
 
 
@@ -423,16 +421,13 @@ DECLARE_LOCATION_PARSER(endcomment)  {
 
 
 DECLARE_LOCATION_PARSER(sound)  {
-	debugC(7, kDebugParser, "LOCATION_PARSER(sound) ");
-
-//	_soundMan->loadSound(_tokens[1]);
+	warning("SOUND command unexpected when parsing location");
 }
 
 
 DECLARE_LOCATION_PARSER(music)  {
 	debugC(7, kDebugParser, "LOCATION_PARSER(music) ");
-
-//	_soundMan->loadMusic(_tokens[1]);
+	_vm->_soundMan->execute(SC_SETMUSICFILE, _tokens[1]);
 }
 
 DECLARE_LOCATION_PARSER(redundant)  {
@@ -444,15 +439,16 @@ DECLARE_LOCATION_PARSER(redundant)  {
 
 DECLARE_LOCATION_PARSER(character)  {
 	debugC(7, kDebugParser, "LOCATION_PARSER(character) ");
-
-	ctxt.characterName = strdup(_tokens[1]);
+	_out->_characterName = _tokens[1];
 }
 
 
 DECLARE_LOCATION_PARSER(ifchar)  {
 	debugC(7, kDebugParser, "LOCATION_PARSER(ifchar) ");
 
-	_script->skip("ENDIF");
+	if (scumm_stricmp(_vm->_char.getName(), _tokens[1])) {
+		_script->skip("ENDIF");
+	}
 }
 
 
@@ -466,19 +462,21 @@ DECLARE_LOCATION_PARSER(null)  {
 DECLARE_LOCATION_PARSER(mask)  {
 	debugC(7, kDebugParser, "LOCATION_PARSER(mask) ");
 
-	ctxt.info->layers[0] = 0;
-	ctxt.info->layers[1] = atoi(_tokens[2]);
-	ctxt.info->layers[2] = atoi(_tokens[3]);
-	ctxt.info->layers[3] = atoi(_tokens[4]);
+	_out->_info->layers[0] = 0;
+	_out->_info->layers[1] = atoi(_tokens[2]);
+	_out->_info->layers[2] = atoi(_tokens[3]);
+	_out->_info->layers[3] = atoi(_tokens[4]);
 
-	_vm->_disk->loadScenery(*ctxt.info, 0, _tokens[1], 0);
+	// postpone loading of screen mask data, because background must be loaded first
+	_out->_maskName = _tokens[1];
 }
 
 
 DECLARE_LOCATION_PARSER(path)  {
 	debugC(7, kDebugParser, "LOCATION_PARSER(path) ");
 
-	_vm->_disk->loadScenery(*ctxt.info, 0, 0, _tokens[1]);
+	// postpone loading of screen path data, because background must be loaded first
+	_out->_pathName = _tokens[1];
 }
 
 
@@ -522,21 +520,23 @@ DECLARE_COMMAND_PARSER(location)  {
 
 	createCommand(_parser->_lookup);
 
-	ctxt.cmd->u._string = strdup(_tokens[1]);
+	ctxt.cmd->_string = strdup(_tokens[1]);
 	ctxt.nextToken++;
 
+	ctxt.cmd->_startPos.x = -1000;
+	ctxt.cmd->_startPos2.x = -1000;
 	if (_tokens[ctxt.nextToken][0] != '\0') {
 		if (isdigit(_tokens[ctxt.nextToken][0]) || _tokens[ctxt.nextToken][0] == '-') {
-			ctxt.cmd->u._startPos.x = atoi(_tokens[ctxt.nextToken]);
+			ctxt.cmd->_startPos.x = atoi(_tokens[ctxt.nextToken]);
 			ctxt.nextToken++;
-			ctxt.cmd->u._startPos.y = atoi(_tokens[ctxt.nextToken]);
+			ctxt.cmd->_startPos.y = atoi(_tokens[ctxt.nextToken]);
 			ctxt.nextToken++;
 		}
 
 		if (isdigit(_tokens[ctxt.nextToken][0]) || _tokens[ctxt.nextToken][0] == '-') {
-			ctxt.cmd->u._startPos2.x = atoi(_tokens[ctxt.nextToken]);
+			ctxt.cmd->_startPos2.x = atoi(_tokens[ctxt.nextToken]);
 			ctxt.nextToken++;
-			ctxt.cmd->u._startPos2.y = atoi(_tokens[ctxt.nextToken]);
+			ctxt.cmd->_startPos2.y = atoi(_tokens[ctxt.nextToken]);
 			ctxt.nextToken++;
 		}
 	}
@@ -551,7 +551,7 @@ DECLARE_COMMAND_PARSER(string)  {
 
 	createCommand(_parser->_lookup);
 
-	ctxt.cmd->u._string = strdup(_tokens[1]);
+	ctxt.cmd->_string = strdup(_tokens[1]);
 	ctxt.nextToken++;
 
 	parseCommandFlags();
@@ -567,9 +567,9 @@ DECLARE_COMMAND_PARSER(math)  {
 		error("counter '%s' doesn't exists", _tokens[1]);
 	}
 
-	ctxt.cmd->u._counterName = _tokens[1];
+	ctxt.cmd->_counterName = _tokens[1];
 	ctxt.nextToken++;
-	ctxt.cmd->u._counterValue = atoi(_tokens[2]);
+	ctxt.cmd->_counterValue = atoi(_tokens[2]);
 	ctxt.nextToken++;
 
 	parseCommandFlags();
@@ -590,8 +590,8 @@ DECLARE_COMMAND_PARSER(test)  {
 			error("unknown counter '%s' in test opcode", _tokens[1]);
 		}
 	} else {
-		ctxt.cmd->u._counterName = _tokens[1];
-		ctxt.cmd->u._counterValue = atoi(_tokens[3]);
+		ctxt.cmd->_counterName = _tokens[1];
+		ctxt.cmd->_counterValue = atoi(_tokens[3]);
 		ctxt.nextToken++;
 
 		if (_tokens[2][0] == '>') {
@@ -613,11 +613,11 @@ DECLARE_COMMAND_PARSER(music)  {
 
 	createCommand(_parser->_lookup);
 
-	ctxt.cmd->u._musicCommand = _audioCommandsNames->lookup(_tokens[1]);
+	ctxt.cmd->_musicCommand = _audioCommandsNames->lookup(_tokens[1]);
 	ctxt.nextToken++;
 
 	if (_tokens[2][0] != '\0' && scumm_stricmp("flags", _tokens[2]) && scumm_stricmp("gflags", _tokens[2])) {
-		ctxt.cmd->u._musicParm = atoi(_tokens[2]);
+		ctxt.cmd->_musicParm = atoi(_tokens[2]);
 		ctxt.nextToken++;
 	}
 
@@ -631,16 +631,16 @@ DECLARE_COMMAND_PARSER(zeta)  {
 
 	createCommand(_parser->_lookup);
 
-	ctxt.cmd->u._zeta0 = atoi(_tokens[1]);
+	ctxt.cmd->_zeta0 = atoi(_tokens[1]);
 	ctxt.nextToken++;
-	ctxt.cmd->u._zeta1 = atoi(_tokens[2]);
+	ctxt.cmd->_zeta1 = atoi(_tokens[2]);
 	ctxt.nextToken++;
 
 	if (_tokens[3][0] != '\0') {
-		ctxt.cmd->u._zeta2 = atoi(_tokens[3]);
+		ctxt.cmd->_zeta2 = atoi(_tokens[3]);
 		ctxt.nextToken++;
 	} else {
-		ctxt.cmd->u._zeta2 = 50;
+		ctxt.cmd->_zeta2 = 50;
 	}
 
 	parseCommandFlags();
@@ -653,17 +653,17 @@ DECLARE_COMMAND_PARSER(give)  {
 
 	createCommand(_parser->_lookup);
 
-	ctxt.cmd->u._object = 4 + atoi(_tokens[1]);
+	ctxt.cmd->_object = 4 + atoi(_tokens[1]);
 	ctxt.nextToken++;
 
 	if (!scumm_stricmp("dino", _tokens[2])) {
-		ctxt.cmd->u._characterId = 1;
+		ctxt.cmd->_characterId = 1;
 	} else
 	if (!scumm_stricmp("doug", _tokens[2])) {
-		ctxt.cmd->u._characterId = 2;
+		ctxt.cmd->_characterId = 2;
 	} else
 	if (!scumm_stricmp("donna", _tokens[2])) {
-		ctxt.cmd->u._characterId = 3;
+		ctxt.cmd->_characterId = 3;
 	} else
 		error("unknown recipient '%s' in give command", _tokens[2]);
 
@@ -680,17 +680,17 @@ DECLARE_COMMAND_PARSER(text)  {
 	createCommand(_parser->_lookup);
 
 	if (isdigit(_tokens[1][1])) {
-		ctxt.cmd->u._zeta0 = atoi(_tokens[1]);
+		ctxt.cmd->_zeta0 = atoi(_tokens[1]);
 		ctxt.nextToken++;
 	} else {
-		ctxt.cmd->u._zeta0 = -1;
+		ctxt.cmd->_zeta0 = -1;
 	}
 
-	ctxt.cmd->u._string = strdup(_tokens[ctxt.nextToken]);
+	ctxt.cmd->_string = strdup(_tokens[ctxt.nextToken]);
 	ctxt.nextToken++;
 
 	if (_tokens[ctxt.nextToken][0] != '\0' && scumm_stricmp("flags", _tokens[ctxt.nextToken])) {
-		ctxt.cmd->u._string2 = strdup(_tokens[ctxt.nextToken]);
+		ctxt.cmd->_string2 = strdup(_tokens[ctxt.nextToken]);
 		ctxt.nextToken++;
 	}
 
@@ -705,7 +705,7 @@ DECLARE_COMMAND_PARSER(unary)  {
 
 	createCommand(_parser->_lookup);
 
-	ctxt.cmd->u._counterValue = atoi(_tokens[1]);
+	ctxt.cmd->_counterValue = atoi(_tokens[1]);
 	ctxt.nextToken++;
 
 	parseCommandFlags();
@@ -718,8 +718,7 @@ DECLARE_ZONE_PARSER(limits)  {
 
 	if (isalpha(_tokens[1][1])) {
 		ctxt.z->_flags |= kFlagsAnimLinked;
-		ctxt.z->_linkedAnim = _vm->_location.findAnimation(_tokens[1]);
-		ctxt.z->_linkedName = strdup(_tokens[1]);
+		ctxt.z->_linkedName = _tokens[1];
 	} else {
 		ctxt.z->setRect(atoi(_tokens[1]), atoi(_tokens[2]), atoi(_tokens[3]), atoi(_tokens[4]));
 	}
@@ -738,15 +737,11 @@ DECLARE_ZONE_PARSER(moveto)  {
 DECLARE_ZONE_PARSER(type)  {
 	debugC(7, kDebugParser, "ZONE_PARSER(type) ");
 
-	if (_tokens[2][0] != '\0') {
-		ctxt.z->_type = (4 + _vm->_objectsNames->lookup(_tokens[2])) << 16;
-	}
-	int16 _si = _zoneTypeNames->lookup(_tokens[1]);
-	if (_si != Table::notFound) {
-		ctxt.z->_type |= 1 << (_si - 1);
+	ctxt.z->_type = buildZoneType(_tokens[1], _tokens[2]);
+	if (ACTIONTYPE(ctxt.z) != 0) {
 		parseZoneTypeBlock(ctxt.z);
 
-//		if (ctxt.z->_type & kZoneHear) {
+//		if (ACTIONTYPE(ctxt.z) == kZoneHear) {
 //			_soundMan->sfxCommand(START...);
 //		}
 	}
@@ -755,98 +750,94 @@ DECLARE_ZONE_PARSER(type)  {
 }
 
 void LocationParser_br::parsePathData(ZonePtr z) {
-
-	PathData *data = new PathData;
-
-	do {
-
-		if (!scumm_stricmp("zone", _tokens[0])) {
-			int id = atoi(_tokens[1]);
-			parsePointList(data->_lists[id]);
-			data->_numLists++;
-		}
-
-		_script->readLineToken(true);
-	} while (scumm_stricmp("endzone", _tokens[0]));
-
-	z->u.path = data;
+	TypeData *data = &z->u;
+	if (!scumm_stricmp("zone", _tokens[0])) {
+		int id = atoi(_tokens[1]);
+		parsePointList(data->_pathLists[id]);
+		data->_pathNumLists++;
+	}
 }
 
 void LocationParser_br::parseGetData(ZonePtr z) {
-
-	GetData *data = new GetData;
-
-	do {
-
-		if (!scumm_stricmp(_tokens[0], "file")) {
-
-			GfxObj *obj = _vm->_gfx->loadGet(_tokens[1]);
-			obj->frame = 0;
-			obj->x = z->getX();
-			obj->y = z->getY();
-			data->gfxobj = obj;
-		}
-
-		if (!scumm_stricmp(_tokens[0], "mask")) {
-			ctxt.info->loadGfxObjMask(_tokens[1], data->gfxobj);
-		}
-
-		if (!scumm_stricmp(_tokens[0], "path")) {
-			ctxt.info->loadGfxObjPath(_tokens[1], data->gfxobj);
-		}
-
-		if (!scumm_stricmp(_tokens[0], "icon")) {
-			data->_icon = 4 + _vm->_objectsNames->lookup(_tokens[1]);
-		}
-
-		_script->readLineToken(true);
-	} while (scumm_stricmp(_tokens[0], "endzone"));
-
-	z->u.get = data;
+	TypeData *data = &z->u;
+	if (!scumm_stricmp(_tokens[0], "file")) {
+		GfxObj *obj = _vm->_gfx->loadGet(_tokens[1]);
+		obj->frame = 0;
+		obj->x = z->getX();
+		obj->y = z->getY();
+		obj->_prog = _zoneProg;
+		data->_gfxobj = obj;
+	} else
+	if (!scumm_stricmp(_tokens[0], "mask")) {
+		_out->_info->loadGfxObjMask(_tokens[1], data->_gfxobj);
+	} else
+	if (!scumm_stricmp(_tokens[0], "path")) {
+		_out->_info->loadGfxObjPath(_tokens[1], data->_gfxobj);
+	} else
+	if (!scumm_stricmp(_tokens[0], "icon")) {
+		data->_getIcon = 4 + _vm->_objectsNames->lookup(_tokens[1]);
+	}
 }
+
+void LocationParser_br::parseDoorData(ZonePtr z) {
+	TypeData *data = &z->u;
+	if (!scumm_stricmp(_tokens[0], "slidetext")) {
+		_vm->_location._slideText[0] = _tokens[1];
+		_vm->_location._slideText[1] = _tokens[2];
+	} else
+	if (!scumm_stricmp(_tokens[0], "location")) {
+		data->_doorLocation = strdup(_tokens[1]);
+	} else
+	if (!scumm_stricmp(_tokens[0], "file")) {
+		GfxObj *obj = _vm->_gfx->loadDoor(_tokens[1]);
+		obj->frame = z->_flags & kFlagsClosed ? 0 : 1;
+		obj->x = z->getX();
+		obj->y = z->getY();
+		_vm->_gfx->showGfxObj(obj, true);
+		data->_gfxobj = obj;
+	} else
+	if (!scumm_stricmp(_tokens[0],	"startpos")) {
+		data->_doorStartPos.x = atoi(_tokens[1]);
+		data->_doorStartPos.y = atoi(_tokens[2]);
+		data->_doorStartFrame = atoi(_tokens[3]);
+	} else
+	if (!scumm_stricmp(_tokens[0],	"startpos2")) {
+		data->_doorStartPos2_br.x = atoi(_tokens[1]);
+		data->_doorStartPos2_br.y = atoi(_tokens[2]);
+		data->_doorStartFrame2_br = atoi(_tokens[3]);
+	}
+}
+
+typedef void (LocationParser_br::*ZoneTypeParser)(ZonePtr);
+static ZoneTypeParser parsers[] = {
+	0,	// no type
+	&LocationParser_br::parseExamineData,
+	&LocationParser_br::parseDoorData,
+	&LocationParser_br::parseGetData,
+	&LocationParser_br::parseMergeData,
+	0,	// taste
+	&LocationParser_br::parseHearData,
+	0,	// feel
+	&LocationParser_br::parseSpeakData,
+	0,	// none
+	0,	// trap
+	0,	// you
+	0,	// command
+	&LocationParser_br::parsePathData,
+	0,	// box
+};
 
 void LocationParser_br::parseZoneTypeBlock(ZonePtr z) {
 	debugC(7, kDebugParser, "parseZoneTypeBlock(name: %s, type: %x)", z->_name, z->_type);
 
-	switch (z->_type & 0xFFFF) {
-	case kZoneExamine:	// examine Zone alloc
-		parseExamineData(z);
-		break;
-
-	case kZoneDoor: // door Zone alloc
-		parseDoorData(z);
-		break;
-
-	case kZoneGet:	// get Zone alloc
-		parseGetData(z);
-		break;
-
-	case kZoneMerge:	// merge Zone alloc
-		parseMergeData(z);
-		break;
-
-	case kZoneHear: // hear Zone alloc
-		parseHearData(z);
-		break;
-
-	case kZoneSpeak:	// speak Zone alloc
-		parseSpeakData(z);
-		break;
-
-	// BRA specific zone
-	case kZonePath:
-		parsePathData(z);
-		break;
-
-	default:
-		// eats up 'ENDZONE' line for unprocessed zone types
+	ZoneTypeParser p = parsers[ACTIONTYPE(z)];
+	do {
+		if (p) {
+			(this->*p)(z);
+		}
 		_script->readLineToken(true);
-		break;
-	}
-
+	} while (scumm_stricmp(_tokens[0], "endzone") && scumm_stricmp(_tokens[0], "endanimation"));
 	debugC(7, kDebugParser, "parseZoneTypeBlock() done");
-
-	return;
 }
 
 DECLARE_ANIM_PARSER(file)  {
@@ -1009,9 +1000,7 @@ DECLARE_INSTRUCTION_PARSER(text)  {
 DECLARE_INSTRUCTION_PARSER(if_op)  {
 	debugC(7, kDebugParser, "INSTRUCTION_PARSER(if_op) ");
 
-
-	if (ctxt.openIf)
-		error("cannot nest 'if' blocks");
+	beginIfStatement();
 
 	parseLValue(ctxt.inst->_opA, _tokens[1]);
 	parseRValue(ctxt.inst->_opB, _tokens[3]);
@@ -1026,20 +1015,27 @@ DECLARE_INSTRUCTION_PARSER(if_op)  {
 		ctxt.inst->_index = INST_IFLT;
 	} else
 		error("unknown test operator '%s' in if-clause", _tokens[2]);
+}
 
-	ctxt.openIf = ctxt.inst;
+void ProgramParser_br::beginIfStatement() {
+	if (_openIfStatement != -1)
+		error("cannot nest 'if' statements");
 
+	_openIfStatement = _currentInstruction;
+}
+
+void ProgramParser_br::endIfStatement() {
+	if (_openIfStatement == -1)
+		error("unexpected 'endif' in script");
+
+	_program->_instructions[_openIfStatement]->_endif = _currentInstruction;
+	_openIfStatement = -1;
 }
 
 
 DECLARE_INSTRUCTION_PARSER(endif)  {
 	debugC(7, kDebugParser, "INSTRUCTION_PARSER(endif) ");
-
-	if (!ctxt.openIf)
-		error("unexpected 'endif'");
-
-//	ctxt.openIf->_endif = ctxt.inst;
-	ctxt.openIf = nullInstructionPtr;
+	endIfStatement();
 	ctxt.inst->_index = _parser->_lookup;
 }
 
@@ -1088,9 +1084,14 @@ void ProgramParser_br::parseRValue(ScriptVar &v, const char *str) {
 #if 0	// disabled because no references to lip sync has been found in the scripts
 		v.setField(&_vm->_lipSyncVal);
 #endif
-		warning("Lip sync instruction encountered! Please notify the team!");
+		warning("Lip sync instruction encountered! Please notify the team");
 	}
 
+}
+
+void ProgramParser_br::parse(Script *script, ProgramPtr program) {
+	_openIfStatement = -1;
+	ProgramParser_ns::parse(script, program);
 }
 
 
@@ -1246,27 +1247,13 @@ void ProgramParser_br::init() {
 	INSTRUCTION_PARSER(endscript);
 }
 
-void LocationParser_br::parse(Script *script) {
-	ctxt.numZones = 0;
-	ctxt.characterName = 0;
-	ctxt.info = new BackgroundInfo;
+void LocationParser_br::parse(Script *script, LocationParserOutput_br *out) {
+	assert(out);
+	_out = out;
+	_out->_info = new BackgroundInfo;
+	assert(_out->_info);
 
 	LocationParser_ns::parse(script);
-
-	_vm->_gfx->setBackground(kBackgroundLocation, ctxt.info);
-
-	ZoneList::iterator it = _vm->_location._zones.begin();
-	for ( ; it != _vm->_location._zones.end(); it++) {
-		bool visible = ((*it)->_flags & kFlagsRemove) == 0;
-		if (visible)
-			_vm->showZone((*it), visible);
-	}
-
-	if (ctxt.characterName) {
-		_vm->changeCharacter(ctxt.characterName);
-	}
-
-	free(ctxt.characterName);
 }
 
 } // namespace Parallaction

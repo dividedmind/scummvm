@@ -24,6 +24,7 @@
  */
 
 #include "common/events.h"
+#include "common/EventRecorder.h"
 #include "common/keyboard.h"
 #include "common/file.h"
 #include "common/savefile.h"
@@ -74,7 +75,7 @@ MadeEngine::MadeEngine(OSystem *syst, const MadeGameDescription *gameDesc) : Eng
 			_gameId = g->id;
 
 	_rnd = new Common::RandomSource();
-	syst->getEventManager()->registerRandomSource(*_rnd, "made");
+	g_eventRec.registerRandomSource(*_rnd, "made");
 
 	int cd_num = ConfMan.getInt("cdrom");
 	if (cd_num >= 0)
@@ -133,13 +134,6 @@ MadeEngine::~MadeEngine() {
 	delete _dat;
 	delete _script;
 	delete _music;
-}
-
-Common::Error MadeEngine::init() {
-	// Initialize backend
-	initGraphics(320, 200, false);
-
-	return Common::kNoError;
 }
 
 void MadeEngine::syncSoundSettings() {
@@ -247,7 +241,10 @@ void MadeEngine::handleEvents() {
 
 }
 
-Common::Error MadeEngine::go() {
+Common::Error MadeEngine::run() {
+
+	// Initialize backend
+	initGraphics(320, 200, false);
 
 	resetAllTimers();
 
@@ -284,7 +281,7 @@ Common::Error MadeEngine::go() {
 	} else {
 		error ("Unknown MADE game");
 	}
-	
+
 	if ((getFeatures() & GF_CD) || (getFeatures() & GF_CD_COMPRESSED))
 		checkCD();
 

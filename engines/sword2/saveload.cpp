@@ -70,14 +70,14 @@ uint32 Sword2Engine::findBufferSize() {
  * Save the game.
  */
 
-uint32 Sword2Engine::saveGame(uint16 slotNo, byte *desc) {
+uint32 Sword2Engine::saveGame(uint16 slotNo, const byte *desc) {
 	char description[SAVE_DESCRIPTION_LEN];
 	uint32 bufferSize = findBufferSize();
 	byte *saveBuffer = (byte *)malloc(bufferSize);
 	ScreenInfo *screenInfo = _screen->getScreenInfo();
 
 	memset(description, 0, sizeof(description));
-	strncpy(description, (char *)desc, SAVE_DESCRIPTION_LEN - 1);
+	strncpy(description, (const char *)desc, SAVE_DESCRIPTION_LEN - 1);
 
 	Common::MemoryWriteStream writeS(saveBuffer, bufferSize);
 
@@ -140,7 +140,7 @@ uint32 Sword2Engine::saveData(uint16 slotNo, byte *buffer, uint32 bufferSize) {
 	out->write(buffer, bufferSize);
 	out->finalize();
 
-	if (!out->ioFailed()) {
+	if (!out->err()) {
 		delete out;
 		return SR_OK;
 	}
@@ -389,7 +389,7 @@ uint32 Sword2Engine::getSaveDescription(uint16 slotNo, byte *description) {
 
 bool Sword2Engine::saveExists() {
 	Common::String pattern = _targetName + ".???";
-	Common::StringList filenames = _saveFileMan->listSavefiles(pattern.c_str());
+	Common::StringList filenames = _saveFileMan->listSavefiles(pattern);
 
 	return !filenames.empty();
 }

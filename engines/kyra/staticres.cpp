@@ -38,13 +38,13 @@
 #include "kyra/screen_mr.h"
 #include "kyra/resource.h"
 #include "kyra/gui_lok.h"
+#include "kyra/gui_lol.h"
 #include "kyra/gui_hof.h"
 #include "kyra/gui_mr.h"
-#include "kyra/gui_lol.h"
 
 namespace Kyra {
 
-#define RESFILE_VERSION 35
+#define RESFILE_VERSION 48
 
 namespace {
 bool checkKyraDat(Common::SeekableReadStream *file) {
@@ -222,10 +222,15 @@ bool StaticResource::init() {
 		{ k2ShpAnimDataV1, proc(loadShapeAnimData_v1), proc(freeHofShapeAnimDataV1) },
 		{ k2ShpAnimDataV2, proc(loadShapeAnimData_v2), proc(freeHofShapeAnimDataV2) },
 
-		{ lolCharData, proc(loadCharData), proc(freeCharData) },
-		{ lolSpellData, proc(loadSpellData), proc(freeSpellData) },
-		{ lolCompassData, proc(loadCompassData), proc(freeCompassData) },
-		{ lolRawDataBe16, proc(loadRawDataBe16), proc(freeRawDataBe16) },
+#ifdef ENABLE_LOL
+		{ kLolCharData, proc(loadCharData), proc(freeCharData) },
+		{ kLolSpellData, proc(loadSpellData), proc(freeSpellData) },
+		{ kLolCompassData, proc(loadCompassData), proc(freeCompassData) },
+		{ kLolFlightShpData, proc(loadFlyingObjectData), proc(freeFlyingObjectData) },
+		{ kLolRawDataBe16, proc(loadRawDataBe16), proc(freeRawDataBe16) },
+		{ kLolRawDataBe32, proc(loadRawDataBe32), proc(freeRawDataBe32) },
+		{ kLolButtonData, proc(loadButtonDefs), proc(freeButtonDefs) },
+#endif // ENABLE_LOL
 
 		{ 0, 0, 0 }
 	};
@@ -360,7 +365,8 @@ bool StaticResource::init() {
 		{ 0, 0, 0 }
 	};
 
-	static const FilenameTable lolStaticRes[] = {
+#ifdef ENABLE_LOL
+	static const FilenameTable kLolStaticRes[] = {
 		// Demo Sequence Player
 		{ k2SeqplayPakFiles, kStringList, "S_PAKFILES.TXT" },
 		{ k2SeqplayStrings, kLanguageList, "S_STRINGS." },
@@ -369,42 +375,89 @@ bool StaticResource::init() {
 		{ k2SeqplayIntroTracks, kStringList, "S_INTRO.TRA" },
 
 		// Ingame
-		{ lolCharacterDefs, lolCharData, "CHARACTER.DEF" },
-		{ lolIngameSfxFiles, kStringList, "SFXFILES.TRA" },
-		{ lolIngameSfxIndex, kRawData, "SFXINDEX.MAP" },
-		{ lolMusicTrackMap, kRawData, "MUSIC.MAP" },
-		{ lolIngameGMSfxIndex, kRawData, "SFX_GM.MAP" },
-		{ lolIngameMT32SfxIndex, kRawData, "SFX_MT32.MAP" },
-		{ lolSpellProperties, lolSpellData, "SPELLS.DEF" },
-		{ lolGameShapeMap, kRawData, "GAMESHP.MAP" },
-		{ lolLevelShpList, kStringList, "SHPFILES.TXT" },
-		{ lolLevelDatList, kStringList, "DATFILES.TXT" },
-		{ lolCompassDefs, lolCompassData, "COMPASS.DEF" },
-		
-		{ lolDscUnk1, kRawData, "DSCSHPU1.DEF" },
-		{ lolDscShapeIndex, kRawData, "DSCSHPI1.DEF" },
-		{ lolDscOvlMap, kRawData, "DSCSHPI2.DEF" },
-		{ lolDscScaleWidthData, lolRawDataBe16, "DSCSHPW.DEF" },
-		{ lolDscScaleHeightData, lolRawDataBe16, "DSCSHPH.DEF" },
-		{ lolDscX, lolRawDataBe16, "DSCSHPX.DEF" },
-		{ lolDscY, kRawData, "DSCSHPY.DEF" },
-		{ lolDscTileIndex, kRawData, "DSCSHPT.DEF" },
-		{ lolDscUnk2, kRawData, "DSCSHPU2.DEF" },
-		{ lolDscDoorShapeIndex, kRawData, "DSCDOOR.DEF" },
-		{ lolDscDimData1, kRawData, "DSCDIM1.DEF" },
-		{ lolDscDimData2, kRawData, "DSCDIM2.DEF" },
-		{ lolDscBlockMap, kRawData, "DSCBLOCK1.DEF" },
-		{ lolDscDimMap, kRawData, "DSCDIM.DEF" },
-		{ lolDscDoorScale, lolRawDataBe16, "DSCDOOR3.DEF" },
-		{ lolDscDoor4, lolRawDataBe16, "DSCDOOR4.DEF" },
-		{ lolDscOvlIndex, kRawData, "DSCBLOCK2.DEF" },
-		{ lolDscBlockIndex, kRawData, "DSCBLOCKX.DEF" },
-		{ lolDscDoor1, kRawData, "DSCDOOR1.DEF" },
-		{ lolDscDoorX, lolRawDataBe16, "DSCDOORX.DEF" },
-		{ lolDscDoorY, lolRawDataBe16, "DSCDOORY.DEF" },
+		{ kLolCharacterDefs, kLolCharData, "CHARACTER.DEF" },
+		{ kLolIngameSfxFiles, kStringList, "SFXFILES.TRA" },
+		{ kLolIngameSfxIndex, kRawData, "SFXINDEX.MAP" },
+		{ kLolMusicTrackMap, kRawData, "MUSIC.MAP" },
+		{ kLolIngameGMSfxIndex, kRawData, "SFX_GM.MAP" },
+		{ kLolIngameMT32SfxIndex, kRawData, "SFX_MT32.MAP" },
+		{ kLolSpellProperties, kLolSpellData, "SPELLS.DEF" },
+		{ kLolGameShapeMap, kRawData, "GAMESHP.MAP" },
+		{ kLolSceneItemOffs, kRawData, "ITEMOFFS.DEF" },
+		{ kLolCharInvIndex, kRawData, "CHARINV.MAP" },
+		{ kLolCharInvDefs, kRawData, "CHARINV.DEF" },
+		{ kLolCharDefsMan, kLolRawDataBe16, "CHMAN.DEF" },
+		{ kLolCharDefsWoman, kLolRawDataBe16, "CHWOMAN.DEF" },
+		{ kLolCharDefsKieran, kLolRawDataBe16, "CHKIERAN.DEF" },
+		//{ kLolCharDefsUnk, kLolRawDataBe16, "CHUNK.DEF" },
+		{ kLolCharDefsAkshel, kLolRawDataBe16, "CHAKSHEL.DEF" },
+		{ kLolExpRequirements, kLolRawDataBe32, "EXPERIENCE.DEF" },
+		{ kLolMonsterModifiers, kLolRawDataBe16, "MONSTMOD.DEF" },
+		{ kLolMonsterShiftOffsets, kRawData, "MONSTLVL.DEF" },
+		{ kLolMonsterDirFlags, kRawData, "MONSTDIR.DEF" },
+		{ kLolMonsterScaleY, kRawData, "MONSTZY.DEF" },
+		{ kLolMonsterScaleX, kRawData, "MONSTZX.DEF" },
+		{ kLolMonsterScaleWH, kLolRawDataBe16, "MONSTSCL.DEF" },
+		{ kLolFlyingObjectShp, kLolFlightShpData, "THRWNSHP.DEF" },
+		{ kLolInventoryDesc, kLolRawDataBe16, "INVDESC.DEF" },
+
+		{ kLolLevelShpList, kStringList, "SHPFILES.TXT" },
+		{ kLolLevelDatList, kStringList, "DATFILES.TXT" },
+		{ kLolCompassDefs, kLolCompassData, "COMPASS.DEF" },
+		{ kLolItemPrices, kLolRawDataBe16, "ITEMCOST.DEF" },
+		{ kLolStashSetup, kRawData, "MONEYSTS.DEF" },
+
+		{ kLolDscUnk1, kRawData, "DSCSHPU1.DEF" },
+		{ kLolDscShapeIndex, kRawData, "DSCSHPI1.DEF" },
+		{ kLolDscOvlMap, kRawData, "DSCSHPI2.DEF" },
+		{ kLolDscScaleWidthData, kLolRawDataBe16, "DSCSHPW.DEF" },
+		{ kLolDscScaleHeightData, kLolRawDataBe16, "DSCSHPH.DEF" },
+		{ kLolDscX, kLolRawDataBe16, "DSCSHPX.DEF" },
+		{ kLolDscY, kRawData, "DSCSHPY.DEF" },
+		{ kLolDscTileIndex, kRawData, "DSCSHPT.DEF" },
+		{ kLolDscUnk2, kRawData, "DSCSHPU2.DEF" },
+		{ kLolDscDoorShapeIndex, kRawData, "DSCDOOR.DEF" },
+		{ kLolDscDimData1, kRawData, "DSCDIM1.DEF" },
+		{ kLolDscDimData2, kRawData, "DSCDIM2.DEF" },
+		{ kLolDscBlockMap, kRawData, "DSCBLOCK1.DEF" },
+		{ kLolDscDimMap, kRawData, "DSCDIM.DEF" },
+		{ kLolDscDoorScale, kLolRawDataBe16, "DSCDOOR3.DEF" },
+		{ kLolDscDoor4, kLolRawDataBe16, "DSCDOOR4.DEF" },
+		{ kLolDscOvlIndex, kRawData, "DSCBLOCK2.DEF" },
+		{ kLolDscBlockIndex, kRawData, "DSCBLOCKX.DEF" },
+		{ kLolDscDoor1, kRawData, "DSCDOOR1.DEF" },
+		{ kLolDscDoorX, kLolRawDataBe16, "DSCDOORX.DEF" },
+		{ kLolDscDoorY, kLolRawDataBe16, "DSCDOORY.DEF" },
+
+		{ kLolScrollXTop, kRawData, "SCROLLXT.DEF" },
+		{ kLolScrollYTop, kRawData, "SCROLLYT.DEF" },
+		{ kLolScrollXBottom, kRawData, "SCROLLXB.DEF" },
+		{ kLolScrollYBottom, kRawData, "SCROLLYB.DEF" },
+
+		{ kLolButtonDefs, kLolButtonData, "BUTTONS.DEF" },
+		{ kLolButtonList1, kLolRawDataBe16, "BUTTON1.LST" },
+		{ kLolButtonList2, kLolRawDataBe16, "BUTTON2.LST" },
+		{ kLolButtonList3, kLolRawDataBe16, "BUTTON3.LST" },
+		{ kLolButtonList4, kLolRawDataBe16, "BUTTON4.LST" },
+		{ kLolButtonList5, kLolRawDataBe16, "BUTTON5.LST" },
+		{ kLolButtonList6, kLolRawDataBe16, "BUTTON6.LST" },
+		{ kLolButtonList7, kLolRawDataBe16, "BUTTON7.LST" },
+		{ kLolButtonList8, kLolRawDataBe16, "BUTTON84.LST" },
+
+		{ lolLegendData, kRawData, "MAPLGND.DEF" },
+		{ lolMapCursorOvl, kRawData, "MAPCURSOR.PAL" },
+		{ lolMapStringId, kLolRawDataBe16, "MAPSTRID.LST" },
+		//{ lolMapPal, kRawData, "MAP.PAL" },
+
+		{ lolSpellbookAnim, kRawData, "MBOOKA.DEF" },
+		{ lolSpellbookCoords, kRawData, "MBOOKC.DEF" },
+		{ lolHealShapeFrames, kRawData, "MHEAL.SHP" },
+		{ lolLightningDefs, kRawData, "MLGHTNG.DEF" },
+		{ lolFireballCoords, kLolRawDataBe16, "MFIREBLL.DEF" },
 
 		{ 0, 0, 0 }
 	};
+#endif // ENABLE_LOL
 
 	if (_vm->game() == GI_KYRA1) {
 		_builtIn = 0;
@@ -415,11 +468,13 @@ bool StaticResource::init() {
 	} else if (_vm->game() == GI_KYRA3) {
 		_builtIn = 0;
 		_filenameTable = kyra3StaticRes;
+#ifdef ENABLE_LOL
 	} else if (_vm->game() == GI_LOL) {
 		if (!_vm->gameFlags().isDemo && !_vm->gameFlags().isTalkie)
 			return true;
 		_builtIn = 0;
-		_filenameTable = lolStaticRes;
+		_filenameTable = kLolStaticRes;
+#endif // ENABLE_LOL
 	} else {
 		error("StaticResource: Unknown game ID");
 	}
@@ -432,55 +487,69 @@ void StaticResource::deinit() {
 }
 
 const char * const *StaticResource::loadStrings(int id, int &strings) {
-	const char * const*temp = (const char* const*)getData(id, kStringList, strings);
+	const char * const*temp = (const char* const *)getData(id, kStringList, strings);
 	if (temp)
 		return temp;
-	return (const char* const*)getData(id, kLanguageList, strings);
+	return (const char* const *)getData(id, kLanguageList, strings);
 }
 
 const uint8 *StaticResource::loadRawData(int id, int &size) {
-	return (const uint8*)getData(id, kRawData, size);
+	return (const uint8 *)getData(id, kRawData, size);
 }
 
 const Shape *StaticResource::loadShapeTable(int id, int &entries) {
-	return (const Shape*)getData(id, kShapeList, entries);
+	return (const Shape *)getData(id, kShapeList, entries);
 }
 
 const Room *StaticResource::loadRoomTable(int id, int &entries) {
-	return (const Room*)getData(id, StaticResource::kRoomList, entries);
+	return (const Room *)getData(id, StaticResource::kRoomList, entries);
 }
 
-const uint8 * const*StaticResource::loadPaletteTable(int id, int &entries) {
-	return (const uint8* const*)getData(id, kPaletteTable, entries);
+const uint8 * const *StaticResource::loadPaletteTable(int id, int &entries) {
+	return (const uint8* const *)getData(id, kPaletteTable, entries);
 }
 
 const HofSeqData *StaticResource::loadHofSequenceData(int id, int &entries) {
-	return (const HofSeqData*)getData(id, k2SeqData, entries);
+	return (const HofSeqData *)getData(id, k2SeqData, entries);
 }
 
 const ItemAnimData_v1 *StaticResource::loadShapeAnimData_v1(int id, int &entries) {
-	return (const ItemAnimData_v1*)getData(id, k2ShpAnimDataV1, entries);
+	return (const ItemAnimData_v1 *)getData(id, k2ShpAnimDataV1, entries);
 }
 
 const ItemAnimData_v2 *StaticResource::loadShapeAnimData_v2(int id, int &entries) {
-	return (const ItemAnimData_v2*)getData(id, k2ShpAnimDataV2, entries);
+	return (const ItemAnimData_v2 *)getData(id, k2ShpAnimDataV2, entries);
 }
 
+#ifdef ENABLE_LOL
 const LoLCharacter *StaticResource::loadCharData(int id, int &entries) {
-	return (const LoLCharacter*)getData(id, lolCharData, entries);
+	return (const LoLCharacter *)getData(id, kLolCharData, entries);
 }
 
 const SpellProperty *StaticResource::loadSpellData(int id, int &entries) {
-	return (const SpellProperty*)getData(id, lolSpellData, entries);
+	return (const SpellProperty *)getData(id, kLolSpellData, entries);
 }
 
 const CompassDef *StaticResource::loadCompassData(int id, int &entries) {
-	return (const CompassDef*)getData(id, lolCompassData, entries);
+	return (const CompassDef *)getData(id, kLolCompassData, entries);
+}
+
+const FlyingObjectShape *StaticResource::loadFlyingObjectData(int id, int &entries) {
+	return (const FlyingObjectShape *)getData(id, kLolFlightShpData, entries);
 }
 
 const uint16 *StaticResource::loadRawDataBe16(int id, int &entries) {
-	return (const uint16*)getData(id, lolRawDataBe16, entries);
+	return (const uint16 *)getData(id, kLolRawDataBe16, entries);
 }
+
+const uint32 *StaticResource::loadRawDataBe32(int id, int &entries) {
+	return (const uint32 *)getData(id, kLolRawDataBe32, entries);
+}
+
+const ButtonDef *StaticResource::loadButtonDefs(int id, int &entries) {
+	return (const ButtonDef *)getData(id, kLolButtonData, entries);
+}
+#endif // ENABLE_LOL
 
 bool StaticResource::prefetchId(int id) {
 	if (id == -1) {
@@ -836,7 +905,7 @@ bool StaticResource::loadHofSequenceData(const char *filename, void *&ptr, int &
 				tmp_f[ii].delay = file->readUint16BE();
 			}
 
-			tmp_n[i].wsaControl = (const FrameControl*) tmp_f;
+			tmp_n[i].wsaControl = (const FrameControl *)tmp_f;
 			size += (num_c * sizeof(FrameControl));
 
 		} else {
@@ -910,6 +979,7 @@ bool StaticResource::loadShapeAnimData_v2(const char *filename, void *&ptr, int 
 	return true;
 }
 
+#ifdef ENABLE_LOL
 bool StaticResource::loadCharData(const char *filename, void *&ptr, int &size) {
 	Common::SeekableReadStream *file = getFile(filename);
 
@@ -918,7 +988,7 @@ bool StaticResource::loadCharData(const char *filename, void *&ptr, int &size) {
 
 	size = file->size() / 130;
 	LoLCharacter *charData = new LoLCharacter[size];
-	
+
 	for (int i = 0; i < size; i++) {
 		LoLCharacter *t = &charData[i];
 
@@ -927,58 +997,42 @@ bool StaticResource::loadCharData(const char *filename, void *&ptr, int &size) {
 		t->raceClassSex = file->readByte();
 		t->id = file->readSint16LE();
 		t->curFaceFrame = file->readByte();
-		t->nextFaceFrame = file->readByte();
-		t->field_12 = file->readUint16LE();
-		t->field_14 = file->readUint16LE();
-		t->field_16 = file->readByte();
-		for (int ii = 0; ii < 5; ii++)
-			t->field_17[ii] = file->readUint16LE();
-		t->field_21 = file->readUint16LE();
-		t->field_23 = file->readUint16LE();
-		t->field_25 = file->readUint16LE();
-		for (int ii = 0; ii < 2; ii++)
-			t->field_27[ii] = file->readUint16LE();
-		t->field_2B = file->readByte();
-		t->field_2C = file->readUint16LE();
-		t->field_2E = file->readUint16LE();
-		t->field_30 = file->readUint16LE();
-		t->field_32 = file->readUint16LE();
-		t->field_34 = file->readUint16LE();
-		t->field_36 = file->readByte();
-		t->field_37 = file->readUint16LE();
-		t->hitPointsCur = file->readUint16LE();;
-		t->hitPointsMax = file->readUint16LE();;
-		t->magicPointsCur = file->readUint16LE();;
-		t->magicPointsMax = file->readUint16LE();;
+		t->defaultFaceFrame = file->readByte();
+		t->screamSfx = file->readByte();
+		file->readUint32LE();
+		for (int ii = 0; ii < 8; ii++)
+			t->itemsMight[ii] = file->readUint16LE();
+		for (int ii = 0; ii < 8; ii++)
+			t->protectionAgainstItems[ii] = file->readUint16LE();
+		t->itemProtection = file->readUint16LE();
+		t->hitPointsCur = file->readSint16LE();
+		t->hitPointsMax = file->readUint16LE();
+		t->magicPointsCur = file->readSint16LE();
+		t->magicPointsMax = file->readUint16LE();
 		t->field_41 = file->readByte();
 		t->damageSuffered = file->readUint16LE();
 		t->weaponHit = file->readUint16LE();
-		t->field_46 = file->readUint16LE();
-		t->field_48 = file->readUint16LE();
-		t->field_4A = file->readUint16LE();
-		t->field_4C = file->readUint16LE();
-		t->rand = file->readUint16LE();
+		t->totalMightModifier = file->readUint16LE();
+		t->totalProtectionModifier = file->readUint16LE();
+		t->might = file->readUint16LE();
+		t->protection = file->readUint16LE();
+		t->nextAnimUpdateCountdown = file->readSint16LE();
 		for (int ii = 0; ii < 11; ii++)
 			t->items[ii] = file->readUint16LE();
 		for (int ii = 0; ii < 3; ii++)
-			t->field_66[ii] = file->readByte();
+			t->skillLevels[ii] = file->readByte();
 		for (int ii = 0; ii < 3; ii++)
-			t->field_69[ii] = file->readByte();
-		t->field_6C = file->readByte();
-		t->field_6D = file->readByte();
-		t->field_6E = file->readUint16LE();
-		t->field_70 = file->readUint16LE();
-		t->field_72 = file->readUint16LE();
-		t->field_74 = file->readUint16LE();
-		t->field_76 = file->readUint16LE();
+			t->skillModifiers[ii] = file->readByte();
+		for (int ii = 0; ii < 3; ii++)
+			t->experiencePts[ii] = file->readUint32LE();
 		for (int ii = 0; ii < 5; ii++)
-			t->arrayUnk2[ii] = file->readByte();
+			t->characterUpdateEvents[ii] = file->readByte();
 		for (int ii = 0; ii < 5; ii++)
-			t->arrayUnk1[ii] = file->readByte();
+			t->characterUpdateDelay[ii] = file->readByte();
 	};
 
+	delete file;
 	ptr = charData;
-	
 	return true;
 }
 
@@ -990,24 +1044,24 @@ bool StaticResource::loadSpellData(const char *filename, void *&ptr, int &size) 
 
 	size = file->size() / 28;
 	SpellProperty *spellData = new SpellProperty[size];
-	
+
 	for (int i = 0; i < size; i++) {
 		SpellProperty *t = &spellData[i];
 
-		t->field_0 = file->readUint16LE();
-		for (int ii = 0; ii < 4; ii++)
-			t->unkArr[ii] = file->readUint16LE();
-		t->field_A = file->readUint16LE();
-		t->field_C = file->readUint16LE();
-		t->field_E = file->readUint16LE();
 		t->spellNameCode = file->readUint16LE();
 		for (int ii = 0; ii < 4; ii++)
 			t->mpRequired[ii] = file->readUint16LE();
-		t->field_1A = file->readUint16LE();
+		t->field_a = file->readUint16LE();
+		t->field_c = file->readUint16LE();
+		for (int ii = 0; ii < 4; ii++)
+			t->hpRequired[ii] = file->readUint16LE();
+		t->field_16 = file->readUint16LE();
+		t->field_18 = file->readUint16LE();
+		t->flags = file->readUint16LE();
 	};
 
+	delete file;
 	ptr = spellData;
-	
 	return true;
 }
 
@@ -1019,7 +1073,7 @@ bool StaticResource::loadCompassData(const char *filename, void *&ptr, int &size
 
 	size = file->size() / 4;
 	CompassDef *defs = new CompassDef[size];
-	
+
 	for (int i = 0; i < size; i++) {
 		CompassDef *t = &defs[i];
 		t->shapeIndex = file->readByte();
@@ -1028,13 +1082,40 @@ bool StaticResource::loadCompassData(const char *filename, void *&ptr, int &size
 		t->flags = file->readByte();
 	};
 
+
+	delete file;
 	ptr = defs;
-	
+	return true;
+}
+
+bool StaticResource::loadFlyingObjectData(const char *filename, void *&ptr, int &size) {
+	Common::SeekableReadStream *file = getFile(filename);
+
+	if (!file)
+		return false;
+
+	size = file->size() / 5;
+	FlyingObjectShape *defs = new FlyingObjectShape[size];
+
+	for (int i = 0; i < size; i++) {
+		FlyingObjectShape *t = &defs[i];
+		t->shapeFront = file->readByte();
+		t->shapeBack = file->readByte();
+		t->shapeLeft = file->readByte();
+		t->drawFlags = file->readByte();
+		t->flipFlags = file->readByte();
+	};
+
+	delete file;
+	ptr = defs;
 	return true;
 }
 
 bool StaticResource::loadRawDataBe16(const char *filename, void *&ptr, int &size) {
 	Common::SeekableReadStream *file = getFile(filename);
+
+	if (!file)
+		return false;
 
 	size = file->size() >> 1;
 
@@ -1043,20 +1124,66 @@ bool StaticResource::loadRawDataBe16(const char *filename, void *&ptr, int &size
 	for (int i = 0; i < size; i++)
 		r[i] = file->readUint16BE();
 
+	delete file;
 	ptr = r;
-	
 	return true;
 }
 
+bool StaticResource::loadRawDataBe32(const char *filename, void *&ptr, int &size) {
+	Common::SeekableReadStream *file = getFile(filename);
+
+	if (!file)
+		return false;
+
+	size = file->size() >> 2;
+
+	uint32 *r = new uint32[size];
+
+	for (int i = 0; i < size; i++)
+		r[i] = file->readUint32BE();
+
+	delete file;
+	ptr = r;
+	return true;
+}
+
+bool StaticResource::loadButtonDefs(const char *filename, void *&ptr, int &size) {
+	Common::SeekableReadStream *file = getFile(filename);
+
+	if (!file)
+		return false;
+
+	size = file->size() / 18;
+
+	ButtonDef *r = new ButtonDef[size];
+
+	for (int i = 0; i < size; i++) {
+		r[i].buttonflags = file->readUint16BE();
+		r[i].keyCode = file->readUint16BE();
+		r[i].keyCode2 = file->readUint16BE();
+		r[i].x = file->readSint16BE();
+		r[i].y = file->readSint16BE();
+		r[i].w = file->readUint16BE();
+		r[i].h = file->readUint16BE();
+		r[i].index = file->readUint16BE();
+		r[i].screenDim = file->readUint16BE();
+	}
+
+	delete file;
+	ptr = r;
+	return true;
+}
+#endif // ENABLE_LOL
+
 void StaticResource::freeRawData(void *&ptr, int &size) {
-	uint8 *data = (uint8*)ptr;
+	uint8 *data = (uint8 *)ptr;
 	delete[] data;
 	ptr = 0;
 	size = 0;
 }
 
 void StaticResource::freeStringTable(void *&ptr, int &size) {
-	char **data = (char**)ptr;
+	char **data = (char **)ptr;
 	while (size--)
 		delete[] data[size];
 	delete[] data;
@@ -1065,21 +1192,21 @@ void StaticResource::freeStringTable(void *&ptr, int &size) {
 }
 
 void StaticResource::freeShapeTable(void *&ptr, int &size) {
-	Shape *data = (Shape*)ptr;
+	Shape *data = (Shape *)ptr;
 	delete[] data;
 	ptr = 0;
 	size = 0;
 }
 
 void StaticResource::freeRoomTable(void *&ptr, int &size) {
-	Room *data = (Room*)ptr;
+	Room *data = (Room *)ptr;
 	delete[] data;
 	ptr = 0;
 	size = 0;
 }
 
 void StaticResource::freeHofSequenceData(void *&ptr, int &size) {
-	HofSeqData *h = (HofSeqData*) ptr;
+	HofSeqData *h = (HofSeqData *)ptr;
 
 	for (int i = 0; i < h->numSeq; i++) {
 		delete[] h->seq[i].wsaFile;
@@ -1099,7 +1226,7 @@ void StaticResource::freeHofSequenceData(void *&ptr, int &size) {
 }
 
 void StaticResource::freeHofShapeAnimDataV1(void *&ptr, int &size) {
-	ItemAnimData_v1 *d= (ItemAnimData_v1*) ptr;
+	ItemAnimData_v1 *d= (ItemAnimData_v1 *)ptr;
 	for (int i = 0; i < size; i++)
 		delete[] d[i].frames;
 	delete[] d;
@@ -1108,7 +1235,7 @@ void StaticResource::freeHofShapeAnimDataV1(void *&ptr, int &size) {
 }
 
 void StaticResource::freeHofShapeAnimDataV2(void *&ptr, int &size) {
-	ItemAnimData_v2 *d= (ItemAnimData_v2*) ptr;
+	ItemAnimData_v2 *d= (ItemAnimData_v2 *)ptr;
 	for (int i = 0; i < size; i++)
 		delete[] d[i].frames;
 	delete[] d;
@@ -1116,6 +1243,7 @@ void StaticResource::freeHofShapeAnimDataV2(void *&ptr, int &size) {
 	size = 0;
 }
 
+#ifdef ENABLE_LOL
 void StaticResource::freeCharData(void *&ptr, int &size) {
 	LoLCharacter *d = (LoLCharacter *)ptr;
 	delete[] d;
@@ -1137,15 +1265,38 @@ void StaticResource::freeCompassData(void *&ptr, int &size) {
 	size = 0;
 }
 
+void StaticResource::freeFlyingObjectData(void *&ptr, int &size) {
+	FlyingObjectShape *d = (FlyingObjectShape *)ptr;
+	delete[] d;
+	ptr = 0;
+	size = 0;
+}
+
+
 void StaticResource::freeRawDataBe16(void *&ptr, int &size) {
-	uint16 *data = (uint16*)ptr;
+	uint16 *data = (uint16 *)ptr;
 	delete[] data;
 	ptr = 0;
 	size = 0;
 }
 
+void StaticResource::freeRawDataBe32(void *&ptr, int &size) {
+	uint32 *data = (uint32 *)ptr;
+	delete[] data;
+	ptr = 0;
+	size = 0;
+}
+
+void StaticResource::freeButtonDefs(void *&ptr, int &size) {
+	ButtonDef *d = (ButtonDef *)ptr;
+	delete[] d;
+	ptr = 0;
+	size = 0;
+}
+#endif // ENABLE_LOL
+
 void StaticResource::freePaletteTable(void *&ptr, int &size) {
-	uint8 **data = (uint8**)ptr;
+	uint8 **data = (uint8 **)ptr;
 	while (size--)
 		delete[] data[size];
 	delete[] data;
@@ -1247,7 +1398,7 @@ void KyraEngine_LoK::initStaticResource() {
 
 	_soundFiles = _staticres->loadStrings(k1AudioTracks, _soundFilesSize);
 	_soundFilesIntro = _staticres->loadStrings(k1AudioTracksIntro, _soundFilesIntroSize);
-	_cdaTrackTable = (const int32*) _staticres->loadRawData(k1TownsCDATable, _cdaTrackTableSize);
+	_cdaTrackTable = (const int32 *)_staticres->loadRawData(k1TownsCDATable, _cdaTrackTableSize);
 
 	// copied static res
 
@@ -1281,47 +1432,30 @@ void KyraEngine_LoK::initStaticResource() {
 	static const char *tIntro98[] = { "intro%d.dat" };
 	static const char *tIngame98[] = { "kyram%d.dat" };
 
-	if (_flags.platform == Common::kPlatformPC) {
-		_soundData[0]._fileList = _soundFilesIntro;
-		_soundData[0]._fileListLen = _soundFilesIntroSize;
-		_soundData[0]._cdaTracks = 0;
-		_soundData[0]._cdaNumTracks = 0;
-		_soundData[1]._fileList = _soundFiles;
-		_soundData[1]._fileListLen = _soundFilesSize;
-		_soundData[1]._cdaTracks = 0;
-		_soundData[1]._cdaNumTracks = 0;
-		_soundData[2]._fileList = 0;
-		_soundData[2]._fileListLen = 0;
-		_soundData[2]._cdaTracks = 0;
-		_soundData[2]._cdaNumTracks = 0;
+	// FIXME: It seems Kyra1 MAC CD includes AdLib and MIDI music and sfx, thus we enable
+	// support for those for now. (Based on patch #2767489 "Support for Mac Kyrandia 1 CD" by satz).
+	memset(_soundData, 0, sizeof(_soundData));
+	if (_flags.platform == Common::kPlatformPC || _flags.platform == Common::kPlatformMacintosh) {
+		_soundData[0].fileList = _soundFilesIntro;
+		_soundData[0].fileListLen = _soundFilesIntroSize;
+		_soundData[1].fileList = _soundFiles;
+		_soundData[1].fileListLen = _soundFilesSize;
 	} else if (_flags.platform == Common::kPlatformFMTowns) {
-		_soundData[0]._fileList = _soundFiles;
-		_soundData[0]._fileListLen = _soundFilesSize;
-		_soundData[0]._cdaTracks = _cdaTrackTable;
-		_soundData[0]._cdaNumTracks = _cdaTrackTableSize;
-		_soundData[1]._fileList = _soundFiles;
-		_soundData[1]._fileListLen = _soundFilesSize;
-		_soundData[1]._cdaTracks = _cdaTrackTable;
-		_soundData[1]._cdaNumTracks = _cdaTrackTableSize;
-		_soundData[2]._fileList = 0;
-		_soundData[2]._fileListLen = 0;
-		_soundData[2]._cdaTracks = 0;
-		_soundData[2]._cdaNumTracks = 0;
+		_soundData[0].fileList = _soundFiles;
+		_soundData[0].fileListLen = _soundFilesSize;
+		_soundData[0].cdaTracks = _cdaTrackTable;
+		_soundData[0].cdaNumTracks = _cdaTrackTableSize;
+		_soundData[1].fileList = _soundFiles;
+		_soundData[1].fileListLen = _soundFilesSize;
+		_soundData[1].cdaTracks = _cdaTrackTable;
+		_soundData[1].cdaNumTracks = _cdaTrackTableSize;
 	} else if (_flags.platform == Common::kPlatformPC98) {
-		_soundData[0]._fileList = tIntro98;
-		_soundData[0]._fileListLen = 1;
-		_soundData[0]._cdaTracks = 0;
-		_soundData[0]._cdaNumTracks = 0;
-		_soundData[1]._fileList = tIngame98;
-		_soundData[1]._fileListLen = 1;
-		_soundData[1]._cdaTracks = 0;
-		_soundData[1]._cdaNumTracks = 0;
-		_soundData[2]._fileList = 0;
-		_soundData[2]._fileListLen = 0;
-		_soundData[2]._cdaTracks = 0;
-		_soundData[2]._cdaNumTracks = 0;
-	} else {
-		memset(_soundData, 0, sizeof(_soundData));
+		_soundData[0].fileList = tIntro98;
+		_soundData[0].fileListLen = 1;
+		_soundData[0].extraOffset = -56;
+		_soundData[1].fileList = tIngame98;
+		_soundData[1].fileListLen = 1;
+		_soundData[1].extraOffset = -1;
 	}
 }
 
@@ -1450,7 +1584,7 @@ void KyraEngine_LoK::loadMainScreen(int page) {
 	_screen->clearPage(page);
 
 	if (_flags.lang == Common::EN_ANY && !_flags.isTalkie && (_flags.platform == Common::kPlatformPC || _flags.platform == Common::kPlatformAmiga))
-		_screen->loadBitmap("MAIN15.CPS", page, page, _screen->getPalette(0));
+		_screen->loadBitmap("MAIN15.CPS", page, page, &_screen->getPalette(0));
 	else if (_flags.lang == Common::EN_ANY || _flags.lang == Common::JA_JPN || (_flags.isTalkie && _flags.lang == Common::IT_ITA))
 		_screen->loadBitmap("MAIN_ENG.CPS", page, page, 0);
 	else if (_flags.lang == Common::FR_FRA)
@@ -1465,7 +1599,7 @@ void KyraEngine_LoK::loadMainScreen(int page) {
 		warning("no main graphics file found");
 
 	if (_flags.platform == Common::kPlatformAmiga)
-		memcpy(_screen->getPalette(1), _screen->getPalette(0), 32*3);
+		_screen->copyPalette(1, 0);
 
 	_screen->copyRegion(0, 0, 0, 0, 320, 200, page, 0);
 }
@@ -1524,45 +1658,34 @@ void KyraEngine_HoF::initStaticResource() {
 	static const char *pc98MusicFileListFinale[] = { "finale%d.86" };
 	static const char *pc98MusicFileListIngame[] = { "km%02d.86" };
 
+	memset(_soundData, 0, sizeof(_soundData));
 	if (_flags.platform == Common::kPlatformPC) {
-		_soundData[0]._fileList = _musicFileListIntro;
-		_soundData[0]._fileListLen = _musicFileListIntroSize;
-		_soundData[0]._cdaTracks = 0;
-		_soundData[0]._cdaNumTracks = 0;
-		_soundData[1]._fileList = _musicFileListIngame;
-		_soundData[1]._fileListLen = _musicFileListIngameSize;
-		_soundData[1]._cdaTracks = 0;
-		_soundData[1]._cdaNumTracks = 0;
-		_soundData[2]._fileList = _musicFileListFinale;
-		_soundData[2]._fileListLen = _musicFileListIntroSize;
-		_soundData[2]._cdaTracks = 0;
-		_soundData[2]._cdaNumTracks = 0;
+		_soundData[0].fileList = _musicFileListIntro;
+		_soundData[0].fileListLen = _musicFileListIntroSize;
+		_soundData[1].fileList = _musicFileListIngame;
+		_soundData[1].fileListLen = _musicFileListIngameSize;
+		_soundData[2].fileList = _musicFileListFinale;
+		_soundData[2].fileListLen = _musicFileListIntroSize;
 	} else if (_flags.platform == Common::kPlatformFMTowns) {
-		_soundData[0]._fileList = fmtMusicFileListIntro;
-		_soundData[0]._fileListLen = 1;
-		_soundData[0]._cdaTracks = _cdaTrackTableIntro;
-		_soundData[0]._cdaNumTracks = _cdaTrackTableIntroSize >> 1;
-		_soundData[1]._fileList = fmtMusicFileListIngame;
-		_soundData[1]._fileListLen = 1;
-		_soundData[1]._cdaTracks = _cdaTrackTableIngame;
-		_soundData[1]._cdaNumTracks = _cdaTrackTableIngameSize >> 1;
-		_soundData[2]._fileList = fmtMusicFileListFinale;
-		_soundData[2]._fileListLen = 1;
-		_soundData[2]._cdaTracks = _cdaTrackTableFinale;
-		_soundData[2]._cdaNumTracks = _cdaTrackTableFinaleSize >> 1;
+		_soundData[0].fileList = fmtMusicFileListIntro;
+		_soundData[0].fileListLen = 1;
+		_soundData[0].cdaTracks = _cdaTrackTableIntro;
+		_soundData[0].cdaNumTracks = _cdaTrackTableIntroSize >> 1;
+		_soundData[1].fileList = fmtMusicFileListIngame;
+		_soundData[1].fileListLen = 1;
+		_soundData[1].cdaTracks = _cdaTrackTableIngame;
+		_soundData[1].cdaNumTracks = _cdaTrackTableIngameSize >> 1;
+		_soundData[2].fileList = fmtMusicFileListFinale;
+		_soundData[2].fileListLen = 1;
+		_soundData[2].cdaTracks = _cdaTrackTableFinale;
+		_soundData[2].cdaNumTracks = _cdaTrackTableFinaleSize >> 1;
 	} else if (_flags.platform == Common::kPlatformPC98) {
-		_soundData[0]._fileList = pc98MusicFileListIntro;
-		_soundData[0]._fileListLen = 1;
-		_soundData[0]._cdaTracks = 0;
-		_soundData[0]._cdaNumTracks = 0;
-		_soundData[1]._fileList = pc98MusicFileListIngame;
-		_soundData[1]._fileListLen = 1;
-		_soundData[1]._cdaTracks = 0;
-		_soundData[1]._cdaNumTracks = 0;
-		_soundData[2]._fileList = pc98MusicFileListFinale;
-		_soundData[2]._fileListLen = 1;
-		_soundData[2]._cdaTracks = 0;
-		_soundData[2]._cdaNumTracks = 0;
+		_soundData[0].fileList = pc98MusicFileListIntro;
+		_soundData[0].fileListLen = 1;
+		_soundData[1].fileList = pc98MusicFileListIngame;
+		_soundData[1].fileListLen = 1;
+		_soundData[2].fileList = pc98MusicFileListFinale;
+		_soundData[2].fileListLen = 1;
 	}
 
 	// setup sequence data
@@ -1602,17 +1725,27 @@ void KyraEngine_HoF::initStaticResource() {
 		&KyraEngine_HoF::seq_demoDig, 0
 	};
 
-	static const SeqProc lolDemoSequenceCallbacks[] = {
+#ifdef ENABLE_LOL
+	static const SeqProc kLolDemoSequenceCallbacks[] = {
 		&KyraEngine_HoF::seq_lolDemoScene1, 0, &KyraEngine_HoF::seq_lolDemoScene2, 0,
 		&KyraEngine_HoF::seq_lolDemoScene3, 0, &KyraEngine_HoF::seq_lolDemoScene4, 0,
 		&KyraEngine_HoF::seq_lolDemoScene5, &KyraEngine_HoF::seq_lolDemoText5,
 		&KyraEngine_HoF::seq_lolDemoScene6, 0
 	};
 
-	static const SeqProc lolDemoNestedSequenceCallbacks[] = { 0	};
+	static const SeqProc kLolDemoNestedSequenceCallbacks[] = { 0 };
+#endif // ENABLE_LOL
 
-	_callbackS = _flags.gameID == GI_LOL ? lolDemoSequenceCallbacks : ((_flags.isDemo && !_flags.isTalkie) ? hofDemoSequenceCallbacks : hofSequenceCallbacks);
-	_callbackN = _flags.gameID == GI_LOL ? lolDemoNestedSequenceCallbacks : ((_flags.isDemo && !_flags.isTalkie) ? hofDemoNestedSequenceCallbacks : hofNestedSequenceCallbacks);
+	_callbackS =
+#ifdef ENABLE_LOL
+		_flags.gameID == GI_LOL ? kLolDemoSequenceCallbacks :
+#endif // ENABLE_LOL
+		((_flags.isDemo && !_flags.isTalkie) ? hofDemoSequenceCallbacks : hofSequenceCallbacks);
+	_callbackN =
+#ifdef ENABLE_LOL
+		_flags.gameID == GI_LOL ? kLolDemoNestedSequenceCallbacks :
+#endif // ENABLE_LOL
+		((_flags.isDemo && !_flags.isTalkie) ? hofDemoNestedSequenceCallbacks : hofNestedSequenceCallbacks);
 }
 
 void KyraEngine_MR::initStaticResource() {
@@ -1627,48 +1760,358 @@ void KyraEngine_MR::initStaticResource() {
 	_itemStringMap = _staticres->loadRawData(k3ItemStringMap, _itemStringMapSize);
 }
 
+#ifdef ENABLE_LOL
+// TODO: move this to lol.cpp maybe?
 void LoLEngine::initStaticResource() {
-	_charDefaults = _staticres->loadCharData(lolCharacterDefs, _charDefaultsSize);	
-	_ingameSoundIndex = (const uint16 *)_staticres->loadRawData(lolIngameSfxIndex, _ingameSoundIndexSize);
-	_musicTrackMap = _staticres->loadRawData(lolMusicTrackMap, _musicTrackMapSize);
-	_ingameGMSoundIndex = _staticres->loadRawData(lolIngameGMSfxIndex, _ingameGMSoundIndexSize);
-	_ingameMT32SoundIndex = _staticres->loadRawData(lolIngameMT32SfxIndex, _ingameMT32SoundIndexSize);
-	_spellProperties = _staticres->loadSpellData(lolSpellProperties, _spellPropertiesSize);
-	_gameShapeMap = (const int8*)_staticres->loadRawData(lolGameShapeMap, _gameShapeMapSize);
-	_levelShpList = _staticres->loadStrings(lolLevelShpList, _levelShpListSize);
-	_levelDatList = _staticres->loadStrings(lolLevelDatList, _levelDatListSize);
-	_compassDefs = _staticres->loadCompassData(lolCompassDefs, _compassDefsSize);
+	// assign music data
+	static const char *pcMusicFileListIntro[] = { "LOREINTR" };
+	static const char *pcMusicFileListFinale[] = { "LOREFINL" };
+	static const char *pcMusicFileListIngame[] = { "LORE%02d%c" };
 
-	_dscUnk1 = (const int8*)_staticres->loadRawData(lolDscUnk1, _dscUnk1Size);
-	_dscShapeIndex = (const int8*)_staticres->loadRawData(lolDscShapeIndex, _dscShapeIndexSize);
-	_dscOvlMap = _staticres->loadRawData(lolDscOvlMap, _dscOvlMapSize);
-	_dscShapeScaleW = (const uint16 *)_staticres->loadRawDataBe16(lolDscScaleWidthData, _dscShapeScaleWSize);
-	_dscShapeScaleH = (const uint16 *)_staticres->loadRawDataBe16(lolDscScaleHeightData, _dscShapeScaleHSize);
-	_dscShapeX = (const int16 *)_staticres->loadRawDataBe16(lolDscX, _dscShapeXSize);
-	_dscShapeY = (const int8 *)_staticres->loadRawData(lolDscY, _dscShapeYSize);
-	_dscTileIndex = _staticres->loadRawData(lolDscTileIndex, _dscTileIndexSize);
-	_dscUnk2 = _staticres->loadRawData(lolDscUnk2, _dscUnk2Size);
-	_dscDoorShpIndex = _staticres->loadRawData(lolDscDoorShapeIndex, _dscDoorShpIndexSize);
-	_dscDim1 = (const int8 *)_staticres->loadRawData(lolDscDimData1, _dscDim1Size);
-	_dscDim2 = (const int8 *)_staticres->loadRawData(lolDscDimData2, _dscDim2Size);
-	_dscBlockMap = _staticres->loadRawData(lolDscBlockMap, _dscBlockMapSize);
-	_dscDimMap = _staticres->loadRawData(lolDscDimMap, _dscDimMapSize);
-	_dscDoorMonsterScaleTable = (const uint16 *)_staticres->loadRawDataBe16(lolDscDoorScale, _dscDoorMonsterScaleTableSize);
-	_dscShapeOvlIndex = _staticres->loadRawData(lolDscOvlIndex, _dscShapeOvlIndexSize);
-	_dscDoor4 = (const uint16 *)_staticres->loadRawDataBe16(lolDscDoor4, _dscDoor4Size);
-	_dscBlockIndex = (const int8 *)_staticres->loadRawData(lolDscBlockIndex, _dscBlockIndexSize);
-	_dscDoor1 = _staticres->loadRawData(lolDscDoor1, _dscDoor1Size);
-	_dscDoorMonsterX = (const int16 *)_staticres->loadRawDataBe16(lolDscDoorX, _dscDoorMonsterXSize);
-	_dscDoorMonsterY = (const int16 *)_staticres->loadRawDataBe16(lolDscDoorY, _dscDoorMonsterYSize);
+	static const char *pc98MusicFileListIntro[] = { 0, "lore84.86", "lore82.86", 0, 0, 0, "lore83.86", "lore81.86" };
+	static const char *pc98MusicFileListFinale[] = { "lore%02d.86" };
+	static const char *pc98MusicFileListIngame[] = { "lore%02d.86" };
 
-	const char *const *tmpSndList = _staticres->loadStrings(lolIngameSfxFiles, _ingameSoundListSize);
-	_ingameSoundList = new char*[_ingameSoundListSize];
-	for (int i = 0; i < _ingameSoundListSize; i++) {
-		_ingameSoundList[i] = new char[strlen(tmpSndList[i]) + 1];
-		strcpy(_ingameSoundList[i], tmpSndList[i]);
+	memset(_soundData, 0, sizeof(_soundData));
+	if (_flags.platform == Common::kPlatformPC) {
+		_soundData[0].fileList = pcMusicFileListIntro;
+		_soundData[0].fileListLen = ARRAYSIZE(pcMusicFileListIntro);
+		_soundData[1].fileList = pcMusicFileListIngame;
+		_soundData[1].fileListLen = ARRAYSIZE(pcMusicFileListIngame);
+		_soundData[2].fileList = pcMusicFileListFinale;
+		_soundData[2].fileListLen = ARRAYSIZE(pcMusicFileListFinale);
+	} else if (_flags.platform == Common::kPlatformPC98) {
+		_soundData[0].fileList = pc98MusicFileListIntro;
+		_soundData[0].fileListLen = ARRAYSIZE(pc98MusicFileListIntro);
+		_soundData[1].fileList = pc98MusicFileListIngame;
+		_soundData[1].fileListLen = ARRAYSIZE(pc98MusicFileListIngame);
+		_soundData[2].fileList = pc98MusicFileListFinale;
+		_soundData[2].fileListLen = ARRAYSIZE(pc98MusicFileListFinale);
 	}
-	_staticres->unloadId(lolIngameSfxFiles);
+
+	if (_flags.isDemo)
+		return;
+
+	_charDefaults = _staticres->loadCharData(kLolCharacterDefs, _charDefaultsSize);
+	_ingameSoundIndex = (const uint16 *)_staticres->loadRawData(kLolIngameSfxIndex, _ingameSoundIndexSize);
+	_musicTrackMap = _staticres->loadRawData(kLolMusicTrackMap, _musicTrackMapSize);
+	_ingameGMSoundIndex = _staticres->loadRawData(kLolIngameGMSfxIndex, _ingameGMSoundIndexSize);
+	_ingameMT32SoundIndex = _staticres->loadRawData(kLolIngameMT32SfxIndex, _ingameMT32SoundIndexSize);
+	//_ingameADLSoundIndex = _staticres->loadRawData(kLolIngameADLSfxIndex, _ingameADLSoundIndexSize);
+	_spellProperties = _staticres->loadSpellData(kLolSpellProperties, _spellPropertiesSize);
+	_gameShapeMap = (const int8 *)_staticres->loadRawData(kLolGameShapeMap, _gameShapeMapSize);
+	_sceneItemOffs = (const int8 *)_staticres->loadRawData(kLolSceneItemOffs, _sceneItemOffsSize);
+	_charInvIndex = _staticres->loadRawData(kLolCharInvIndex, _charInvIndexSize);
+	_charInvDefs = _staticres->loadRawData(kLolCharInvDefs, _charInvDefsSize);
+	_charDefsMan = _staticres->loadRawDataBe16(kLolCharDefsMan, _charDefsManSize);
+	_charDefsWoman = _staticres->loadRawDataBe16(kLolCharDefsWoman, _charDefsWomanSize);
+	_charDefsKieran = _staticres->loadRawDataBe16(kLolCharDefsKieran, _charDefsKieranSize);
+	_charDefsAkshel = _staticres->loadRawDataBe16(kLolCharDefsAkshel, _charDefsAkshelSize);
+	_expRequirements = (const int32 *)_staticres->loadRawDataBe32(kLolExpRequirements, _expRequirementsSize);
+	_monsterModifiers = _staticres->loadRawDataBe16(kLolMonsterModifiers, _monsterModifiersSize);
+	_monsterShiftOffs = (const int8 *)_staticres->loadRawData(kLolMonsterShiftOffsets, _monsterShiftOffsSize);
+	_monsterDirFlags = _staticres->loadRawData(kLolMonsterDirFlags, _monsterDirFlagsSize);
+	_monsterScaleX = _staticres->loadRawData(kLolMonsterScaleX, _monsterScaleXSize);
+	_monsterScaleY = _staticres->loadRawData(kLolMonsterScaleY, _monsterScaleYSize);
+	_monsterScaleWH = _staticres->loadRawDataBe16(kLolMonsterScaleWH, _monsterScaleWHSize);
+	_inventorySlotDesc = _staticres->loadRawDataBe16(kLolInventoryDesc, _inventorySlotDescSize);
+	_levelShpList = _staticres->loadStrings(kLolLevelShpList, _levelShpListSize);
+	_levelDatList = _staticres->loadStrings(kLolLevelDatList, _levelDatListSize);
+	_compassDefs = _staticres->loadCompassData(kLolCompassDefs, _compassDefsSize);
+	_flyingItemShapes = _staticres->loadFlyingObjectData(kLolFlyingObjectShp, _flyingItemShapesSize);
+	_itemCost = _staticres->loadRawDataBe16(kLolItemPrices, _itemCostSize);
+	_stashSetupData = _staticres->loadRawData(kLolStashSetup, _stashSetupDataSize);
+
+	_dscUnk1 = (const int8 *)_staticres->loadRawData(kLolDscUnk1, _dscUnk1Size);
+	_dscShapeIndex = (const int8 *)_staticres->loadRawData(kLolDscShapeIndex, _dscShapeIndexSize);
+	_dscOvlMap = _staticres->loadRawData(kLolDscOvlMap, _dscOvlMapSize);
+	_dscShapeScaleW = _staticres->loadRawDataBe16(kLolDscScaleWidthData, _dscShapeScaleWSize);
+	_dscShapeScaleH = _staticres->loadRawDataBe16(kLolDscScaleHeightData, _dscShapeScaleHSize);
+	_dscShapeX = (const int16 *)_staticres->loadRawDataBe16(kLolDscX, _dscShapeXSize);
+	_dscShapeY = (const int8 *)_staticres->loadRawData(kLolDscY, _dscShapeYSize);
+	_dscTileIndex = _staticres->loadRawData(kLolDscTileIndex, _dscTileIndexSize);
+	_dscUnk2 = _staticres->loadRawData(kLolDscUnk2, _dscUnk2Size);
+	_dscDoorShpIndex = _staticres->loadRawData(kLolDscDoorShapeIndex, _dscDoorShpIndexSize);
+	_dscDim1 = (const int8 *)_staticres->loadRawData(kLolDscDimData1, _dscDim1Size);
+	_dscDim2 = (const int8 *)_staticres->loadRawData(kLolDscDimData2, _dscDim2Size);
+	_dscBlockMap = _staticres->loadRawData(kLolDscBlockMap, _dscBlockMapSize);
+	_dscDimMap = _staticres->loadRawData(kLolDscDimMap, _dscDimMapSize);
+	_dscDoorMonsterScaleTable = _staticres->loadRawDataBe16(kLolDscDoorScale, _dscDoorMonsterScaleTableSize);
+	_dscShapeOvlIndex = _staticres->loadRawData(kLolDscOvlIndex, _dscShapeOvlIndexSize);
+	_dscDoor4 = _staticres->loadRawDataBe16(kLolDscDoor4, _dscDoor4Size);
+	_dscBlockIndex = (const int8 *)_staticres->loadRawData(kLolDscBlockIndex, _dscBlockIndexSize);
+	_dscDoor1 = _staticres->loadRawData(kLolDscDoor1, _dscDoor1Size);
+	_dscDoorMonsterX = (const int16 *)_staticres->loadRawDataBe16(kLolDscDoorX, _dscDoorMonsterXSize);
+	_dscDoorMonsterY = (const int16 *)_staticres->loadRawDataBe16(kLolDscDoorY, _dscDoorMonsterYSize);
+
+	_scrollXTop = _staticres->loadRawData(kLolScrollXTop, _scrollXTopSize);
+	_scrollYTop = _staticres->loadRawData(kLolScrollYTop, _scrollYTopSize);
+	_scrollXBottom = _staticres->loadRawData(kLolScrollXBottom, _scrollXBottomSize);
+	_scrollYBottom = _staticres->loadRawData(kLolScrollYBottom, _scrollYBottomSize);
+
+	const char *const *tmpSndList = _staticres->loadStrings(kLolIngameSfxFiles, _ingameSoundListSize);
+	if (tmpSndList) {
+		_ingameSoundList = new char*[_ingameSoundListSize];
+		for (int i = 0; i < _ingameSoundListSize; i++) {
+			_ingameSoundList[i] = new char[strlen(tmpSndList[i]) + 1];
+			strcpy(_ingameSoundList[i], tmpSndList[i]);
+		}
+		_staticres->unloadId(kLolIngameSfxFiles);
+	}
+
+	_buttonData = _staticres->loadButtonDefs(kLolButtonDefs, _buttonDataSize);
+	_buttonList1 = (const int16 *)_staticres->loadRawDataBe16(kLolButtonList1, _buttonList1Size);
+	_buttonList2 = (const int16 *)_staticres->loadRawDataBe16(kLolButtonList2, _buttonList2Size);
+	_buttonList3 = (const int16 *)_staticres->loadRawDataBe16(kLolButtonList3, _buttonList3Size);
+	_buttonList4 = (const int16 *)_staticres->loadRawDataBe16(kLolButtonList4, _buttonList4Size);
+	_buttonList5 = (const int16 *)_staticres->loadRawDataBe16(kLolButtonList5, _buttonList5Size);
+	_buttonList6 = (const int16 *)_staticres->loadRawDataBe16(kLolButtonList6, _buttonList6Size);
+	_buttonList7 = (const int16 *)_staticres->loadRawDataBe16(kLolButtonList7, _buttonList7Size);
+	_buttonList8 = (const int16 *)_staticres->loadRawDataBe16(kLolButtonList8, _buttonList8Size);
+
+	_autoMapStrings = _staticres->loadRawDataBe16(lolMapStringId, _autoMapStringsSize);
+
+	int tmpSize = 0;
+	const uint8 *tmp = _staticres->loadRawData(lolLegendData, tmpSize);
+	tmpSize /= 5;
+	if (tmp) {
+		_defaultLegendData = new MapLegendData[tmpSize];
+		for (int i = 0; i < tmpSize; i++) {
+			_defaultLegendData[i].shapeIndex = *tmp++;
+			_defaultLegendData[i].enable = *tmp++ ? true : false;
+			_defaultLegendData[i].x = (int8)*tmp++;
+			_defaultLegendData[i].stringId = READ_LE_UINT16(tmp);
+			tmp += 2;
+		}
+		_staticres->unloadId(lolLegendData);
+	}
+
+	tmp = _staticres->loadRawData(lolMapCursorOvl, tmpSize);
+	_mapCursorOverlay = new uint8[tmpSize];
+	memcpy(_mapCursorOverlay, tmp, tmpSize);
+	_staticres->unloadId(lolMapCursorOvl);
+
+	_updateSpellBookCoords = _staticres->loadRawData(lolSpellbookCoords, _updateSpellBookCoordsSize);
+	_updateSpellBookAnimData = _staticres->loadRawData(lolSpellbookAnim, _updateSpellBookAnimDataSize);
+	_healShapeFrames = _staticres->loadRawData(lolHealShapeFrames, _healShapeFramesSize);
+
+	tmp = _staticres->loadRawData(lolLightningDefs, tmpSize);
+	if (tmp) {
+		_lightningProps = new LightningProperty[5];
+		for (int i = 0; i < 5; i++) {
+			_lightningProps[i].lastFrame = tmp[i << 2];
+			_lightningProps[i].frameDiv = tmp[(i << 2) + 1];
+			_lightningProps[i].sfxId = READ_LE_UINT16(&tmp[(i << 2) + 2]);
+		}
+		_staticres->unloadId(lolLightningDefs);
+	}
+
+	_fireBallCoords = (const int16*)_staticres->loadRawDataBe16(lolFireballCoords, _fireBallCoordsSize);
+
+	_buttonCallbacks.clear();
+	_buttonCallbacks.reserve(95);
+#define cb(x) _buttonCallbacks.push_back(BUTTON_FUNCTOR(LoLEngine, this, &LoLEngine::x))
+	// 0x00
+	cb(clickedUpArrow);
+	cb(clickedDownArrow);
+	_buttonCallbacks.push_back(_buttonCallbacks[1]);
+	cb(clickedLeftArrow);
+
+	// 0x04
+	cb(clickedRightArrow);
+	cb(clickedTurnLeftArrow);
+	cb(clickedTurnRightArrow);
+	cb(clickedAttackButton);
+
+	// 0x08
+	for (int i = 0; i < 3; ++i)
+		_buttonCallbacks.push_back(_buttonCallbacks[7]);
+	cb(clickedMagicButton);
+
+	// 0x0C
+	for (int i = 0; i < 3; ++i)
+		_buttonCallbacks.push_back(_buttonCallbacks[11]);
+	cb(clickedMagicSubmenu);
+
+	// 0x10
+	cb(clickedScreen);
+	cb(clickedPortraitLeft);
+	for (int i = 0; i < 7; ++i)
+		_buttonCallbacks.push_back(_buttonCallbacks[17]);
+
+	// 0x19
+	cb(clickedLiveMagicBarsLeft);
+	for (int i = 0; i < 3; ++i)
+		_buttonCallbacks.push_back(_buttonCallbacks[25]);
+
+	// 0x1D
+	cb(clickedPortraitEtcRight);
+	for (int i = 0; i < 3; ++i)
+		_buttonCallbacks.push_back(_buttonCallbacks[29]);
+
+	// 0x21
+	cb(clickedCharInventorySlot);
+	for (int i = 0; i < 10; ++i)
+		_buttonCallbacks.push_back(_buttonCallbacks[33]);
+
+	// 0x2C
+	cb(clickedExitCharInventory);
+	cb(clickedSceneDropItem);
+	for (int i = 0; i < 3; ++i)
+		_buttonCallbacks.push_back(_buttonCallbacks[45]);
+
+	// 0x31
+	cb(clickedScenePickupItem);
+	cb(clickedInventorySlot);
+	for (int i = 0; i < 9; ++i)
+		_buttonCallbacks.push_back(_buttonCallbacks[50]);
+
+	// 0x3C
+	cb(clickedInventoryScroll);
+	cb(clickedInventoryScroll);
+	cb(clickedWall);
+	_buttonCallbacks.push_back(_buttonCallbacks[62]);
+
+	// 0x40
+	cb(clickedSequenceWindow);
+	_buttonCallbacks.push_back(_buttonCallbacks[0]);
+	_buttonCallbacks.push_back(_buttonCallbacks[1]);
+	_buttonCallbacks.push_back(_buttonCallbacks[3]);
+
+	// 0x44
+	_buttonCallbacks.push_back(_buttonCallbacks[4]);
+	_buttonCallbacks.push_back(_buttonCallbacks[5]);
+	_buttonCallbacks.push_back(_buttonCallbacks[6]);
+	cb(clickedScroll);
+
+	// 0x48
+	for (int i = 0; i < 9; ++i)
+		_buttonCallbacks.push_back(_buttonCallbacks[71]);
+
+	// 0x51
+	cb(clickedSpellTargetCharacter);
+	for (int i = 0; i < 3; ++i)
+		_buttonCallbacks.push_back(_buttonCallbacks[81]);
+
+	// 0x55
+	cb(clickedSpellTargetScene);
+	cb(clickedSceneThrowItem);
+	_buttonCallbacks.push_back(_buttonCallbacks[86]);
+
+	// 0x58
+	cb(clickedOptions);
+	cb(clickedRestParty);
+	cb(clickedMoneyBox);
+	cb(clickedCompass);
+
+	// 0x5C
+	cb(clickedAutomap);
+	cb(clickedLamp);
+	cb(clickedStatusIcon);
+#undef cb
 }
+
+void GUI_LoL::initStaticData() {
+	GUI_V2_BUTTON(_scrollUpButton, 20, 96, 0, 1, 1, 1, 0x4487, 0, 0, 0, 25, 16, 0xfe, 0x01, 0xfe, 0x01, 0xfe, 0x01, 0);
+	GUI_V2_BUTTON(_scrollDownButton, 21, 98, 0, 1, 1, 1, 0x4487, 0, 0, 0, 25, 16, 0xfe, 0x01, 0xfe, 0x01, 0xfe, 0x01, 0);
+
+	for (uint i = 0; i < ARRAYSIZE(_menuButtons); ++i)
+		GUI_V2_BUTTON(_menuButtons[i], i, 0, 0, 0, 0, 0, 0x4487, 0, 0, 0, 0, 0, 0xfe, 0x01, 0xfe, 0x01, 0xfe, 0x01, 0);
+
+	GUI_LOL_MENU(_mainMenu, 9, 0x4000, 0, 7, -1, -1, -1, -1);
+	GUI_LOL_MENU_ITEM(_mainMenu.item[0], 0x4001, 16, 23, 176, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_mainMenu.item[1], 0x4002, 16, 40, 176, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_mainMenu.item[2], 0x4003, 16, 57, 176, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_mainMenu.item[3], 0x4004, 16, 74, 176, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_mainMenu.item[4], 0x42D9, 16, 91, 176, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_mainMenu.item[5], 0x4006, 16, 108, 176, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_mainMenu.item[6], 0x4005, 88, 127, 104, 15, 0, 110);
+	Button::Callback mainMenuFunctor = BUTTON_FUNCTOR(GUI_LoL, this, &GUI_LoL::clickedMainMenu);
+	for (int i = 0; i < 7; ++i)
+		_mainMenu.item[i].callback = mainMenuFunctor;
+
+	GUI_LOL_MENU(_loadMenu, 10, 0x400e, 1, 5, 128, 20, 128, 118);
+	GUI_LOL_MENU_ITEM(_loadMenu.item[0], 0xfffe, 8, 39, 256, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_loadMenu.item[1], 0xfffd, 8, 56, 256, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_loadMenu.item[2], 0xfffc, 8, 73, 256, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_loadMenu.item[3], 0xfffb, 8, 90, 256, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_loadMenu.item[4], 0x4011, 168, 118, 96, 15, 0, 110);
+	Button::Callback loadMenuFunctor = BUTTON_FUNCTOR(GUI_LoL, this, &GUI_LoL::clickedLoadMenu);
+	for (int i = 0; i < 5; ++i)
+		_loadMenu.item[i].callback = loadMenuFunctor;
+
+	GUI_LOL_MENU(_saveMenu, 10, 0x400d, 1, 5, 128, 20, 128, 118);
+	GUI_LOL_MENU_ITEM(_saveMenu.item[0], 0xfffe, 8, 39, 256, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_saveMenu.item[1], 0xfffd, 8, 56, 256, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_saveMenu.item[2], 0xfffc, 8, 73, 256, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_saveMenu.item[3], 0xfffb, 8, 90, 256, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_saveMenu.item[4], 0x4011, 168, 118, 96, 15, 0, 110);
+	Button::Callback saveMenuFunctor = BUTTON_FUNCTOR(GUI_LoL, this, &GUI_LoL::clickedSaveMenu);
+	for (int i = 0; i < 5; ++i)
+		_saveMenu.item[i].callback = saveMenuFunctor;
+
+	GUI_LOL_MENU(_deleteMenu, 10, 0x400f, 1, 5, 128, 20, 128, 118);
+	GUI_LOL_MENU_ITEM(_deleteMenu.item[0], 0xfffe, 8, 39, 256, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_deleteMenu.item[1], 0xfffd, 8, 56, 256, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_deleteMenu.item[2], 0xfffc, 8, 73, 256, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_deleteMenu.item[3], 0xfffb, 8, 90, 256, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_deleteMenu.item[4], 0x4011, 168, 118, 96, 15, 0, 110);
+	Button::Callback deleteMenuFunctor = BUTTON_FUNCTOR(GUI_LoL, this, &GUI_LoL::clickedDeleteMenu);
+	for (int i = 0; i < 5; ++i)
+		_deleteMenu.item[i].callback = deleteMenuFunctor;
+
+	GUI_LOL_MENU(_gameOptions, 17, 0x400c, 0, 6, -1, -1, -1, -1);
+	GUI_LOL_MENU_ITEM(_gameOptions.item[0], 0xfff7, 120, 22, 80, 15, 0x406e, 0);
+	GUI_LOL_MENU_ITEM(_gameOptions.item[1], 0xfff6, 120, 39, 80, 15, 0x406c, 0);
+	GUI_LOL_MENU_ITEM(_gameOptions.item[2], 0xfff5, 120, 56, 80, 15, 0x406d, 0);
+	GUI_LOL_MENU_ITEM(_gameOptions.item[3], 0xfff4, 120, 73, 80, 15, 0x42d5, 0);
+	GUI_LOL_MENU_ITEM(_gameOptions.item[4], 0xfff3, 120, 90, 80, 15, 0x42d2, 0);
+	GUI_LOL_MENU_ITEM(_gameOptions.item[5], 0x4072, 104, 110, 96, 15, 0, 110);
+	Button::Callback optionsMenuFunctor = BUTTON_FUNCTOR(GUI_LoL, this, &GUI_LoL::clickedOptionsMenu);
+	for (int i = 0; i < 6; ++i)
+		_gameOptions.item[i].callback = optionsMenuFunctor;
+
+	GUI_LOL_MENU(_audioOptions, 18, 0x42d9, 2, 1, -1, -1, -1, -1);
+	GUI_LOL_MENU_ITEM(_audioOptions.item[0], 0x4072, 152, 76, 96, 15, 0, 110);
+	GUI_LOL_MENU_ITEM(_audioOptions.item[1], 3, 128, 22, 114, 14, 0x42db, 0);
+	GUI_LOL_MENU_ITEM(_audioOptions.item[2], 4, 128, 39, 114, 14, 0x42da, 0);
+	GUI_LOL_MENU_ITEM(_audioOptions.item[3], 5, 128, 56, 114, 14, 0x42dc, 0);
+	Button::Callback audioMenuFunctor = BUTTON_FUNCTOR(GUI_LoL, this, &GUI_LoL::clickedAudioMenu);
+	for (int i = 0; i < 4; ++i)
+		_audioOptions.item[i].callback = audioMenuFunctor;
+
+	GUI_LOL_MENU(_deathMenu, 11, 0x4013, 0, 2, -1, -1, -1, -1);
+	GUI_LOL_MENU_ITEM(_deathMenu.item[0], 0x4006, 8, 30, 104, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_deathMenu.item[1], 0x4001, 176, 30, 104, 15, 0, 0);
+	Button::Callback deathMenuFunctor = BUTTON_FUNCTOR(GUI_LoL, this, &GUI_LoL::clickedDeathMenu);
+	for (int i = 0; i < 2; ++i)
+		_deathMenu.item[i].callback = deathMenuFunctor;
+
+	GUI_LOL_MENU(_savenameMenu, 7, 0x4053, 0, 2, -1, -1, -1, -1);
+	GUI_LOL_MENU_ITEM(_savenameMenu.item[0], 0x4012, 8, 38, 72, 15, 0, 43);
+	GUI_LOL_MENU_ITEM(_savenameMenu.item[1], 0x4011, 176, 38, 72, 15, 0, 110);
+	Button::Callback savenameMenuFunctor = BUTTON_FUNCTOR(GUI_LoL, this, &GUI_LoL::clickedSavenameMenu);
+	for (int i = 0; i < 2; ++i)
+		_savenameMenu.item[i].callback = savenameMenuFunctor;
+
+	GUI_LOL_MENU(_choiceMenu, 11, 0, 0, 2, -1, -1, -1, -1);
+	GUI_LOL_MENU_ITEM(_choiceMenu.item[0], 0x4007, 8, 30, 72, 15, 0, 0);
+	GUI_LOL_MENU_ITEM(_choiceMenu.item[1], 0x4008, 208, 30, 72, 15, 0, 0);
+	Button::Callback choiceMenuFunctor = BUTTON_FUNCTOR(GUI_LoL, this, &GUI_LoL::clickedChoiceMenu);
+	for (int i = 0; i < 2; ++i)
+		_choiceMenu.item[i].callback = choiceMenuFunctor;
+}
+
+#endif // ENABLE_LOL
+
+const uint8 Screen_LoK_16::_palette16[48] = {
+	0x00, 0x00, 0x00, 0x02, 0x07, 0x0B, 0x0C, 0x06, 0x04,
+	0x0E, 0x09, 0x07, 0x00, 0x06, 0x03, 0x00, 0x0C, 0x07,
+	0x0A, 0x0A, 0x0A, 0x08, 0x03, 0x03, 0x02, 0x02, 0x02,
+	0x08, 0x0B, 0x0E, 0x0D, 0x00, 0x00, 0x00, 0x00, 0x0A,
+	0x05, 0x05, 0x05, 0x00, 0x0F, 0x0F, 0x0F, 0x0D, 0x00,
+	0x0F, 0x0F, 0x0F
+};
 
 const ScreenDim Screen_LoK::_screenDimTable[] = {
 	{ 0x00, 0x00, 0x28, 0xC8, 0x0F, 0x0C, 0x00, 0x00 },
@@ -2046,6 +2489,38 @@ const int8 KyraEngine_HoF::_gmSfxMap[] = {
 };
 
 const int KyraEngine_HoF::_gmSfxMapSize = ARRAYSIZE(KyraEngine_HoF::_gmSfxMap);
+
+const int8 KyraEngine_HoF::_pcSpkSfxMap[] = {
+	-1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,
+	-1,   -1,   -1,    0,    1,    2,    3,    4,
+	 5,    6,   -1,    7,    8,    9,   10,   -1,
+	 6,   -1,   -1,   11,   -1,   12,   -1,   -1,
+	-1,   -1,   -1,   13,   -1,   39,   14,   15,
+	 3,   16,   16,   -1,   -1,   -1,   17,   18,
+	 5,   -1,   -1,   -1,   -1,   -1,   19,   20,
+	21,   -1,   22,   23,   -1,   -1,   -1,   -1,
+	-1,   -1,   39,   -1,   24,   24,   25,   26,
+	27,   28,   29,   30,   31,   32,   -1,   -1,
+	-1,    2,   -1,   -1,   -1,   -1,   -1,   21,
+	10,   -1,   -1,   -1,   -1,   17,   -1,   17,
+	40,   -1,   18,   38,   -1,   40,   33,   -1,
+	34,   35,   36,   37,   38,   39,   40,   41,
+	-1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,
+	-1,   -1,   42,   43,   44,   45,   -1,   -1,
+	-1,   -1,   -1,   -1,   46,   -1,    5,   47,
+	48,   -1,   -1,   -1,   -1,   -1,   49,   50,
+	-1,   40,   -1,   24,   -1,   -1,   43,   -1,
+	-1,   38,   -1,   -1,   -1,   51,   -1,   -1,
+	-1,   -1,   -1,   -1,   -1,    9,   -1,   52,
+	53,   40,   -1,   -1,   -1,   -1,   -1,   -1,
+	-1,   -1,   50,   -1,   -1,   -1,   11,   54,
+	 5,   -1,   -1,   -1,   -1,   11,    7,   55,
+	 8,   36,   -1,   -1,   -1,   -1,   -1,   -1,
+	11,   -1,   -1,   -1,   -1,   -1,   -1,   -1,
+	-1,   -1,   -1,   -1,   24
+};
+
+const int KyraEngine_HoF::_pcSpkSfxMapSize = ARRAYSIZE(KyraEngine_HoF::_pcSpkSfxMap);
 
 void KyraEngine_HoF::initInventoryButtonList() {
 	delete[] _inventoryButtons;
@@ -2623,15 +3098,8 @@ const int8 KyraEngine_MR::_albumWSAY[] = {
 
 // lands of lore static res
 
-void GUI_LoL::initStaticData() {
-
-}
-
-void LoLEngine::initButtonList() {
-	
-}
-
-const ScreenDim Screen_LoL::_screenDimTable[] = {
+#ifdef ENABLE_LOL
+const ScreenDim Screen_LoL::_screenDimTable256C[] = {
 	{ 0x00, 0x00, 0x28, 0xC8, 0xC7, 0xCF, 0x00, 0x00 },	// Taken from Intro
 	{ 0x08, 0x48, 0x18, 0x38, 0xFE, 0x01, 0x00, 0x00 },
 	{ 0x0E, 0x00, 0x16, 0x78, 0xFE, 0x01, 0x00, 0x00 },
@@ -2644,11 +3112,52 @@ const ScreenDim Screen_LoL::_screenDimTable[] = {
 	{ 0x07, 0x19, 0x1A, 0x97, 0x00, 0x00, 0x00, 0x00 },
 	{ 0x03, 0x1E, 0x22, 0x8C, 0x00, 0x00, 0x00, 0x00 },
 	{ 0x02, 0x48, 0x24, 0x34, 0x00, 0x00, 0x00, 0x00 },
+	{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
+	{ 0x0E, 0x00, 0x16, 0x78, 0xFE, 0x01, 0x00, 0x00 },
+	{ 0x0D, 0xA2, 0x18, 0x0C, 0xFE, 0x01, 0x00, 0x00 },
+	{ 0x0F, 0x06, 0x14, 0x6E, 0x01, 0x00, 0x00, 0x00 },
+	{ 0x1A, 0xBE, 0x0A, 0x07, 0xFE, 0x01, 0x00, 0x00 },
+	{ 0x07, 0x21, 0x1A, 0x85, 0x00, 0x00, 0x00, 0x00 },
+	{ 0x03, 0x32, 0x22, 0x62, 0x00, 0x00, 0x00, 0x00 },
 	{ 0x0B, 0x8C, 0x10, 0x33, 0x3D, 0x01, 0x00, 0x00 },	// Main menu box (5 entries, CD version only)
-	{ 0x0B, 0x8C, 0x10, 0x23, 0x3D, 0x01, 0x00, 0x00 }	// Main menu box (3 entries, floppy version only)
+	{ 0x0B, 0x8C, 0x10, 0x23, 0x3D, 0x01, 0x00, 0x00 },	// Main menu box (3 entries, floppy version only)
+
+	{ 0x01, 0x20, 0x26, 0x80, 0xDC, 0xFD, 0x00, 0x00 },	// Credits
+	{ 0x09, 0x29, 0x08, 0x2C, 0x00, 0x00, 0x00, 0x00 },
+	{ 0x19, 0x29, 0x08, 0x2C, 0x00, 0x00, 0x00, 0x00 },
+	{ 0x01, 0x02, 0x26, 0x14, 0x00, 0x0F, 0x0E, 0x00 }
 };
 
-const int Screen_LoL::_screenDimTableCount = ARRAYSIZE(Screen_LoL::_screenDimTable);
+const ScreenDim Screen_LoL::_screenDimTable16C[] = {
+	{ 0x00, 0x00, 0x28, 0xC8, 0x33, 0x44, 0x00, 0x00 },	// Taken from Intro
+	{ 0x08, 0x48, 0x18, 0x38, 0x33, 0x44, 0x00, 0x00 },
+	{ 0x0E, 0x00, 0x16, 0x78, 0x33, 0x44, 0x00, 0x00 },
+	{ 0x0B, 0x7B, 0x1C, 0x12, 0x33, 0x11, 0x00, 0x00 },
+	{ 0x0B, 0x7B, 0x1C, 0x2D, 0x33, 0x11, 0x00, 0x00 },
+	{ 0x55, 0x7B, 0xE9, 0x37, 0x33, 0x11, 0x00, 0x00 },
+	{ 0x0B, 0x8C, 0x10, 0x2B, 0x33, 0x44, 0x00, 0x00 },	// Main menu box (4 entries)
+	{ 0x04, 0x59, 0x20, 0x3C, 0x00, 0x00, 0x00, 0x00 },
+	{ 0x05, 0x6E, 0x1E, 0x0C, 0x33, 0x44, 0x00, 0x00 },
+	{ 0x07, 0x19, 0x1A, 0x97, 0x00, 0x00, 0x00, 0x00 },
+	{ 0x03, 0x1E, 0x22, 0x8C, 0x00, 0x00, 0x00, 0x00 },
+	{ 0x02, 0x48, 0x24, 0x34, 0x00, 0x00, 0x00, 0x00 },
+	{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
+	{ 0x0E, 0x00, 0x16, 0x78, 0x33, 0x44, 0x00, 0x00 },
+	{ 0x0D, 0xA2, 0x18, 0x0C, 0x33, 0x44, 0x00, 0x00 },
+	{ 0x0F, 0x06, 0x14, 0x6E, 0x44, 0x00, 0x00, 0x00 },
+	{ 0x1A, 0xBE, 0x0A, 0x07, 0x33, 0x44, 0x00, 0x00 },
+	{ 0x07, 0x21, 0x1A, 0x85, 0x00, 0x00, 0x00, 0x00 },
+	{ 0x03, 0x32, 0x22, 0x62, 0x00, 0x00, 0x00, 0x00 },
+	{ 0x0B, 0x8C, 0x10, 0x33, 0x33, 0x44, 0x00, 0x00 },	// Main menu box (5 entries, not used here)
+	{ 0x0B, 0x8C, 0x10, 0x23, 0x33, 0x44, 0x00, 0x00 },	// Main menu box (3 entries)
+
+	{ 0x01, 0x20, 0x26, 0x80, 0xDC, 0xFD, 0x00, 0x00 },	// Credits (TODO: Check this!)
+	{ 0x09, 0x29, 0x08, 0x2C, 0x00, 0x00, 0x00, 0x00 },
+	{ 0x19, 0x29, 0x08, 0x2C, 0x00, 0x00, 0x00, 0x00 },
+	{ 0x01, 0x02, 0x26, 0x14, 0x00, 0x0F, 0x0E, 0x00 }
+};
+
+const int Screen_LoL::_screenDimTableCount = ARRAYSIZE(Screen_LoL::_screenDimTable256C);
 
 const char * const LoLEngine::_languageExt[] = {
 	"ENG",
@@ -2663,13 +3172,19 @@ const LoLEngine::CharacterPrev LoLEngine::_charPreviews[] = {
 	{   "Conrad", 0x10F, 0x7F, { 0x0A, 0x0C, 0x0A } }
 };
 
-const uint8 LoLEngine::_chargenFrameTable[] = {
+const uint8 LoLEngine::_chargenFrameTableTalkie[] = {
 	0x00, 0x01, 0x02, 0x03, 0x04,
 	0x05, 0x04, 0x03, 0x02, 0x01,
 	0x00, 0x00, 0x01, 0x02, 0x03,
 	0x04, 0x05, 0x06, 0x07, 0x08,
 	0x09, 0x0A, 0x0B, 0x0C, 0x0D,
 	0x0E, 0x0F, 0x10, 0x11, 0x12
+};
+
+const uint8 LoLEngine::_chargenFrameTableFloppy[] = {
+	0,  1,  2,  3,  4,  5,  4,  3,  2,
+	1,  0,  0,  1,  2,  3,  4,  5,  6,
+	7,  8,  9, 10, 11, 12, 13, 14, 15
 };
 
 const uint16 LoLEngine::_selectionPosTable[] = {
@@ -2742,5 +3257,90 @@ const uint8 LoLEngine::_charInfoFrameTable[] = {
 	0x8, 0x9, 0xA, 0xB, 0xA, 0x9, 0x8, 0x7
 };
 
-} // End of namespace Kyra
+const uint8 LoLEngine::_clock2Timers[] = {
+	0x00, 0x10, 0x11, 0x03, 0x04, 0x50,
+	0x51, 0x52, 0x08, 0x09, 0x0A
+};
 
+const uint8 LoLEngine::_numClock2Timers = ARRAYSIZE(LoLEngine::_clock2Timers);
+
+const int8 LoLEngine::_mapCoords[12][4] = {
+	{  0,  7,  0, -5 }, { -5,  0,  6,  0 }, {  7,  5,  7,  1 },
+	{  5,  6,  4,  6 }, {  0,  7,  0, -1 }, { -3,  0,  6,  0 },
+	{  6,  7,  6, -3 }, { -3,  5,  6,  5 }, {  1,  5,  1,  1 },
+	{  3,  1,  3,  1 }, { -1,  6, -1, -8 }, { -7, -1,  5, -1 }
+};
+
+const MistOfDoomAnimData LoLEngine::_mistAnimData[] = {
+	{  0,   7,   7,  13, 155 },
+	{  0,  16,  16,  17, 155 },
+	{  0,  24,  24,  24, 174 },
+	{  0,  19,  19,  19, 174 },
+	{  0,  16,  16,  17, 175 },
+};
+
+const char * const LoLEngine::_outroShapeFileTable[] = {
+	"AMAZON.SHP", "ARCHRSLG.SHP", "AVIANWRM.SHP", "BANDIT.SHP", "BOAR.SHP", "CABAL.SHP",
+	"GUARD.SHP", "HAG.SHP", "HORNET.SHP", "HURZELL.SHP", "IRONGRZR.SHP", "KNOWLES.SHP",
+	"LIZARD.SHP", "MANTHA.SHP", "MINOTAUR.SHP", "MORIBUND.SHP", "ORC.SHP", "ORCLDR.SHP",
+	"PENTROG.SHP", "RATMAN.SHP", "ROCKLING.SHP", "SCAVNGR.SHP", "STARK.SHP",
+	"SWAMPCIT.SHP", "SWAMPMON.SHP", "THUG.SHP", "VIPER.SHP", "XEOB.SHP"
+};
+
+const uint8 LoLEngine::_outroFrameTable[] = {
+	 0,  0,  0,  0,  0,  1,  2,  3,
+	 0,  1,  2,  3,  8,  9, 10, 11,
+	 8,  9, 10, 11,  4,  5,  6,  7
+};
+
+const int16 LoLEngine::_outroRightMonsterPos[] = {
+	205,  55, 205,  55, 205,  55, 205,  55,
+	205,  56, 207,  57, 208,  58, 210,  59,
+	213,  60, 216,  61, 220,  61, 225,  61,
+	230,  61, 235,  61, 240,  61, 240,  61,
+	240,  61, 240,  61, 240,  61, 240,  61,
+	240,  61, 265,  61, 290,  61, 315,  61
+};
+
+const int16 LoLEngine::_outroLeftMonsterPos[] = {
+	 92,  55,  92,  55,  92,  55,  92,  55,
+	 92,  56,  90,  57,  85,  58,  77,  59,
+	 67,  60,  57,  61,  47,  61,  35,  61,
+	 35,  61,  35,  61,  35,  61,  35,  61,
+	 35,  61,  35,  61,  35,  61,  35,  61,
+	 35,  61,  10,  61, -20,  61, -45,  61
+};
+
+const int16 LoLEngine::_outroRightDoorPos[] = {
+	200,  41, 200,  29, 200,  17, 200,   5,
+	200,  -7, 200,  -7, 200,  -7, 200,  -7,
+	200,   5, 200,  17, 200,  29, 200,  41,
+	200,  41, 200,  41, 200,  41, 200,  41,
+	200,  41, 200,  41, 200,  41, 200,  41,
+	200,  41, 200,  41, 200,  41, 200,  41
+};
+
+const int16 LoLEngine::_outroLeftDoorPos[] = {
+	 72,  41,  72,  29,  72,  17,  72,   5,
+	 72,  -7,  72,  -7,  72,  -7,  72,  -7,
+	 72,   5,  72,  17,  72,  29,  72,  41,
+	 72,  41,  72,  41,  72,  41,  72,  41,
+	 72,  41,  72,  41,  72,  41,  72,  41,
+	 72,  41,  72,  41,  72,  41,  72,  41
+};
+
+const int LoLEngine::_outroMonsterScaleTableX[] = {
+	0x050, 0x050, 0x050, 0x050, 0x050, 0x05D, 0x070, 0x085,
+	0x0A0, 0x0C0, 0x0E2, 0x100, 0x100, 0x100, 0x100, 0x100,
+	0x100, 0x100, 0x100, 0x100, 0x100, 0x100, 0x100, 0x100
+};
+
+const int LoLEngine::_outroMonsterScaleTableY[] = {
+	0x04C, 0x04C, 0x04C, 0x04C, 0x04C, 0x059, 0x06B, 0x080,
+	0x099, 0x0B8, 0x0D9, 0x100, 0x100, 0x100, 0x100, 0x100,
+	0x100, 0x100, 0x100, 0x100, 0x100, 0x100, 0x100, 0x100
+};
+
+#endif // ENABLE_LOL
+
+} // End of namespace Kyra

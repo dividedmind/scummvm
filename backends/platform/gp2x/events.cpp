@@ -30,40 +30,41 @@
 
 #include "backends/platform/gp2x/gp2x-common.h"
 #include "backends/platform/gp2x/gp2x-hw.h"
+#include "backends/keymapper/keymapper.h"
 #include "common/util.h"
 #include "common/events.h"
 
 // FIXME move joystick defines out and replace with confile file options
-// we should really allow users to map any key to a joystick button
+// we should really allow users to map any key to a joystick button using the keymapper.
 #define JOY_DEADZONE 2200
 
-// #define JOY_INVERT_Y
 #define JOY_XAXIS 0
 #define JOY_YAXIS 1
 
-// GP2X Stick Buttons (Note: The Stick is read as a set of buttons not a HAT type of setup).
-#define JOY_BUT_LMOUSE 0x0D
-#define JOY_BUT_RMOUSE 0x0E
+/* GP2X Wiz: Main Joystick Mappings */
+enum {
+	GP2X_BUTTON_UP			= 0,
+	GP2X_BUTTON_UPLEFT		= 1,
+	GP2X_BUTTON_LEFT		= 2,
+	GP2X_BUTTON_DOWNLEFT	= 3,
+	GP2X_BUTTON_DOWN		= 4,
+	GP2X_BUTTON_DOWNRIGHT	= 5,
+	GP2X_BUTTON_RIGHT		= 6,
+	GP2X_BUTTON_UPRIGHT		= 7,
+	GP2X_BUTTON_START		= 8,
+	GP2X_BUTTON_SELECT		= 9,
+	GP2X_BUTTON_L			= 10,
+	GP2X_BUTTON_R			= 11,
+	GP2X_BUTTON_A			= 12,
+	GP2X_BUTTON_B			= 13,
+	GP2X_BUTTON_X			= 14,
+	GP2X_BUTTON_Y			= 15,
+	GP2X_BUTTON_VOLUP		= 16,
+	GP2X_BUTTON_VOLDOWN		= 17,
+	GP2X_BUTTON_CLICK		= 18
+};
 
-#define JOY_BUT_RETURN 0x08
-#define JOY_BUT_ESCAPE 0x09
-#define JOY_BUT_F5 0x0B
-#define JOY_BUT_SPACE 0x0F
-#define JOY_BUT_TALKUP 0x10
-#define JOY_BUT_TALKDN 0x11
-#define JOY_BUT_ZERO 0x12
-
-#define JOY_BUT_COMB 0x0A
-#define JOY_BUT_EXIT 0x12
-#define JOY_BUT_PERIOD 0x0C
-
-
-//TODO: Quick hack 101 ;-) Clean this up,
-#define TRUE 1
-#define FALSE 0
-
-static int mapKey(SDLKey key, SDLMod mod, Uint16 unicode)
-{
+static int mapKey(SDLKey key, SDLMod mod, Uint16 unicode) {
 	if (key >= SDLK_F1 && key <= SDLK_F9) {
 		return key - SDLK_F1 + Common::ASCII_F1;
 	} else if (key >= SDLK_KP0 && key <= SDLK_KP9) {
@@ -90,9 +91,9 @@ void OSystem_GP2X::fillMouseEvent(Common::Event &event, int x, int y) {
 
 	// Adjust for the screen scaling
 	if (!_overlayVisible) {
-		event.mouse.x /= _scaleFactor;
-		event.mouse.y /= _scaleFactor;
-		if (_adjustAspectRatio)
+		event.mouse.x /= _videoMode.scaleFactor;
+		event.mouse.y /= _videoMode.scaleFactor;
+		if (_videoMode.aspectRatio)
 			event.mouse.y = aspect2Real(event.mouse.y);
 	}
 }
@@ -161,7 +162,7 @@ void OSystem_GP2X::handleKbdMouse() {
 				_km.y_down_count = 1;
 			}
 
-			SDL_WarpMouse(_km.x, _km.y);
+			SDL_WarpMouse((Uint16)_km.x, (Uint16)_km.y);
 		}
 	}
 }
@@ -196,10 +197,9 @@ void OSystem_GP2X::moveStick() {
 		if (_km.x_down_count!=2){
 			_km.x_vel = 1;
 			_km.x_down_count = 1;
-		}else
+		} else
 			_km.x_vel = 4;
-	}
-	 else{
+	} else {
 		_km.x_vel = 0;
 		_km.x_down_count = 0;
 	}
@@ -215,36 +215,16 @@ void OSystem_GP2X::moveStick() {
 		if (_km.y_down_count!=2){
 			_km.y_vel = 1;
 			_km.y_down_count = 1;
-		}else
+		} else
 			_km.y_vel = 4;
-	}
-	 else{
+	} else {
 		_km.y_vel = 0;
 		_km.y_down_count = 0;
 	}
 }
 
-	//Quick default button states for modifier.
-
-	//int GP2X_BUTTON_STATE_UP              =	FALSE;
-	//int GP2X_BUTTON_STATE_DOWN            =	FALSE;
-	//int GP2X_BUTTON_STATE_LEFT            =	FALSE;
-	//int GP2X_BUTTON_STATE_RIGHT           =	FALSE;
-	//int GP2X_BUTTON_STATE_UPLEFT          =	FALSE;
-	//int GP2X_BUTTON_STATE_UPRIGHT         =	FALSE;
-	//int GP2X_BUTTON_STATE_DOWNLEFT        =	FALSE;
-	//int GP2X_BUTTON_STATE_DOWNRIGHT       =	FALSE;
-	//int GP2X_BUTTON_STATE_CLICK           =	FALSE;
-	//int GP2X_BUTTON_STATE_A               =	FALSE;
-	//int GP2X_BUTTON_STATE_B               =	FALSE;
-	//int GP2X_BUTTON_STATE_Y               =	FALSE;
-	//int GP2X_BUTTON_STATE_X               =	FALSE;
-	int GP2X_BUTTON_STATE_L					=	FALSE;
-	//int GP2X_BUTTON_STATE_R               =	FALSE;
-	//int GP2X_BUTTON_STATE_START           =	FALSE;
-	//int GP2X_BUTTON_STATE_SELECT          =	FALSE;
-	//int GP2X_BUTTON_STATE_VOLUP           =	FALSE;
-	//int GP2X_BUTTON_STATE_VOLDOWN         =	FALSE;
+/* Quick default button states for modifiers. */
+int GP2X_BUTTON_STATE_L					=	false;
 
 bool OSystem_GP2X::pollEvent(Common::Event &event) {
 	SDL_Event ev;
@@ -257,7 +237,6 @@ bool OSystem_GP2X::pollEvent(Common::Event &event) {
 	if (_modeChanged) {
 		_modeChanged = false;
 		event.type = Common::EVENT_SCREEN_CHANGED;
-		_screenChangeCount++;
 		return true;
 	}
 
@@ -273,8 +252,6 @@ bool OSystem_GP2X::pollEvent(Common::Event &event) {
 	GP2X_BUTTON_LEFT            Cursor Left
 	GP2X_BUTTON_RIGHT           Cursor Right
 
-	TODO: Add extra directions to cursor mappings.
-
 	GP2X_BUTTON_UPLEFT          Cursor Up Left
 	GP2X_BUTTON_UPRIGHT         Cursor Up Right
 	GP2X_BUTTON_DOWNLEFT        Cursor Down Left
@@ -288,17 +265,18 @@ bool OSystem_GP2X::pollEvent(Common::Event &event) {
 	GP2X_BUTTON_Y               Space Bar
 	GP2X_BUTTON_X               Right Mouse Click
 	GP2X_BUTTON_L				Combo Modifier (Left Trigger)
-	GP2X_BUTTON_R               F5 (Right Trigger)
-	GP2X_BUTTON_START           Return
+	GP2X_BUTTON_R               Return (Right Trigger)
+	GP2X_BUTTON_START           F5 (Game Menu)
 	GP2X_BUTTON_SELECT          Escape
 	GP2X_BUTTON_VOLUP           /dev/mixer Global Volume Up
 	GP2X_BUTTON_VOLDOWN         /dev/mixer Global Volume Down
 
 	Combos:
 
-	GP2X_BUTTON_VOLUP &	GP2X_BUTTON_VOLDOWN		0 (For Monkey 2 CP)
+	GP2X_BUTTON_VOLUP &	GP2X_BUTTON_VOLDOWN		0 (For Monkey 2 CP) or Virtual Keyboard if enabled
 	GP2X_BUTTON_L &	GP2X_BUTTON_SELECT			Common::EVENT_QUIT (Calls Sync() to make sure SD is flushed)
 	GP2X_BUTTON_L &	GP2X_BUTTON_Y				Toggles setZoomOnMouse() for larger then 320*240 games to scale to the point + raduis.
+	GP2X_BUTTON_L &	GP2X_BUTTON_START			Common::EVENT_MAINMENU (ScummVM Global Main Menu)
 	GP2X_BUTTON_L &	GP2X_BUTTON_A				Common::EVENT_PREDICTIVE_DIALOG for predictive text entry box (AGI games)
 	*/
 
@@ -357,6 +335,10 @@ bool OSystem_GP2X::pollEvent(Common::Event &event) {
 			else if (ev.button.button == SDL_BUTTON_WHEELDOWN)
 				event.type = Common::EVENT_WHEELDOWN;
 #endif
+#if defined(SDL_BUTTON_MIDDLE)
+			else if (ev.button.button == SDL_BUTTON_MIDDLE)
+				event.type = Common::EVENT_MBUTTONDOWN;
+#endif
 			else
 				break;
 
@@ -369,6 +351,10 @@ bool OSystem_GP2X::pollEvent(Common::Event &event) {
 				event.type = Common::EVENT_LBUTTONUP;
 			else if (ev.button.button == SDL_BUTTON_RIGHT)
 				event.type = Common::EVENT_RBUTTONUP;
+#if defined(SDL_BUTTON_MIDDLE)
+			else if (ev.button.button == SDL_BUTTON_MIDDLE)
+				event.type = Common::EVENT_MBUTTONUP;
+#endif
 			else
 				break;
 			fillMouseEvent(event, ev.button.x, ev.button.y);
@@ -379,16 +365,16 @@ bool OSystem_GP2X::pollEvent(Common::Event &event) {
 
 		case SDL_JOYBUTTONDOWN:
 			_stickBtn[ev.jbutton.button] = 1;
-			if (ev.jbutton.button == JOY_BUT_LMOUSE) {
+			if (ev.jbutton.button == GP2X_BUTTON_B) {
 				event.type = Common::EVENT_LBUTTONDOWN;
 				fillMouseEvent(event, _km.x, _km.y);
 			} else if (ev.jbutton.button == GP2X_BUTTON_CLICK) {
 				event.type = Common::EVENT_LBUTTONDOWN;
 				fillMouseEvent(event, _km.x, _km.y);
-			} else if (ev.jbutton.button == JOY_BUT_RMOUSE) {
+			} else if (ev.jbutton.button == GP2X_BUTTON_X) {
 				event.type = Common::EVENT_RBUTTONDOWN;
 				fillMouseEvent(event, _km.x, _km.y);
-			} else if (_stickBtn[JOY_BUT_COMB] && (ev.jbutton.button == JOY_BUT_EXIT)) {
+			} else if (_stickBtn[GP2X_BUTTON_L] && (ev.jbutton.button == GP2X_BUTTON_SELECT)) {
 				event.type = Common::EVENT_QUIT;
 			} else if (ev.jbutton.button < 8) {
 				moveStick();
@@ -399,19 +385,24 @@ bool OSystem_GP2X::pollEvent(Common::Event &event) {
 				event.kbd.flags = 0;
 				switch (ev.jbutton.button) {
 					case GP2X_BUTTON_L:
-						GP2X_BUTTON_STATE_L = TRUE;
+						GP2X_BUTTON_STATE_L = true;
 						break;
 					case GP2X_BUTTON_R:
-						if (GP2X_BUTTON_STATE_L == TRUE) {
+						if (GP2X_BUTTON_STATE_L == true) {
+#ifdef ENABLE_VKEYBD
+							event.kbd.keycode = Common::KEYCODE_F7;
+							event.kbd.ascii = mapKey(SDLK_F7, ev.key.keysym.mod, 0);
+#else
 							event.kbd.keycode = Common::KEYCODE_0;
 							event.kbd.ascii = mapKey(SDLK_0, ev.key.keysym.mod, 0);
+#endif
 						} else {
-							event.kbd.keycode = Common::KEYCODE_F5;
-							event.kbd.ascii = mapKey(SDLK_F5, ev.key.keysym.mod, 0);
+							event.kbd.keycode = Common::KEYCODE_RETURN;
+							event.kbd.ascii = mapKey(SDLK_RETURN, ev.key.keysym.mod, 0);
 						}
 						break;
 					case GP2X_BUTTON_SELECT:
-						if (GP2X_BUTTON_STATE_L == TRUE) {
+						if (GP2X_BUTTON_STATE_L == true) {
 							event.type = Common::EVENT_QUIT;
 						} else {
 							event.kbd.keycode = Common::KEYCODE_ESCAPE;
@@ -419,7 +410,7 @@ bool OSystem_GP2X::pollEvent(Common::Event &event) {
 						}
 						break;
 					case GP2X_BUTTON_A:
-						if (GP2X_BUTTON_STATE_L == TRUE) {
+						if (GP2X_BUTTON_STATE_L == true) {
 							event.type = Common::EVENT_PREDICTIVE_DIALOG;
 						} else {
 						event.kbd.keycode = Common::KEYCODE_PERIOD;
@@ -427,73 +418,51 @@ bool OSystem_GP2X::pollEvent(Common::Event &event) {
 						}
 						break;
 					case GP2X_BUTTON_Y:
-						if (GP2X_BUTTON_STATE_L == TRUE) {
+						if (GP2X_BUTTON_STATE_L == true) {
 							setZoomOnMouse();
 						} else {
 							event.kbd.keycode = Common::KEYCODE_SPACE;
 							event.kbd.ascii = mapKey(SDLK_SPACE, ev.key.keysym.mod, 0);
 						}
 						break;
-					case JOY_BUT_RETURN:
-						event.kbd.keycode = Common::KEYCODE_RETURN;
-						event.kbd.ascii = mapKey(SDLK_RETURN, ev.key.keysym.mod, 0);
+					case GP2X_BUTTON_START:
+						if (GP2X_BUTTON_STATE_L == true) {
+							event.type = Common::EVENT_MAINMENU;
+						} else {
+							event.kbd.keycode = Common::KEYCODE_F5;
+							event.kbd.ascii = mapKey(SDLK_F5, ev.key.keysym.mod, 0);
+						}
 						break;
-					case JOY_BUT_ZERO:
-						event.kbd.keycode = Common::KEYCODE_0;
-						event.kbd.ascii = mapKey(SDLK_0, ev.key.keysym.mod, 0);
-						break;
-
-					//case GP2X_BUTTON_R:
-					//	if ((ev.jbutton.button == GP2X_BUTTON_L) && (ev.jbutton.button == GP2X_BUTTON_R)) {
-					//		displayMessageOnOSD("Exiting ScummVM");
-					//		//Sync();
-					//		event.type = Common::EVENT_QUIT;
-					//		break;
-					//	} else if ((ev.jbutton.button == GP2X_BUTTON_L) && (ev.jbutton.button != GP2X_BUTTON_R)) {
-					//		displayMessageOnOSD("Left Trigger Pressed");
-					//		break;
-					//	} else if ((ev.jbutton.button == GP2X_BUTTON_R) && (ev.jbutton.button != GP2X_BUTTON_L)) {
-					//		event.kbd.keycode = Common::KEYCODE_F5;
-					//		event.kbd.ascii = mapKey(SDLK_F5, ev.key.keysym.mod, 0);
-					//		break;
-					//	} else {
-					//		break;
-					//	}
-					//	break;
 					case GP2X_BUTTON_VOLUP:
-						//if (GP2X_BUTTON_STATE_L == TRUE) {
-						//	displayMessageOnOSD("Setting CPU Speed at 230MHz");
-						//	GP2X_setCpuspeed(200);
-							//event.kbd.keycode = Common::KEYCODE_PLUS;
-							//event.kbd.ascii = mapKey(SDLK_PLUS, ev.key.keysym.mod, 0);
-						//} else {
-							GP2X_mixer_move_volume(1);
+						GP2X_HW::mixerMoveVolume(2);
+						if (GP2X_HW::volumeLevel == 100) {
+							displayMessageOnOSD("Maximum Volume");
+						} else {
 							displayMessageOnOSD("Increasing Volume");
-						//}
+						}
 						break;
 
 					case GP2X_BUTTON_VOLDOWN:
-						//if (GP2X_BUTTON_STATE_L == TRUE) {
-						//	displayMessageOnOSD("Setting CPU Speed at 60MHz");
-						//	GP2X_setCpuspeed(60);
-							//event.kbd.keycode = Common::KEYCODE_MINUS;
-							//event.kbd.ascii = mapKey(SDLK_MINUS, ev.key.keysym.mod, 0);
-						//} else {
-							GP2X_mixer_move_volume(0);
+						GP2X_HW::mixerMoveVolume(1);
+						if (GP2X_HW::volumeLevel == 0) {
+							displayMessageOnOSD("Minimal Volume");
+						} else {
 							displayMessageOnOSD("Decreasing Volume");
-						//}
+						}
 						break;
-
 				}
 			}
 			return true;
 
 		case SDL_JOYBUTTONUP:
 			_stickBtn[ev.jbutton.button] = 0;
-			if (ev.jbutton.button == JOY_BUT_LMOUSE) {
+			if (ev.jbutton.button == GP2X_BUTTON_B) {
 				event.type = Common::EVENT_LBUTTONUP;
 				fillMouseEvent(event, _km.x, _km.y);
-			} else if (ev.jbutton.button == JOY_BUT_RMOUSE) {
+			} else if (ev.jbutton.button == GP2X_BUTTON_CLICK) {
+				event.type = Common::EVENT_LBUTTONUP;
+				fillMouseEvent(event, _km.x, _km.y);
+			} else if (ev.jbutton.button == GP2X_BUTTON_X) {
 				event.type = Common::EVENT_RBUTTONUP;
 				fillMouseEvent(event, _km.x, _km.y);
 			} else if (ev.jbutton.button < 8) {
@@ -517,15 +486,29 @@ bool OSystem_GP2X::pollEvent(Common::Event &event) {
 						event.kbd.ascii = mapKey(SDLK_SPACE, ev.key.keysym.mod, 0);
 						break;
 					case GP2X_BUTTON_START:
-						event.kbd.keycode = Common::KEYCODE_RETURN;
-						event.kbd.ascii = mapKey(SDLK_RETURN, ev.key.keysym.mod, 0);
+						if (GP2X_BUTTON_STATE_L == true) {
+							event.type = Common::EVENT_MAINMENU;
+						} else {
+							event.kbd.keycode = Common::KEYCODE_F5;
+							event.kbd.ascii = mapKey(SDLK_F5, ev.key.keysym.mod, 0);
+						}
 						break;
 					case GP2X_BUTTON_L:
-						GP2X_BUTTON_STATE_L = FALSE;
+						GP2X_BUTTON_STATE_L = false;
 						break;
 					case GP2X_BUTTON_R:
-						event.kbd.keycode = Common::KEYCODE_F5;
-						event.kbd.ascii = mapKey(SDLK_F5, ev.key.keysym.mod, 0);
+						if (GP2X_BUTTON_STATE_L == true) {
+#ifdef ENABLE_VKEYBD
+							event.kbd.keycode = Common::KEYCODE_F7;
+							event.kbd.ascii = mapKey(SDLK_F7, ev.key.keysym.mod, 0);
+#else
+							event.kbd.keycode = Common::KEYCODE_0;
+							event.kbd.ascii = mapKey(SDLK_0, ev.key.keysym.mod, 0);
+#endif
+						} else {
+							event.kbd.keycode = Common::KEYCODE_RETURN;
+							event.kbd.ascii = mapKey(SDLK_RETURN, ev.key.keysym.mod, 0);
+						}
 						break;
 					case GP2X_BUTTON_VOLUP:
 						break;
@@ -591,5 +574,64 @@ bool OSystem_GP2X::pollEvent(Common::Event &event) {
 
 bool OSystem_GP2X::remapKey(SDL_Event &ev,Common::Event &event) {
 	return false;
+}
+
+void OSystem_GP2X::setupKeymapper() {
+#ifdef ENABLE_KEYMAPPER
+	using namespace Common;
+	Keymapper *mapper = getEventManager()->getKeymapper();
+
+	HardwareKeySet *keySet = new HardwareKeySet();
+	keySet->addHardwareKey(new HardwareKey( "a", KeyState(KEYCODE_a), "a", kActionKeyType ));
+	keySet->addHardwareKey(new HardwareKey( "s", KeyState(KEYCODE_s), "s", kActionKeyType ));
+	keySet->addHardwareKey(new HardwareKey( "d", KeyState(KEYCODE_d), "d", kActionKeyType ));
+	keySet->addHardwareKey(new HardwareKey( "f", KeyState(KEYCODE_f), "f", kActionKeyType ));
+	keySet->addHardwareKey(new HardwareKey( "n", KeyState(KEYCODE_n), "n (vk)", kTriggerLeftKeyType, kVirtualKeyboardActionType ));
+	keySet->addHardwareKey(new HardwareKey( "m", KeyState(KEYCODE_m), "m (remap)", kTriggerRightKeyType, kKeyRemapActionType ));
+	keySet->addHardwareKey(new HardwareKey( "[", KeyState(KEYCODE_LEFTBRACKET), "[ (select)", kSelectKeyType ));
+	keySet->addHardwareKey(new HardwareKey( "]", KeyState(KEYCODE_RIGHTBRACKET), "] (start)", kStartKeyType ));
+	mapper->registerHardwareKeySet(keySet);
+
+	Keymap *globalMap = new Keymap("global");
+	Keymap *guiMap = new Keymap("gui");
+	Action *act;
+	Event evt ;
+
+	act = new Action(globalMap, "MENU", "Menu", kGenericActionType, kSelectKeyType);
+	act->addKeyEvent(KeyState(KEYCODE_F5, ASCII_F5, 0));
+
+	act = new Action(globalMap, "SKCT", "Skip", kGenericActionType, kActionKeyType);
+	act->addKeyEvent(KeyState(KEYCODE_ESCAPE, ASCII_ESCAPE, 0));
+
+	act = new Action(globalMap, "PAUS", "Pause", kGenericActionType, kStartKeyType);
+	act->addKeyEvent(KeyState(KEYCODE_SPACE, ' ', 0));
+
+	act = new Action(globalMap, "SKLI", "Skip line", kGenericActionType, kActionKeyType);
+	act->addKeyEvent(KeyState(KEYCODE_PERIOD, '.', 0));
+
+	act = new Action(globalMap, "VIRT", "Display keyboard", kVirtualKeyboardActionType);
+	act->addKeyEvent(KeyState(KEYCODE_F6, ASCII_F6, 0));
+
+	act = new Action(globalMap, "REMP", "Remap keys", kKeyRemapActionType);
+	act->addKeyEvent(KeyState(KEYCODE_F7, ASCII_F7, 0));
+
+	mapper->addGlobalKeymap(globalMap);
+
+	act = new Action(guiMap, "CLOS", "Close", kGenericActionType, kStartKeyType);
+	act->addKeyEvent(KeyState(KEYCODE_ESCAPE, ASCII_ESCAPE, 0));
+
+	act = new Action(guiMap, "CLIK", "Mouse click");
+	act->addLeftClickEvent();
+
+	act = new Action(guiMap, "VIRT", "Display keyboard", kVirtualKeyboardActionType);
+	act->addKeyEvent(KeyState(KEYCODE_F6, ASCII_F6, 0));
+
+	act = new Action(guiMap, "REMP", "Remap keys", kKeyRemapActionType);
+	act->addKeyEvent(KeyState(KEYCODE_F7, ASCII_F7, 0));
+
+	mapper->addGlobalKeymap(guiMap);
+
+	mapper->pushKeymap("global");
+#endif
 }
 

@@ -403,9 +403,8 @@ static Uint32 timer_handler_wrapper(Uint32 interval) {
 void OSystem_WINCE3::initBackend()
 {
 	// Instantiate our own sound mixer
-	// mixer init is postponed until a game engine is selected.
-	if (_mixer == 0)
-		_mixer = new Audio::MixerImpl(this);
+	// mixer init is rerun when a game engine is selected.
+	setupMixer();
 
 	// Create the timer. CE SDL does not support multiple timers (SDL_AddTimer).
 	// We work around this by using the SetTimer function, since we only use
@@ -478,7 +477,7 @@ Common::WriteStream *OSystem_WINCE3::createConfigWriteStream() {
 
 
 OSystem_WINCE3::OSystem_WINCE3() : OSystem_SDL(),
-	_orientationLandscape(0), _newOrientation(0), _panelInitialized(false),
+	_orientationLandscape(0), _newOrientation(0), _panelInitialized(false), _canBeAspectScaled(false),
 	_panelVisible(true), _panelStateForced(false), _forceHideMouse(false), _unfilteredkeys(false),
 	_freeLook(false), _forcePanelInvisible(false), _toolbarHighDrawn(false), _zoomUp(false), _zoomDown(false),
 	_scalersChanged(false), _lastKeyPressed(0), _tapTime(0), _closeClick(false), _noDoubleTapRMB(false),
@@ -792,11 +791,15 @@ void OSystem_WINCE3::setupMixer() {
 	SDL_AudioSpec desired;
 	int thread_priority;
 
+	compute_sample_rate();
 	if (_sampleRate == 0)
 		warning("setSoundCallback called with 0 _sampleRate. Audio will not work.");
+	else if (_mixer && _mixer->getOutputRate() == _sampleRate) {
+		debug(1, "Skipping sound mixer re-init: samplerate is good");
+		return;
+	}
 
 	memset(&desired, 0, sizeof(desired));
-
 	desired.freq = _sampleRate;
 	desired.format = AUDIO_S16SYS;
 	desired.channels = 2;
@@ -908,16 +911,12 @@ int OSystem_WINCE3::getOutputSampleRate() const {
 	return _sampleRate;
 }
 
-void OSystem_WINCE3::setWindowCaption(const char *caption) {
+void OSystem_WINCE3::engineInit() {
 	check_mappings(); // called here to initialize virtual keys handling
 
 	//update_game_settings();
 	// finalize mixer init
-	compute_sample_rate();
 	setupMixer();
-
-	// handle the actual event
-	OSystem_SDL::setWindowCaption(caption);
 }
 
 bool OSystem_WINCE3::openCD(int drive) {
@@ -1083,8 +1082,6 @@ void OSystem_WINCE3::update_game_settings() {
 
 	if (ConfMan.hasKey("no_doubletap_rightclick"))
 		_noDoubleTapRMB = ConfMan.getBool("no_doubletap_rightclick");
-
-	compute_sample_rate();
 }
 
 void OSystem_WINCE3::initSize(uint w, uint h) {
@@ -1097,8 +1094,11 @@ void OSystem_WINCE3::initSize(uint w, uint h) {
 		ConfMan.flushToDisk();
 	}
 
-	if (w == 320 && h == 200 && !_hasSmartphoneResolution)
+	_canBeAspectScaled = false;
+	if (w == 320 && h == 200 && !_hasSmartphoneResolution) {
+		_canBeAspectScaled = true;
 		h = 240; // use the extra 40 pixels height for the toolbar
+	}
 
 	if (h == 400)	// touche engine fixup
 		h += 80;
@@ -1142,13 +1142,13 @@ void OSystem_WINCE3::setGraphicsModeIntern() {
 }
 
 bool OSystem_WINCE3::update_scalers() {
-	if (_videoMode.mode != GFX_NORMAL)
-		return false;
-
-	_videoMode.aspectRatio = false;
+	_videoMode.aspectRatioCorrection = false;
 
 	if (CEDevice::hasPocketPCResolution()) {
-		if (	(!_orientationLandscape && (_videoMode.screenWidth == 320 || !_videoMode.screenWidth))
+		if (_videoMode.mode != GFX_NORMAL)
+			return false;
+
+		if ((!_orientationLandscape && (_videoMode.screenWidth == 320 || !_videoMode.screenWidth))
 			|| CEDevice::hasSquareQVGAResolution() ) {
 			if (getScreenWidth() != 320) {
 				_scaleFactorXm = 3;
@@ -1166,15 +1166,14 @@ bool OSystem_WINCE3::update_scalers() {
 				_modeFlags = 0;
 			}
 		} else if ( _orientationLandscape && (_videoMode.screenWidth == 320 || !_videoMode.screenWidth)) {
-			Common::String gameid(ConfMan.get("gameid"));	// consider removing this check and start honoring the _videoMode.aspectRatio flag
-			if (!_panelVisible && !_hasSmartphoneResolution  && !_overlayVisible && !(strncmp(gameid.c_str(), "zak", 3) == 0)) {
+			if (!_panelVisible && !_hasSmartphoneResolution  && !_overlayVisible && _canBeAspectScaled) {
 				_scaleFactorXm = 1;
 				_scaleFactorXd = 1;
 				_scaleFactorYm = 6;
 				_scaleFactorYd = 5;
 				_scalerProc = PocketPCLandscapeAspect;
 				_modeFlags = 0;
-				_videoMode.aspectRatio = true;
+				_videoMode.aspectRatioCorrection = true;
 			} else {
 				_scaleFactorXm = 1;
 				_scaleFactorXd = 1;
@@ -1200,13 +1199,41 @@ bool OSystem_WINCE3::update_scalers() {
 		}
 
 		return true;
-	}
+	} else if (CEDevice::hasWideResolution()) {
+#ifdef USE_ARM_SCALER_ASM
+		if ( _videoMode.mode == GFX_DOUBLESIZE && (_videoMode.screenWidth == 320 || !_videoMode.screenWidth) ) {
+			if ( !_panelVisible && !_overlayVisible && _canBeAspectScaled ) {
+				_scaleFactorXm = 2;
+				_scaleFactorXd = 1;
+				_scaleFactorYm = 12;
+				_scaleFactorYd = 5;
+				_scalerProc = Normal2xAspect;
+				_modeFlags = 0;
+				_videoMode.aspectRatioCorrection = true;
+			} else if ( (_panelVisible || _overlayVisible) && _canBeAspectScaled ) {
+				_scaleFactorXm = 2;
+				_scaleFactorXd = 1;
+				_scaleFactorYm = 2;
+				_scaleFactorYd = 1;
+				_scalerProc = Normal2x;
+				_modeFlags = 0;
+			}
+			return true;
+		}
+#endif
+	} else if (CEDevice::hasSmartphoneResolution()) {
+		if (_videoMode.mode != GFX_NORMAL)
+			return false;
 
-	if (CEDevice::hasSmartphoneResolution()) {
 		if (_videoMode.screenWidth > 320)
 			error("Game resolution not supported on Smartphone");
+#ifdef ARM
+		_scaleFactorXm = 11;
+		_scaleFactorXd = 16;
+#else
 		_scaleFactorXm = 2;
 		_scaleFactorXd = 3;
+#endif
 		_scaleFactorYm = 7;
 		_scaleFactorYd = 8;
 		_scalerProc = SmartphoneLandscape;
@@ -1360,12 +1387,12 @@ bool OSystem_WINCE3::loadGFXMode() {
 
 	// Create the surface that contains the scaled graphics in 16 bit mode
 	// Always use full screen mode to have a "clean screen"
-	if (!_videoMode.aspectRatio) {
+	if (!_videoMode.aspectRatioCorrection) {
 		displayWidth = _videoMode.screenWidth * _scaleFactorXm / _scaleFactorXd;
 		displayHeight = _videoMode.screenHeight * _scaleFactorYm / _scaleFactorYd;
 	} else {
-		displayWidth = _videoMode.screenWidth;
-		displayHeight = _videoMode.screenHeight;
+		displayWidth = _videoMode.screenWidth * _videoMode.scaleFactor;
+		displayHeight = _videoMode.screenHeight* _videoMode.scaleFactor;
 	}
 
 	switch (_orientationLandscape) {
@@ -1399,7 +1426,15 @@ bool OSystem_WINCE3::loadGFXMode() {
 		InitScalers(555);
 	else
 		InitScalers(565);
-	initCEScaler();
+	_overlayFormat.bytesPerPixel = _hwscreen->format->BytesPerPixel;
+	_overlayFormat.rLoss = _hwscreen->format->Rloss;
+	_overlayFormat.gLoss = _hwscreen->format->Gloss;
+	_overlayFormat.bLoss = _hwscreen->format->Bloss;
+	_overlayFormat.aLoss = _hwscreen->format->Aloss;
+	_overlayFormat.rShift = _hwscreen->format->Rshift;
+	_overlayFormat.gShift = _hwscreen->format->Gshift;
+	_overlayFormat.bShift = _hwscreen->format->Bshift;
+	_overlayFormat.aShift = _hwscreen->format->Ashift;
 
 	// Need some extra bytes around when using 2xSaI
 	_tmpscreen = SDL_CreateRGBSurface(SDL_SWSURFACE, _videoMode.screenWidth + 3, _videoMode.screenHeight + 3, 16, _hwscreen->format->Rmask, _hwscreen->format->Gmask, _hwscreen->format->Bmask, _hwscreen->format->Amask);
@@ -1544,7 +1579,7 @@ void OSystem_WINCE3::internUpdateScreen() {
 	// If the shake position changed, fill the dirty area with blackness
 	if (_currentShakePos != _newShakePos) {
 		SDL_Rect blackrect = {0, 0, _videoMode.screenWidth * _scaleFactorXm / _scaleFactorXd, _newShakePos * _scaleFactorYm / _scaleFactorYd};
-		if (_videoMode.aspectRatio)
+		if (_videoMode.aspectRatioCorrection)
 			blackrect.h = real2Aspect(blackrect.h - 1) + 1;
 		SDL_FillRect(_hwscreen, &blackrect, 0);
 		_currentShakePos = _newShakePos;
@@ -1690,6 +1725,7 @@ void OSystem_WINCE3::internUpdateScreen() {
 		// It can be drawn, scale it
 		uint32 srcPitch, dstPitch;
 		SDL_Surface *toolbarSurface;
+		ScalerProc *toolbarScaler;
 
 		if (_videoMode.screenHeight > 240) {
 			if (!_toolbarHighDrawn) {
@@ -1715,7 +1751,15 @@ void OSystem_WINCE3::internUpdateScreen() {
 		SDL_LockSurface(_hwscreen);
 		srcPitch = toolbarSurface->pitch;
 		dstPitch = _hwscreen->pitch;
-		_scalerProc((byte *)toolbarSurface->pixels, srcPitch, (byte *)_hwscreen->pixels + (_toolbarHandler.getOffset() * _scaleFactorYm / _scaleFactorYd * dstPitch), dstPitch, toolbar_rect[0].w, toolbar_rect[0].h);
+
+		toolbarScaler = _scalerProc;
+		if (_videoMode.scaleFactor == 2)
+			toolbarScaler = Normal2x;
+		else if (_videoMode.scaleFactor == 3)
+			toolbarScaler = Normal3x;
+		toolbarScaler((byte *)toolbarSurface->pixels, srcPitch,
+					(byte *)_hwscreen->pixels + (_toolbarHandler.getOffset() * _scaleFactorYm / _scaleFactorYd * dstPitch),
+					dstPitch, toolbar_rect[0].w, toolbar_rect[0].h);
 		SDL_UnlockSurface(toolbarSurface);
 		SDL_UnlockSurface(_hwscreen);
 
@@ -1740,8 +1784,7 @@ void OSystem_WINCE3::internUpdateScreen() {
 }
 
 Graphics::Surface *OSystem_WINCE3::lockScreen() {
-	// FIXME: Fingolfin asks: Why is undrawMouse() needed here?
-	// Please document this.
+	// Make sure mouse pointer is not painted over the playfield at the time of locking
 	undrawMouse();
 	return OSystem_SDL::lockScreen();
 }
@@ -1891,8 +1934,7 @@ void OSystem_WINCE3::setMouseCursor(const byte *buf, uint w, uint h, int hotspot
 	_mouseData = (byte *) malloc(w * h);
 	memcpy(_mouseData, buf, w * h);
 
-	if (w > _mouseBackupDim || h > _mouseBackupDim)
-	{
+	if (w > _mouseBackupDim || h > _mouseBackupDim) {
 		// mouse has been undrawn, adjust sprite backup area
 		free(_mouseBackupOld);
 		free(_mouseBackupToolbar);
@@ -1914,7 +1956,7 @@ void OSystem_WINCE3::setMousePos(int x, int y) {
 
 
 void OSystem_WINCE3::internDrawMouse() {
-	if (_mouseDrawn || !_mouseVisible || !_mouseData)
+	if (!_mouseNeedsRedraw || !_mouseVisible || !_mouseData)
 		return;
 
 	int x = _mouseCurState.x - _mouseHotspotX;
@@ -1999,15 +2041,14 @@ void OSystem_WINCE3::internDrawMouse() {
 	SDL_UnlockSurface(_overlayVisible ? _overlayscreen : _screen);
 
 	// Finally, set the flag to indicate the mouse has been drawn
-	_mouseDrawn = true;
+	_mouseNeedsRedraw = false;
 }
 
 void OSystem_WINCE3::undrawMouse() {
 	assert (_transactionMode == kTransactionNone);
 
-	if (!_mouseDrawn)
+	if (_mouseNeedsRedraw)
 		return;
-	_mouseDrawn = false;
 
 	int old_mouse_x = _mouseCurState.x - _mouseHotspotX;
 	int old_mouse_y = _mouseCurState.y - _mouseHotspotY;
@@ -2058,6 +2099,22 @@ void OSystem_WINCE3::undrawMouse() {
 	addDirtyRect(old_mouse_x, old_mouse_y, old_mouse_w, old_mouse_h);
 
 	SDL_UnlockSurface(_overlayVisible ? _overlayscreen : _screen);
+
+	_mouseNeedsRedraw = true;
+}
+
+bool OSystem_WINCE3::showMouse(bool visible) {
+	if (_mouseVisible == visible)
+		return visible;
+
+	if (visible == false)
+		undrawMouse();
+
+	bool last = _mouseVisible;
+	_mouseVisible = visible;
+	_mouseNeedsRedraw = true;
+
+	return last;
 }
 
 void OSystem_WINCE3::drawToolbarMouse(SDL_Surface *surf, bool draw) {
@@ -2149,9 +2206,6 @@ void OSystem_WINCE3::hideOverlay() {
 }
 
 void OSystem_WINCE3::drawMouse() {
-	// FIXME: Fingolfin asks: why is there a FIXME here? Please either clarify what
-	// needs fixing, or remove it!
-	// FIXME
 	if (!(_toolbarHandler.visible() && _mouseCurState.y >= _toolbarHandler.getOffset() && !_usesEmulatedMouse) && !_forceHideMouse)
 		internDrawMouse();
 }

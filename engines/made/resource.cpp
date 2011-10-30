@@ -64,7 +64,7 @@ void PictureResource::load(byte *source, int size) {
 
 void PictureResource::loadRaw(byte *source, int size) {
 	// Loads a "raw" picture as used in RtZ, LGoP2, Manhole:N&E and Rodney's Funscreen
-	
+
 	Common::MemoryReadStream *sourceS = new Common::MemoryReadStream(source, size);
 
 	_hasPalette = (sourceS->readByte() != 0);
@@ -118,7 +118,7 @@ void PictureResource::loadChunked(byte *source, int size) {
 
 		uint32 chunkType = sourceS->readUint32BE();
 		uint32 chunkSize = sourceS->readUint32BE();
-		
+
 		if (sourceS->eos())
 			break;
 
@@ -506,7 +506,7 @@ void ResourceReader::loadIndex(ResourceSlots *slots) {
 }
 
 void ResourceReader::freeResource(Resource *resource) {
-	tossResourceFromCache(resource->slot);
+	tossResourceFromCache(resource->_slot);
 }
 
 bool ResourceReader::loadResource(ResourceSlot *slot, byte *&buffer, uint32 &size) {
@@ -525,8 +525,9 @@ bool ResourceReader::loadResource(ResourceSlot *slot, byte *&buffer, uint32 &siz
 
 ResourceSlot *ResourceReader::getResourceSlot(uint32 resType, uint index) {
 	ResourceSlots *slots = _resSlots[resType];
+	assert(slots);
 	if (index >= 1 && index < slots->size()) {
-		return &slots->operator[](index);
+		return &(*slots)[index];
 	} else {
 		return NULL;
 	}

@@ -599,14 +599,14 @@ private:
 	void adlib_key_off(int chan);
 	void adlib_note_on(int chan, byte note, int mod);
 	void adlib_note_on_ex(int chan, byte note, int mod);
-	int adlib_read_param(int chan, byte data);
+	int adlib_get_reg_value_param(int chan, byte data);
 	void adlib_setup_channel(int chan, AdlibInstrument * instr, byte vol_1, byte vol_2);
-	byte adlib_read(byte port) {
-		return _adlib_reg_cache[port];
+	byte adlib_get_reg_value(byte reg) {
+		return _adlib_reg_cache[reg];
 	}
 	void adlib_set_param(int channel, byte param, int value);
 	void adlib_key_onoff(int channel);
-	void adlib_write(byte port, byte value);
+	void adlib_write(byte reg, byte value);
 	void adlib_playnote(int channel, int note);
 
 	AdlibVoice *allocate_voice(byte pri);
@@ -1028,15 +1028,15 @@ MidiChannel *MidiDriver_ADLIB::allocateChannel() {
 
 // All the code brought over from IMuseAdlib
 
-void MidiDriver_ADLIB::adlib_write(byte port, byte value) {
-	if (_adlib_reg_cache[port] == value)
+void MidiDriver_ADLIB::adlib_write(byte reg, byte value) {
+	if (_adlib_reg_cache[reg] == value)
 		return;
 #ifdef DEBUG_ADLIB
-	debug(6, "%10d: adlib_write[%x] = %x", tick, port, value);
+	debug(6, "%10d: adlib_write[%x] = %x", tick, reg, value);
 #endif
-	_adlib_reg_cache[port] = value;
+	_adlib_reg_cache[reg] = value;
 
-	OPLWriteReg(_opl, port, value);
+	OPLWriteReg(_opl, reg, value);
 }
 
 void MidiDriver_ADLIB::generateSamples(int16 *data, int len) {
@@ -1134,8 +1134,8 @@ void MidiDriver_ADLIB::mc_inc_stuff(AdlibVoice *voice, Struct10 *s10, Struct11 *
 }
 
 void MidiDriver_ADLIB::adlib_key_off(int chan){
-	byte port = chan + 0xB0;
-	adlib_write(port, adlib_read(port) & ~0x20);
+	byte reg = chan + 0xB0;
+	adlib_write(reg, adlib_get_reg_value(reg) & ~0x20);
 }
 
 byte MidiDriver_ADLIB::struct10_ontimer(Struct10 *s10, Struct11 *s11) {
@@ -1183,18 +1183,18 @@ byte MidiDriver_ADLIB::struct10_ontimer(Struct10 *s10, Struct11 *s11) {
 
 void MidiDriver_ADLIB::adlib_set_param(int channel, byte param, int value) {
 	const AdlibSetParams *as;
-	byte port;
+	byte reg;
 
 	assert(channel >= 0 && channel < 9);
 
 	if (param <= 12) {
-		port = channel_mappings_2[channel];
+		reg = channel_mappings_2[channel];
 	} else if (param <= 25) {
 		param -= 13;
-		port = channel_mappings[channel];
+		reg = channel_mappings[channel];
 	} else if (param <= 27) {
 		param -= 13;
-		port = channel;
+		reg = channel;
 	} else if (param == 28 || param == 29) {
 		if (param == 28)
 			value -= 15;
@@ -1211,18 +1211,18 @@ void MidiDriver_ADLIB::adlib_set_param(int channel, byte param, int value) {
 	as = &adlib_setparam_table[param];
 	if (as->d)
 		value = as->d - value;
-	port += as->a;
-	adlib_write(port, (adlib_read(port) & ~as->c) | (((byte)value) << as->b));
+	reg += as->a;
+	adlib_write(reg, (adlib_get_reg_value(reg) & ~as->c) | (((byte)value) << as->b));
 }
 
 void MidiDriver_ADLIB::adlib_key_onoff(int channel) {
 	byte val;
-	byte port = channel + 0xB0;
+	byte reg = channel + 0xB0;
 	assert(channel >= 0 && channel < 9);
 
-	val = adlib_read(port);
-	adlib_write(port, val & ~0x20);
-	adlib_write(port, val | 0x20);
+	val = adlib_get_reg_value(reg);
+	adlib_write(reg, val & ~0x20);
+	adlib_write(reg, val | 0x20);
 }
 
 void MidiDriver_ADLIB::struct10_setup(Struct10 *s10) {
@@ -1289,7 +1289,7 @@ void MidiDriver_ADLIB::adlib_playnote(int channel, int note) {
 		oct <<= 2;
 	notex = note2 % 12 + 3;
 
-	old = adlib_read(channel + 0xB0);
+	old = adlib_get_reg_value(channel + 0xB0);
 	if (old & 0x20) {
 		old &= ~0x20;
 		if (oct > old) {
@@ -1435,23 +1435,23 @@ void MidiDriver_ADLIB::mc_key_on(AdlibVoice *voice, AdlibInstrument *instr, byte
 }
 
 void MidiDriver_ADLIB::adlib_setup_channel(int chan, AdlibInstrument *instr, byte vol_1, byte vol_2) {
-	byte port;
+	byte channel;
 
 	assert(chan >= 0 && chan < 9);
 
-	port = channel_mappings[chan];
-	adlib_write(port + 0x20, instr->mod_characteristic);
-	adlib_write(port + 0x40, (instr->mod_scalingOutputLevel | 0x3F) - vol_1 );
-	adlib_write(port + 0x60, 0xff & (~instr->mod_attackDecay));
-	adlib_write(port + 0x80, 0xff & (~instr->mod_sustainRelease));
-	adlib_write(port + 0xE0, instr->mod_waveformSelect);
+	channel = channel_mappings[chan];
+	adlib_write(channel + 0x20, instr->mod_characteristic);
+	adlib_write(channel + 0x40, (instr->mod_scalingOutputLevel | 0x3F) - vol_1 );
+	adlib_write(channel + 0x60, 0xff & (~instr->mod_attackDecay));
+	adlib_write(channel + 0x80, 0xff & (~instr->mod_sustainRelease));
+	adlib_write(channel + 0xE0, instr->mod_waveformSelect);
 
-	port = channel_mappings_2[chan];
-	adlib_write(port + 0x20, instr->car_characteristic);
-	adlib_write(port + 0x40, (instr->car_scalingOutputLevel | 0x3F) - vol_2 );
-	adlib_write(port + 0x60, 0xff & (~instr->car_attackDecay));
-	adlib_write(port + 0x80, 0xff & (~instr->car_sustainRelease));
-	adlib_write(port + 0xE0, instr->car_waveformSelect);
+	channel = channel_mappings_2[chan];
+	adlib_write(channel + 0x20, instr->car_characteristic);
+	adlib_write(channel + 0x40, (instr->car_scalingOutputLevel | 0x3F) - vol_2 );
+	adlib_write(channel + 0x60, 0xff & (~instr->car_attackDecay));
+	adlib_write(channel + 0x80, 0xff & (~instr->car_sustainRelease));
+	adlib_write(channel + 0xE0, instr->car_waveformSelect);
 
 	adlib_write((byte)chan + 0xC0, instr->feedback);
 }
@@ -1498,7 +1498,7 @@ void MidiDriver_ADLIB::mc_init_stuff(AdlibVoice *voice, Struct10 * s10,
 		s11->s10->unk3 = 0;
 		break;
 	default:
-		s10->start_value = adlib_read_param(voice->_channel, s11->param);
+		s10->start_value = adlib_get_reg_value_param(voice->_channel, s11->param);
 	}
 
 	struct10_init(s10, ie);
@@ -1529,21 +1529,21 @@ void MidiDriver_ADLIB::struct10_init(Struct10 *s10, InstrumentExtra *ie) {
 	struct10_setup(s10);
 }
 
-int MidiDriver_ADLIB::adlib_read_param(int chan, byte param) {
+int MidiDriver_ADLIB::adlib_get_reg_value_param(int chan, byte param) {
 	const AdlibSetParams *as;
 	byte val;
-	byte port;
+	byte channel;
 
 	assert(chan >= 0 && chan < 9);
 
 	if (param <= 12) {
-		port = channel_mappings_2[chan];
+		channel = channel_mappings_2[chan];
 	} else if (param <= 25) {
 		param -= 13;
-		port = channel_mappings[chan];
+		channel = channel_mappings[chan];
 	} else if (param <= 27) {
 		param -= 13;
-		port = chan;
+		channel = chan;
 	} else if (param == 28) {
 		return 0xF;
 	} else if (param == 29) {
@@ -1553,7 +1553,7 @@ int MidiDriver_ADLIB::adlib_read_param(int chan, byte param) {
 	}
 
 	as = &adlib_setparam_table[param];
-	val = adlib_read(port + as->a);
+	val = adlib_get_reg_value(channel + as->a);
 	val &= as->c;
 	val >>= as->b;
 	if (as->d)

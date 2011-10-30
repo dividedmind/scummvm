@@ -93,6 +93,7 @@ public:
 	virtual int16 getWidth();
 	virtual void setPalette(const byte *colors, uint start, uint num);
 	virtual void grabPalette(unsigned char* colors, uint start, uint num);
+	void restoreHardwarePalette();
 
 	virtual void copyRectToScreen(const byte *buf, int pitch, int x, int y, int w, int h);
 	virtual void updateScreen();
@@ -132,10 +133,6 @@ public:
 	virtual void updateCD();
 
 	virtual void quit();
-
-	virtual void setWindowCaption(const char *caption);
-
-	virtual void displayMessageOnOSD(const char *msg);
 
 	virtual Common::SaveFileManager *getSavefileManager();
 

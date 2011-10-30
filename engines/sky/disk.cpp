@@ -82,10 +82,9 @@ bool Disk::fileExists(uint16 fileNr) {
 
 // allocate memory, load the file and return a pointer
 uint8 *Disk::loadFile(uint16 fileNr) {
-
 	uint8 cflag;
 
-	debug(2, "load file %d,%d (%d)", (fileNr >> 11), (fileNr & 2047), fileNr);
+	debug(3, "load file %d,%d (%d)", (fileNr >> 11), (fileNr & 2047), fileNr);
 
 	uint8 *fileInfoPtr = getFileInfo(fileNr);
 	if (fileInfoPtr == NULL) {
@@ -121,10 +120,10 @@ uint8 *Disk::loadFile(uint16 fileNr) {
 	cflag = (uint8)((fileFlags >> 23) & 0x1);
 	//if cflag == 0 then file is compressed, 1 == uncompressed
 
-	dataFileHeader *fileHeader = (dataFileHeader*)fileDest;
+	DataFileHeader *fileHeader = (DataFileHeader*)fileDest;
 
 	if ((!cflag) && ((FROM_LE_16(fileHeader->flag) >> 7) & 1)) {
-		debug(2, "File is RNC compressed.");
+		debug(4, "File is RNC compressed.");
 
 		uint32 decompSize = (FROM_LE_16(fileHeader->flag) & ~0xFF) << 8;
 		decompSize |= FROM_LE_16(fileHeader->s_tot_size);
@@ -132,7 +131,7 @@ uint8 *Disk::loadFile(uint16 fileNr) {
 		uint8 *uncompDest = (uint8 *)malloc(decompSize);
 
 		int32 unpackLen;
-		void *output, *input = fileDest + sizeof(dataFileHeader);
+		void *output, *input = fileDest + sizeof(DataFileHeader);
 
 		if ((fileFlags >> 22) & 0x1) { //do we include the header?
 			// don't return the file's header
@@ -140,20 +139,20 @@ uint8 *Disk::loadFile(uint16 fileNr) {
 			unpackLen = _rncDecoder.unpackM1(input, output, 0);
 		} else {
 #ifdef SCUMM_BIG_ENDIAN
-			// Convert dataFileHeader to BE (it only consists of 16 bit words)
+			// Convert DataFileHeader to BE (it only consists of 16 bit words)
 			uint16 *headPtr = (uint16 *)fileDest;
-			for (uint i = 0; i < sizeof(struct dataFileHeader) / 2; i++)
+			for (uint i = 0; i < sizeof(DataFileHeader) / 2; i++)
 				*(headPtr + i) = READ_LE_UINT16(headPtr + i);
 #endif
 
-			memcpy(uncompDest, fileDest, sizeof(dataFileHeader));
-			output = uncompDest + sizeof(dataFileHeader);
+			memcpy(uncompDest, fileDest, sizeof(DataFileHeader));
+			output = uncompDest + sizeof(DataFileHeader);
 			unpackLen = _rncDecoder.unpackM1(input, output, 0);
 			if (unpackLen)
-				unpackLen += sizeof(dataFileHeader);
+				unpackLen += sizeof(DataFileHeader);
 		}
 
-		debug(3, "UnpackM1 returned: %d", unpackLen);
+		debug(5, "UnpackM1 returned: %d", unpackLen);
 
 		if (unpackLen == 0) { //Unpack returned 0: file was probably not packed.
 			free(uncompDest);
@@ -170,7 +169,7 @@ uint8 *Disk::loadFile(uint16 fileNr) {
 #ifdef SCUMM_BIG_ENDIAN
 		if (!cflag) {
 			uint16 *headPtr = (uint16 *)fileDest;
-			for (uint i = 0; i < sizeof(struct dataFileHeader) / 2; i++)
+			for (uint i = 0; i < sizeof(DataFileHeader) / 2; i++)
 				*(headPtr + i) = READ_LE_UINT16(headPtr + i);
 		}
 #endif
@@ -188,13 +187,12 @@ uint16 *Disk::loadScriptFile(uint16 fileNr) {
 }
 
 uint8 *Disk::getFileInfo(uint16 fileNr) {
-
 	uint16 i;
 	uint16 *dnrTbl16Ptr = (uint16 *)_dinnerTableArea;
 
 	for (i = 0; i < _dinnerTableEntries; i++) {
 		if (READ_LE_UINT16(dnrTbl16Ptr) == fileNr) {
-			debug(2, "file %d found", fileNr);
+			debug(4, "file %d found", fileNr);
 			return (uint8 *)dnrTbl16Ptr;
 		}
 		dnrTbl16Ptr += 4;
@@ -204,7 +202,6 @@ uint8 *Disk::getFileInfo(uint16 fileNr) {
 }
 
 void Disk::fnCacheChip(uint16 *fList) {
-
 	// fnCacheChip is called after fnCacheFast
 	uint16 cnt = 0;
 	while (_buildList[cnt])
@@ -228,7 +225,6 @@ void Disk::fnCacheFast(uint16 *fList) {
 }
 
 void Disk::fnCacheFiles(void) {
-
 	uint16 lCnt, bCnt, targCnt;
 	targCnt = lCnt = 0;
 	bool found;
@@ -282,7 +278,6 @@ void Disk::fnCacheFiles(void) {
 }
 
 void Disk::refreshFilesList(uint32 *list) {
-
 	uint8 cnt = 0;
 	while (_loadedFilesList[cnt]) {
 		if (SkyEngine::_itemList[_loadedFilesList[cnt] & 2047])
@@ -300,7 +295,6 @@ void Disk::refreshFilesList(uint32 *list) {
 }
 
 void Disk::fnMiniLoad(uint16 fileNum) {
-
 	uint16 cnt = 0;
 	while (_loadedFilesList[cnt]) {
 		if (_loadedFilesList[cnt] == fileNum)
@@ -313,7 +307,6 @@ void Disk::fnMiniLoad(uint16 fileNum) {
 }
 
 void Disk::fnFlushBuffers(void) {
-
 	// dump all loaded sprites
 	uint8 lCnt = 0;
 	while (_loadedFilesList[lCnt]) {
@@ -342,11 +335,14 @@ void Disk::dumpFile(uint16 fileNr) {
 uint32 Disk::determineGameVersion() {
 	//determine game version based on number of entries in dinner table
 	switch (_dinnerTableEntries) {
+	case 232:
+		// German floppy demo (v0.0272)
+		return 272;
 	case 243:
 		// pc gamer demo (v0.0109)
 		return 109;
 	case 247:
-		//floppy demo (v0.0267)
+		// English floppy demo (v0.0267)
 		return 267;
 	case 1404:
 		//floppy (v0.0288)

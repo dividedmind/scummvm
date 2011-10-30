@@ -129,7 +129,7 @@ void AGOSEngine::killAllTimers() {
 		next = cur->next;
 		delTimeEvent(cur);
 	}
-	_clickOnly = 0;
+	_clickOnly = false;
 }
 
 bool AGOSEngine::kickoffTimeEvents() {
@@ -170,10 +170,10 @@ bool AGOSEngine::isVgaQueueEmpty() {
 }
 
 void AGOSEngine::haltAnimation() {
-	if (_lockWord & 0x10)
+	if (_videoLockOut & 0x10)
 		return;
 
-	_lockWord |= 0x10;
+	_videoLockOut |= 0x10;
 
 	if (_displayScreen) {
 		displayScreen();
@@ -182,23 +182,22 @@ void AGOSEngine::haltAnimation() {
 }
 
 void AGOSEngine::restartAnimation() {
-	if (!(_lockWord & 0x10))
+	if (!(_videoLockOut & 0x10))
 		return;
 
-	_window4Flag = 2;
+	if (getGameType() != GType_PN) {
+		_window4Flag = 2;
+		setMoveRect(0, 0, 224, 127);
+		displayScreen();
+	}
 
-	setMoveRect(0, 0, 224, 127);
-	displayScreen();
-
-	_lockWord &= ~0x10;
-
-	// Check picture queue
+	_videoLockOut &= ~0x10;
 }
 
 void AGOSEngine::addVgaEvent(uint16 num, uint8 type, const byte *codePtr, uint16 curSprite, uint16 curZoneNum) {
 	VgaTimerEntry *vte;
 
-	_lockWord |= 1;
+	_videoLockOut |= 1;
 
 	for (vte = _vgaTimerList; vte->delay; vte++) {
 	}
@@ -209,11 +208,11 @@ void AGOSEngine::addVgaEvent(uint16 num, uint8 type, const byte *codePtr, uint16
 	vte->zoneNum = curZoneNum;
 	vte->type = type;
 
-	_lockWord &= ~1;
+	_videoLockOut &= ~1;
 }
 
 void AGOSEngine::deleteVgaEvent(VgaTimerEntry * vte) {
-	_lockWord |= 1;
+	_videoLockOut |= 1;
 
 	if (vte + 1 <= _nextVgaTimerToProcess) {
 		_nextVgaTimerToProcess--;
@@ -224,7 +223,7 @@ void AGOSEngine::deleteVgaEvent(VgaTimerEntry * vte) {
 		vte++;
 	} while (vte->delay);
 
-	_lockWord &= ~1;
+	_videoLockOut &= ~1;
 }
 
 void AGOSEngine::processVgaEvents() {
@@ -286,6 +285,7 @@ void AGOSEngine::animateEvent(const byte *codePtr, uint16 curZoneNum, uint16 cur
 	_curVgaFile1 = vpe->vgaFile1;
 	_curVgaFile2 = vpe->vgaFile2;
 	_curSfxFile = vpe->sfxFile;
+	_curSfxFileSize = vpe->sfxFileEnd - vpe->sfxFile;
 
 	_vcPtr = codePtr;
 
@@ -367,12 +367,12 @@ void AGOSEngine::drawStuff(const byte *src, uint xoffs) {
 	const uint8 y = (getPlatform() == Common::kPlatformAtariST) ? 132 : 135;
 
 	Graphics::Surface *screen = _system->lockScreen();
-	byte *dst = (byte *)screen->pixels + y * _screenWidth + xoffs;
+	byte *dst = (byte *)screen->pixels + y * screen->pitch + xoffs;
 
 	for (uint h = 0; h < 6; h++) {
 		memcpy(dst, src, 4);
 		src += 4;
-		dst += _screenWidth;
+		dst += screen->pitch;
 	}
 
 	_system->unlockScreen();
@@ -451,7 +451,7 @@ void AGOSEngine::delay(uint amount) {
 				_lastVgaTick = cur;
 
 			_inCallBack = true;
-			timerCallback();
+			timerProc();
 			_inCallBack = false;
 		}
 
@@ -484,8 +484,10 @@ void AGOSEngine::delay(uint amount) {
 						_fastMode ^= 1;
 					} else if (event.kbd.keycode == Common::KEYCODE_d) {
 						_debugger->attach();
-					} else if (event.kbd.keycode == Common::KEYCODE_u) {
+					} else if (event.kbd.keycode == Common::KEYCODE_s) {
 						dumpAllSubroutines();
+					} else if (event.kbd.keycode == Common::KEYCODE_i) {
+						dumpAllVgaImageFiles();
 					}
 				}
 
@@ -504,7 +506,7 @@ void AGOSEngine::delay(uint amount) {
 			case Common::EVENT_LBUTTONDOWN:
 				if (getGameType() == GType_FF)
 					setBitFlag(89, true);
-				_leftButtonDown++;
+				_leftButtonDown = true;
 				_leftButton = 1;
 				break;
 			case Common::EVENT_LBUTTONUP:
@@ -518,7 +520,10 @@ void AGOSEngine::delay(uint amount) {
 			case Common::EVENT_RBUTTONDOWN:
 				if (getGameType() == GType_FF)
 					setBitFlag(92, false);
-				_rightButtonDown++;
+				_rightButtonDown = true;
+				break;
+			case Common::EVENT_RBUTTONUP:
+				_rightClick = true;
 				break;
 			case Common::EVENT_RTL:
 			case Common::EVENT_QUIT:
@@ -547,26 +552,22 @@ void AGOSEngine::delay(uint amount) {
 	} while (cur < start + amount && !shouldQuit());
 }
 
-void AGOSEngine_PuzzlePack::timerCallback() {
+void AGOSEngine_PuzzlePack::timerProc() {
 	_lastTickCount = _system->getMillis();
 
-	timerProc();
+	AGOSEngine_Feeble::timerProc();
 	dimpIdle();
 }
 
-void AGOSEngine::timerCallback() {
-	timerProc();
-}
-
 void AGOSEngine_Feeble::timerProc() {
-	if (_lockWord & 0x80E9 || _lockWord & 2)
+	if (_videoLockOut & 0x80E9 || _videoLockOut & 2)
 		return;
 
 	_syncCount++;
 
-	_lockWord |= 2;
+	_videoLockOut |= 2;
 
-	if (!(_lockWord & 0x10)) {
+	if (!(_videoLockOut & 0x10)) {
 		_syncFlag2 ^= 1;
 		if (!_syncFlag2) {
 			processVgaEvents();
@@ -575,17 +576,15 @@ void AGOSEngine_Feeble::timerProc() {
 			if (getGameType() == GType_FF && getBitFlag(99)) {
 				processVgaEvents();
 			} else if (_scrollCount == 0) {
-				_lockWord &= ~2;
+				_videoLockOut &= ~2;
 				return;
 			}
 		}
 
-		if (getGameType() == GType_FF && _moviePlayer) {
+		if (getGameType() == GType_FF && _interactiveVideo) {
 			// Controls Omni TV videos
 			if (getBitFlag(42)) {
-				_moviePlayer->stopVideo();
-				delete _moviePlayer;
-				_moviePlayer = NULL;
+				stopInteractiveVideo();
 			} else {
 				_moviePlayer->nextFrame();
 			}
@@ -595,7 +594,7 @@ void AGOSEngine_Feeble::timerProc() {
 	}
 
 	if (_displayScreen) {
-		if (getGameType() == GType_FF) {
+		if (getGameType() == GType_FF && !(getFeatures() & GF_DEMO)) {
 			if (!getBitFlag(78)) {
 				oracleLogo();
 			}
@@ -608,20 +607,34 @@ void AGOSEngine_Feeble::timerProc() {
 		_displayScreen = false;
 	}
 
-	_lockWord &= ~2;
+	_videoLockOut &= ~2;
 }
 
-void AGOSEngine::timerProc() {
-	if (_lockWord & 0x80E9 || _lockWord & 2)
+#ifdef ENABLE_PN
+void AGOSEngine_PN::timerProc() {
+	if (_videoLockOut & 0x80E9 || _videoLockOut & 2)
 		return;
 
 	_syncCount++;
 
-	_lockWord |= 2;
+	_videoLockOut |= 2;
 
+	_sound->handleSoundQueue();
 	handleMouseMoved();
+	handleKeyboard();
 
-	if (!(_lockWord & 0x10)) {
+	if (!(_videoLockOut & 0x10)) {
+		if (_sampleWait) {
+			_vgaCurSpriteId = 0xFFFF;
+			vc15_sync();
+			_sampleWait = false;
+		}
+		if (_sampleEnd) {
+			_vgaCurSpriteId = 0xFFFE;
+			vc15_sync();
+			_sampleEnd = false;
+		}
+
 		processVgaEvents();
 		processVgaEvents();
 		_cepeFlag ^= 1;
@@ -634,7 +647,34 @@ void AGOSEngine::timerProc() {
 		_displayScreen = false;
 	}
 
-	_lockWord &= ~2;
+	_videoLockOut &= ~2;
+}
+#endif
+
+void AGOSEngine::timerProc() {
+	if (_videoLockOut & 0x80E9 || _videoLockOut & 2)
+		return;
+
+	_syncCount++;
+
+	_videoLockOut |= 2;
+
+	handleMouseMoved();
+
+	if (!(_videoLockOut & 0x10)) {
+		processVgaEvents();
+		processVgaEvents();
+		_cepeFlag ^= 1;
+		if (!_cepeFlag)
+			processVgaEvents();
+	}
+
+	if (_displayScreen) {
+		displayScreen();
+		_displayScreen = false;
+	}
+
+	_videoLockOut &= ~2;
 }
 
 void AGOSEngine_PuzzlePack::dimpIdle() {

@@ -28,6 +28,7 @@
 #include "common/util.h"
 #include "common/system.h"
 #include "common/events.h"
+#include "common/EventRecorder.h"
 
 #include "sword1/logic.h"
 #include "sword1/text.h"
@@ -41,7 +42,6 @@
 #include "sword1/music.h"
 #include "sword1/swordres.h"
 #include "sword1/animation.h"
-#include "sword1/credits.h"
 
 #include "sword1/debug.h"
 
@@ -56,7 +56,7 @@ namespace Sword1 {
 uint32 Logic::_scriptVars[NUM_SCRIPT_VARS];
 
 Logic::Logic(SwordEngine *vm, ObjectMan *pObjMan, ResMan *resMan, Screen *pScreen, Mouse *pMouse, Sound *pSound, Music *pMusic, Menu *pMenu, OSystem *system, Audio::Mixer *mixer) {
-	g_system->getEventManager()->registerRandomSource(_rnd, "sword1");
+	g_eventRec.registerRandomSource(_rnd, "sword1");
 
 	_vm = vm;
 	_objMan = pObjMan;
@@ -112,6 +112,10 @@ void Logic::newScreen(uint32 screen) {
 		else
 			fnFullSetFrame(cpt, SAND_25, IMPPLSCDT, IMPPLS, 0, 0, 0, 0); // impression filled with plaster
 	}
+
+	// work around, at screen 69 in psx version TOP menu gets stuck at disabled, fix it at next screen (71)
+	if( (screen == 71) && (SwordEngine::isPsx()))
+		_scriptVars[TOP_MENU_DISABLED] = 0;
 
 	if (SwordEngine::_systemVars.justRestoredGame) { // if we've just restored a game - we want George to be exactly as saved
 		fnAddHuman(NULL, 0, 0, 0, 0, 0, 0, 0);
@@ -253,7 +257,7 @@ void Logic::processLogic(Object *compact, uint32 id) {
 			break;
 
 		default:
-			error("Fatal error: compact %d's logic == %X!", id, compact->o_logic);
+			error("Fatal error: compact %d's logic == %X", id, compact->o_logic);
 			break;
 		}
 	} while (logicRet);
@@ -444,7 +448,7 @@ int Logic::scriptManager(Object *compact, uint32 id) {
 			if (compact->o_tree.o_script_level)
 				compact->o_tree.o_script_level--;
 			else
-				error("ScriptManager: basescript %d for cpt %d ended!", script, id);
+				error("ScriptManager: basescript %d for cpt %d ended", script, id);
 		} else
 			compact->o_tree.o_script_pc[level] = ret;
 	} while (!ret);
@@ -472,9 +476,9 @@ int Logic::interpretScript(Object *compact, int id, Header *scriptModule, int sc
 	int32 offset;
 	int32 pc;
 	if (memcmp(scriptModule->type, "Script", 6))
-		error("Invalid script module!");
+		error("Invalid script module");
 	if (scriptModule->version != SCRIPT_VERSION)
-		error("Illegal script version!");
+		error("Illegal script version");
 	if (scriptNum < 0)
 		error("negative script number");
 	if ((uint32)scriptNum >= scriptModule->decomp_length)
@@ -521,7 +525,7 @@ int Logic::interpretScript(Object *compact, int id, Header *scriptModule, int sc
 		case IT_PUSHVARIABLE:
 			debug(9, "IT_PUSHVARIABLE: ScriptVar[%d] => %d", scriptCode[pc], _scriptVars[scriptCode[pc]]);
 			varNum = scriptCode[pc++];
-			if (SwordEngine::_systemVars.isDemo) {
+			if (SwordEngine::_systemVars.isDemo && SwordEngine::isPc()) {
 				if (varNum >= 397) // BS1 Demo has different number of script variables
 					varNum++;
 				if (varNum >= 699)
@@ -612,7 +616,7 @@ int Logic::interpretScript(Object *compact, int id, Header *scriptModule, int sc
 		case IT_POPVAR:         // pop a variable
 			debug(9, "IT_POPVAR: ScriptVars[%d] = %d", scriptCode[pc], stack[stackIdx-1]);
 			varNum = scriptCode[pc++];
-			if (SwordEngine::_systemVars.isDemo) {
+			if (SwordEngine::_systemVars.isDemo && SwordEngine::isPc()) {
 				if (varNum >= 397) // BS1 Demo has different number of script variables
 					varNum++;
 				if (varNum >= 699)
@@ -960,16 +964,12 @@ int Logic::fnPlaySequence(Object *cpt, int32 id, int32 sequenceId, int32 d, int3
 	// meantime, we don't want any looping sound effects still playing.
 	_sound->quitScreen();
 
-	if ((SwordEngine::_systemVars.cutscenePackVersion == 1) && (sequenceId == SEQ_CREDITS)) {
-		CreditsPlayer player(_system, _mixer);
-		player.play();
-	} else {
-		MoviePlayer *player = makeMoviePlayer(sequenceId, _vm, _screen, _textMan, _mixer, _system);
-		if (player) {
-			if (player->load(sequenceId))
-				player->play();
-			delete player;
-		}
+	MoviePlayer *player = makeMoviePlayer(sequenceId, _vm, _textMan, _mixer, _system);
+	if (player) {
+		_screen->clearScreen();
+		if (player->load(sequenceId))
+			player->play();
+		delete player;
 	}
 	return SCRIPT_CONT;
 }
@@ -1512,7 +1512,7 @@ int Logic::fnIsFacing(Object *cpt, int32 id, int32 targetId, int32 b, int32 c, i
 		y = target->o_ycoord;
 		dir = target->o_dir;
 	} else
-		error("fnIsFacing:: Target isn't a mega!");
+		error("fnIsFacing:: Target isn't a mega");
 
 	int32 lookDir = whatTarget(x, y, cpt->o_xcoord, cpt->o_ycoord);
 	lookDir -= dir;

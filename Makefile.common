@@ -22,12 +22,12 @@ MODULES := test tools base $(MODULES)
 
 # After the game specific modules follow the shared modules
 MODULES += \
+	engines \
 	gui \
 	graphics \
 	sound \
 	backends \
 	common \
-	engines \
 
 ifdef USE_MT32EMU
 MODULES += sound/softsynth/mt32
@@ -111,18 +111,45 @@ endif
 
 
 ######################################################################
+# Get the current version information
+######################################################################
+
+# AmigaOS4's grep has a problem with "./" in pathnames, so use cat.
+VERSION = $(shell cat "${srcdir}/base/internal_version.h" | grep SCUMMVM_VERSION | cut -d\" -f2)
+VER_MAJOR = $(shell echo $(VERSION) | cut -d. -f 1)
+VER_MINOR = $(shell echo $(VERSION) | cut -d. -f 2)
+VER_PATCH = $(shell echo $(VERSION) | cut -d. -f 3 | cut -c1)
+VER_EXTRA = $(shell echo $(VERSION) | cut -d. -f 3 | cut -c2-)
+
+
+######################################################################
+# Get Subversion's working copy information
+######################################################################
+
+ifeq ($(shell LANG=C svn stat $(srcdir) 2>&1 | grep "is not a working copy"),)
+SVNROOT := $(srcdir)
+ifeq ($(origin SVNREV), undefined)
+# Get the working copy base revision
+VER_SVNREV := $(shell LANG=C svn info $(SVNROOT) | grep "^Revision" | cut -d ' ' -f 2)
+endif
+else
+SVNROOT := https://scummvm.svn.sourceforge.net/svnroot/scummvm/scummvm/trunk/
+endif
+
+# Define the Subversion revision if available, either autodetected or
+# specified by the user
+ifneq ($(origin VER_SVNREV), undefined)
+CXXFLAGS+= -DSCUMMVM_SVN_REVISION=\"$(VER_SVNREV)\"
+endif
+
+
+######################################################################
 # Create the files that depend on the version
 ######################################################################
 
 VERSION_FILES = \
 	$(srcdir)/dists/iphone/Info.plist \
 	$(srcdir)/dists/macosx/Info.plist
-
-VERSION = $(shell cat "${srcdir}/base/internal_version.h" | cut -d\" -f2)
-VER_MAJOR = $(shell echo $(VERSION) | cut -d. -f 1)
-VER_MINOR = $(shell echo $(VERSION) | cut -d. -f 2)
-VER_PATCH = $(shell echo $(VERSION) | cut -d. -f 3 | cut -c1)
-VER_EXTRA = $(shell echo $(VERSION) | cut -d. -f 3 | cut -c2-)
 
 $(VERSION_FILES): %: %.in
 	@echo "Creating $@"
@@ -140,7 +167,11 @@ $(VERSION_FILES): %: %.in
 ######################################################################
 
 ifeq ($(VER_EXTRA),svn)
+ifeq ($(origin VER_SVNREV), undefined)
 DISTVERSION = $(shell date '+%Y-%m-%d')
+else
+DISTVERSION = svn$(VER_SVNREV)
+endif
 else
 DISTVERSION = $(VERSION)
 endif
@@ -149,16 +180,16 @@ DISTNAME := scummvm-$(DISTVERSION)
 DISTDIR := dist
 VERFILE := $(DISTDIR)/$(DISTNAME)/base/internal_version.h
 
-ifeq ($(shell svn stat $(srcdir) 2>&1 | grep "is not a working copy"),)
-SVNROOT := $(srcdir)
-else
-SVNROOT := https://scummvm.svn.sourceforge.net/svnroot/scummvm/scummvm/trunk/
-endif
-
 $(VERFILE): $(srcdir)/base/internal_version.h
 	@$(RM_REC) $(DISTDIR)
 	@$(MKDIR) $(DISTDIR)
 	svn export $(SVNROOT) $(DISTDIR)/$(DISTNAME)
+ifneq ($(origin VER_SVNREV), undefined)
+	@# Use the current SVN revision as a default for the snapshot sources
+	@svn cat $(SVNROOT)/base/internal_version.h | sed -e \
+		"s/^#define SCUMMVM_SVN_REVISION$$/#define SCUMMVM_SVN_REVISION \"$(VER_SVNREV)\"/g" \
+		> $(VERFILE)
+endif
 
 $(DISTDIR)/$(DISTNAME).tar.gz: $(VERFILE)
 	cd $(DISTDIR); tar zcf $(DISTNAME).tar.gz $(DISTNAME)
@@ -176,9 +207,11 @@ dist-src: \
 	@#RPM-src?
 	@#DEB-src?
 
+# Common files
+DIST_FILES_DOCS:=$(addprefix $(srcdir)/,AUTHORS COPYING COPYING.LGPL COPYRIGHT NEWS README)
 
 # Themes files
-DIST_FILES_THEMES:=$(addprefix $(srcdir)/gui/themes/,scummmodern.zip scummclassic.zip)
+DIST_FILES_THEMES:=$(addprefix $(srcdir)/gui/themes/,scummmodern.zip)
 
 # Engine data files
 DIST_FILES_ENGINEDATA=
@@ -204,6 +237,11 @@ ifdef ENABLE_SKY
 DIST_FILES_ENGINEDATA+=sky.cpt
 endif
 DIST_FILES_ENGINEDATA:=$(addprefix $(srcdir)/dists/engine-data/,$(DIST_FILES_ENGINEDATA))
+
+# pred.dic is currently only used for the AGI engine
+ifdef ENABLE_AGI
+DIST_FILES_ENGINEDATA+=$(srcdir)/dists/pred.dic
+endif
 
 # Plugin files
 DIST_FILES_PLUGINS:=$(addprefix $(srcdir)/,$(PLUGINS))

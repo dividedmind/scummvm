@@ -88,13 +88,6 @@ IgorEngine::~IgorEngine() {
 	delete _midiPlayer;
 }
 
-Common::Error IgorEngine::init() {
-	initGraphics(320, 200, false);
-
-	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));
-	return Common::kNoError;
-}
-
 void IgorEngine::restart() {
 	_screenVGAVOffset = 0;
 
@@ -166,7 +159,10 @@ void IgorEngine::restart() {
 	_gameTicks = 0;
 }
 
-Common::Error IgorEngine::go() {
+Common::Error IgorEngine::run() {
+	initGraphics(320, 200, false);
+	_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, ConfMan.getInt("sfx_volume"));
+
 	restart();
 	setupDefaultPalette();
 	_currentPart = ConfMan.getInt("boot_param");
@@ -2099,7 +2095,7 @@ int IgorEngine::getHorizontalStepsCount(int minX, int minY, int maxX, int maxY) 
 	float r2 = _walkScaleSpeedTable[scale - 1];
 	debugC(9, kDebugWalk, "getHorizontalStepsCount() maxX - minX = %d r1 = %f r2 = %f", maxX - minX, r1, r2);
 
-	int16 steps = roundReal((maxX - minX) / ((r1 + r2) / 2.));
+	int16 steps = roundReal((maxX - minX) / ((r1 + r2) / 2.0f));
 	int count = 0;
 	if (steps != 0) {
 		float r3 = (maxY - minY) / (float)steps;

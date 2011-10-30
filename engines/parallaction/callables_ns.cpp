@@ -30,6 +30,8 @@
 
 #include "graphics/primitives.h"			// for Graphics::drawLine
 
+
+#include "parallaction/exec.h"
 #include "parallaction/input.h"
 #include "parallaction/parallaction.h"
 #include "parallaction/saveload.h"
@@ -149,8 +151,8 @@ void Parallaction_ns::_c_play_boogie(void *parm) {
 		return;
 	flag = 0;
 
-	_soundMan->setMusicFile("boogie2");
-	_soundMan->playMusic();
+	_soundManI->setMusicFile("boogie2");
+	_soundManI->playMusic();
 
 	return;
 }
@@ -178,75 +180,93 @@ void Parallaction_ns::_c_fade(void *parm) {
 }
 
 
+void Parallaction_ns::startMovingSarcophagus(ZonePtr sarc) {
+	if (!_moveSarcGetZones[0]) {
+		// bind sarcophagi zones
+		_moveSarcGetZones[0] = _location.findZone("sarc1");
+		_moveSarcGetZones[1] = _location.findZone("sarc2");
+		_moveSarcGetZones[2] = _location.findZone("sarc3");
+		_moveSarcGetZones[3] = _location.findZone("sarc4");
+		_moveSarcGetZones[4] = _location.findZone("sarc5");
 
-void Parallaction_ns::_c_moveSarc(void *parm) {
-
-	AnimationPtr a;
-
-	if (_introSarcData2 != 0) {
-
-		_introSarcData2 = 0;
-		if (!_moveSarcZones[0]) {
-
-			_moveSarcZones[0] = _location.findZone("sarc1");
-			_moveSarcZones[1] = _location.findZone("sarc2");
-			_moveSarcZones[2] = _location.findZone("sarc3");
-			_moveSarcZones[3] = _location.findZone("sarc4");
-			_moveSarcZones[4] = _location.findZone("sarc5");
-
-			_moveSarcExaZones[0] = _location.findZone("sarc1exa");
-			_moveSarcExaZones[1] = _location.findZone("sarc2exa");
-			_moveSarcExaZones[2] = _location.findZone("sarc3exa");
-			_moveSarcExaZones[3] = _location.findZone("sarc4exa");
-			_moveSarcExaZones[4] = _location.findZone("sarc5exa");
-
+		_moveSarcExaZones[0] = _location.findZone("sarc1exa");
+		_moveSarcExaZones[1] = _location.findZone("sarc2exa");
+		_moveSarcExaZones[2] = _location.findZone("sarc3exa");
+		_moveSarcExaZones[3] = _location.findZone("sarc4exa");
+		_moveSarcExaZones[4] = _location.findZone("sarc5exa");
+	}
+	/*
+		Each sarcophagus is made of 2 visible zones: one responds to
+		'get' actions, the other to 'examine'. We need to find out
+		both so they can be moved.
+	*/
+	for (uint16 i = 0; i < 5; i++) {
+		if (_moveSarcGetZones[i] == sarc) {
+			_moveSarcExaZone = _moveSarcExaZones[i];
+			_moveSarcGetZone = _moveSarcGetZones[i];
 		}
-
-		a = _location.findAnimation("sposta");
-
-		_moveSarcZone1 = *(ZonePtr*)parm;
-
-		for (uint16 _si = 0; _si < 5; _si++) {
-			if (_moveSarcZones[_si] == _moveSarcZone1) {
-				_moveSarcZone0 = _moveSarcExaZones[_si];
-			}
-		}
-
-		_introSarcData1 = _introSarcData3 - _moveSarcZone1->getX();
-		a->setZ(_introSarcData3);
-		a->setF(_moveSarcZone1->getY() - (_introSarcData1 / 20));
-		_introSarcData3 = _moveSarcZone1->getX();
-
-		if (_introSarcData1 > 0) {
-			a->setX(_introSarcData1 / 2);
-			a->setY(2);
-		} else {
-			a->setX(-_introSarcData1 / 2);
-			a->setY(-2);
-		}
-
-		return;
-
 	}
 
-	_introSarcData2 = 1;
-	_moveSarcZone1->translate(_introSarcData1, -_introSarcData1 / 20);
-	_moveSarcZone0->translate(_introSarcData1, -_introSarcData1 / 20);
+	// calculate destination for the sarcophagus
+	int16 destX = _freeSarcophagusSlotX;
+	_sarcophagusDeltaX = destX - _moveSarcGetZone->getX();			// x movement delta
+	int16 destY = _moveSarcGetZone->getY() - (_sarcophagusDeltaX / 20); // gently degrade y when moving sideways
 
-	if (_moveSarcZones[0]->getX() == 35 &&
-		_moveSarcZones[1]->getX() == 68 &&
-		_moveSarcZones[2]->getX() == 101 &&
-		_moveSarcZones[3]->getX() == 134 &&
-		_moveSarcZones[4]->getX() == 167) {
+	// set the new empty position (maybe this should be done on stopMovingSarcophagus?)
+	_freeSarcophagusSlotX = _moveSarcGetZone->getX();
 
-		a = _location.findAnimation("finito");
+	// calculate which way and how many steps the character should move
+	int16 numSteps = _sarcophagusDeltaX / 2; // default to right
+	int16 delta = 2;	// default to right
+	if (_sarcophagusDeltaX < 0) {
+		// move left
+		numSteps = -numSteps;	// keep numSteps positive
+		delta = -delta;			// make delta negative if moving to left
+	}
 
+	// GROSS HACK: since there is no obvious way to provide additional parameters to a script,
+	// the game packs the data needed to calculate the position of the 'sposta' animation in
+	// the coordinate fields of the animation itself, which are accessible from the scripts.
+	// In detail: the sarcophagus destination coords are stored into Z and F, while the number
+	// of calculated steps and step length in X and Y. See any of the sarc#.script files in
+	// disk2 for details about unpacking.
+	AnimationPtr a = _location.findAnimation("sposta");
+	a->forceXYZF(numSteps, delta, destX, destY);
+
+	// start moving
+	_movingSarcophagus = true;
+}
+
+void Parallaction_ns::stopMovingSarcophagus() {
+
+	// moves both sarcophagus zones at the destination, so that the user
+	// can interact with them
+	_moveSarcGetZone->translate(_sarcophagusDeltaX, -_sarcophagusDeltaX / 20);
+	_moveSarcExaZone->translate(_sarcophagusDeltaX, -_sarcophagusDeltaX / 20);
+
+	// check if the puzzle has been completed, by verifying the position of
+	// the sarcophagi
+	if (_moveSarcGetZones[0]->getX() == 35 &&
+		_moveSarcGetZones[1]->getX() == 68 &&
+		_moveSarcGetZones[2]->getX() == 101 &&
+		_moveSarcGetZones[3]->getX() == 134 &&
+		_moveSarcGetZones[4]->getX() == 167) {
+
+		AnimationPtr a = _location.findAnimation("finito");
 		a->_flags |= (kFlagsActive | kFlagsActing);
 		setLocationFlags(0x20);		// GROSS HACK: activates 'finito' flag in dinoit_museo.loc
 	}
 
-	return;
+	// stop moving
+	_movingSarcophagus = false;
+}
 
+void Parallaction_ns::_c_moveSarc(void *parm) {
+	if (!_movingSarcophagus) {
+		startMovingSarcophagus(*(ZonePtr*)parm);
+	} else {
+		stopMovingSarcophagus();
+	}
 }
 
 
@@ -298,6 +318,19 @@ void Parallaction_ns::_c_setMask(void *parm) {
 }
 
 void Parallaction_ns::_c_endComment(void *param) {
+	/*
+		NOTE: this routine is only run when the full game
+		is over. The following command in the scripts is
+		QUIT, which causes the engine to exit and return
+		to system.
+		Since this routine is still *blocking*, QUIT is
+		not executed until the user presses a mouse
+		button. If the input is reconciled with the main
+		loop then the command sequence must be suspended
+		to avoid executing QUIT before this actual
+		routine gets a chance to be run. See bug #2619824
+		for a similar situation.
+	*/
 
 	showLocationComment(_location._endComment, true);
 
@@ -375,8 +408,8 @@ void Parallaction_ns::_c_testResult(void *parm) {
 	parseLocation("common");
 
 	uint id[2];
-	id[0] = _gfx->createLabel(_menuFont, _location._slideText[0], 1);
-	id[1] = _gfx->createLabel(_menuFont, _location._slideText[1], 1);
+	id[0] = _gfx->createLabel(_menuFont, _location._slideText[0].c_str(), 1);
+	id[1] = _gfx->createLabel(_menuFont, _location._slideText[1].c_str(), 1);
 
 	_gfx->showLabel(id[0], CENTER_LABEL_HORIZONTAL, 38);
 	_gfx->showLabel(id[1], CENTER_LABEL_HORIZONTAL, 58);
@@ -385,18 +418,18 @@ void Parallaction_ns::_c_testResult(void *parm) {
 }
 
 void Parallaction_ns::_c_offSound(void*) {
-	_soundMan->stopSfx(0);
-	_soundMan->stopSfx(1);
-	_soundMan->stopSfx(2);
-	_soundMan->stopSfx(3);
+	_soundManI->stopSfx(0);
+	_soundManI->stopSfx(1);
+	_soundManI->stopSfx(2);
+	_soundManI->stopSfx(3);
 }
 
 void Parallaction_ns::_c_startMusic(void*) {
-	_soundMan->playMusic();
+	_soundManI->playMusic();
 }
 
 void Parallaction_ns::_c_closeMusic(void*) {
-	_soundMan->stopMusic();
+	_soundManI->stopMusic();
 }
 
 /*
@@ -407,8 +440,8 @@ void Parallaction_ns::_c_startIntro(void *parm) {
 	_rightHandAnim = _location.findAnimation("righthand");
 
 	if (getPlatform() == Common::kPlatformPC) {
-		_soundMan->setMusicFile("intro");
-		_soundMan->playMusic();
+		_soundManI->setMusicFile("intro");
+		_soundManI->playMusic();
 	}
 
 	_input->setMouseState(MOUSE_DISABLED);
@@ -416,6 +449,14 @@ void Parallaction_ns::_c_startIntro(void *parm) {
 }
 
 void Parallaction_ns::_c_endIntro(void *parm) {
+	// NOTE: suspend command execution queue, to
+	// avoid running the QUIT command before
+	// credits are displayed. This solves bug
+	// #2619824.
+	// Execution of the command list will resume
+	// as soon as runGameFrame is run.
+	_cmdExec->suspend();
+
 	startCreditSequence();
 	_intro = false;
 }
@@ -447,16 +488,10 @@ void Parallaction_ns::_c_moveSheet(void *parm) {
 }
 
 void zeroMask(int x, int y, int color, void *data) {
-	//_vm->_gfx->zeroMaskValue(x, y, color);
+	BackgroundInfo *info = (BackgroundInfo*)data;
 
-	if (!_vm->_gfx->_backgroundInfo->hasMask())
-		return;
-
-//	BackgroundInfo* info = (BackgroundInfo*)data;
-
-	uint16 _ax = x + y * _vm->_gfx->_backgroundInfo->_mask->w;
-	_vm->_gfx->_backgroundInfo->_mask->data[_ax >> 2] &= ~(3 << ((_ax & 3) << 1));
-
+	uint16 _ax = x + y * info->_mask->w;
+	info->_mask->data[_ax >> 2] &= ~(3 << ((_ax & 3) << 1));
 }
 
 void Parallaction_ns::_c_sketch(void *parm) {
@@ -482,7 +517,9 @@ void Parallaction_ns::_c_sketch(void *parm) {
 		newx = _rightHandPositions[2*index];
 	}
 
-	Graphics::drawLine(oldx, oldy, newx, newy, 0, zeroMask, _gfx->_backgroundInfo);
+	if (_gfx->_backgroundInfo->hasMask()) {
+		Graphics::drawLine(oldx, oldy, newx, newy, 0, zeroMask, _gfx->_backgroundInfo);
+	}
 
 	_rightHandAnim->setX(newx);
 	_rightHandAnim->setY(newy - 20);
@@ -504,11 +541,11 @@ void Parallaction_ns::_c_shade(void *parm) {
 		_rightHandAnim->getY()
 	);
 
-	uint16 _di = r.left/4 + r.top * _vm->_gfx->_backgroundInfo->_mask->internalWidth;
+	uint16 _di = r.left/4 + r.top * _gfx->_backgroundInfo->_mask->internalWidth;
 
 	for (uint16 _si = r.top; _si < r.bottom; _si++) {
-		memset(_vm->_gfx->_backgroundInfo->_mask->data + _di, 0, r.width()/4+1);
-		_di += _vm->_gfx->_backgroundInfo->_mask->internalWidth;
+		memset(_gfx->_backgroundInfo->_mask->data + _di, 0, r.width()/4+1);
+		_di += _gfx->_backgroundInfo->_mask->internalWidth;
 	}
 
 	return;

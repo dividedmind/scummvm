@@ -29,6 +29,7 @@
 #include "cine/cine.h"
 #include "cine/bg_list.h"
 #include "cine/saveload.h"
+#include "cine/sound.h"
 #include "cine/various.h"
 
 namespace Cine {
@@ -41,14 +42,14 @@ bool writeChunkHeader(Common::OutSaveFile &out, const ChunkHeader &header) {
 	out.writeUint32BE(header.id);
 	out.writeUint32BE(header.version);
 	out.writeUint32BE(header.size);
-	return !out.ioFailed();
+	return !out.err();
 }
 
 bool loadChunkHeader(Common::SeekableReadStream &in, ChunkHeader &header) {
 	header.id      = in.readUint32BE();
 	header.version = in.readUint32BE();
 	header.size    = in.readUint32BE();
-	return !in.ioFailed();
+	return !(in.eos() || in.err());
 }
 
 /*! \brief Savegame format detector
@@ -239,21 +240,21 @@ bool loadObjectTable(Common::SeekableReadStream &in) {
 		in.read(objectTable[i].name, 20);
 		objectTable[i].part = in.readUint16BE();
 	}
-	return !in.ioFailed();
+	return !(in.eos() || in.err());
 }
 
 bool loadZoneData(Common::SeekableReadStream &in) {
 	for (int i = 0; i < 16; i++) {
 		zoneData[i] = in.readUint16BE();
 	}
-	return !in.ioFailed();
+	return !(in.eos() || in.err());
 }
 
 bool loadCommandVariables(Common::SeekableReadStream &in) {
 	for (int i = 0; i < 4; i++) {
 		commandVar3[i] = in.readUint16BE();
 	}
-	return !in.ioFailed();
+	return !(in.eos() || in.err());
 }
 
 bool loadScreenParams(Common::SeekableReadStream &in) {
@@ -264,7 +265,7 @@ bool loadScreenParams(Common::SeekableReadStream &in) {
 	in.readUint16BE();
 	in.readUint16BE();
 	in.readUint16BE();
-	return !in.ioFailed();
+	return !(in.eos() || in.err());
 }
 
 bool loadGlobalScripts(Common::SeekableReadStream &in) {
@@ -272,7 +273,7 @@ bool loadGlobalScripts(Common::SeekableReadStream &in) {
 	for (int i = 0; i < size; i++) {
 		loadScriptFromSave(in, true);
 	}
-	return !in.ioFailed();
+	return !(in.eos() || in.err());
 }
 
 bool loadObjectScripts(Common::SeekableReadStream &in) {
@@ -280,7 +281,7 @@ bool loadObjectScripts(Common::SeekableReadStream &in) {
 	for (int i = 0; i < size; i++) {
 		loadScriptFromSave(in, false);
 	}
-	return !in.ioFailed();
+	return !(in.eos() || in.err());
 }
 
 bool loadOverlayList(Common::SeekableReadStream &in) {
@@ -288,7 +289,7 @@ bool loadOverlayList(Common::SeekableReadStream &in) {
 	for (int i = 0; i < size; i++) {
 		loadOverlayFromSave(in);
 	}
-	return !in.ioFailed();
+	return !(in.eos() || in.err());
 }
 
 bool loadSeqList(Common::SeekableReadStream &in) {
@@ -311,14 +312,14 @@ bool loadSeqList(Common::SeekableReadStream &in) {
 		tmp.var1E  = in.readSint16BE();
 		seqList.push_back(tmp);
 	}
-	return !in.ioFailed();
+	return !(in.eos() || in.err());
 }
 
 bool loadZoneQuery(Common::SeekableReadStream &in) {
 	for (int i = 0; i < 16; i++) {
 		zoneQuery[i] = in.readUint16BE();
 	}
-	return !in.ioFailed();
+	return !(in.eos() || in.err());
 }
 
 void saveObjectTable(Common::OutSaveFile &out) {
@@ -467,8 +468,17 @@ bool CineEngine::loadSaveDirectory(void) {
 		return false;
 	}
 
+	// Initialize all savegames' descriptions to empty strings
+	// so that if the savegames' descriptions can only be partially read from file
+	// then the missing ones are correctly set to empty strings.
+	memset(currentSaveName, 0, sizeof(currentSaveName));
+
 	fHandle->read(currentSaveName, 10 * 20);
 	delete fHandle;
+
+	// Make sure all savegames' descriptions end with a trailing zero.
+	for (int i = 0; i < ARRAYSIZE(currentSaveName); i++)
+		currentSaveName[i][sizeof(CommandeType) - 1] = 0;
 
 	return true;
 }
@@ -631,7 +641,7 @@ bool CineEngine::loadTempSaveOS(Common::SeekableReadStream &in) {
 		warning("loadTempSaveOS: Loaded the savefile but didn't exhaust it completely. Something was left over");
 	}
 
-	return !in.ioFailed();
+	return !(in.eos() || in.err());
 }
 
 bool CineEngine::loadPlainSaveFW(Common::SeekableReadStream &in, CineSaveGameFormat saveGameFormat) {
@@ -646,7 +656,7 @@ bool CineEngine::loadPlainSaveFW(Common::SeekableReadStream &in, CineSaveGameFor
 	in.read(currentDatName, 13);
 
 	// At 0x001C:
-	saveVar2 = in.readSint16BE();
+	musicIsPlaying = in.readSint16BE();
 
 	// At 0x001E:
 	in.read(currentPrcName, 13);
@@ -748,15 +758,13 @@ bool CineEngine::loadPlainSaveFW(Common::SeekableReadStream &in, CineSaveGameFor
 	}
 
 	if (strlen(currentDatName)) {
-/*		i = saveVar2;
-		saveVar2 = 0;
-		loadMusic();
-		if (i) {
-			playMusic();
-		}*/
+		g_sound->loadMusic(currentDatName);
+		if (musicIsPlaying) {
+			g_sound->playMusic();
+		}
 	}
 
-	return !in.ioFailed();
+	return !(in.eos() || in.err());
 }
 
 bool CineEngine::makeLoad(char *saveName) {
@@ -835,7 +843,7 @@ void CineEngine::makeSaveFW(Common::OutSaveFile &out) {
 	out.writeUint16BE(currentDisk);
 	out.write(currentPartName, 13);
 	out.write(currentDatName, 13);
-	out.writeUint16BE(saveVar2);
+	out.writeUint16BE(musicIsPlaying);
 	out.write(currentPrcName, 13);
 	out.write(currentRelName, 13);
 	out.write(currentMsgName, 13);

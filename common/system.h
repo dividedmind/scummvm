@@ -48,6 +48,7 @@ namespace Common {
 	class TimerManager;
 	class SeekableReadStream;
 	class WriteStream;
+	class HardwareKeySet;
 }
 
 class FilesystemFactory;
@@ -147,6 +148,10 @@ public:
 		 * It is currently used only by some Macintosh versions of Humongous
 		 * Entertainment games. If the backend doesn't implement this feature then
 		 * the engine switches to b/w versions of cursors.
+		 * The GUI also relies on this feature for mouse cursors.
+		 *
+		 * To enable the cursor palette call "disableCursorPalette" with false.
+		 * @see disableCursorPalette
 		 */
 		kFeatureCursorHasPalette,
 
@@ -403,10 +408,10 @@ public:
 	 */
 	enum TransactionError {
 		kTransactionSuccess = 0,					/**< Everything fine (use EQUAL check for this one!) */
-		kTransactionAspectRatioFailed = (1 << 0),	/**< Failed switchting aspect ratio correction mode */
-		kTransactionFullscreenFailed = (1 << 1),	/**< Failed switchting fullscreen mode */
-		kTransactionModeSwitchFailed = (1 << 2),	/**< Failed switchting the GFX graphics mode (setGraphicsMode) */
-		kTransactionSizeChangeFailed = (1 << 3)		/**< Failed switchting the screen dimensions (initSize) */
+		kTransactionAspectRatioFailed = (1 << 0),	/**< Failed switching aspect ratio correction mode */
+		kTransactionFullscreenFailed = (1 << 1),	/**< Failed switching fullscreen mode */
+		kTransactionModeSwitchFailed = (1 << 2),	/**< Failed switching the GFX graphics mode (setGraphicsMode) */
+		kTransactionSizeChangeFailed = (1 << 3)		/**< Failed switching the screen dimensions (initSize) */
 	};
 
 	/**
@@ -444,7 +449,7 @@ public:
 	 * (transparency) value. Then the second color starts, and so on. So memory
 	 * looks like this: R1-G1-B1-A1-R2-G2-B2-A2-R3-...
 	 *
-	 * @param colors	the new palette data, in interleaved RGB format
+	 * @param colors	the new palette data, in interleaved RGBA format
 	 * @param start		the first palette entry to be updated
 	 * @param num		the number of palette entries to be updated
 	 *
@@ -512,13 +517,22 @@ public:
 	virtual void unlockScreen() = 0;
 
 	/**
-	 * Clear the screen to black.
+	 * Fills the screen with a given color value.
+	 *
+	 * @note We are using uint32 here even though currently
+	 * we only support 8bpp indexed mode. Thus the value should
+	 * be always inside [0, 255] for now.
 	 */
-	virtual void clearScreen() = 0;
+	virtual void fillScreen(uint32 col) = 0;
 
 	/**
 	 * Flush the whole screen, that is render the current content of the screen
-	 * framebuffer (resp. the dirty/changed parts of it) to the display.
+	 * framebuffer to the display.
+	 *
+	 * This method could be called very often by engines. Backends are hence
+	 * supposed to only perform any redrawing if it is necessary, and otherwise
+	 * return immediately. For a discussion of the subject, see
+	 * <http://www.nabble.com/ATTN-porters%3A-updateScreen%28%29-OSystem-method-tt3960261.html#a3960261>
 	 */
 	virtual void updateScreen() = 0;
 
@@ -652,10 +666,25 @@ public:
 
 
 
-	/** @name Mouse */
+	/** @name Mouse
+	 * This is the lower level implementation as provided by the
+	 * backends. The engines should use the Graphics::CursorManager
+	 * class instead of using it directly.
+	 */
 	//@{
 
-	/** Show or hide the mouse cursor. */
+	/**
+	 * Show or hide the mouse cursor.
+	 *
+	 * Currently the backend is not required to immediately draw the
+	 * mouse cursor on showMouse(true).
+	 *
+	 * TODO: We might want to reconsider this fact,
+	 * check Graphics::CursorManager::showMouse for some details about
+	 * this.
+	 *
+	 * @see Graphics::CursorManager::showMouse
+	 */
 	virtual bool showMouse(bool visible) = 0;
 
 	/**
@@ -735,6 +764,15 @@ public:
 	 */
 	virtual Common::EventManager *getEventManager() = 0;
 
+	/**
+	 * Register hardware keys with keymapper
+	 *
+	 * @return HardwareKeySet with all keys and recommended mappings
+	 *
+	 * See keymapper documentation for further reference.
+	 */
+	virtual Common::HardwareKeySet *getHardwareKeySet() { return 0; }
+
 	//@}
 
 
@@ -811,6 +849,9 @@ public:
 	 * @name Audio CD
 	 * The methods in this group deal with Audio CD playback.
 	 * The default implementation simply does nothing.
+	 * This is the lower level implementation as provided by the
+	 * backends. The engines should use the Audio::AudioCDManager
+	 * class instead of using it directly.
 	 */
 	//@{
 
@@ -856,13 +897,11 @@ public:
 
 	/**
 	 * Set a window caption or any other comparable status display to the
-	 * given value. The caption must be a pure ASCII string. Passing a
-	 * non-ASCII string may lead to unexpected behavior, even crashes.
+	 * given value. The caption must be a pure ISO LATIN 1 string. Passing a
+	 * string with a different encoding may lead to unexpected behavior,
+	 * even crashes.
 	 *
-	 * In a future revision of this API, this may be changed to allowing
-	 * UTF-8 or UTF-16 encoded data, or maybe ISO LATIN 1.
-	 *
-	 * @param caption	the window caption to use, as an ASCII string
+	 * @param caption	the window caption to use, as an ISO LATIN 1 string
 	 */
 	virtual void setWindowCaption(const char *caption) {}
 
@@ -871,6 +910,8 @@ public:
 	 * fashion where it is visible on or near the screen (e.g. in a transparent
 	 * rectangle over the regular screen content; or in a message box beneath
 	 * it; etc.).
+	 *
+	 * Currently, only pure ASCII messages can be expected to show correctly.
 	 *
 	 * @note There is a default implementation which uses a TimedMessageDialog
 	 *       to display the message. Hence implementing this is optional.

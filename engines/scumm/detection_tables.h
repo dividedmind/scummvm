@@ -32,8 +32,6 @@
 
 #include "scumm/detection.h"
 #include "scumm/scumm.h"
-//#include "scumm/intern.h"
-//#include "scumm/he/intern_he.h"
 
 #include "scumm/scumm-md5.h"
 
@@ -173,6 +171,10 @@ static const ADObsoleteGameID obsoleteGameIDsTable[] = {
 	{NULL, NULL, UNK}
 };
 
+using Common::GUIO_NONE;
+using Common::GUIO_NOSPEECH;
+using Common::GUIO_NOMIDI;
+
 // The following table contains information about variants of our various
 // games. We index into it with help of md5table (from scumm-md5.h), to find
 // the correct GameSettings for a given game variant.
@@ -193,194 +195,197 @@ static const ADObsoleteGameID obsoleteGameIDsTable[] = {
 // only a single unique variant. This is used to help the detector quickly
 // decide whether it has to worry about distinguishing multiple variants or not.
 static const GameSettings gameVariantsTable[] = {
-	{"maniac", "Apple II",   0, GID_MANIAC, 0, 0, MDT_PCSPK, 0, Common::kPlatformApple2GS},
-	{"maniac", "C64",        0, GID_MANIAC, 0, 0, MDT_PCSPK, 0, Common::kPlatformC64},
-	{"maniac", "V1",      "v1", GID_MANIAC, 1, 0, MDT_PCSPK, 0, Common::kPlatformPC},
-	{"maniac", "V1 Demo", "v1", GID_MANIAC, 1, 0, MDT_PCSPK, GF_DEMO, Common::kPlatformPC},
-	{"maniac", "NES",        0, GID_MANIAC, 1, 0, MDT_NONE,  0, Common::kPlatformNES},
-	{"maniac", "V2",      "v2", GID_MANIAC, 2, 0, MDT_PCSPK, 0, UNK},
-	{"maniac", "V2 Demo", "v2", GID_MANIAC, 2, 0, MDT_PCSPK, GF_DEMO, Common::kPlatformPC},
+	{"maniac", "Apple II",   0, GID_MANIAC, 0, 0, MDT_PCSPK, 0, Common::kPlatformApple2GS, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"maniac", "C64",        0, GID_MANIAC, 0, 0, MDT_PCSPK, 0, Common::kPlatformC64, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"maniac", "V1",      "v1", GID_MANIAC, 1, 0, MDT_PCSPK, 0, Common::kPlatformPC, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"maniac", "V1 Demo", "v1", GID_MANIAC, 1, 0, MDT_PCSPK, GF_DEMO, Common::kPlatformPC, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"maniac", "NES",        0, GID_MANIAC, 1, 0, MDT_NONE,  0, Common::kPlatformNES, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"maniac", "V2",      "v2", GID_MANIAC, 2, 0, MDT_PCSPK, 0, UNK, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"maniac", "V2 Demo", "v2", GID_MANIAC, 2, 0, MDT_PCSPK, GF_DEMO, Common::kPlatformPC, GUIO_NOSPEECH | GUIO_NOMIDI},
 
-	{"zak", "V1",       "v1", GID_ZAK, 1, 0, MDT_PCSPK, 0, UNK},
-	{"zak", "V2",       "v2", GID_ZAK, 2, 0, MDT_PCSPK, 0, UNK},
-	{"zak", "FM-TOWNS",    0, GID_ZAK, 3, 0, MDT_TOWNS, GF_OLD256 | GF_AUDIOTRACKS, Common::kPlatformFMTowns},
+	{"zak", "V1",       "v1", GID_ZAK, 1, 0, MDT_PCSPK, 0, UNK, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"zak", "V2",       "v2", GID_ZAK, 2, 0, MDT_PCSPK, 0, UNK, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"zak", "FM-TOWNS",    0, GID_ZAK, 3, 0, MDT_TOWNS, GF_OLD256 | GF_AUDIOTRACKS, Common::kPlatformFMTowns, GUIO_NOSPEECH | GUIO_NOMIDI},
 
-	{"indy3", "EGA",      "ega", GID_INDY3, 3, 0, MDT_PCSPK | MDT_ADLIB, 0, UNK},
-	{"indy3", "No Adlib", "ega", GID_INDY3, 3, 0, MDT_PCSPK,             0, UNK},
-	{"indy3", "VGA",      "vga", GID_INDY3, 3, 0, MDT_PCSPK | MDT_ADLIB, GF_OLD256 | GF_FEW_LOCALS,                  Common::kPlatformPC},
-	{"indy3", "FM-TOWNS",     0, GID_INDY3, 3, 0, MDT_TOWNS,             GF_OLD256 | GF_FEW_LOCALS | GF_AUDIOTRACKS, Common::kPlatformFMTowns},
+	{"indy3", "EGA",      "ega", GID_INDY3, 3, 0, MDT_PCSPK | MDT_CMS | MDT_ADLIB, 0, UNK, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"indy3", "No Adlib", "ega", GID_INDY3, 3, 0, MDT_PCSPK,             0, UNK, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"indy3", "VGA",      "vga", GID_INDY3, 3, 0, MDT_PCSPK | MDT_ADLIB, GF_OLD256 | GF_FEW_LOCALS,                  Common::kPlatformPC, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"indy3", "FM-TOWNS",     0, GID_INDY3, 3, 0, MDT_TOWNS,             GF_OLD256 | GF_FEW_LOCALS | GF_AUDIOTRACKS, Common::kPlatformFMTowns, GUIO_NOSPEECH | GUIO_NOMIDI},
 
-	{"loom", "EGA",      "ega", GID_LOOM, 3, 0, MDT_PCSPK | MDT_ADLIB | MDT_MIDI, 0, UNK},
-	{"loom", "No Adlib", "ega", GID_LOOM, 3, 0, MDT_PCSPK,                        0, UNK},
-	{"loom", "PC-Engine",    0, GID_LOOM, 3, 0, MDT_NONE,                         GF_AUDIOTRACKS, Common::kPlatformPCEngine},
-	{"loom", "FM-TOWNS",     0, GID_LOOM, 3, 0, MDT_TOWNS,                        GF_AUDIOTRACKS | GF_OLD256, Common::kPlatformFMTowns},
-	{"loom", "VGA",      "vga", GID_LOOM, 4, 0, MDT_NONE,                         GF_AUDIOTRACKS,             Common::kPlatformPC},
+	{"loom", "EGA",      "ega", GID_LOOM, 3, 0, MDT_PCSPK | MDT_CMS | MDT_ADLIB | MDT_MIDI, 0, UNK, GUIO_NOSPEECH},
+	{"loom", "No Adlib", "ega", GID_LOOM, 3, 0, MDT_PCSPK | MDT_CMS,                        0, UNK, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"loom", "PC-Engine",    0, GID_LOOM, 3, 0, MDT_NONE,                         GF_AUDIOTRACKS, Common::kPlatformPCEngine, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"loom", "FM-TOWNS",     0, GID_LOOM, 3, 0, MDT_TOWNS,                        GF_AUDIOTRACKS | GF_OLD256, Common::kPlatformFMTowns, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"loom", "VGA",      "vga", GID_LOOM, 4, 0, MDT_NONE,                         GF_AUDIOTRACKS,             Common::kPlatformPC, GUIO_NOSPEECH | GUIO_NOMIDI},
 
-	{"pass", 0, 0, GID_PASS, 4, 0, MDT_PCSPK | MDT_ADLIB, GF_16COLOR, Common::kPlatformPC},
+	{"pass", 0, 0, GID_PASS, 4, 0, MDT_PCSPK | MDT_ADLIB, GF_16COLOR, Common::kPlatformPC, GUIO_NOSPEECH | GUIO_NOMIDI},
 
-	{"monkey", "VGA",      "vga", GID_MONKEY_VGA, 4, 0, MDT_PCSPK | MDT_ADLIB | MDT_MIDI, 0, UNK},
-	{"monkey", "EGA",      "ega", GID_MONKEY_EGA, 4, 0, MDT_PCSPK | MDT_ADLIB | MDT_MIDI, GF_16COLOR,     Common::kPlatformPC},
-	{"monkey", "No Adlib", "ega", GID_MONKEY_EGA, 4, 0, MDT_PCSPK,                        GF_16COLOR,     Common::kPlatformAtariST},
-	{"monkey", "Demo",     "ega", GID_MONKEY_EGA, 4, 0, MDT_PCSPK | MDT_ADLIB,            GF_16COLOR,     Common::kPlatformPC},
-	{"monkey", "CD",           0, GID_MONKEY,     5, 0, MDT_ADLIB,                        GF_AUDIOTRACKS, UNK},
-	{"monkey", "FM-TOWNS",     0, GID_MONKEY,     5, 0, MDT_ADLIB,                        GF_AUDIOTRACKS, Common::kPlatformFMTowns},
-	{"monkey", "SEGA",         0, GID_MONKEY,     5, 0, MDT_NONE,                         GF_AUDIOTRACKS, Common::kPlatformSegaCD},
+	{"monkey", "VGA",      "vga", GID_MONKEY_VGA, 4, 0, MDT_PCSPK | MDT_ADLIB | MDT_MIDI, 0, UNK, GUIO_NOSPEECH},
+	{"monkey", "EGA",      "ega", GID_MONKEY_EGA, 4, 0, MDT_PCSPK | MDT_CMS | MDT_ADLIB | MDT_MIDI, GF_16COLOR,     Common::kPlatformPC, GUIO_NOSPEECH},
+	{"monkey", "No Adlib", "ega", GID_MONKEY_EGA, 4, 0, MDT_PCSPK,                        GF_16COLOR,     Common::kPlatformAtariST, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"monkey", "Demo",     "ega", GID_MONKEY_EGA, 4, 0, MDT_PCSPK | MDT_ADLIB,            GF_16COLOR,     Common::kPlatformPC, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"monkey", "CD",           0, GID_MONKEY,     5, 0, MDT_ADLIB,                        GF_AUDIOTRACKS, UNK, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"monkey", "FM-TOWNS",     0, GID_MONKEY,     5, 0, MDT_ADLIB,                        GF_AUDIOTRACKS, Common::kPlatformFMTowns, GUIO_NOSPEECH | GUIO_NOMIDI},
+	{"monkey", "SEGA",         0, GID_MONKEY,     5, 0, MDT_NONE,                         GF_AUDIOTRACKS, Common::kPlatformSegaCD, GUIO_NOSPEECH | GUIO_NOMIDI},
 
-	{"monkey2",  0, 0, GID_MONKEY2,  5, 0, MDT_ADLIB | MDT_MIDI, 0, UNK},
+	{"monkey2",  0, 0, GID_MONKEY2,  5, 0, MDT_ADLIB | MDT_MIDI, 0, UNK, GUIO_NOSPEECH},
 
-	{"atlantis", 0, 0, GID_INDY4,    5, 0, MDT_ADLIB | MDT_MIDI, 0, UNK},
+	{"atlantis", "" , 0, GID_INDY4,    5, 0, MDT_ADLIB | MDT_MIDI, 0, UNK, GUIO_NONE},
+	{"atlantis", "Floppy", 0, GID_INDY4,    5, 0, MDT_ADLIB | MDT_MIDI, 0, UNK, GUIO_NOSPEECH},
 
-	{"tentacle", 0, 0, GID_TENTACLE, 6, 0, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK},
+	{"tentacle", "", 0, GID_TENTACLE, 6, 0, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK, GUIO_NONE},
+	{"tentacle", "Floppy", 0, GID_TENTACLE, 6, 0, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK, GUIO_NOSPEECH},
 
-	{"samnmax",  0, 0, GID_SAMNMAX,  6, 0, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK},
+	{"samnmax",  "", 0, GID_SAMNMAX,  6, 0, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK, GUIO_NONE},
+	{"samnmax",  "Floppy", 0, GID_SAMNMAX,  6, 0, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK, GUIO_NOSPEECH},
 
 #ifdef ENABLE_SCUMM_7_8
-	{"ft",       0, 0, GID_FT,  7, 0, MDT_NONE, 0, UNK},
+	{"ft",       0, 0, GID_FT,  7, 0, MDT_NONE, 0, UNK, GUIO_NOMIDI},
 
-	{"dig",      0, 0, GID_DIG, 7, 0, MDT_NONE, 0, UNK},
+	{"dig",      0, 0, GID_DIG, 7, 0, MDT_NONE, 0, UNK, GUIO_NOMIDI},
 
-	{"comi",     0, 0, GID_CMI, 8, 0, MDT_NONE, 0, Common::kPlatformWindows},
+	{"comi",     0, 0, GID_CMI, 8, 0, MDT_NONE, 0, Common::kPlatformWindows, GUIO_NOMIDI},
 #endif
 
 	// Humongous Entertainment Scumm Version 6
-	{"activity", "", 0, GID_HEGAME, 6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK},
-	{"funpack",  0, 0, GID_FUNPACK, 6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK},
-	{"fbpack",   0, 0, GID_HEGAME,  6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK},
+	{"activity", "", 0, GID_HEGAME, 6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK, GUIO_NONE},
+	{"funpack",  0, 0, GID_FUNPACK, 6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK, GUIO_NONE},
+	{"fbpack",   0, 0, GID_HEGAME,  6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK, GUIO_NONE},
 
-	{"brstorm", 0, 0, GID_FBEAR, 6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK},
-	{"fbear", "HE 61", 0, GID_FBEAR, 6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK},
-	{"fbear", "HE 70", 0, GID_FBEAR, 6, 70, MDT_NONE,             GF_USE_KEY, Common::kPlatformWindows},
+	{"brstorm", 0, 0, GID_FBEAR, 6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK, GUIO_NONE},
+	{"fbear", "HE 61", 0, GID_FBEAR, 6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK, GUIO_NONE},
+	{"fbear", "HE 70", 0, GID_FBEAR, 6, 70, MDT_NONE,             GF_USE_KEY, Common::kPlatformWindows, GUIO_NOMIDI},
 
-	{"puttmoon", "", 0, GID_PUTTMOON, 6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK},
-	{"puttmoon", "HE 70", 0, GID_PUTTMOON, 6, 70, MDT_NONE,             GF_USE_KEY, Common::kPlatformWindows},
+	{"puttmoon", "", 0, GID_PUTTMOON, 6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK, GUIO_NONE},
+	{"puttmoon", "HE 70", 0, GID_PUTTMOON, 6, 70, MDT_NONE,             GF_USE_KEY, Common::kPlatformWindows, GUIO_NOMIDI},
 
-	{"puttputt", "HE 61", 0, GID_HEGAME,   6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK},
-	{"puttputt", "HE 60", 0, GID_HEGAME,   6, 60, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, Common::kPlatformPC},
-	{"puttputt", "Demo",  0, GID_PUTTDEMO, 6, 60, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK},
+	{"puttputt", "HE 60", 0, GID_HEGAME,   6, 60, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK, GUIO_NONE},
+	{"puttputt", "HE 61", 0, GID_HEGAME,   6, 61, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK, GUIO_NONE},
+	{"puttputt", "Demo",  0, GID_PUTTDEMO, 6, 60, MDT_ADLIB | MDT_MIDI, GF_USE_KEY, UNK, GUIO_NONE},
 
 	// The following are meant to be generic HE game variants and as such do
 	// not specify a game ID. Make sure that these are last in the table, else
 	// they'll override more specific entries that follow later on.
-	{"", "HE 70",   0, GID_HEGAME, 6,  70, MDT_NONE, GF_USE_KEY, UNK},
+	{"", "HE 70",   0, GID_HEGAME, 6,  70, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
 
 #ifdef ENABLE_HE
 	// HE CUP demos
-	{"", "HE CUP",  0, GID_HECUP,  6, 200, MDT_NONE, 0, UNK},
+	{"", "HE CUP",  0, GID_HECUP,  6, 200, MDT_NONE, 0, UNK, GUIO_NOMIDI | GUIO_NOSPEECH},
 
 	// Humongous Entertainment Scumm Version 7.1
 	// The first version to use 640x480 resolution and wizImages
 	// There are also 7.1 versions of freddemo, airdemo and farmdemo
-	{"catalog", "", 0, GID_HEGAME, 6, 71, MDT_NONE, GF_USE_KEY, UNK},
-	{"freddi", "", 0, GID_HEGAME, 6, 71, MDT_NONE, GF_USE_KEY, UNK},
+	{"catalog", "", 0, GID_HEGAME, 6, 71, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"freddi", "", 0, GID_HEGAME, 6, 71, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
 
 	// Humongous Entertainment Scumm Version 7.2
-	{"airport", "", 0, GID_HEGAME, 6, 72, MDT_NONE, GF_USE_KEY, UNK},
+	{"airport", "", 0, GID_HEGAME, 6, 72, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
 
 	// Changed o_getResourceSize to cover all resource types
-	{"farm", "", 0, GID_HEGAME, 6, 73, MDT_NONE, GF_USE_KEY, UNK},
-	{"jungle", "", 0, GID_HEGAME, 6, 73, MDT_NONE, GF_USE_KEY, UNK},
-	{"puttzoo", "", 0, GID_HEGAME, 6, 73, MDT_NONE, GF_USE_KEY, UNK},
+	{"farm", "", 0, GID_HEGAME, 6, 73, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"jungle", "", 0, GID_HEGAME, 6, 73, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"puttzoo", "", 0, GID_HEGAME, 6, 73, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
 
 	// Humongous Entertainment Scumm Version 8.0 ?  Scummsrc.80
-	{"freddi2", "", 0, GID_HEGAME, 6, 80, MDT_NONE, GF_USE_KEY, UNK},
-	{"pajama", "", 0, GID_HEGAME, 6, 80, MDT_NONE, GF_USE_KEY, UNK},
+	{"freddi2", "", 0, GID_HEGAME, 6, 80, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"pajama", "", 0, GID_HEGAME, 6, 80, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
 
-	{"balloon", "", 0, GID_HEGAME, 6, 80, MDT_NONE, GF_USE_KEY, UNK},
-	{"dog", "", 0, GID_HEGAME, 6, 80, MDT_NONE, GF_USE_KEY, UNK},
-	{"maze", "", 0, GID_HEGAME, 6, 80, MDT_NONE, GF_USE_KEY, UNK},
+	{"balloon", "", 0, GID_HEGAME, 6, 80, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"dog", "", 0, GID_HEGAME, 6, 80, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"maze", "", 0, GID_HEGAME, 6, 80, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
 
-	{"water", "",      0, GID_HEGAME, 6, 80, MDT_NONE, GF_USE_KEY, UNK},
+	{"water", "",      0, GID_HEGAME, 6, 80, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
 
 	// condMaskCode value changed in setUserCondition & setTalkCondition
-	{"putttime", "", 0, GID_HEGAME, 6, 85, MDT_NONE, GF_USE_KEY, UNK},
-	{"socks", "", 0, GID_HEGAME, 6, 85, MDT_NONE, GF_USE_KEY, UNK},
+	{"putttime", "", 0, GID_HEGAME, 6, 85, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"socks", "", 0, GID_HEGAME, 6, 85, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
 
 	// Humongous Entertainment Scumm Version 9.0 ?  Scummsys.90
-	{"baseball", "", 0, GID_HEGAME, 6, 90, MDT_NONE, GF_USE_KEY, UNK},
-	{"thinkerk", "", 0, GID_HEGAME, 6, 90, MDT_NONE, GF_USE_KEY, UNK},
-	{"thinker1", "", 0, GID_HEGAME, 6, 90, MDT_NONE, GF_USE_KEY, UNK},
-	{"spyfox", "", 0, GID_HEGAME, 6, 90, MDT_NONE, GF_USE_KEY, UNK},
+	{"baseball", "", 0, GID_HEGAME, 6, 90, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"thinkerk", "", 0, GID_HEGAME, 6, 90, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"thinker1", "", 0, GID_HEGAME, 6, 90, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"spyfox", "", 0, GID_HEGAME, 6, 90, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
 
-	{"freddi3", "", 0, GID_FREDDI3, 6, 90, MDT_NONE, GF_USE_KEY, UNK},
-	{"freddi3", "HE 99", 0, GID_FREDDI3, 6, 99, MDT_NONE, GF_USE_KEY, UNK},
+	{"freddi3", "", 0, GID_FREDDI3, 6, 90, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"freddi3", "HE 99", 0, GID_FREDDI3, 6, 99, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
 
 	// Humongous Entertainment Scumm Version 9.5 ?  Scummsys.95
-	{"pajama2", "", 0, GID_HEGAME, 6, 95, MDT_NONE, GF_USE_KEY, UNK},
-	{"chase", "", 0, GID_HEGAME, 6, 95, MDT_NONE, GF_USE_KEY, UNK},
+	{"pajama2", "", 0, GID_HEGAME, 6, 95, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"chase", "", 0, GID_HEGAME, 6, 95, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
 
 	// Humongous Entertainment Scumm Version 9.8 ?  Scummsys.98
 	// these and later games can easily be identified by the .(a) file instead of a .he1
 	// and INIB chunk in the .he0
-	{"lost", "", 0, GID_HEGAME, 6, 98, MDT_NONE, GF_USE_KEY, UNK},
+	{"lost", "", 0, GID_HEGAME, 6, 98, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
 
-	{"puttrace", "HE 98",   0, GID_PUTTRACE, 6, 98, MDT_NONE, GF_USE_KEY, UNK},
-	{"puttrace", "HE 98.5", 0, GID_PUTTRACE, 6, 98, MDT_NONE, GF_USE_KEY | GF_HE_985, UNK},
-	{"puttrace", "HE 99",   0, GID_PUTTRACE, 6, 99, MDT_NONE, GF_USE_KEY, UNK},
+	{"puttrace", "HE 98",   0, GID_PUTTRACE, 6, 98, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"puttrace", "HE 98.5", 0, GID_PUTTRACE, 6, 98, MDT_NONE, GF_USE_KEY | GF_HE_985, UNK, GUIO_NOMIDI},
+	{"puttrace", "HE 99",   0, GID_PUTTRACE, 6, 99, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
 
-	{"bluesabctime", "", 0, GID_HEGAME, 6, 98, MDT_NONE, GF_USE_KEY, UNK},
-	{"BluesBirthday", 0, 0, GID_BIRTHDAY, 6, 98, MDT_NONE, GF_USE_KEY, UNK},
-	{"soccer", "", 0, GID_SOCCER, 6, 98, MDT_NONE, GF_USE_KEY, UNK},
+	{"bluesabctime", "", 0, GID_HEGAME, 6, 98, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"BluesBirthday", 0, 0, GID_BIRTHDAY, 6, 98, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"soccer", "", 0, GID_SOCCER, 6, 98, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
 
 	// Global scripts increased to 2048
-	{"blues123time", "", 0, GID_HEGAME, 6, 98, MDT_NONE, GF_USE_KEY | GF_HE_985, UNK},
-	{"freddi4", "",       0, GID_HEGAME, 6, 98, MDT_NONE, GF_USE_KEY | GF_HE_985, UNK},
-	{"freddi4", "unenc",  0, GID_HEGAME, 6, 98, MDT_NONE,              GF_HE_985, UNK},
+	{"blues123time", "", 0, GID_HEGAME, 6, 98, MDT_NONE, GF_USE_KEY | GF_HE_985, UNK, GUIO_NOMIDI},
+	{"freddi4", "",       0, GID_HEGAME, 6, 98, MDT_NONE, GF_USE_KEY | GF_HE_985, UNK, GUIO_NOMIDI},
+	{"freddi4", "unenc",  0, GID_HEGAME, 6, 98, MDT_NONE,              GF_HE_985, UNK, GUIO_NOMIDI},
 
 	// Humongous Entertainment Scumm Version 9.9 ?  Scummsys.99
-	{"football", 0, 0, GID_FOOTBALL, 6, 99, MDT_NONE, GF_USE_KEY, UNK},
-	{"pajama3", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED, UNK},
-	{"puttcircus", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED, UNK},
-	{"spyfox2", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED, UNK},
-	{"mustard", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED, UNK},
+	{"football", 0, 0, GID_FOOTBALL, 6, 99, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"pajama3", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED, UNK, GUIO_NOMIDI},
+	{"puttcircus", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED, UNK, GUIO_NOMIDI},
+	{"spyfox2", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED, UNK, GUIO_NOMIDI},
+	{"mustard", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED, UNK, GUIO_NOMIDI},
 
 	// Added the use of fonts
-	{"FreddisFunShop", 0, 0, GID_FUNSHOP, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED, UNK},
-	{"SamsFunShop", 0, 0, GID_FUNSHOP, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED, UNK},
-	{"PuttsFunShop", 0, 0, GID_FUNSHOP, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED, UNK},
+	{"FreddisFunShop", 0, 0, GID_FUNSHOP, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED, UNK, GUIO_NOMIDI},
+	{"SamsFunShop", 0, 0, GID_FUNSHOP, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED, UNK, GUIO_NOMIDI},
+	{"PuttsFunShop", 0, 0, GID_FUNSHOP, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED, UNK, GUIO_NOMIDI},
 
 	// Added 16bit color
-	{"baseball2001", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK},
-	{"SoccerMLS", 0, 0, GID_SOCCER, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK},
-	{"spyozon", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_NOSUBTITLES | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK},
+	{"baseball2001", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK, GUIO_NOMIDI},
+	{"SoccerMLS", 0, 0, GID_SOCCER, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK, GUIO_NOMIDI},
+	{"spyozon", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK, GUIO_NOMIDI},
 
-	{"freddicove", "",       0, GID_HEGAME, 6,  99, MDT_NONE, GF_USE_KEY | GF_HE_NOSUBTITLES | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK},
-	{"freddicove", "unenc",  0, GID_HEGAME, 6,  99, MDT_NONE,              GF_HE_NOSUBTITLES | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK},
-	{"freddicove", "HE 100", 0, GID_HEGAME, 6, 100, MDT_NONE, GF_USE_KEY | GF_HE_NOSUBTITLES | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK},
+	{"freddicove", "",       0, GID_HEGAME, 6,  99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK, GUIO_NOMIDI},
+	{"freddicove", "unenc",  0, GID_HEGAME, 6,  99, MDT_NONE,              GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK, GUIO_NOMIDI},
+	{"freddicove", "HE 100", 0, GID_HEGAME, 6, 100, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK, GUIO_NOMIDI},
 
 	// Restructured the Scumm engine
-	{"pjgames", 0, 0, GID_HEGAME, 6, 100, MDT_NONE, GF_USE_KEY | GF_HE_NOSUBTITLES | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK},
+	{"pjgames", 0, 0, GID_HEGAME, 6, 100, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK, GUIO_NOMIDI},
 
 	// Uses smacker in external files, for testing only
-	{"arttime", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK},
-	{"readtime", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK},
-	{"BluesTreasureHunt", 0, 0, GID_TREASUREHUNT, 6, 99, MDT_NONE, GF_HE_LOCALIZED | GF_USE_KEY, UNK},
+	{"arttime", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK, GUIO_NOMIDI},
+	{"readtime", 0, 0, GID_HEGAME, 6, 99, MDT_NONE, GF_USE_KEY | GF_HE_LOCALIZED | GF_16BIT_COLOR, UNK, GUIO_NOMIDI},
+	{"BluesTreasureHunt", 0, 0, GID_TREASUREHUNT, 6, 99, MDT_NONE, GF_HE_LOCALIZED | GF_USE_KEY, UNK, GUIO_NOMIDI},
 
 	// Uses bink in external files for logos
-	{"Baseball2003", 0, 0, GID_HEGAME, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK},
-	{"basketball", 0, 0, GID_HEGAME, 6, 100, MDT_NONE, GF_USE_KEY| GF_16BIT_COLOR, UNK},
-	{"football2002", 0, 0, GID_FOOTBALL, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK},
-	{"Soccer2004", 0, 0, GID_SOCCER, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK},
+	{"Baseball2003", 0, 0, GID_HEGAME, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK, GUIO_NOMIDI},
+	{"basketball", 0, 0, GID_BASKETBALL, 6, 100, MDT_NONE, GF_USE_KEY| GF_16BIT_COLOR, UNK, GUIO_NOMIDI},
+	{"football2002", 0, 0, GID_FOOTBALL, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK, GUIO_NOMIDI},
+	{"Soccer2004", 0, 0, GID_SOCCER, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK, GUIO_NOMIDI},
 
 	// U32 code required, for testing only
-	{"moonbase", 0, 0, GID_MOONBASE, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK},
-	{"moonbase", "Demo", 0, GID_MOONBASE, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR | GF_DEMO, UNK},
+	{"moonbase", 0, 0, GID_MOONBASE, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR, UNK, GUIO_NOMIDI},
+	{"moonbase", "Demo", 0, GID_MOONBASE, 6, 100, MDT_NONE, GF_USE_KEY | GF_16BIT_COLOR | GF_DEMO, UNK, GUIO_NOMIDI},
 
 	// The following are meant to be generic HE game variants and as such do
 	// not specify a game ID. Make sure that these are last in the table, else
 	// they'll override more specific entries that follow later on.
-	{"", "HE 71",   0, GID_HEGAME, 6,  71, MDT_NONE, GF_USE_KEY, UNK},
-	{"", "HE 72",   0, GID_HEGAME, 6,  72, MDT_NONE, GF_USE_KEY, UNK},
-	{"", "HE 73",   0, GID_HEGAME, 6,  73, MDT_NONE, GF_USE_KEY, UNK},
-	{"", "HE 80",   0, GID_HEGAME, 6,  80, MDT_NONE, GF_USE_KEY, UNK},
-	{"", "HE 85",   0, GID_HEGAME, 6,  85, MDT_NONE, GF_USE_KEY, UNK},
-	{"", "HE 90",   0, GID_HEGAME, 6,  90, MDT_NONE, GF_USE_KEY, UNK},
-	{"", "HE 95",   0, GID_HEGAME, 6,  95, MDT_NONE, GF_USE_KEY, UNK},
-	{"", "HE 98",   0, GID_HEGAME, 6,  98, MDT_NONE, GF_USE_KEY, UNK},
-	{"", "HE 98.5", 0, GID_HEGAME, 6,  98, MDT_NONE, GF_USE_KEY | GF_HE_985, UNK},
-	{"", "HE 99",   0, GID_HEGAME, 6,  99, MDT_NONE, GF_USE_KEY, UNK},
-	{"", "HE 100",  0, GID_HEGAME, 6, 100, MDT_NONE, GF_USE_KEY, UNK},
+	{"", "HE 71",   0, GID_HEGAME, 6,  71, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"", "HE 72",   0, GID_HEGAME, 6,  72, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"", "HE 73",   0, GID_HEGAME, 6,  73, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"", "HE 80",   0, GID_HEGAME, 6,  80, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"", "HE 85",   0, GID_HEGAME, 6,  85, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"", "HE 90",   0, GID_HEGAME, 6,  90, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"", "HE 95",   0, GID_HEGAME, 6,  95, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"", "HE 98",   0, GID_HEGAME, 6,  98, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"", "HE 98.5", 0, GID_HEGAME, 6,  98, MDT_NONE, GF_USE_KEY | GF_HE_985, UNK, GUIO_NOMIDI},
+	{"", "HE 99",   0, GID_HEGAME, 6,  99, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
+	{"", "HE 100",  0, GID_HEGAME, 6, 100, MDT_NONE, GF_USE_KEY, UNK, GUIO_NOMIDI},
 #endif
-	{NULL, NULL, 0, 0, 0, MDT_NONE, 0, 0, UNK}
+	{NULL, NULL, 0, 0, 0, MDT_NONE, 0, 0, UNK, 0}
 };
 
 using Common::UNK_LANG;
@@ -491,6 +496,7 @@ static const GameFilenamePattern gameFilenamesTable[] = {
 	{ "puttputt", "puttdemo", kGenHEPC, UNK_LANG, UNK, 0 },
 	{ "puttputt", "Putt-Putt's Demo", kGenHEMacNoParens, UNK_LANG, Common::kPlatformMacintosh, 0 },
 	{ "puttputt", "Putt-Putt Parade", kGenHEMacNoParens, UNK_LANG, Common::kPlatformMacintosh, 0 },
+	{ "puttputt", "Putt-Putt", kGenHEMacNoParens, UNK_LANG, Common::kPlatformMacintosh, 0 },
 
 #ifdef ENABLE_HE
 	{ "airport", "airport", kGenHEPC, UNK_LANG, UNK, 0 },
@@ -575,6 +581,7 @@ static const GameFilenamePattern gameFilenamesTable[] = {
 	{ "freddi", "Freddi Fish", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
 	{ "freddi", "FreddiD", kGenHEPC, Common::NL_NLD, UNK, 0 },
 	{ "freddi", "Freddi Fisk", kGenHEMac, Common::SE_SWE, Common::kPlatformMacintosh, 0 },
+	{ "freddi", "FRITZI", kGenHEPC, Common::DE_DEU, UNK, 0 },
 	{ "freddi", "Marine Malice", kGenHEMac, Common::FR_FRA, Common::kPlatformMacintosh, 0 },
 	{ "freddi", "MM-DEMO", kGenHEPC, UNK_LANG, UNK, 0 },
 
@@ -720,6 +727,7 @@ static const GameFilenamePattern gameFilenamesTable[] = {
 	{ "puttcircus", "PuttIHC", kGenHEPC, Common::NL_NLD, UNK, 0 },
 	{ "puttcircus", "PuttPuttIHC", kGenHEMac, Common::NL_NLD, Common::kPlatformMacintosh, 0 },
 	{ "puttcircus", "PuttPuttJTC", kGenHEPC, UNK_LANG, UNK, 0 },
+	{ "puttcircus", "ToffToff", kGenHEPC, Common::DE_DEU, UNK, 0 },
 	{ "puttcircus", "ToffToffGZZ", kGenHEPC, Common::DE_DEU, UNK, 0 },
 
 	{ "puttrace", "puttrace", kGenHEPC, UNK_LANG, UNK, 0 },
@@ -734,6 +742,7 @@ static const GameFilenamePattern gameFilenamesTable[] = {
 	{ "puttrace", "Putt500", kGenHEMac, Common::NL_NLD, Common::kPlatformMacintosh, 0 },
 	{ "puttrace", "Putt500 demo", kGenHEMac, Common::NL_NLD, Common::kPlatformMacintosh, 0 },
 	{ "puttrace", "Putt Race", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
+	{ "puttrace", "ToffRenn", kGenHEPC, Common::DE_DEU, UNK, 0 },
 	{ "puttrace", "ToffRennen", kGenHEPC, Common::DE_DEU, UNK, 0 },
 	{ "puttrace", "ToffRennen", kGenHEMac, Common::DE_DEU, Common::kPlatformMacintosh, 0 },
 	{ "puttrace", "UKPuttRace", kGenHEPC, Common::RU_RUS, UNK, 0 }, // Russian
@@ -770,10 +779,13 @@ static const GameFilenamePattern gameFilenamesTable[] = {
 	{ "puttzoo", "puttzoo", kGenHEPC, UNK_LANG, UNK, 0 },
 	{ "puttzoo", "Puttzoo Demo", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
 	{ "puttzoo", "PuttZoo", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
+	{ "puttzoo", "T\xC3\x96""FFZOO", kGenHEPC, Common::DE_DEU, UNK, 0 },	// UTF-8 encoding
+	{ "puttzoo", "T\xD6""FFZOO", kGenHEPC, Common::DE_DEU, UNK, 0 },	// Windows encoding
 	{ "puttzoo", "T\xC3\xB6""ff-T\xC3\xB6""ff\xE2\x84\xA2 Zoo Demo", kGenHEMac, Common::DE_DEU, Common::kPlatformMacintosh, 0 },	// UTF-8 encoding
 	{ "puttzoo", "T\xF6""ff-T""\xF6""ff\x99 Zoo Demo", kGenHEMac, Common::DE_DEU, Common::kPlatformMacintosh, 0 },	// Windows encoding
 	{ "puttzoo", "zoodemo", kGenHEPC, UNK_LANG, UNK, 0 },
 	{ "puttzoo", "Zoo Demo", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
+	{ "puttzoo", "Putt-Putt Saves the Zoo", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },
 
 	{ "readtime", "Blue's Reading Time", kGenHEPC, UNK_LANG, UNK, 0 },
 	{ "readtime", "Blues-ReadingTime", kGenHEMac, UNK_LANG, Common::kPlatformMacintosh, 0 },

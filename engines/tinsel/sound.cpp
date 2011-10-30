@@ -40,6 +40,10 @@
 
 #include "sound/mixer.h"
 #include "sound/adpcm.h"
+#include "sound/vag.h"
+#include "sound/flac.h"
+#include "sound/mp3.h"
+#include "sound/vorbis.h"
 
 #include "gui/message.h"
 
@@ -51,7 +55,9 @@ extern LANGUAGE sampleLanguage;
 
 SoundManager::SoundManager(TinselEngine *vm) :
 	//_vm(vm),	// TODO: Enable this once global _vm var is gone
-	_sampleIndex(0), _sampleIndexLen(0) {
+	_sampleIndex(0), _sampleIndexLen(0),
+	_soundMode(kVOCMode)
+	{
 
 	for (int i = 0; i < kNumChannels; i++)
 		_channels[i].sampleNum = _channels[i].subSample = -1;
@@ -67,6 +73,7 @@ SoundManager::~SoundManager() {
  * @param type			type of sound (voice or sfx)
  * @param handle		sound handle
  */
+// playSample for DiscWorld 1
 bool SoundManager::playSample(int id, Audio::Mixer::SoundType type, Audio::SoundHandle *handle) {
 	// Floppy version has no sample file
 	if (_vm->getFeatures() & GF_FLOPPY)
@@ -100,23 +107,61 @@ bool SoundManager::playSample(int id, Audio::Mixer::SoundType type, Audio::Sound
 	if (_sampleStream.ioFailed())
 		error(FILE_IS_CORRUPT, _vm->getSampleFile(sampleLanguage));
 
-	// allocate a buffer
-	void *sampleBuf = malloc(sampleLen);
-	assert(sampleBuf);
+	if (TinselV1PSX) {
+		// Read the stream and create a VAG Audio stream
+		Audio::AudioStream *vagStream = new Audio::VagStream(_sampleStream.readStream(sampleLen), false, 44100);
 
-	// read all of the sample
-	if (_sampleStream.read(sampleBuf, sampleLen) != sampleLen)
-		error(FILE_IS_CORRUPT, _vm->getSampleFile(sampleLanguage));
+		// FIXME: Should set this in a different place ;)
+		_vm->_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, volSound);
+		//_vm->_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, soundVolumeMusic);
+		_vm->_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, volVoice);
 
-	// FIXME: Should set this in a different place ;)
-	_vm->_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, volSound);
-	//_vm->_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, soundVolumeMusic);
-	_vm->_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, volVoice);
+		// Play the audio stream
+		_vm->_mixer->playInputStream(type, &curChan.handle, vagStream);
+	} else {
+		// allocate a buffer
+		byte *sampleBuf = (byte *)malloc(sampleLen);
+		assert(sampleBuf);
 
+		// read all of the sample
+		if (_sampleStream.read(sampleBuf, sampleLen) != sampleLen)
+			error(FILE_IS_CORRUPT, _vm->getSampleFile(sampleLanguage));
 
-	// play it
-	_vm->_mixer->playRaw(type, &curChan.handle, sampleBuf, sampleLen, 22050,
-						 Audio::Mixer::FLAG_AUTOFREE | Audio::Mixer::FLAG_UNSIGNED);
+		// FIXME: Should set this in a different place ;)
+		_vm->_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, volSound);
+		//_vm->_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, soundVolumeMusic);
+		_vm->_mixer->setVolumeForSoundType(Audio::Mixer::kSpeechSoundType, volVoice);
+
+		Common::MemoryReadStream *compressedStream =
+			new Common::MemoryReadStream(sampleBuf, sampleLen, true);
+		Audio::AudioStream *sampleStream = 0;
+
+		// play it
+		switch (_soundMode) {
+		case kMP3Mode:
+			#ifdef USE_MAD
+			sampleStream = Audio::makeMP3Stream(compressedStream, true);
+			#endif
+			break;
+		case kVorbisMode:
+			#ifdef USE_VORBIS
+			sampleStream = Audio::makeVorbisStream(compressedStream, true);
+			#endif
+			break;
+		case kFlacMode:
+			#ifdef USE_FLAC
+			sampleStream = Audio::makeFlacStream(compressedStream, true);
+			#endif
+			break;
+		default:
+			_vm->_mixer->playRaw(type, &curChan.handle, sampleBuf, sampleLen, 22050,
+				Audio::Mixer::FLAG_AUTOFREE | Audio::Mixer::FLAG_UNSIGNED);
+			break;
+		}
+		if (sampleStream) {
+			_vm->_mixer->playInputStream(type, &curChan.handle, sampleStream);
+		}
+	}
 
 	if (handle)
 		*handle = curChan.handle;
@@ -124,6 +169,7 @@ bool SoundManager::playSample(int id, Audio::Mixer::SoundType type, Audio::Sound
 	return true;
 }
 
+// playSample for DiscWorld 2
 bool SoundManager::playSample(int id, int sub, bool bLooped, int x, int y, int priority,
 		Audio::Mixer::SoundType type, Audio::SoundHandle *handle) {
 
@@ -237,10 +283,30 @@ bool SoundManager::playSample(int id, int sub, bool bLooped, int x, int y, int p
 	if (_sampleStream.read(sampleBuf, sampleLen) != sampleLen)
 		error(FILE_IS_CORRUPT, _vm->getSampleFile(sampleLanguage));
 
-	Common::MemoryReadStream *sampleStream =
+	Common::MemoryReadStream *compressedStream =
 		new Common::MemoryReadStream(sampleBuf, sampleLen, true);
-	Audio::AudioStream *_stream =
-		makeADPCMStream(sampleStream, true, sampleLen, Audio::kADPCMTinsel6, 22050, 1, 24);
+	Audio::AudioStream *sampleStream = 0;
+
+	switch (_soundMode) {
+	case kMP3Mode:
+		#ifdef USE_MAD
+		sampleStream = Audio::makeMP3Stream(compressedStream, true);
+		#endif
+		break;
+	case kVorbisMode:
+		#ifdef USE_VORBIS
+		sampleStream = Audio::makeVorbisStream(compressedStream, true);
+		#endif
+		break;
+	case kFlacMode:
+		#ifdef USE_FLAC
+		sampleStream = Audio::makeFlacStream(compressedStream, true);
+		#endif
+		break;
+	default:
+		sampleStream = Audio::makeADPCMStream(compressedStream, true, sampleLen, Audio::kADPCMTinsel6, 22050, 1, 24);
+		break;
+	}
 
 	// FIXME: Should set this in a different place ;)
 	_vm->_mixer->setVolumeForSoundType(Audio::Mixer::kSFXSoundType, volSound);
@@ -255,10 +321,12 @@ bool SoundManager::playSample(int id, int sub, bool bLooped, int x, int y, int p
 	curChan->priority = priority;
 	curChan->lastStart = g_system->getMillis();
 	//                         /---Compression----\    Milis   BytesPerSecond
-	curChan->timeDuration = (((sampleLen * 64) / 25) * 1000) / (22050 * 2);
+	// not needed and won't work when using MP3/OGG/FLAC anyway
+	//curChan->timeDuration = (((sampleLen * 64) / 25) * 1000) / (22050 * 2);
 
 	// Play it
-	_vm->_mixer->playInputStream(type, &curChan->handle, _stream);
+	_vm->_mixer->playInputStream(type, &curChan->handle, sampleStream);
+
 	_vm->_mixer->setChannelVolume(curChan->handle, sndVol);
 	_vm->_mixer->setChannelBalance(curChan->handle, getPan(x));
 
@@ -325,7 +393,7 @@ int8 SoundManager::getPan(int x) {
  * @param id			Identifier of sample to be checked
  */
 bool SoundManager::sampleExists(int id) {
-	if (_vm->_mixer->isReady()) 	{
+	if (_vm->_mixer->isReady())	{
 		// make sure id is in range
 		if (id > 0 && id < _sampleIndexLen) {
 			// check for a sample index
@@ -399,14 +467,14 @@ void SoundManager::openSampleFiles(void) {
 	if (_vm->getFeatures() & GF_FLOPPY || _vm->getFeatures() & GF_DEMO)
 		return;
 
-	Common::File f;
+	TinselFile f;
 
 	if (_sampleIndex)
 		// already allocated
 		return;
 
 	// open sample index file in binary mode
-	if (f.open(_vm->getSampleIndex(sampleLanguage))) 	{
+	if (f.open(_vm->getSampleIndex(sampleLanguage)))	{
 		// get length of index file
 		f.seek(0, SEEK_END);		// move to end of file
 		_sampleIndexLen = f.pos();	// get file pointer
@@ -441,11 +509,35 @@ void SoundManager::openSampleFiles(void) {
 
 		// convert file size to size in DWORDs
 		_sampleIndexLen /= sizeof(uint32);
+
+		// Detect format of soundfile by looking at 1st sample-index
+		switch (_sampleIndex[0]) {
+		case MKID_BE(' 3PM'):
+			debugC(DEBUG_DETAILED, kTinselDebugSound, "Detected MP3 sound-data");
+			_soundMode = kMP3Mode;
+			break;
+
+		case MKID_BE(' GGO'):
+			debugC(DEBUG_DETAILED, kTinselDebugSound, "Detected OGG sound-data");
+			_soundMode = kVorbisMode;
+			break;
+
+		case MKID_BE('CLAF'):
+			debugC(DEBUG_DETAILED, kTinselDebugSound, "Detected FLAC sound-data");
+			_soundMode = kFlacMode;
+			break;
+
+		default:
+			debugC(DEBUG_DETAILED, kTinselDebugSound, "Detected original sound-data");
+			break;
+		}
+		// Normally the 1st sample-index points to nothing at all
+		_sampleIndex[0] = 0;
 	} else {
 		char buf[50];
 		sprintf(buf, CANNOT_FIND_FILE, _vm->getSampleIndex(sampleLanguage));
 		GUI::MessageDialog dialog(buf, "OK");
- 	 	dialog.runModal();
+		dialog.runModal();
 
 		error(CANNOT_FIND_FILE, _vm->getSampleIndex(sampleLanguage));
 	}
@@ -455,7 +547,7 @@ void SoundManager::openSampleFiles(void) {
 		char buf[50];
 		sprintf(buf, CANNOT_FIND_FILE, _vm->getSampleFile(sampleLanguage));
 		GUI::MessageDialog dialog(buf, "OK");
- 	 	dialog.runModal();
+		dialog.runModal();
 
 		error(CANNOT_FIND_FILE, _vm->getSampleFile(sampleLanguage));
 	}

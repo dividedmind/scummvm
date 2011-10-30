@@ -50,7 +50,6 @@ public:
 	KyraEngine_MR(OSystem *system, const GameFlags &flags);
 	~KyraEngine_MR();
 
-	//TODO: proper extended implementation of KyraEngine_v2::pauseEngineIntern.
 	// Idle animation time, item animations and album animations should be taken
 	// care of, but since those would just produce minor glitches it's not that
 	// important.
@@ -496,6 +495,7 @@ private:
 	bool _useFrameTable;
 
 	int o3a_setCharacterFrame(EMCState *script);
+	int o3a_playSoundEffect(EMCState *script);
 
 	// special shape code
 	int initAnimationShapes(uint8 *filedata);

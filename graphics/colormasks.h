@@ -146,9 +146,9 @@ struct ColorMasks<1555> {
 		kBlueBits   = 5,
 
 		kAlphaShift = kRedBits+kGreenBits+kBlueBits,
-		kRedShift   = kGreenBits+kBlueBits,
+		kRedShift   = 0,
 		kGreenShift = kBlueBits,
-		kBlueShift  = 0,
+		kBlueShift  = kGreenBits+kBlueBits,
 
 		kAlphaMask = ((1 << kAlphaBits) - 1) << kAlphaShift,
 		kRedMask   = ((1 << kRedBits) - 1) << kRedShift,
@@ -169,10 +169,17 @@ struct ColorMasks<4444> {
 		kGreenBits  = 4,
 		kBlueBits   = 4,
 
+#ifdef __PSP__	//PSP uses ABGR
+		kAlphaShift = kRedBits+kGreenBits+kBlueBits,
+		kRedShift   = 0,
+		kGreenShift = kRedBits,
+		kBlueShift  = kRedBits+kGreenBits,
+#else		//ARGB
 		kAlphaShift = kRedBits+kGreenBits+kBlueBits,
 		kRedShift   = kGreenBits+kBlueBits,
 		kGreenShift = kBlueBits,
 		kBlueShift  = 0,
+#endif
 
 		kAlphaMask = ((1 << kAlphaBits) - 1) << kAlphaShift,
 		kRedMask   = ((1 << kRedBits) - 1) << kRedShift,

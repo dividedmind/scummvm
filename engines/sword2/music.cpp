@@ -40,6 +40,7 @@
 #include "sound/flac.h"
 #include "sound/rate.h"
 #include "sound/wave.h"
+#include "sound/vag.h"
 
 #include "sword2/sword2.h"
 #include "sword2/defs.h"
@@ -49,7 +50,41 @@
 
 namespace Sword2 {
 
+// This class behaves like SeekableSubReadStream, except it remembers where the
+// previous read() or seek() took it, so that it can continue from that point
+// the next time. This is because we're frequently streaming two pieces of
+// music from the same file.
+
+class SafeSubReadStream : public Common::SeekableSubReadStream {
+protected:
+	uint32 _previousPos;
+public:
+	SafeSubReadStream(SeekableReadStream *parentStream, uint32 begin, uint32 end, bool disposeParentStream);
+	virtual uint32 read(void *dataPtr, uint32 dataSize);
+	virtual bool seek(int32 offset, int whence = SEEK_SET);
+};
+
+SafeSubReadStream::SafeSubReadStream(SeekableReadStream *parentStream, uint32 begin, uint32 end, bool disposeParentStream)
+	: SeekableSubReadStream(parentStream, begin, end, disposeParentStream) {
+	_previousPos = 0;
+}
+
+uint32 SafeSubReadStream::read(void *dataPtr, uint32 dataSize) {
+	uint32 result;
+	SeekableSubReadStream::seek(_previousPos);
+	result = SeekableSubReadStream::read(dataPtr, dataSize);
+	_previousPos = pos();
+	return result;
+}
+
+bool SafeSubReadStream::seek(int32 offset, int whence) {
+	bool result = SeekableSubReadStream::seek(offset, whence);
+	_previousPos = pos();
+	return result;
+}
+
 static Audio::AudioStream *makeCLUStream(Common::File *fp, int size);
+static Audio::AudioStream *makePSXCLUStream(Common::File *fp, int size);
 
 static Audio::AudioStream *getAudioStream(SoundFileHandle *fh, const char *base, int cd, uint32 id, uint32 *numSamples) {
 	bool alreadyOpen;
@@ -127,6 +162,11 @@ static Audio::AudioStream *getAudioStream(SoundFileHandle *fh, const char *base,
 		}
 	}
 
+	// FIXME: In the forest maze on Zombie Island, the scripts will often
+	// try to play song 451, which doesn't exist. We could easily substitute
+	// another for it here, but which one? There are roughly 250 musical
+	// cues to choose from.
+
 	uint32 pos = fh->idxTab[id * 3 + 0];
 	uint32 len = fh->idxTab[id * 3 + 1];
 	uint32 enc_len = fh->idxTab[id * 3 + 2];
@@ -147,27 +187,27 @@ static Audio::AudioStream *getAudioStream(SoundFileHandle *fh, const char *base,
 
 	fh->file.seek(pos, SEEK_SET);
 
-	Common::MemoryReadStream *tmp = 0;
+	SafeSubReadStream *tmp = 0;
 
 	switch (fh->fileType) {
 	case kCLUMode:
-		return makeCLUStream(&fh->file, enc_len);
+		if (Sword2Engine::isPsx())
+			return makePSXCLUStream(&fh->file, enc_len);
+		else
+			return makeCLUStream(&fh->file, enc_len);
 #ifdef USE_MAD
 	case kMP3Mode:
-		tmp = fh->file.readStream(enc_len);
-		assert(tmp);
+		tmp = new SafeSubReadStream(&fh->file, pos, pos + enc_len, false);
 		return Audio::makeMP3Stream(tmp, true);
 #endif
 #ifdef USE_VORBIS
 	case kVorbisMode:
-		tmp = fh->file.readStream(enc_len);
-		assert(tmp);
+		tmp = new SafeSubReadStream(&fh->file, pos, pos + enc_len, false);
 		return Audio::makeVorbisStream(tmp, true);
 #endif
 #ifdef USE_FLAC
 	case kFlacMode:
-		tmp = fh->file.readStream(enc_len);
-		assert(tmp);
+		tmp = new SafeSubReadStream(&fh->file, pos, pos + enc_len, false);
 		return Audio::makeFlacStream(tmp, true);
 #endif
 	default:
@@ -252,6 +292,16 @@ void CLUInputStream::refill() {
 
 Audio::AudioStream *makeCLUStream(Common::File *file, int size) {
 	return new CLUInputStream(file, size);
+}
+
+Audio::AudioStream *makePSXCLUStream(Common::File *file, int size) {
+
+	// Buffer audio file data, and ask MemoryReadStream to dispose of it
+	// when not needed anymore.
+
+	byte *buffer = (byte *)malloc(size);
+	file->read(buffer, size);
+	return new Audio::VagStream(new Common::MemoryReadStream(buffer, size, true));
 }
 
 // ----------------------------------------------------------------------------
@@ -549,9 +599,8 @@ void Sound::stopMusic(bool immediately) {
  * @return RD_OK or an error code
  */
 int32 Sound::streamCompMusic(uint32 musicId, bool loop) {
-	//Common::StackLock lock(_mutex);
+	Common::StackLock lock(_mutex);
 
-	_mutex.lock();
 	int cd = _vm->_resman->getCD();
 
 	if (loop)
@@ -607,7 +656,6 @@ int32 Sound::streamCompMusic(uint32 musicId, bool loop) {
 
 	// Don't start streaming if the volume is off.
 	if (isMusicMute()) {
-		_mutex.unlock();
 		return RD_OK;
 	}
 
@@ -615,20 +663,15 @@ int32 Sound::streamCompMusic(uint32 musicId, bool loop) {
 		_music[secondary]->fadeDown();
 	SoundFileHandle *fh = (cd == 1) ? &_musicFile[0] : &_musicFile[1];
 	fh->inUse = true;
-	_mutex.unlock();
 
 	MusicInputStream *tmp = new MusicInputStream(cd, fh, musicId, loop);
 
 	if (tmp->isReady()) {
-		_mutex.lock();
 		_music[primary] = tmp;
 		fh->inUse = false;
-		_mutex.unlock();
 		return RD_OK;
 	} else {
-		_mutex.lock();
 		fh->inUse = false;
-		_mutex.unlock();
 		delete tmp;
 		return RDERR_INVALIDFILENAME;
 	}

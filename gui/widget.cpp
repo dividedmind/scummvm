@@ -146,10 +146,14 @@ Widget *Widget::findWidgetInChain(Widget *w, const char *name) {
 }
 
 void Widget::setEnabled(bool e) {
-	if (e)
-		setFlags(WIDGET_ENABLED);
-	else
-		clearFlags(WIDGET_ENABLED);
+	if ((_flags & WIDGET_ENABLED) != e) {
+		if (e)
+			setFlags(WIDGET_ENABLED);
+		else
+			clearFlags(WIDGET_ENABLED);
+
+		_boss->draw();
+	}
 }
 
 bool Widget::isEnabled() const {
@@ -188,7 +192,7 @@ StaticTextWidget::StaticTextWidget(GuiObject *boss, const Common::String &name, 
 	_type = kStaticTextWidget;
 	_label = text;
 
-	_align = (Graphics::TextAlign)g_gui.xmlEval()->getVar(name + ".Align", Graphics::kTextAlignLeft);
+	_align = g_gui.xmlEval()->getWidgetTextHAlign(name);
 }
 
 void StaticTextWidget::setValue(int value) {
@@ -224,7 +228,7 @@ void StaticTextWidget::drawWidget() {
 #pragma mark -
 
 ButtonWidget::ButtonWidget(GuiObject *boss, int x, int y, int w, int h, const Common::String &label, uint32 cmd, uint8 hotkey)
-	: StaticTextWidget(boss, x, y, w, h, label, Graphics::kTextAlignCenter), CommandSender(boss), 
+	: StaticTextWidget(boss, x, y, w, h, label, Graphics::kTextAlignCenter), CommandSender(boss),
 	  _cmd(cmd), _hotkey(hotkey) {
 	setFlags(WIDGET_ENABLED/* | WIDGET_BORDER*/ | WIDGET_CLEARBG);
 	_type = kButtonWidget;

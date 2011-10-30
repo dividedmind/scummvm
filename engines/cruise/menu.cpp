@@ -23,6 +23,7 @@
  *
  */
 
+#include "cruise/cruise.h"
 #include "cruise/cruise_main.h"
 #include "cruise/staticres.h"
 
@@ -41,7 +42,7 @@ menuStruct *createMenu(int X, int Y, const char *menuName) {
 	entry->stringPtr = menuName;
 	entry->numElements = 0;
 	entry->ptrNextElement = NULL;
-	entry->gfx = renderText(160, (const uint8 *)menuName);
+	entry->gfx = renderText(160, menuName);
 
 	return entry;
 }
@@ -100,9 +101,9 @@ void addSelectableMenuEntry(int ovlIdx, int headerIdx, menuStruct *pMenu, int pa
 
 		pNewElement->string = menuText;
 		pNewElement->next = NULL;
-		pNewElement->varC = 0;
+		pNewElement->selected = false;
 		pNewElement->color = color;
-		pNewElement->gfx = renderText(160, (const uint8 *)menuText);
+		pNewElement->gfx = renderText(160, menuText);
 
 		if (var_6 == NULL) {
 			pMenu->ptrNextElement = pNewElement;
@@ -128,13 +129,13 @@ void updateMenuMouse(int mouseX, int mouseY, menuStruct *pMenu) {
 			menuElementStruct *pCurrentEntry = pMenu->ptrNextElement;
 
 			while (pCurrentEntry) {
-				pCurrentEntry->varC = 0;
+				pCurrentEntry->selected = false;
 
 				if (var_2 == 0) {
 					if ((mouseX > pCurrentEntry->x) && ((pCurrentEntry->x + 160) >= mouseX)) {
 						if ((mouseY > pCurrentEntry->y) && ((pCurrentEntry->y + height) >= mouseY)) {
 							var_2 = 1;
-							pCurrentEntry->varC = 1;
+							pCurrentEntry->selected = true;
 						}
 					}
 				}
@@ -145,7 +146,7 @@ void updateMenuMouse(int mouseX, int mouseY, menuStruct *pMenu) {
 	}
 }
 
-void manageEvents();
+bool manageEvents();
 
 int processMenu(menuStruct *pMenu) {
 	int16 mouseX;
@@ -178,6 +179,7 @@ int processMenu(menuStruct *pMenu) {
 		flipScreen();
 
 		manageEvents();
+		g_system->delayMillis(10);
 
 //    readKeyboard();
 	} while (!si);
@@ -204,11 +206,9 @@ int playerMenu(int menuX, int menuY) {
 	int retourMenu;
 	//int restartGame = 0;
 
-	if (entrerMenuJoueur && displayOn) {
+	if (playerMenuEnabled && displayOn) {
 		if (remdo) {
-			musicName[0] = 0;
-			playMusic2 = 0;
-			playMusic = 0;
+			_vm->sound().stopMusic();
 			freeStuff2();
 		}
 		/*
@@ -236,19 +236,16 @@ int playerMenu(int menuX, int menuY) {
 		    linkedRelation = 0; */
 		freeDisk();
 
-		// Get the correct string set to use
-		const char **sl = getStringList();
-
-		menuTable[0] = createMenu(menuX, menuY, sl[SL_MENU]);
+		menuTable[0] = createMenu(menuX, menuY, _vm->langString(ID_PLAYER_MENU));
 		ASSERT(menuTable[0]);
 
 		//addSelectableMenuEntry(0, 3, menuTable[0], 1, -1, "Save game disk");
 		if (userEnabled) {
-			addSelectableMenuEntry(0, 4, menuTable[0], 1, -1, sl[SL_SAVE]);
+			addSelectableMenuEntry(0, 4, menuTable[0], 1, -1, _vm->langString(ID_SAVE));
 		}
-		addSelectableMenuEntry(0, 5, menuTable[0], 1, -1, sl[SL_LOAD]);
-		addSelectableMenuEntry(0, 6, menuTable[0], 1, -1, sl[SL_RESTART]);
-		addSelectableMenuEntry(0, 7, menuTable[0], 1, -1, sl[SL_QUIT]);
+		addSelectableMenuEntry(0, 5, menuTable[0], 1, -1, _vm->langString(ID_LOAD));
+		addSelectableMenuEntry(0, 6, menuTable[0], 1, -1, _vm->langString(ID_RESTART));
+		addSelectableMenuEntry(0, 7, menuTable[0], 1, -1, _vm->langString(ID_QUIT));
 
 		retourMenu = processMenu(menuTable[0]);
 
@@ -259,28 +256,27 @@ int playerMenu(int menuX, int menuY) {
 		case 3: // select save drive
 			break;
 		case 4: // save
-			saveSavegameData(0);
+			saveSavegameData(0, "Default Save");
 			break;
 		case 5: // load
 			loadSavegameData(0);
 			break;
 		case 6: // restart
+			_vm->sound().fadeOutMusic();
+			Op_FadeOut();
+			memset(globalScreen, 0, 320 * 200);
+			initVars();
+			_vm->initAllData();
+			changeCursor(CURSOR_NORMAL);
+			userEnabled = 0;
 			break;
 		case 7: // exit
-			exit(0);
+			return 1;
 			break;
 		}
 	}
 
 	return 0;
-}
-
-void freeGfx(gfxEntryStruct *pGfx) {
-	if (pGfx->imagePtr) {
-		free(pGfx->imagePtr);
-	}
-
-	free(pGfx);
 }
 
 void freeMenu(menuStruct *pMenu) {

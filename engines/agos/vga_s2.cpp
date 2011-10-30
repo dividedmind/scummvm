@@ -28,6 +28,8 @@
 #include "agos/agos.h"
 #include "agos/intern.h"
 
+#include "graphics/surface.h"
+
 namespace AGOS {
 
 void AGOSEngine_Simon2::setupVideoOpcodes(VgaOpcodeProc *op) {
@@ -51,14 +53,6 @@ void AGOSEngine_Simon2::setupVideoOpcodes(VgaOpcodeProc *op) {
 
 void AGOSEngine::vc56_delayLong() {
 	uint16 num = vcReadVarOrWord() * _frameCount;
-
-	if (getGameType() == GType_FF && _currentTable) {
-		// WORKAROUND: When the repair man comes to fix the car, the game doesn't
-		// wait long enough for the screen to completely scroll to the left side.
-		if (_currentTable->id == 20438 && _vgaCurSpriteId == 13 && _vgaCurZoneNum == 2) {
-			num *= 2;
-		}
-	}
 
 	addVgaEvent(num + _vgaBaseDelay, ANIMATE_EVENT, _vcPtr, _vgaCurSpriteId, _vgaCurZoneNum);
 	_vcPtr = (byte *)&_vcGetOutOfCode;
@@ -215,6 +209,24 @@ void AGOSEngine::vc73_setMark() {
 
 void AGOSEngine::vc74_clearMark() {
 	_marks &= ~(1 << vcReadNextWord());
+}
+
+void AGOSEngine_Simon2::clearVideoWindow(uint16 num, uint16 color) {
+	const uint16 *vlut = &_videoWindows[num * 4];
+
+	uint16 xoffs = vlut[0] * 16;
+	uint16 yoffs = vlut[1];
+	uint16 dstWidth = _videoWindows[18] * 16;
+	byte *dst = (byte *)_window4BackScn->pixels + xoffs + yoffs * dstWidth;
+
+	setMoveRect(0, 0, vlut[2] * 16, vlut[3]);
+
+	for (uint h = 0; h < vlut[3]; h++) {
+		memset(dst, color, vlut[2] * 16);
+		dst += dstWidth;
+	}
+
+	_window4Flag = 1;
 }
 
 } // End of namespace AGOS

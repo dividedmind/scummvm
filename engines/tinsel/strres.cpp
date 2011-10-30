@@ -25,6 +25,7 @@
  */
 
 #include "tinsel/dw.h"
+#include "tinsel/drives.h"
 #include "tinsel/sound.h"
 #include "tinsel/strres.h"
 #include "common/file.h"
@@ -80,7 +81,7 @@ LANGUAGE textLanguage, sampleLanguage = TXT_ENGLISH;
  * @param newLang			The new language
  */
 void ChangeLanguage(LANGUAGE newLang) {
-	Common::File f;
+	TinselFile f;
 	uint32 textLen = 0;	// length of buffer
 
 	textLanguage = newLang;
@@ -100,7 +101,7 @@ void ChangeLanguage(LANGUAGE newLang) {
 			char buf[50];
 			sprintf(buf, CANNOT_FIND_FILE, _vm->getTextFile(newLang));
 			GUI::MessageDialog dialog(buf, "OK");
- 	 		dialog.runModal();
+			dialog.runModal();
 
 			error(CANNOT_FIND_FILE, _vm->getTextFile(newLang));
 		}
@@ -138,7 +139,7 @@ void ChangeLanguage(LANGUAGE newLang) {
 		// close the file
 		f.close();
 	} else {	// the file must be compressed
-		error("Compression handling has been removed!");
+		error("Compression handling has been removed");
 	}
 }
 

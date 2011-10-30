@@ -27,13 +27,16 @@
 #define GOB_VIDEOPLAYER_H
 
 #include "common/array.h"
+#include "common/str.h"
 
-#include "gob/coktelvideo.h"
-#include "gob/dataio.h"
+#include "graphics/video/coktelvideo/coktelvideo.h"
+
+#include "gob/util.h"
 
 namespace Gob {
 
 class GobEngine;
+class DataStream;
 
 class VideoPlayer {
 public:
@@ -42,7 +45,8 @@ public:
 		kFlagUseBackSurfaceContent = 0x40,
 		kFlagFrontSurface = 0x80,
 		kFlagNoVideo = 0x100,
-		kFlagOtherSurface = 0x800
+		kFlagOtherSurface = 0x800,
+		kFlagScreenSurface = 0x400000
 	};
 
 	enum Type {
@@ -56,12 +60,17 @@ public:
 	~VideoPlayer();
 
 	bool primaryOpen(const char *videoFile, int16 x = -1, int16 y = -1,
-			int16 flags = kFlagFrontSurface, Type which = kVideoTypeTry);
-	void primaryPlay(int16 startFrame = -1, int16 lastFrame = -1, int16 breakKey = 27,
+			int32 flags = kFlagFrontSurface, Type which = kVideoTypeTry);
+	bool primaryPlay(int16 startFrame = -1, int16 lastFrame = -1,
+			int16 breakKey = kShortKeyEscape,
 			uint16 palCmd = 8, int16 palStart = 0, int16 palEnd = 255,
 			int16 palFrame = -1, int16 endFrame = -1, bool fade = false,
 			int16 reverseTo = -1, bool forceSeek = false);
 	void primaryClose();
+
+	void playFrame(int16 frame, int16 breakKey = kShortKeyEscape,
+			uint16 palCmd = 8, int16 palStart = 0, int16 palEnd = 255,
+			int16 palFrame = -1 , int16 endFrame = -1, bool noRetrace = false);
 
 	int slotOpen(const char *videoFile, Type which = kVideoTypeTry);
 	void slotPlay(int slot, int16 frame = -1);
@@ -70,10 +79,13 @@ public:
 			uint16 left, uint16 top, uint16 width, uint16 height,
 			uint16 x, uint16 y, uint16 pitch, int16 transp = -1);
 	void slotCopyPalette(int slot, int16 palStart = -1, int16 palEnd = -1);
-	void slotWaitEndFrame(int slot, bool onlySound = false);
+	void slotWaitEndFrame(int slot = -1, bool onlySound = false);
+
+	void slotSetDoubleMode(int slot, bool doubleMode);
 
 	bool slotIsOpen(int slot) const;
 
+	const char *getFileName(int slot = -1) const;
 	uint16 getFlags(int slot = -1) const;
 	int16 getFramesCount(int slot = -1) const;
 	int16 getCurrentFrame(int slot = -1) const;
@@ -82,13 +94,14 @@ public:
 	int16 getDefaultX(int slot = -1) const;
 	int16 getDefaultY(int slot = -1) const;
 
+	Graphics::CoktelVideo::State getState(int slot = -1) const;
+	uint32 getFeatures(int slot = -1) const;
+
 	bool hasExtraData(const char *fileName, int slot = -1) const;
 	Common::MemoryReadStream *getExtraData(const char *fileName, int slot = -1);
 
 	void writeVideoInfo(const char *videoFile, int16 varX, int16 varY,
 			int16 varFrames, int16 varWidth, int16 varHeight);
-
-	void notifyPaused(uint32 duration);
 
 private:
 	class Video {
@@ -102,9 +115,11 @@ private:
 			bool isOpen() const;
 
 			const char *getFileName() const;
-			CoktelVideo *getVideo();
-			const CoktelVideo *getVideo() const;
-			CoktelVideo::State getState() const;
+			Graphics::CoktelVideo *getVideo();
+			const Graphics::CoktelVideo *getVideo() const;
+
+			Graphics::CoktelVideo::State getState() const;
+			uint32 getFeatures() const;
 
 			int16 getDefaultX() const;
 			int16 getDefaultY() const;
@@ -112,15 +127,15 @@ private:
 			bool hasExtraData(const char *fileName) const;
 			Common::MemoryReadStream *getExtraData(const char *fileName);
 
-			CoktelVideo::State nextFrame();
+			Graphics::CoktelVideo::State nextFrame();
 
 		private:
 			GobEngine *_vm;
 
-			char *_fileName;
+			Common::String _fileName;
 			DataStream *_stream;
-			CoktelVideo *_video;
-			CoktelVideo::State _state;
+			Graphics::CoktelVideo *_video;
+			Graphics::CoktelVideo::State _state;
 			int16 _defaultX, _defaultY;
 	};
 
@@ -130,9 +145,12 @@ private:
 
 	Common::Array<Video *> _videoSlots;
 	Video *_primaryVideo;
+	bool _ownSurf;
 	bool _backSurf;
 	bool _needBlit;
 	bool _noCursorSwitch;
+
+	bool _woodruffCohCottWorkaround;
 
 	bool findFile(char *fileName, Type &which);
 
@@ -141,11 +159,11 @@ private:
 
 	int getNextFreeSlot();
 
-	void copyPalette(CoktelVideo &video, int16 palStart = -1, int16 palEnd = -1);
+	void copyPalette(Graphics::CoktelVideo &video, int16 palStart = -1, int16 palEnd = -1);
 	bool doPlay(int16 frame, int16 breakKey,
 			uint16 palCmd, int16 palStart, int16 palEnd,
-			int16 palFrame, int16 endFrame);
-	void evalBgShading(CoktelVideo &video);
+			int16 palFrame, int16 endFrame, bool noRetrace = false);
+	void evalBgShading(Graphics::CoktelVideo &video);
 };
 
 } // End of namespace Gob

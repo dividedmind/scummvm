@@ -27,10 +27,22 @@
 
 //////////////////////////////////////////////////////////////////////
 
-#include <nds/jtypes.h>
+#include <nds/ndstypes.h>
 #include <nds/ipc.h>
 
 //////////////////////////////////////////////////////////////////////
+
+
+
+
+//---------------------------------------------------------------------------------
+typedef struct sTransferSound {
+//---------------------------------------------------------------------------------
+  TransferSoundData data[16];
+  u8 count;
+  u8 PADDING[3];
+} TransferSound, * pTransferSound;
+
 
 
 typedef struct _adpcmBuffer {

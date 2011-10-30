@@ -123,9 +123,9 @@ bool Resource::reset() {
 		if (_vm->gameFlags().useInstallerPackage)
 			_files.add("installer", loadInstallerArchive("WESTWOOD", "%d", 0), 2, false);
 
-		if (!_vm->gameFlags().isTalkie) {
+		if (!_vm->gameFlags().isTalkie && !_vm->gameFlags().isDemo) {
 			static const char * const list[] = {
-				"GENERAL.PAK", "STARTUP.PAK", 0
+				"GENERAL.PAK", 0
 			};
 
 			loadProtectedFiles(list);

@@ -29,7 +29,6 @@
 namespace Kyra {
 
 void KyraEngine_MR::showBadConscience() {
-	debugC(9, kDebugLevelMain, "KyraEngine_MR::showBadConscience()");
 	if (_badConscienceShown)
 		return;
 
@@ -43,7 +42,8 @@ void KyraEngine_MR::showBadConscience() {
 		_badConscienceAnim = 6;
 	else if (_currentChapter == 5 && _rnd.getRandomNumberRng(1, 100) <= 25)
 		_badConscienceAnim = 7;
-	else if (_characterShapeFile == 9)
+
+	if (_characterShapeFile == 9)
 		_badConscienceAnim = 4;
 
 	_badConsciencePosition = (_mainCharacter.x1 <= 160);
@@ -91,7 +91,6 @@ void KyraEngine_MR::showBadConscience() {
 }
 
 void KyraEngine_MR::hideBadConscience() {
-	debugC(9, kDebugLevelMain, "KyraEngine_MR::hideBadConscience()");
 	if (!_badConscienceShown)
 		return;
 
@@ -110,8 +109,6 @@ void KyraEngine_MR::hideBadConscience() {
 }
 
 void KyraEngine_MR::showGoodConscience() {
-	debugC(9, kDebugLevelMain, "KyraEngine_MR::showGoodConscience()");
-
 	if (_goodConscienceShown)
 		return;
 
@@ -165,7 +162,6 @@ void KyraEngine_MR::showGoodConscience() {
 }
 
 void KyraEngine_MR::hideGoodConscience() {
-	debugC(9, kDebugLevelMain, "KyraEngine_MR::hideGoodConscience()");
 	if (!_goodConscienceShown)
 		return;
 
@@ -184,7 +180,6 @@ void KyraEngine_MR::hideGoodConscience() {
 }
 
 void KyraEngine_MR::eelScript() {
-	debugC(9, kDebugLevelMain, "KyraEngine_MR::eelScript()");
 	if (_chatText)
 		return;
 	_screen->hideMouse();
@@ -193,8 +188,8 @@ void KyraEngine_MR::eelScript() {
 		hideInventory();
 	removeHandItem();
 
-	objectChat((const char*)getTableEntry(_cCodeFile, 35), 0, 204, 35);
-	objectChat((const char*)getTableEntry(_cCodeFile, 40), 0, 204, 40);
+	objectChat((const char *)getTableEntry(_cCodeFile, 35), 0, 204, 35);
+	objectChat((const char *)getTableEntry(_cCodeFile, 40), 0, 204, 40);
 
 	setGameFlag(0xD1);
 
@@ -222,7 +217,6 @@ void KyraEngine_MR::eelScript() {
 	default:
 		resetGameFlag(0x171);
 		runAnimationScript("EELS00.EMC", 0, 0, 1, 1);
-		break;
 	}
 
 	changeChapter(2, 29, 0, 4);
@@ -230,7 +224,6 @@ void KyraEngine_MR::eelScript() {
 }
 
 int KyraEngine_MR::initAnimationShapes(uint8 *filedata) {
-	debugC(9, kDebugLevelAnimator, "KyraEngine_MR::initAnimationShapes(%p)", (const void*)filedata);
 	const int lastEntry = MIN(_animShapeLastEntry, 41);
 	for (int i = 0; i < lastEntry; ++i)
 		_gameShapes[9+i] = _screen->getPtrToShape(filedata, i);
@@ -238,7 +231,6 @@ int KyraEngine_MR::initAnimationShapes(uint8 *filedata) {
 }
 
 void KyraEngine_MR::uninitAnimationShapes(int count, uint8 *filedata) {
-	debugC(9, kDebugLevelAnimator, "KyraEngine_MR::uninitAnimationShapes(%d, %p)", count, (const void*)filedata);
 	for (int i = 0; i < count; ++i)
 		_gameShapes[9+i] = 0;
 	delete[] filedata;

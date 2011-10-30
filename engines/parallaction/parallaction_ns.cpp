@@ -28,12 +28,17 @@
 #include "common/config-manager.h"
 
 #include "parallaction/parallaction.h"
+#include "parallaction/exec.h"
 #include "parallaction/input.h"
+#include "parallaction/parser.h"
 #include "parallaction/saveload.h"
 #include "parallaction/sound.h"
+#include "parallaction/walk.h"
 
 
 namespace Parallaction {
+
+#define INITIAL_FREE_SARCOPHAGUS_SLOT_X	200
 
 
 class LocationName {
@@ -142,7 +147,7 @@ void LocationName::bind(const char *s) {
 }
 
 Parallaction_ns::Parallaction_ns(OSystem* syst, const PARALLACTIONGameDescription *gameDesc) : Parallaction(syst, gameDesc),
-	_locationParser(0), _programParser(0) {
+	_locationParser(0), _programParser(0), _walker(0) {
 }
 
 Common::Error Parallaction_ns::init() {
@@ -164,11 +169,13 @@ Common::Error Parallaction_ns::init() {
 	if (getPlatform() == Common::kPlatformPC) {
 		int midiDriver = MidiDriver::detectMusicDriver(MDT_MIDI | MDT_ADLIB | MDT_PREFER_MIDI);
 		MidiDriver *driver = MidiDriver::createMidi(midiDriver);
-		_soundMan = new DosSoundMan(this, driver);
-		_soundMan->setMusicVolume(ConfMan.getInt("music_volume"));
+		_soundManI = new DosSoundMan_ns(this, driver);
+		_soundManI->setMusicVolume(ConfMan.getInt("music_volume"));
 	} else {
-		_soundMan = new AmigaSoundMan(this);
+		_soundManI = new AmigaSoundMan_ns(this);
 	}
+
+	_soundMan = new SoundMan(_soundManI);
 
 	initResources();
 	initFonts();
@@ -178,13 +185,13 @@ Common::Error Parallaction_ns::init() {
 	_programParser->init();
 
 	_cmdExec = new CommandExec_ns(this);
-	_cmdExec->init();
 	_programExec = new ProgramExec_ns(this);
-	_programExec->init();
 
-	_introSarcData1 = 0;
-	_introSarcData2 = 1;
-	_introSarcData3 = 200;
+	_walker = new PathWalker_NS;
+
+	_sarcophagusDeltaX = 0;
+	_movingSarcophagus = false;
+	_freeSarcophagusSlotX = INITIAL_FREE_SARCOPHAGUS_SLOT_X;
 
 	num_foglie = 0;
 
@@ -195,6 +202,11 @@ Common::Error Parallaction_ns::init() {
 
 	_saveLoad = new SaveLoad_ns(this, _saveFileMan);
 
+	initInventory();
+	setupBalloonManager();
+
+	_score = 1;
+
 	Parallaction::init();
 
 	return Common::kNoError;
@@ -204,11 +216,15 @@ Parallaction_ns::~Parallaction_ns() {
 	freeFonts();
 	freeCharacter();
 
+	destroyInventory();
+
 	delete _locationParser;
 	delete _programParser;
 	freeLocation(true);
 
 	_location._animations.remove(_char._ani);
+
+	delete _walker;
 }
 
 
@@ -232,6 +248,28 @@ void Parallaction_ns::callFunction(uint index, void* parm) {
 	(this->*_callables[index])(parm);
 }
 
+bool Parallaction_ns::processGameEvent(int event) {
+	if (event == kEvNone) {
+		return true;
+	}
+
+	bool c = true;
+	_input->stopHovering();
+
+	switch(event) {
+	case kEvSaveGame:
+		_saveLoad->saveGame();
+		break;
+
+	case kEvLoadGame:
+		_saveLoad->loadGame();
+		break;
+	}
+
+	_input->setArrowCursor();
+
+	return c;
+}
 
 Common::Error Parallaction_ns::go() {
 	_saveLoad->renameOldSavefiles();
@@ -247,9 +285,7 @@ Common::Error Parallaction_ns::go() {
 	return Common::kNoError;
 }
 
-void Parallaction_ns::switchBackground(const char* background, const char* mask) {
-//	printf("switchBackground(%s)", name);
-
+void Parallaction_ns::changeBackground(const char* background, const char* mask, const char* path) {
 	Palette pal;
 
 	uint16 v2 = 0;
@@ -265,16 +301,20 @@ void Parallaction_ns::switchBackground(const char* background, const char* mask)
 		_gfx->updateScreen();
 	}
 
-	setBackground(background, mask, mask);
+	if (path == 0) {
+		path = mask;
+	}
 
-	return;
+	BackgroundInfo *info = new BackgroundInfo;
+	_disk->loadScenery(*info, background, mask, path);
+	_gfx->setBackground(kBackgroundLocation, info);
 }
 
 
 void Parallaction_ns::runPendingZones() {
 	if (_activeZone) {
 		ZonePtr z = _activeZone;	// speak Zone or sound
-		_activeZone = nullZonePtr;
+		_activeZone.reset();
 		runZone(z);
 	}
 }
@@ -282,18 +322,26 @@ void Parallaction_ns::runPendingZones() {
 //	changeLocation handles transitions between locations, and is able to display slides
 //	between one and the other.
 //
-void Parallaction_ns::changeLocation(char *location) {
+void Parallaction_ns::changeLocation() {
+    if (_newLocationName.empty()) {
+        return;
+    }
+
+    char location[200];
+    strcpy(location, _newLocationName.c_str());
+    strcpy(_location._name, _newLocationName.c_str());
+
 	debugC(1, kDebugExec, "changeLocation(%s)", location);
 
 	MouseTriState oldMouseState = _input->getMouseState();
 	_input->setMouseState(MOUSE_DISABLED);
 
-	_soundMan->playLocationMusic(location);
+	_soundManI->playLocationMusic(location);
 
 	_input->stopHovering();
 	_gfx->freeLabels();
 
-	_zoneTrap = nullZonePtr;
+	_zoneTrap.reset();
 
 	_input->setArrowCursor();
 
@@ -317,7 +365,7 @@ void Parallaction_ns::changeLocation(char *location) {
 
 	if (locname.hasSlide()) {
 		showSlide(locname.slide());
-		uint id = _gfx->createLabel(_menuFont, _location._slideText[0], 1);
+		uint id = _gfx->createLabel(_menuFont, _location._slideText[0].c_str(), 1);
 		_gfx->showLabel(id, CENTER_LABEL_HORIZONTAL, 14);
 		_gfx->updateScreen();
 
@@ -355,13 +403,14 @@ void Parallaction_ns::changeLocation(char *location) {
 	_cmdExec->run(_location._aCommands);
 
 	if (_location._hasSound)
-		_soundMan->playSfx(_location._soundFile, 0, true);
+		_soundManI->playSfx(_location._soundFile, 0, true);
 
 	if (!_intro) {
 		_input->setMouseState(oldMouseState);
 	}
 
 	debugC(1, kDebugExec, "changeLocation() done");
+	_newLocationName.clear();
 }
 
 
@@ -381,7 +430,7 @@ void Parallaction_ns::parseLocation(const char *filename) {
 
 	// this loads animation scripts
 	AnimationList::iterator it = _location._animations.begin();
-	for ( ; it != _location._animations.end(); it++) {
+	for ( ; it != _location._animations.end(); ++it) {
 		if ((*it)->_scriptName) {
 			loadProgram(*it, (*it)->_scriptName);
 		}
@@ -413,7 +462,7 @@ void Parallaction_ns::changeCharacter(const char *name) {
 		_objects = _disk->loadObjects(_char.getBaseName());
 		_objectsNames = _disk->loadTable(_char.getBaseName());
 
-		_soundMan->playCharacterMusic(_char.getBaseName());
+		_soundManI->playCharacterMusic(_char.getBaseName());
 
 		// The original engine used to reload 'common' only on loadgames. We are reloading here since 'common'
 		// contains character specific stuff. This causes crashes like bug #1816899, because parseLocation tries
@@ -451,10 +500,10 @@ void Parallaction_ns::freeCharacter() {
 void Parallaction_ns::freeLocation(bool removeAll) {
 	debugC(2, kDebugExec, "freeLocation");
 
-	_soundMan->stopSfx(0);
-	_soundMan->stopSfx(1);
-	_soundMan->stopSfx(2);
-	_soundMan->stopSfx(3);
+	_soundManI->stopSfx(0);
+	_soundManI->stopSfx(1);
+	_soundManI->stopSfx(2);
+	_soundManI->stopSfx(3);
 
 	_localFlagNames->clear();
 
@@ -466,7 +515,7 @@ void Parallaction_ns::freeLocation(bool removeAll) {
 }
 
 void Parallaction_ns::cleanupGame() {
-	_soundMan->stopMusic();
+	_soundManI->stopMusic();
 
 	_inTestResult = false;
 	_engineFlags &= ~kEngineTransformedDonna;
@@ -479,8 +528,24 @@ void Parallaction_ns::cleanupGame() {
 	freeLocation(true);
 
 	_score = 0;
-	_introSarcData3 = 200;
-	_introSarcData2 = 1;
+	_freeSarcophagusSlotX = INITIAL_FREE_SARCOPHAGUS_SLOT_X;
+	_movingSarcophagus = false;
 }
 
-} // namespace Parallaction
+void Parallaction_ns::updateWalkers() {
+	_walker->walk();
+}
+
+
+void Parallaction_ns::scheduleWalk(int16 x, int16 y, bool fromUser) {
+	AnimationPtr a = _char._ani;
+
+	if ((a->_flags & kFlagsRemove) || (a->_flags & kFlagsActive) == 0) {
+		return;
+	}
+
+	_walker->buildPath(a, x, y);
+	_engineFlags |= kEngineWalking;
+}
+
+}// namespace Parallaction

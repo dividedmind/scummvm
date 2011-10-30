@@ -30,6 +30,7 @@
 #include "common/savefile.h"
 #include "common/system.h"
 
+#include "agos/intern.h"
 #include "agos/agos.h"
 
 namespace AGOS {
@@ -65,6 +66,7 @@ static const ADObsoleteGameID obsoleteGameIDsTable[] = {
 };
 
 static const PlainGameDescriptor simonGames[] = {
+	{"pn", "Personal Nightmare"},
 	{"elvira1", "Elvira - Mistress of the Dark"},
 	{"elvira2", "Elvira II - The Jaws of Cerberus"},
 	{"waxworks", "Waxworks"},
@@ -96,8 +98,12 @@ static const ADParams detectionParams = {
 	// List of files for file-based fallback detection (optional)
 	0,
 	// Flags
-	0
+	0,
+	// Additional GUI options (for every game}
+	Common::GUIO_NOLAUNCHLOAD
 };
+
+using namespace AGOS;
 
 class AgosMetaEngine : public AdvancedMetaEngine {
 public:
@@ -107,7 +113,7 @@ public:
 		return "AGOS";
 	}
 
-	virtual const char *getCopyright() const {
+	virtual const char *getOriginalCopyright() const {
 		return "AGOS (C) Adventure Soft";
 	}
 
@@ -132,6 +138,11 @@ bool AgosMetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGame
 	bool res = true;
 
 	switch (gd->gameType) {
+#ifdef ENABLE_PN
+	case AGOS::GType_PN:
+		*engine = new AGOS::AGOSEngine_PN(syst);
+		break;
+#endif
 	case AGOS::GType_ELVIRA1:
 		*engine = new AGOS::AGOSEngine_Elvira1(syst);
 		break;
@@ -148,7 +159,10 @@ bool AgosMetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGame
 		*engine = new AGOS::AGOSEngine_Simon2(syst);
 		break;
 	case AGOS::GType_FF:
-		*engine = new AGOS::AGOSEngine_Feeble(syst);
+		if (gd->features & GF_DEMO)
+			*engine = new AGOS::AGOSEngine_FeebleDemo(syst);
+		else
+			*engine = new AGOS::AGOSEngine_Feeble(syst);
 		break;
 	case AGOS::GType_PP:
 		*engine = new AGOS::AGOSEngine_PuzzlePack(syst);
@@ -171,7 +185,7 @@ SaveStateList AgosMetaEngine::listSaves(const char *target) const {
 	Common::String pattern = target;
 	pattern += ".???";
 
-	filenames = saveFileMan->listSavefiles(pattern.c_str());
+	filenames = saveFileMan->listSavefiles(pattern);
 	sort(filenames.begin(), filenames.end());	// Sort (hopefully ensuring we are sorted numerically..)
 
 	SaveStateList saveList;
@@ -180,7 +194,7 @@ SaveStateList AgosMetaEngine::listSaves(const char *target) const {
 		int slotNum = atoi(file->c_str() + file->size() - 3);
 
 		if (slotNum >= 0 && slotNum <= 999) {
-			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
+			Common::InSaveFile *in = saveFileMan->openForLoading(*file);
 			if (in) {
 				saveDesc = file->c_str();
 				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc));

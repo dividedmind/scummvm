@@ -7,8 +7,10 @@ MODULE_OBJS := \
 	debug.o \
 	detection.o \
 	dialogue.o \
+	disk.o \
 	disk_br.o \
 	disk_ns.o \
+	exec.o \
 	exec_br.o \
 	exec_ns.o \
 	font.o \
@@ -27,7 +29,8 @@ MODULE_OBJS := \
 	parser_br.o \
 	parser_ns.o \
 	saveload.o \
-	sound.o \
+	sound_ns.o \
+	sound_br.o \
 	staticres.o \
 	walk.o
 

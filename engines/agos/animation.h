@@ -29,19 +29,19 @@
 #include "common/file.h"
 #include "common/stream.h"
 
-#include "graphics/video/dxa_player.h"
-#include "graphics/video/smk_player.h"
+#include "graphics/video/dxa_decoder.h"
+#include "graphics/video/smk_decoder.h"
 #include "sound/mixer.h"
 
 namespace AGOS {
 
-class AGOSEngine;
+class AGOSEngine_Feeble;
 
 class MoviePlayer {
 	friend class MoviePlayerDXA;
 	friend class MoviePlayerSMK;
 
-	AGOSEngine *_vm;
+	AGOSEngine_Feeble *_vm;
 
 	Audio::Mixer *_mixer;
 
@@ -52,18 +52,22 @@ class MoviePlayer {
 	bool _rightButtonDown;
 	bool _skipMovie;
 	uint32 _ticks;
-	uint16 _frameSkipped;
 
 	char baseName[40];
 public:
-	MoviePlayer(AGOSEngine *vm);
+	enum VideoFlags {
+		TYPE_OMNITV  = 1,
+		TYPE_LOOPING = 2
+	};
+
+	MoviePlayer(AGOSEngine_Feeble *vm);
 	virtual ~MoviePlayer();
 
 	virtual bool load() = 0;
 	virtual void play();
-	virtual void playVideo() {};
-	virtual void nextFrame() {};
-	virtual void stopVideo() {};
+	virtual void playVideo() = 0;
+	virtual void nextFrame() = 0;
+	virtual void stopVideo() = 0;
 
 private:
 	virtual void handleNextFrame();
@@ -71,11 +75,11 @@ private:
 	virtual void startSound() {};
 };
 
-class MoviePlayerDXA : public MoviePlayer, ::Graphics::DXAPlayer {
+class MoviePlayerDXA : public MoviePlayer, ::Graphics::DXADecoder {
 	static const char *_sequenceList[90];
 	uint8 _sequenceNum;
 public:
-	MoviePlayerDXA(AGOSEngine *vm, const char *name);
+	MoviePlayerDXA(AGOSEngine_Feeble *vm, const char *name);
 
 	bool load();
 	void playVideo();
@@ -90,9 +94,9 @@ private:
 	void startSound();
 };
 
-class MoviePlayerSMK : public MoviePlayer, ::Graphics::SMKPlayer {
+class MoviePlayerSMK : public MoviePlayer, ::Graphics::SmackerDecoder {
 public:
-	MoviePlayerSMK(AGOSEngine *vm, const char *name);
+	MoviePlayerSMK(AGOSEngine_Feeble *vm, const char *name);
 
 	bool load();
 	void playVideo();
@@ -106,7 +110,7 @@ private:
 	void startSound();
 };
 
-MoviePlayer *makeMoviePlayer(AGOSEngine *vm, const char *name);
+MoviePlayer *makeMoviePlayer(AGOSEngine_Feeble *vm, const char *name);
 
 } // End of namespace AGOS
 

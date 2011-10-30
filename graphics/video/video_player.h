@@ -75,16 +75,16 @@ public:
 	virtual int32 getFrameRate();
 
 	/**
-	 * Returns the time to wait for each frame in 1/100 ms
-	 * @return the time to wait for each frame in 1/100 ms
+	 * Returns the time to wait for each frame in 1/100 ms (to avoid rounding errors)
+	 * @return the time to wait for each frame in 1/100 ms (to avoid rounding errors)
 	 */
 	virtual int32 getFrameDelay();
 
 	/**
-	 * Returns the current A/V lag in 1/100 ms
+	 * Returns the current A/V lag in 1/100 ms (to avoid rounding errors)
 	 * If > 0, audio lags behind
 	 * If < 0, video lags behind
-	 * @return the current A/V lag in 1/100 ms
+	 * @return the current A/V lag in 1/100 ms (to avoid rounding errors)
 	 */
 	virtual int32 getAudioLag();
 
@@ -103,7 +103,7 @@ public:
 	/**
 	 * Close a video file
 	 */
-	virtual void closeFile()=0;
+	virtual void closeFile() = 0;
 
 	/**
 	 * Returns if a video file is loaded or not
@@ -115,6 +115,23 @@ public:
 	 * @param pal		the RGB palette data
 	 */
 	virtual void setPalette(byte *pal);
+
+	/**
+	 * Gets the value of the pixel at the specified x and y coordinates
+	 * Note: This method assumes that the video's pitch equals its width, and that
+	 * the video has an 8bpp palette
+	 * @param x	the x coordinate of the pixel
+	 * @param y	the y coordinate of the pixel
+	 */
+	byte getPixel(int x, int y) {
+		return *(_videoFrameBuffer + y * _videoInfo.width + x * 1);
+	}
+
+	/**
+	 * Gets the value of the pixel at the specified offset
+	 * @param offset	the offset of the pixel in the video buffer
+	 */
+	byte getPixel(int offset) { return getPixel(offset, 0); }
 
 	/**
 	 * Return the black palette color for the current frame
@@ -147,7 +164,8 @@ protected:
 		uint32 height;
 		uint32 frameCount;
 		int32 frameRate;
-		int32 frameDelay;
+		int32 frameDelay;		// 1/100 ms (to avoid rounding errors)
+		uint32 firstframeOffset;
 		uint32 currentFrame;
 		uint32 startTime;
 	} _videoInfo;
@@ -172,7 +190,7 @@ public:
 	 *
 	 * Returns true if the video was played to the end, false if skipped
 	 */
-	bool playVideo(Common::List<Common::Event> *stopEvents);
+	bool playVideo(Common::List<Common::Event> &stopEvents);
 
 protected:
 	/**
@@ -184,7 +202,7 @@ protected:
 	bool _skipVideo;
 	VideoDecoder* _decoder;
 
-	void processVideoEvents(Common::List<Common::Event> *stopEvents);
+	void processVideoEvents(Common::List<Common::Event> &stopEvents);
 };
 
 } // End of namespace Graphics

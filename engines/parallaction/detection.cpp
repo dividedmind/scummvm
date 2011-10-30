@@ -55,6 +55,9 @@ static const PlainGameDescriptor parallactionGames[] = {
 
 namespace Parallaction {
 
+using Common::GUIO_NONE;
+using Common::GUIO_NOSPEECH;
+
 static const PARALLACTIONGameDescription gameDescriptions[] = {
 	{
 		{
@@ -73,7 +76,8 @@ static const PARALLACTIONGameDescription gameDescriptions[] = {
 			},
 			Common::UNK_LANG,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NOSPEECH
 		},
 		GType_Nippon,
 		GF_LANG_EN | GF_LANG_FR | GF_LANG_DE | GF_LANG_IT | GF_LANG_MULT,
@@ -96,7 +100,8 @@ static const PARALLACTIONGameDescription gameDescriptions[] = {
 			},
 			Common::UNK_LANG,
 			Common::kPlatformAmiga,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NOSPEECH
 		},
 		GType_Nippon,
 		GF_LANG_EN | GF_LANG_FR | GF_LANG_DE | GF_LANG_MULT,
@@ -113,7 +118,8 @@ static const PARALLACTIONGameDescription gameDescriptions[] = {
 			},
 			Common::EN_ANY,
 			Common::kPlatformAmiga,
-			ADGF_DEMO
+			ADGF_DEMO,
+			GUIO_NOSPEECH
 		},
 		GType_Nippon,
 		GF_LANG_EN | GF_DEMO,
@@ -135,7 +141,8 @@ static const PARALLACTIONGameDescription gameDescriptions[] = {
 			},
 			Common::IT_ITA,
 			Common::kPlatformAmiga,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NOSPEECH
 		},
 		GType_Nippon,
 		GF_LANG_IT,
@@ -152,7 +159,8 @@ static const PARALLACTIONGameDescription gameDescriptions[] = {
 			},
 			Common::UNK_LANG,
 			Common::kPlatformPC,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NOSPEECH
 		},
 		GType_BRA,
 		GF_LANG_EN | GF_LANG_FR | GF_LANG_DE | GF_LANG_IT | GF_LANG_MULT,
@@ -168,41 +176,42 @@ static const PARALLACTIONGameDescription gameDescriptions[] = {
 			},
 			Common::UNK_LANG,
 			Common::kPlatformPC,
-			ADGF_DEMO
+			ADGF_DEMO,
+			GUIO_NOSPEECH
 		},
 		GType_BRA,
 		GF_LANG_EN | GF_DEMO,
 	},
 
-	// TODO: Base the detection of Amiga BRA on actual data file, not executable file.
 	{
 		{
 			"bra",
 			"Multi-lingual",
 			{
-				{ "bigred",	0, "4f1e6bfd974b8ebabaad96d536904477", 95232 },
+				{ "request.win", 0, "7a844b9518310e4cc72eabb9c0340314", 6497 },
 				{ NULL, 0, NULL, 0}
 			},
 			Common::UNK_LANG,
 			Common::kPlatformAmiga,
-			ADGF_NO_FLAGS
+			ADGF_NO_FLAGS,
+			GUIO_NOSPEECH
 		},
 		GType_BRA,
 		GF_LANG_EN | GF_LANG_FR | GF_LANG_DE | GF_LANG_IT | GF_LANG_MULT,
 	},
 
-	// TODO: Base the detection of Amiga BRA demo on actual data file, not executable file.
 	{
 		{
 			"bra",
 			"Demo",
 			{
-				{ "bigred",	0, "b62a7b589fb5e9071f021227640893bf", 97004 },
+				{ "request.win", 0, "3b6a99ffd626e324b663839bbad59cb3", 5326 },
 				{ NULL, 0, NULL, 0}
 			},
 			Common::UNK_LANG,
 			Common::kPlatformAmiga,
-			ADGF_DEMO
+			ADGF_DEMO,
+			GUIO_NOSPEECH
 		},
 		GType_BRA,
 		GF_LANG_EN | GF_DEMO,
@@ -229,7 +238,9 @@ static const ADParams detectionParams = {
 	// List of files for file-based fallback detection (optional)
 	0,
 	// Flags
-	0
+	0,
+	// Additional GUI options (for every game}
+	Common::GUIO_NONE
 };
 
 class ParallactionMetaEngine : public AdvancedMetaEngine {
@@ -240,7 +251,7 @@ public:
 		return "Parallaction engine";
 	}
 
-	virtual const char *getCopyright() const {
+	virtual const char *getOriginalCopyright() const {
 		return "Nippon Safes Inc. (C) Dynabyte";
 	}
 
@@ -288,7 +299,7 @@ SaveStateList ParallactionMetaEngine::listSaves(const char *target) const {
 	Common::String pattern = target;
 	pattern += ".0??";
 
-	filenames = saveFileMan->listSavefiles(pattern.c_str());
+	filenames = saveFileMan->listSavefiles(pattern);
 	sort(filenames.begin(), filenames.end());	// Sort (hopefully ensuring we are sorted numerically..)
 
 	SaveStateList saveList;
@@ -297,7 +308,7 @@ SaveStateList ParallactionMetaEngine::listSaves(const char *target) const {
 		int slotNum = atoi(file->c_str() + file->size() - 2);
 
 		if (slotNum >= 0 && slotNum <= 99) {
-			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
+			Common::InSaveFile *in = saveFileMan->openForLoading(*file);
 			if (in) {
 				Common::String saveDesc = in->readLine();
 				saveList.push_back(SaveStateDescriptor(slotNum, saveDesc));
@@ -318,7 +329,7 @@ void ParallactionMetaEngine::removeSaveState(const char *target, int slot) const
 	Common::String filename = target;
 	filename += extension;
 
-	g_system->getSavefileManager()->removeSavefile(filename.c_str());
+	g_system->getSavefileManager()->removeSavefile(filename);
 }
 
 #if PLUGIN_ENABLED_DYNAMIC(PARALLACTION)

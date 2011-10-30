@@ -25,6 +25,8 @@
 
 #include "cine/cine.h"
 #include "cine/various.h"
+#include "cine/pal.h"
+#include "common/system.h" // For g_system->setPalette
 
 namespace Cine {
 
@@ -101,151 +103,228 @@ void loadRelatedPalette(const char *fileName) {
 	}
 }
 
-void palRotate(uint16 *pal, byte a, byte b, byte c) {
-	assert(pal);
+/*! \brief Shift byte to the left by given amount (Handles negative shifting amounts too, otherwise this would be trivial). */
+byte shiftByteLeft(const byte value, const signed shiftLeft) {
+	if (shiftLeft >= 0)
+		return value << shiftLeft;
+	else // right shift with negative shiftLeft values
+		return value >> abs(shiftLeft);
+}
 
-	if (c == 1) {
-		uint16 currentColor = pal[b];
+/*! \brief Is given endian type big endian? (Handles native endian type too, otherwise this would be trivial). */
+bool isBigEndian(const EndianType endian) {
+	assert(endian == CINE_NATIVE_ENDIAN || endian == CINE_LITTLE_ENDIAN || endian == CINE_BIG_ENDIAN);
 
-		for (int i = b; i > a; i--) {
-			pal[i] = pal[i - 1];
-		}
-
-		pal[a] = currentColor;
+	// Handle explicit little and big endian types here
+	if (endian != CINE_NATIVE_ENDIAN) {
+		return (endian == CINE_BIG_ENDIAN);
 	}
+
+	// Handle native endian type here
+#if defined(SCUMM_BIG_ENDIAN)
+	return true;
+#elif defined(SCUMM_LITTLE_ENDIAN)
+	return false;
+#else
+	#error No endianness defined
+#endif
 }
 
-void palRotate(byte *pal, byte a, byte b, byte c) {
-	assert(pal);
-
-	if (c == 1) {
-		byte currentR = pal[3 * b + 0];
-		byte currentG = pal[3 * b + 1];
-		byte currentB = pal[3 * b + 2];
-
-		for (int i = b; i > a; i--) {
-			pal[3 * i + 0] = pal[3 * (i - 1) + 0];
-			pal[3 * i + 1] = pal[3 * (i - 1) + 1];
-			pal[3 * i + 2] = pal[3 * (i - 1) + 2];
-		}
-
-		pal[3 * a + 0] = currentR;
-		pal[3 * a + 1] = currentG;
-		pal[3 * a + 2] = currentB;
-	}
-}
-
-uint16 transformColor(uint16 baseColor, int r, int g, int b) {
-	int8 oriR = CLIP( (baseColor & 0x007)       + b, 0, 7);
-	int8 oriG = CLIP(((baseColor & 0x070) >> 4) + g, 0, 7);
-	int8 oriB = CLIP(((baseColor & 0x700) >> 8) + r, 0, 7);
-
-	return oriR | (oriG << 4) | (oriB << 8);
-}
-
-void transformPaletteRange(uint16 *dstPal, uint16 *srcPal, int startColor, int stopColor, int r, int g, int b) {
-	assert(srcPal && dstPal);
-
-	for (int i = startColor; i <= stopColor; i++) {
-		dstPal[i] = transformColor(srcPal[i], r, g, b);
-	}
-}
-
-void transformPaletteRange(byte *dstPal, byte *srcPal, int startColor, int stopColor, int r, int g, int b) {
-	assert(srcPal && dstPal);
-
-	for (int i = startColor; i <= stopColor; i++) {
-		dstPal[3 * i + 0] = CLIP(srcPal[3 * i + 0] + r * 36, 0, 252);
-		dstPal[3 * i + 1] = CLIP(srcPal[3 * i + 1] + g * 36, 0, 252);
-		dstPal[3 * i + 2] = CLIP(srcPal[3 * i + 2] + b * 36, 0, 252);
-	}
-}
-
-byte& Palette::getComponent(byte colorIndex, byte componentIndex) {
-	assert(colorIndex < getColorCount() && componentIndex < COMPONENTS_PER_COLOR);
-	return _colors[colorIndex * COMPONENTS_PER_COLOR + componentIndex];
-}
-
-void Palette::setComponent(byte colorIndex, byte componentIndex, byte value) {
-	getComponent(colorIndex, componentIndex) = value;
-}
-
-Palette::PackedColor Palette::getColor(byte colorIndex) {
-	return (getComponent(colorIndex, R_INDEX) << (R_INDEX * BITS_PER_COMPONENT)) |
-		   (getComponent(colorIndex, G_INDEX) << (G_INDEX * BITS_PER_COMPONENT)) |
-		   (getComponent(colorIndex, B_INDEX) << (B_INDEX * BITS_PER_COMPONENT)) |
-		   (getComponent(colorIndex, A_INDEX) << (A_INDEX * BITS_PER_COMPONENT));
-}
-
-void Palette::setColor(byte colorIndex, PackedColor color) {
-	setComponent(colorIndex, R_INDEX, (color >> (R_INDEX * BITS_PER_COMPONENT)) & COMPONENT_MASK);
-	setComponent(colorIndex, G_INDEX, (color >> (G_INDEX * BITS_PER_COMPONENT)) & COMPONENT_MASK);
-	setComponent(colorIndex, B_INDEX, (color >> (B_INDEX * BITS_PER_COMPONENT)) & COMPONENT_MASK);
-	setComponent(colorIndex, A_INDEX, (color >> (A_INDEX * BITS_PER_COMPONENT)) & COMPONENT_MASK);
+/*! \brief Calculate byte position of given bit position in a multibyte variable using defined endianness. */
+int bytePos(const int bitPos, const int numBytes, const bool bigEndian) {
+	if (bigEndian)
+		return (numBytes - 1) - (bitPos / 8);
+	else // little endian
+		return bitPos / 8;
 }
 
 // a.k.a. palRotate
-Palette& Palette::rotateRight(byte firstIndex, byte lastIndex) {
-	PackedColor lastColor = getColor(lastIndex);
+Palette &Palette::rotateRight(byte firstIndex, byte lastIndex, signed rotationAmount) {
+	assert(rotationAmount == 0 || rotationAmount == 1);
 
-	for (int i = lastIndex; i > firstIndex; i--) {
-		setColor(i, getColor(i - 1));
+	if (rotationAmount == 1) {
+		const Color lastColor = _colors[lastIndex];
+
+		for (int i = lastIndex; i > firstIndex; i--)
+			_colors[i] = _colors[i - 1];
+
+		_colors[firstIndex] = lastColor;
 	}
-
-	setColor(firstIndex, lastColor);
 	return *this;
 }
 
-uint Palette::getColorCount() const {
-	return _colors.size() / COMPONENTS_PER_COLOR;
+bool Palette::empty() const {
+	return _colors.empty();
+}
+
+uint Palette::colorCount() const {
+	return _colors.size();
+}
+
+Palette &Palette::fillWithBlack() {
+	for (uint i = 0; i < _colors.size(); i++) {
+		_colors[i].r = 0;
+		_colors[i].g = 0;
+		_colors[i].b = 0;
+	}
+
+	return *this;
+}
+
+// TODO: Add better heuristic for checking whether the color format is valid
+bool Palette::isValid() const {
+	// Check that the color format has been actually set and not just default constructed.
+	// Also check that the alpha channel is discarded.
+	return _format != Graphics::PixelFormat() && _format.aLoss == 8;
+}
+
+const Graphics::PixelFormat &Palette::colorFormat() const {
+	return _format;
+}
+
+void Palette::setGlobalOSystemPalette() const {
+	byte buf[256 * 4]; // Allocate space for the largest possible palette
+	save(buf, sizeof(buf), Cine::kSystemPalFormat, CINE_LITTLE_ENDIAN);
+	g_system->setPalette(buf, 0, colorCount());
+}
+
+Cine::Palette::Color Palette::getColor(byte index) const {
+	return _colors[index];
+}
+
+uint8 Palette::getR(byte index) const {
+	return _colors[index].r;
+}
+
+uint8 Palette::getG(byte index) const {
+	return _colors[index].g;
+}
+
+uint8 Palette::getB(byte index) const {
+	return _colors[index].b;
+}
+
+void Palette::setColorFormat(const Graphics::PixelFormat format) {
+	_format = format;
 }
 
 // a.k.a. transformPaletteRange
-Palette& Palette::saturatedAddColor(byte firstIndex, byte lastIndex, signed r, signed g, signed b) {
-	for (uint i = firstIndex; i <= lastIndex; i++) {
-		saturatedAddColor(i, r, g, b);
-	}
-	return *this;
+Palette &Palette::saturatedAddColor(Palette& output, byte firstIndex, byte lastIndex, signed r, signed g, signed b) {
+	assert(firstIndex < colorCount() && lastIndex < colorCount());
+	assert(firstIndex < output.colorCount() && lastIndex < output.colorCount());
+	assert(output.colorFormat() == colorFormat());
+
+	for (uint i = firstIndex; i <= lastIndex; i++)
+		output._colors[i] = saturatedAddColor(_colors[i], r, g, b);
+
+	return output;
+}
+
+Palette &Palette::saturatedAddColor(Palette& output, byte firstIndex, byte lastIndex, signed rSource, signed gSource, signed bSource, const Graphics::PixelFormat &sourceFormat) {
+	// Convert the source color to the internal color format ensuring that no divide by zero will happen
+	const signed r = ((signed) _format.rMax()) * rSource / MAX<int>(sourceFormat.rMax(), 1);
+	const signed g = ((signed) _format.gMax()) * gSource / MAX<int>(sourceFormat.gMax(), 1);
+	const signed b = ((signed) _format.bMax()) * bSource / MAX<int>(sourceFormat.bMax(), 1);
+
+	return saturatedAddColor(output, firstIndex, lastIndex, r, g, b);
+}
+
+Palette &Palette::saturatedAddNormalizedGray(Palette& output, byte firstIndex, byte lastIndex, int grayDividend, int grayDenominator) {
+	assert(grayDenominator != 0);
+	const signed r = ((signed) _format.rMax()) * grayDividend / grayDenominator;
+	const signed g = ((signed) _format.gMax()) * grayDividend / grayDenominator;
+	const signed b = ((signed) _format.bMax()) * grayDividend / grayDenominator;
+
+	return saturatedAddColor(output, firstIndex, lastIndex, r, g, b);
 }
 
 // a.k.a. transformColor
-// Parameter color components (i.e. r, g and b) are in range [-7, 7]
-// e.g. r = 7 sets the resulting color's red component to maximum
-// e.g. r = -7 sets the resulting color's red component to minimum (i.e. zero)
-void Palette::saturatedAddColor(byte index, signed r, signed g, signed b) {
-	byte newR = CLIP<int>(getComponent(index, R_INDEX) + r * COMPONENT_MUL, 0, COMPONENT_MAX);
-	byte newG = CLIP<int>(getComponent(index, G_INDEX) + g * COMPONENT_MUL, 0, COMPONENT_MAX);
-	byte newB = CLIP<int>(getComponent(index, B_INDEX) + b * COMPONENT_MUL, 0, COMPONENT_MAX);
-
-	setComponent(index, R_INDEX, newR);
-	setComponent(index, G_INDEX, newG);
-	setComponent(index, B_INDEX, newB);
+Cine::Palette::Color Palette::saturatedAddColor(Cine::Palette::Color baseColor, signed r, signed g, signed b) const {
+	Cine::Palette::Color result;
+	result.r = CLIP<int>(baseColor.r + r, 0, _format.rMax());
+	result.g = CLIP<int>(baseColor.g + g, 0, _format.gMax());
+	result.b = CLIP<int>(baseColor.b + b, 0, _format.bMax());
+	return result;
 }
 
-Palette& Palette::load9BitColors(uint16 *colors, uint colorCount) {
-	setColorCount(colorCount);
-	for (uint i = 0; i < colorCount; i++) {
-		setComponent(i, R_INDEX, ((colors[i] >> 8) & 7) * COMPONENT_MUL);
-		setComponent(i, G_INDEX, ((colors[i] >> 4) & 7) * COMPONENT_MUL);
-		setComponent(i, B_INDEX, ((colors[i] >> 0) & 7) * COMPONENT_MUL);
-		setComponent(i, A_INDEX, 0);
-	}
+Palette::Palette(const Graphics::PixelFormat format, const uint numColors) : _format(format), _colors() {
+	_colors.resize(numColors);
+	fillWithBlack();
+}
+
+Palette &Palette::clear() {
+	_format = Graphics::PixelFormat();
+	_colors.clear();
 	return *this;
 }
 
-Palette& Palette::load24BitColors(byte *colors, uint colorCount) {
-	setColorCount(colorCount);
-	for (uint i = 0; i < colorCount; i++) {
-		setComponent(i, R_INDEX, colors[i * 3 + 0]);
-		setComponent(i, G_INDEX, colors[i * 3 + 1]);
-		setComponent(i, B_INDEX, colors[i * 3 + 2]);
-		setComponent(i, A_INDEX, 0);
+Palette &Palette::load(const byte *buf, const uint size, const Graphics::PixelFormat format, const uint numColors, const EndianType endian) {
+	assert(format.bytesPerPixel * numColors <= size); // Make sure there's enough input space
+	assert(format.aLoss == 8); // No alpha
+	assert(format.rShift / 8 == (format.rShift + MAX<int>(0, format.rBits() - 1)) / 8); // R must be inside one byte
+	assert(format.gShift / 8 == (format.gShift + MAX<int>(0, format.gBits() - 1)) / 8); // G must be inside one byte
+	assert(format.bShift / 8 == (format.bShift + MAX<int>(0, format.bBits() - 1)) / 8); // B must be inside one byte
+
+	setColorFormat(format);
+
+	_colors.clear();
+	_colors.resize(numColors);
+
+	const int rBytePos = bytePos(format.rShift, format.bytesPerPixel, isBigEndian(endian));
+	const int gBytePos = bytePos(format.gShift, format.bytesPerPixel, isBigEndian(endian));
+	const int bBytePos = bytePos(format.bShift, format.bytesPerPixel, isBigEndian(endian));
+
+	for (uint i = 0; i < numColors; i++) {
+		// format.rMax(), format.gMax(), format.bMax() are also used as masks here
+		_colors[i].r = (buf[i * format.bytesPerPixel + rBytePos] >> (format.rShift % 8)) & format.rMax();
+		_colors[i].g = (buf[i * format.bytesPerPixel + gBytePos] >> (format.gShift % 8)) & format.gMax();
+		_colors[i].b = (buf[i * format.bytesPerPixel + bBytePos] >> (format.bShift % 8)) & format.bMax();
 	}
+
 	return *this;
 }
 
-void Palette::setColorCount(uint colorCount) {
-	_colors.resize(colorCount * COMPONENTS_PER_COLOR);
+byte *Palette::save(byte *buf, const uint size, const EndianType endian) const {
+	return save(buf, size, colorFormat(), colorCount(), endian);
+}
+
+byte *Palette::save(byte *buf, const uint size, const Graphics::PixelFormat format, const EndianType endian) const {
+	return save(buf, size, format, colorCount(), endian);
+}
+
+byte *Palette::save(byte *buf, const uint size, const Graphics::PixelFormat format, const uint numColors, const EndianType endian, const byte firstIndex) const {
+	assert(format.bytesPerPixel * numColors <= size); // Make sure there's enough output space
+	assert(format.aLoss == 8); // No alpha
+	assert(format.rShift / 8 == (format.rShift + MAX<int>(0, format.rBits() - 1)) / 8); // R must be inside one byte
+	assert(format.gShift / 8 == (format.gShift + MAX<int>(0, format.gBits() - 1)) / 8); // G must be inside one byte
+	assert(format.bShift / 8 == (format.bShift + MAX<int>(0, format.bBits() - 1)) / 8); // B must be inside one byte
+
+	// Clear the part of the output palette we're going to be writing to with all black
+	memset(buf, 0, format.bytesPerPixel * numColors);
+
+	// Calculate how much bit shifting the color components need (for positioning them correctly)
+	const signed rShiftLeft = (colorFormat().rLoss - (signed) format.rLoss) + (format.rShift % 8);
+	const signed gShiftLeft = (colorFormat().gLoss - (signed) format.gLoss) + (format.gShift % 8);
+	const signed bShiftLeft = (colorFormat().bLoss - (signed) format.bLoss) + (format.bShift % 8);
+
+	// Calculate the byte masks for each color component (for masking away excess bits)
+	const byte rMask = format.rMax() << (format.rShift % 8);
+	const byte gMask = format.gMax() << (format.gShift % 8);
+	const byte bMask = format.bMax() << (format.bShift % 8);
+
+	const int rBytePos = bytePos(format.rShift, format.bytesPerPixel, isBigEndian(endian));
+	const int gBytePos = bytePos(format.gShift, format.bytesPerPixel, isBigEndian(endian));
+	const int bBytePos = bytePos(format.bShift, format.bytesPerPixel, isBigEndian(endian));
+
+	// Save the palette to the output in the specified format
+	for (uint i = firstIndex; i < firstIndex + numColors; i++) {
+		buf[i * format.bytesPerPixel + rBytePos] |= (shiftByteLeft(_colors[i].r, rShiftLeft) & rMask);
+		buf[i * format.bytesPerPixel + gBytePos] |= (shiftByteLeft(_colors[i].g, gShiftLeft) & gMask);
+		buf[i * format.bytesPerPixel + bBytePos] |= (shiftByteLeft(_colors[i].b, bShiftLeft) & bMask);
+	}
+
+	// Return the pointer to the output palette
+	return buf;
 }
 
 } // End of namespace Cine

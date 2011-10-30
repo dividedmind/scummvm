@@ -24,18 +24,17 @@
  */
 
 #include "cruise/cruise_main.h"
+#include "common/endian.h"
 #include "common/util.h"
 
 namespace Cruise {
 
-uint8 *workBuffer;
-uint8 *polyStruct;
-uint8 *adrStructPoly;
-uint8 *polyStructNorm;
-uint8 *polyStructExp;
-
 uint8 *ctpVar17;
-uint8 *polyStruct0;
+
+Common::Array<CtStruct> polyStructNorm;
+Common::Array<CtStruct> polyStructExp;
+Common::Array<CtStruct> *polyStructs = NULL;
+Common::Array<CtStruct> *polyStruct = NULL;
 
 int currentWalkBoxCenterX;
 int currentWalkBoxCenterY;
@@ -107,7 +106,7 @@ void renderCTPWalkBox(int16 *walkboxData, int hotPointX, int hotPointY, int X, i
 	int16 *destination;
 
 	int startX = X - ((upscaleValue(hotPointX, scale) + 0x8000) >> 16);
-//	int startY = Y - ((upscaleValue(hotPointY, scale) + 0x8000) >> 16);
+	int startY = Y - ((upscaleValue(hotPointY, scale) + 0x8000) >> 16);
 
 	numPoints = *(walkboxData++);
 
@@ -118,7 +117,7 @@ void renderCTPWalkBox(int16 *walkboxData, int hotPointX, int hotPointY, int X, i
 		int pointY = *(walkboxData++);
 
 		int scaledX = ((upscaleValue(pointX, scale) + 0x8000) >> 16) + startX;
-		int scaledY = ((upscaleValue(pointY, scale) + 0x8000) >> 16) + startX;
+		int scaledY = ((upscaleValue(pointY, scale) + 0x8000) >> 16) + startY;
 
 		*(destination++) = scaledX;
 		*(destination++) = scaledY;
@@ -135,7 +134,7 @@ void renderCTPWalkBox(int16 *walkboxData, int hotPointX, int hotPointY, int X, i
 }
 
 // this process the walkboxes
-void makeCtStruct(uint8* str, int16 table[][40], int num, int z) {
+void makeCtStruct(Common::Array<CtStruct> &lst, int16 table[][40], int num, int z) {
 	int minX = 1000;
 	int maxX = -1;
 
@@ -149,11 +148,8 @@ void makeCtStruct(uint8* str, int16 table[][40], int num, int z) {
 
 	renderCTPWalkBox(&table[num][0], currentWalkBoxCenterX, currentWalkBoxCenterY,  currentWalkBoxCenterX, currentWalkBoxCenterY, z + 0x200);
 
-	int16* a1;
-	int16* a2;
-
-	a1 = a2 = (int16*)str;
-	a2 += sizeof(int16*) / sizeof(int16) + 6; // skip header
+	lst.push_back(CtStruct());
+	CtStruct &ct = lst[lst.size() - 1];
 
 	int16* XArray = XMIN_XMAX;
 	int minY = *XArray++;
@@ -170,23 +166,16 @@ void makeCtStruct(uint8* str, int16 table[][40], int num, int z) {
 		if (x2 > maxX)
 			maxX = x2;
 
-		*a2++ = x1;
-		*a2++ = x2;
+		ct.slices.push_back(CtEntry(x1, x2));
 		i++;
 	}
-	*(int16**)a1 = a2;
 
-	adrStructPoly = (uint8*)a2;
-
-	*(uint16**)a2 = (uint16*) - 1; //chained list terminator
-
-	a1 += sizeof(int16*);
-	*a1++ = num;
-	*a1++ = walkboxColor[num];
-	*a1++ = minX;
-	*a1++ = maxX;
-	*a1++ = minY;
-	*a1++ = minY + i + 2;
+	ct.num = num;
+	ct.colour = walkboxColor[num];
+	ct.bounds.left = minX;
+	ct.bounds.right = maxX;
+	ct.bounds.top = minY;
+	ct.bounds.bottom = minY + i;
 }
 
 int getNode(int nodeResult[2], int nodeId) {
@@ -220,9 +209,9 @@ int setNodeState(int nodeIdx, int nodeState) {
 	int oldState = walkboxState[nodeIdx];
 
 	if (nodeState == -1)
-		return
+		return oldState;
 
-		    walkboxState[nodeIdx] = nodeState;
+	walkboxState[nodeIdx] = nodeState;
 
 	return oldState;
 }
@@ -254,20 +243,20 @@ int initCt(const char *ctpName) {
 		return (0);
 	}
 
-	ctp_routeCoordCount = readB16(dataPointer); // get the number of nods
+	ctp_routeCoordCount = (int16)READ_BE_UINT16(dataPointer); // get the number of nods
 	dataPointer += 2;
 
 	for (int i = 0; i < 7; i++) {
-		segementSizeTable[i] = readB16(dataPointer);
+		segementSizeTable[i] = (int16)READ_BE_UINT16(dataPointer);
 		dataPointer += 2;
 	}
 
 	// get the path-finding coordinates
 	ASSERT((segementSizeTable[0] % 4) == 0);
 	for (int i = 0; i < segementSizeTable[0] / 4; i++) {
-		ctp_routeCoords[i][0] = readB16(dataPointer);
+		ctp_routeCoords[i][0] = (int16)READ_BE_UINT16(dataPointer);
 		dataPointer += 2;
-		ctp_routeCoords[i][1] = readB16(dataPointer);
+		ctp_routeCoords[i][1] = (int16)READ_BE_UINT16(dataPointer);
 		dataPointer += 2;
 	}
 
@@ -275,7 +264,7 @@ int initCt(const char *ctpName) {
 	ASSERT((segementSizeTable[1] % 20) == 0);
 	for (int i = 0; i < segementSizeTable[1] / 20; i++) {
 		for (int j = 0; j < 10; j++) {
-			ctp_routes[i][j] = readB16(dataPointer);
+			ctp_routes[i][j] = (int16)READ_BE_UINT16(dataPointer);
 			dataPointer += 2;
 		}
 	}
@@ -284,7 +273,7 @@ int initCt(const char *ctpName) {
 	ASSERT((segementSizeTable[2] % 80) == 0);
 	for (int i = 0; i < segementSizeTable[2] / 80; i++) {
 		for (int j = 0; j < 40; j++) {
-			ctp_walkboxTable[i][j] = readB16(dataPointer);
+			ctp_walkboxTable[i][j] = (int16)READ_BE_UINT16(dataPointer);
 			dataPointer += 2;
 		}
 	}
@@ -298,14 +287,14 @@ int initCt(const char *ctpName) {
 		// Type: 0x00 - non walkable, 0x01 - walkable, 0x02 - exit zone
 		ASSERT((segementSizeTable[3] % 2) == 0);
 		for (int i = 0; i < segementSizeTable[3] / 2; i++) {
-			walkboxColor[i] = readB16(dataPointer);
+			walkboxColor[i] = (int16)READ_BE_UINT16(dataPointer);
 			dataPointer += 2;
 		}
 
 		// change indicator, walkbox type can change, i.e. blocked by object (values are either 0x00 or 0x01)
 		ASSERT((segementSizeTable[4] % 2) == 0);
 		for (int i = 0; i < segementSizeTable[4] / 2; i++) {
-			walkboxState[i] = readB16(dataPointer);
+			walkboxState[i] = (int16)READ_BE_UINT16(dataPointer);
 			dataPointer += 2;
 		}
 	}
@@ -313,52 +302,38 @@ int initCt(const char *ctpName) {
 	//
 	ASSERT((segementSizeTable[5] % 2) == 0);
 	for (int i = 0; i < segementSizeTable[5] / 2; i++) {
-		walkboxColorIndex[i] = readB16(dataPointer);
+		walkboxColorIndex[i] = (int16)READ_BE_UINT16(dataPointer);
 		dataPointer += 2;
 	}
 
 	//
 	ASSERT((segementSizeTable[6] % 2) == 0);
 	for (int i = 0; i < segementSizeTable[6] / 2; i++) {
-		walkboxZoom[i] = readB16(dataPointer);
+		walkboxZoom[i] = (int16)READ_BE_UINT16(dataPointer);
 		dataPointer += 2;
 	}
 	free(ptr);
 
-	strcpy(currentCtpName, ctpName);
+	if (ctpName != currentCtpName)
+		strcpy(currentCtpName, ctpName);
 
 	numberOfWalkboxes = segementSizeTable[6] / 2;	// get the number of walkboxes
 
 	computeAllDistance(distanceTable, ctp_routeCoordCount);	// process path-finding stuff
 
-	polyStruct = polyStructNorm = adrStructPoly = workBuffer;
-
-	ptr = (uint8 *) polyStruct;
+	// Load the polyStructNorm list
 
 	for (int i = numberOfWalkboxes - 1; i >= 0; i--) {
-		makeCtStruct(adrStructPoly, ctp_walkboxTable, i, 0);
+		makeCtStruct(polyStructNorm, ctp_walkboxTable, i, 0);
 	}
 
-	polyStructExp = adrStructPoly += sizeof(int16 *);
+	// Load the polyStructExp list
 
 	for (int i = numberOfWalkboxes - 1; i >= 0; i--) {
-		makeCtStruct(adrStructPoly, ctp_walkboxTable, i, walkboxZoom[i] * 20);
+		makeCtStruct(polyStructExp, ctp_walkboxTable, i, walkboxZoom[i] * 20);
 	}
 
-	int ctSize = (adrStructPoly - ptr) + sizeof(int16 *); // for now, the +sizeof(int16 *) is a safe zone
-	adrStructPoly = polyStructNorm = polyStruct = (uint8 *) malloc(ctSize);
-
-	for (int i = numberOfWalkboxes - 1; i >= 0; i--) {
-		makeCtStruct(adrStructPoly, ctp_walkboxTable, i, 0);
-	}
-
-	polyStructExp = adrStructPoly += sizeof(int16 *);
-
-	for (int i = numberOfWalkboxes - 1; i >= 0; i--) {
-		makeCtStruct(adrStructPoly, ctp_walkboxTable, i, walkboxZoom[i] * 20);
-	}
-
-	polyStruct0 = polyStructNorm;
+	polyStruct = polyStructs = &polyStructNorm;
 
 	return (1);
 }

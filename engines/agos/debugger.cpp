@@ -42,9 +42,13 @@ Debugger::Debugger(AGOSEngine *vm)
 	DCmd_Register("sound",    WRAP_METHOD(Debugger, Cmd_PlaySound));
 	DCmd_Register("voice",    WRAP_METHOD(Debugger, Cmd_PlayVoice));
 	DCmd_Register("bit",      WRAP_METHOD(Debugger, Cmd_SetBit));
+	DCmd_Register("bit2",     WRAP_METHOD(Debugger, Cmd_SetBit2));
+	DCmd_Register("bit3",     WRAP_METHOD(Debugger, Cmd_SetBit3));
 	DCmd_Register("var",      WRAP_METHOD(Debugger, Cmd_SetVar));
 	DCmd_Register("obj",      WRAP_METHOD(Debugger, Cmd_SetObjectFlag));
 	DCmd_Register("sub",      WRAP_METHOD(Debugger, Cmd_StartSubroutine));
+	DCmd_Register("dumpimage",      WRAP_METHOD(Debugger, Cmd_dumpImage));
+	DCmd_Register("dumpscript",     WRAP_METHOD(Debugger, Cmd_dumpScript));
 
 }
 
@@ -146,6 +150,52 @@ bool Debugger::Cmd_SetBit(int argc, const char **argv) {
 	return true;
 }
 
+bool Debugger::Cmd_SetBit2(int argc, const char **argv) {
+	uint bit, value;
+	if (argc > 2) {
+		bit = atoi(argv[1]);
+		value = atoi(argv[2]);
+		if (value == 0) {
+			_vm->_bitArrayTwo[bit / 16] &= ~(1 << (bit & 15));
+			DebugPrintf("Set bit2 %d to %d\n", bit, value);
+		} else if (value == 1) {
+			_vm->_bitArrayTwo[bit / 16] |= (1 << (bit & 15));
+			DebugPrintf("Set bit2 %d to %d\n", bit, value);
+		} else
+			DebugPrintf("Bit2 value out of range (0 - 1)\n");
+	} else if (argc > 1) {
+		bit = atoi(argv[1]);
+		value = (_vm->_bitArrayTwo[bit / 16] & (1 << (bit & 15))) != 0;
+		DebugPrintf("Bit2 %d is %d\n", bit, value);
+	} else
+		DebugPrintf("Syntax: bit2 <bitnum> <value>\n");
+
+	return true;
+}
+
+bool Debugger::Cmd_SetBit3(int argc, const char **argv) {
+	uint bit, value;
+	if (argc > 2) {
+		bit = atoi(argv[1]);
+		value = atoi(argv[2]);
+		if (value == 0) {
+			_vm->_bitArrayThree[bit / 16] &= ~(1 << (bit & 15));
+			DebugPrintf("Set bit3 %d to %d\n", bit, value);
+		} else if (value == 1) {
+			_vm->_bitArrayThree[bit / 16] |= (1 << (bit & 15));
+			DebugPrintf("Set bit3 %d to %d\n", bit, value);
+		} else
+			DebugPrintf("Bit3 value out of range (0 - 1)\n");
+	} else if (argc > 1) {
+		bit = atoi(argv[1]);
+		value = (_vm->_bitArrayThree[bit / 16] & (1 << (bit & 15))) != 0;
+		DebugPrintf("Bit3 %d is %d\n", bit, value);
+	} else
+		DebugPrintf("Syntax: bit3 <bitnum> <value>\n");
+
+	return true;
+}
+
 bool Debugger::Cmd_SetVar(int argc, const char **argv) {
 	uint var, value;
 	if (argc > 1) {
@@ -211,6 +261,40 @@ bool Debugger::Cmd_StartSubroutine(int argc, const char **argv) {
 			_vm->startSubroutine(sub);
 	} else
 		DebugPrintf("Subroutine %d\n", _vm->_currentTable->id);
+
+	return true;
+}
+
+bool Debugger::Cmd_dumpImage(int argc, const char **argv) {
+	if (argc > 1) {
+		uint16 zoneNum = atoi(argv[1]);
+		_vm->loadZone(zoneNum, false);
+		VgaPointersEntry *vpe = &_vm->_vgaBufferPointers[zoneNum];
+		if (vpe->vgaFile2 != NULL) {
+			_vm->dumpVgaBitmaps(zoneNum);
+		} else {
+			DebugPrintf("Invalid Zone Number %d\n", zoneNum);
+
+		}
+	} else
+		DebugPrintf("Syntax: dumpimage <zonenum>\n");
+
+	return true;
+}
+
+bool Debugger::Cmd_dumpScript(int argc, const char **argv) {
+	if (argc > 1) {
+		uint16 zoneNum = atoi(argv[1]);
+		_vm->loadZone(zoneNum, false);
+		VgaPointersEntry *vpe = &_vm->_vgaBufferPointers[zoneNum];
+		if (vpe->vgaFile1 != NULL) {
+			_vm->dumpVgaFile(vpe->vgaFile1);
+		} else {
+			DebugPrintf("Invalid Zone Number %d\n", zoneNum);
+
+		}
+	} else
+		DebugPrintf("Syntax: dumpscript <zonenum>\n");
 
 	return true;
 }

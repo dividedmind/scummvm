@@ -23,8 +23,6 @@
  *
  */
 
-
-
 #include "common/savefile.h"
 #include "common/system.h"
 
@@ -125,9 +123,15 @@ char *AGOSEngine_Elvira2::genSaveName(int slot) {
 	return buf;
 }
 
-char *AGOSEngine::genSaveName(int slot) {
+char *AGOSEngine_Elvira1::genSaveName(int slot) {
 	static char buf[20];
 	sprintf(buf, "elvira1.%.3d", slot);
+	return buf;
+}
+
+char *AGOSEngine::genSaveName(int slot) {
+	static char buf[20];
+	sprintf(buf, "pn.%.3d", slot);
 	return buf;
 }
 
@@ -225,7 +229,7 @@ bool AGOSEngine::confirmOverWrite(WindowBlock *window) {
 		break;
 	case Common::DE_DEU:
 		message1 = "\rDatei existiert bereits.\r\r";
-		message2 = "     berschreiben ?\r\r";
+		message2 = "   Ueberschreiben ?\r\r";
 		message3 = "     Ja        Nein";
 		break;
 	default:
@@ -256,9 +260,10 @@ bool AGOSEngine::confirmOverWrite(WindowBlock *window) {
 
 int16 AGOSEngine::matchSaveGame(const char *name, uint16 max) {
 	Common::InSaveFile *in;
-	char dst[8];
+	char dst[10];
 	uint16 slot;
 
+	memset(dst, 0, sizeof(dst));
 	for (slot = 0; slot < max; slot++) {
 		if ((in = _saveFileMan->openForLoading(genSaveName(slot)))) {
 			in->read(dst, 8);
@@ -875,10 +880,10 @@ void AGOSEngine::disableFileBoxes() {
 }
 
 void AGOSEngine::userGameBackSpace(WindowBlock *window, int x, byte b) {
-	byte old_text;
+	byte oldTextColor;
 
 	windowPutChar(window, x, b);
-	old_text = window->textColor;
+	oldTextColor = window->textColor;
 	window->textColor = window->fillColor;
 
 	if (_language == Common::HB_ISR) {
@@ -891,7 +896,7 @@ void AGOSEngine::userGameBackSpace(WindowBlock *window, int x, byte b) {
 
 	windowPutChar(window, x);
 
-	window->textColor = old_text;
+	window->textColor = oldTextColor;
 	windowPutChar(window, 8);
 }
 
@@ -1009,7 +1014,7 @@ bool AGOSEngine::loadGame(const char *filename, bool restartMode) {
 	Common::SeekableReadStream *f = NULL;
 	uint num, item_index, i;
 
-	_lockWord |= 0x100;
+	_videoLockOut |= 0x100;
 
 	if (restartMode) {
 		// Load restart state
@@ -1021,7 +1026,7 @@ bool AGOSEngine::loadGame(const char *filename, bool restartMode) {
 	}
 
 	if (f == NULL) {
-		_lockWord &= ~0x100;
+		_videoLockOut &= ~0x100;
 		return false;
 	}
 
@@ -1033,7 +1038,7 @@ bool AGOSEngine::loadGame(const char *filename, bool restartMode) {
 
 	if (f->readUint32BE() != 0xFFFFFFFF || num != _itemArrayInited - 1) {
 		delete f;
-		_lockWord &= ~0x100;
+		_videoLockOut &= ~0x100;
 		return false;
 	}
 
@@ -1096,7 +1101,7 @@ bool AGOSEngine::loadGame(const char *filename, bool restartMode) {
 
 	_noParentNotify = false;
 
-	_lockWord &= ~0x100;
+	_videoLockOut &= ~0x100;
 
 	return true;
 }
@@ -1108,11 +1113,11 @@ bool AGOSEngine::saveGame(uint slot, const char *caption) {
 	uint32 curTime = getTime();
 	uint32 gsc = _gameStoppedClock;
 
-	_lockWord |= 0x100;
+	_videoLockOut |= 0x100;
 
 	f = _saveFileMan->openForSaving(genSaveName(slot));
 	if (f == NULL) {
-		_lockWord &= ~0x100;
+		_videoLockOut &= ~0x100;
 		return false;
 	}
 
@@ -1175,7 +1180,7 @@ bool AGOSEngine::saveGame(uint slot, const char *caption) {
 	bool result = !f->err();
 
 	delete f;
-	_lockWord &= ~0x100;
+	_videoLockOut &= ~0x100;
 
 	return result;
 }
@@ -1185,7 +1190,7 @@ bool AGOSEngine_Elvira2::loadGame(const char *filename, bool restartMode) {
 	Common::SeekableReadStream *f = NULL;
 	uint num, item_index, i, j;
 
-	_lockWord |= 0x100;
+	_videoLockOut |= 0x100;
 
 	if (restartMode) {
 		// Load restart state
@@ -1197,7 +1202,7 @@ bool AGOSEngine_Elvira2::loadGame(const char *filename, bool restartMode) {
 	}
 
 	if (f == NULL) {
-		_lockWord &= ~0x100;
+		_videoLockOut &= ~0x100;
 		return false;
 	}
 
@@ -1215,7 +1220,7 @@ bool AGOSEngine_Elvira2::loadGame(const char *filename, bool restartMode) {
 
 	if (f->readUint32BE() != 0xFFFFFFFF || num != _itemArrayInited - 1) {
 		delete f;
-		_lockWord &= ~0x100;
+		_videoLockOut &= ~0x100;
 		return false;
 	}
 
@@ -1371,7 +1376,7 @@ bool AGOSEngine_Elvira2::loadGame(const char *filename, bool restartMode) {
 
 	_noParentNotify = false;
 
-	_lockWord &= ~0x100;
+	_videoLockOut &= ~0x100;
 
 	return true;
 }
@@ -1383,11 +1388,11 @@ bool AGOSEngine_Elvira2::saveGame(uint slot, const char *caption) {
 	uint32 curTime = getTime();
 	uint32 gsc = _gameStoppedClock;
 
-	_lockWord |= 0x100;
+	_videoLockOut |= 0x100;
 
 	f = _saveFileMan->openForSaving(genSaveName(slot));
 	if (f == NULL) {
-		_lockWord &= ~0x100;
+		_videoLockOut &= ~0x100;
 		return false;
 	}
 
@@ -1538,9 +1543,135 @@ bool AGOSEngine_Elvira2::saveGame(uint slot, const char *caption) {
 	bool result = !f->err();
 
 	delete f;
-	_lockWord &= ~0x100;
+	_videoLockOut &= ~0x100;
 
 	return result;
 }
+
+#ifdef ENABLE_PN
+// Personal Nightmare specific
+bool AGOSEngine_PN::badload(int8 errorNum) {
+	if (errorNum == -2)
+		return 0;
+	// Load error recovery routine
+
+	// Clear any stack
+	while (_stackbase != NULL) {
+		dumpstack();
+	}
+
+	// Restart from process 1
+	_tagOfActiveDoline = 1;
+	_dolineReturnVal = 3;
+	return 1;
+}
+
+void AGOSEngine_PN::getFilename() {
+	_noScanFlag = 1;
+	clearInputLine();
+
+	memset(_saveFile, 0, sizeof(_saveFile));
+	while (!shouldQuit() && !strlen(_saveFile)) {
+		const char *msg = "File name : ";
+		pcf((unsigned char)'\n');
+		while (*msg)
+			pcf((unsigned char)*msg++);
+
+		interact(_saveFile, 8);
+		pcf((unsigned char)'\n');
+		_noScanFlag = 0;
+	}
+}
+
+int AGOSEngine_PN::loadFile(char *name) {
+	Common::InSaveFile *f;
+	haltAnimation();
+
+	f = _saveFileMan->openForLoading(name);
+	if (f == NULL) {
+		restartAnimation();
+		return -2;
+	}
+	f->read(_saveFile, 8);
+
+	if (f->readByte() != 41) {
+		restartAnimation();
+		delete f;
+		return -2;
+	}
+	if (f->readByte() != 33) {
+		restartAnimation();
+		delete f;
+		return -2;
+	}
+	// TODO: Make endian safe
+	if (!f->read(_dataBase + _quickptr[2], (int)(_quickptr[6] - _quickptr[2]))) {
+		restartAnimation();
+		delete f;
+		return -1;
+	}
+	delete f;
+	restartAnimation();
+	dbtosysf();
+	return 0;
+}
+
+int AGOSEngine_PN::saveFile(char *name) {
+	Common::OutSaveFile *f;
+	sysftodb();
+	haltAnimation();
+
+	f = _saveFileMan->openForSaving(name);
+	if (f == NULL) {
+		restartAnimation();
+
+		const char *msg = "Couldn't save. ";
+		pcf((unsigned char)'\n');
+		while (*msg)
+			pcf((unsigned char)*msg++);
+
+		return 0;
+	}
+	f->write(_saveFile, 8);
+
+	f->writeByte(41);
+	f->writeByte(33);
+	// TODO: Make endian safe
+	if (!f->write(_dataBase + _quickptr[2], (int)(_quickptr[6] - _quickptr[2]))) {
+		delete f;
+		restartAnimation();
+		error("Couldn't save ");
+		return 0;
+	}
+	f->finalize();
+	delete f;
+
+	restartAnimation();
+	return 1;
+}
+
+void AGOSEngine_PN::sysftodb() {
+	uint32 pos = _quickptr[2];
+	int ct = 0;
+
+	while (ct < (getptr(49L) / 2)) {
+		_dataBase[pos] = (uint8)(_variableArray[ct] % 256);
+		_dataBase[pos + 1] = (uint8)(_variableArray[ct] / 256);
+		pos+=2;
+		ct++;
+	}
+}
+
+void AGOSEngine_PN::dbtosysf() {
+	uint32 pos = _quickptr[2];
+	int ct = 0;
+
+	while (ct < (getptr(49L) / 2)) {
+		_variableArray[ct] = _dataBase[pos] + 256 * _dataBase[pos + 1];
+		pos += 2;
+		ct++;
+	}
+}
+#endif
 
 } // End of namespace AGOS

@@ -1029,26 +1029,23 @@ Sound::Sound(Audio::Mixer *mixer, Disk *pDisk, uint8 pVolume) {
 }
 
 Sound::~Sound(void) {
-
 	_mixer->stopAll();
 	if (_soundData)
 		free(_soundData);
 }
 
 void Sound::playSound(uint32 id, byte *sound, uint32 size, Audio::SoundHandle *handle) {
-
 	byte flags = 0;
 	flags |= Audio::Mixer::FLAG_UNSIGNED|Audio::Mixer::FLAG_AUTOFREE;
-	size -= sizeof(struct dataFileHeader);
+	size -= sizeof(DataFileHeader);
 	byte *buffer = (byte *)malloc(size);
-	memcpy(buffer, sound+sizeof(struct dataFileHeader), size);
+	memcpy(buffer, sound+sizeof(DataFileHeader), size);
 
 	_mixer->stopID(id);
 	_mixer->playRaw(Audio::Mixer::kSFXSoundType, handle, buffer, size, 11025, flags, id);
 }
 
 void Sound::loadSection(uint8 pSection) {
-
 	fnStopFx();
 	_mixer->stopAll();
 
@@ -1067,7 +1064,7 @@ void Sound::loadSection(uint8 pSection) {
 	if ((_soundData[asmOfs] != 0x3C) || (_soundData[asmOfs + 0x27] != 0x8D) ||
 		(_soundData[asmOfs + 0x28] != 0x1E) || (_soundData[asmOfs + 0x2F] != 0x8D) ||
 		(_soundData[asmOfs + 0x30] != 0x36))
-			error("Unknown sounddriver version!");
+			error("Unknown sounddriver version");
 
 	_soundsTotal = _soundData[asmOfs + 1];
 	uint16 sRateTabOfs = READ_LE_UINT16(_soundData + asmOfs + 0x29);
@@ -1082,7 +1079,6 @@ void Sound::loadSection(uint8 pSection) {
 }
 
 void Sound::playSound(uint16 sound, uint16 volume, uint8 channel) {
-
 	if (channel == 0)
 		_mixer->stopID(SOUND_CH0);
 	else
@@ -1128,7 +1124,6 @@ void Sound::playSound(uint16 sound, uint16 volume, uint8 channel) {
 }
 
 void Sound::fnStartFx(uint32 sound, uint8 channel) {
-
 	_saveSounds[channel] = 0xFFFF;
 	if (sound < 256 || sound > MAX_FX_NUMBER || (SkyEngine::_systemVars.systemFlags & SF_FX_OFF))
 		return;
@@ -1191,7 +1186,6 @@ void Sound::checkFxQueue(void) {
 }
 
 void Sound::restoreSfx(void) {
-
 	// queue sfx, so they will be started when the player exits the control panel
 	memset(_sfxQueue, 0, sizeof(_sfxQueue));
 	uint8 queueSlot = 0;
@@ -1221,7 +1215,6 @@ void Sound::stopSpeech(void) {
 }
 
 bool Sound::startSpeech(uint16 textNum) {
-
 	if (!(SkyEngine::_systemVars.systemFlags & SF_ALLOW_SPEECH))
 		return false;
 	uint16 speechFileNum = _speechConvertTable[textNum >> 12] + (textNum & 0xFFF);
@@ -1232,9 +1225,9 @@ bool Sound::startSpeech(uint16 textNum) {
 		return false;
 	}
 
-	uint32 speechSize = ((dataFileHeader *)speechData)->s_tot_size - sizeof(dataFileHeader);
+	uint32 speechSize = ((DataFileHeader *)speechData)->s_tot_size - sizeof(DataFileHeader);
 	uint8 *playBuffer = (uint8 *)malloc(speechSize);
-	memcpy(playBuffer, speechData + sizeof(dataFileHeader), speechSize);
+	memcpy(playBuffer, speechData + sizeof(DataFileHeader), speechSize);
 
 	free(speechData);
 
@@ -1254,7 +1247,6 @@ bool Sound::startSpeech(uint16 textNum) {
 }
 
 void Sound::fnPauseFx(void) {
-
 	if (!_isPaused) {
 		_isPaused = true;
 		_mixer->pauseID(SOUND_CH0, true);
@@ -1263,7 +1255,6 @@ void Sound::fnPauseFx(void) {
 }
 
 void Sound::fnUnPauseFx(void) {
-
 	if (_isPaused) {
 		_isPaused = false;
 		_mixer->pauseID(SOUND_CH0, false);

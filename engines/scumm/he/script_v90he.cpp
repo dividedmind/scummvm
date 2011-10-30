@@ -38,342 +38,61 @@
 
 namespace Scumm {
 
-#define OPCODE(x)	_OPCODE(ScummEngine_v90he, x)
+#define OPCODE(i, x)	_opcodes[i]._OPCODE(ScummEngine_v90he, x)
 
 void ScummEngine_v90he::setupOpcodes() {
-	static const OpcodeEntryV90he opcodes[256] = {
-		/* 00 */
-		OPCODE(o6_pushByte),
-		OPCODE(o6_pushWord),
-		OPCODE(o72_pushDWord),
-		OPCODE(o6_pushWordVar),
-		/* 04 */
-		OPCODE(o72_getScriptString),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_wordArrayRead),
-		/* 08 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o90_dup_n),
-		OPCODE(o6_wordArrayIndexedRead),
-		/* 0C */
-		OPCODE(o6_dup),
-		OPCODE(o6_not),
-		OPCODE(o6_eq),
-		OPCODE(o6_neq),
-		/* 10 */
-		OPCODE(o6_gt),
-		OPCODE(o6_lt),
-		OPCODE(o6_le),
-		OPCODE(o6_ge),
-		/* 14 */
-		OPCODE(o6_add),
-		OPCODE(o6_sub),
-		OPCODE(o6_mul),
-		OPCODE(o6_div),
-		/* 18 */
-		OPCODE(o6_land),
-		OPCODE(o6_lor),
-		OPCODE(o6_pop),
-		OPCODE(o72_isAnyOf),
-		/* 1C */
-		OPCODE(o90_wizImageOps),
-		OPCODE(o90_min),
-		OPCODE(o90_max),
-		OPCODE(o90_sin),
-		/* 20 */
-		OPCODE(o90_cos),
-		OPCODE(o90_sqrt),
-		OPCODE(o90_atan2),
-		OPCODE(o90_getSegmentAngle),
-		/* 24 */
-		OPCODE(o90_getDistanceBetweenPoints),
-		OPCODE(o90_getSpriteInfo),
-		OPCODE(o90_setSpriteInfo),
-		OPCODE(o90_getSpriteGroupInfo),
-		/* 28 */
-		OPCODE(o90_setSpriteGroupInfo),
-		OPCODE(o90_getWizData),
-		OPCODE(o90_getActorData),
-		OPCODE(o90_startScriptUnk),
-		/* 2C */
-		OPCODE(o90_jumpToScriptUnk),
-		OPCODE(o90_videoOps),
-		OPCODE(o90_getVideoData),
-		OPCODE(o90_floodFill),
-		/* 30 */
-		OPCODE(o90_mod),
-		OPCODE(o90_shl),
-		OPCODE(o90_shr),
-		OPCODE(o90_xor),
-		/* 34 */
-		OPCODE(o90_findAllObjectsWithClassOf),
-		OPCODE(o90_getPolygonOverlap),
-		OPCODE(o90_cond),
-		OPCODE(o90_dim2dim2Array),
-		/* 38 */
-		OPCODE(o90_redim2dimArray),
-		OPCODE(o90_getLinesIntersectionPoint),
-		OPCODE(o90_sortArray),
-		OPCODE(o6_invalid),
-		/* 3C */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* 40 */
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_writeWordVar),
-		/* 44 */
-		OPCODE(o90_getObjectData),
-		OPCODE(o80_createSound),
-		OPCODE(o80_getFileSize),
-		OPCODE(o6_wordArrayWrite),
-		/* 48 */
-		OPCODE(o80_stringToInt),
-		OPCODE(o80_getSoundVar),
-		OPCODE(o80_localizeArrayToRoom),
-		OPCODE(o6_wordArrayIndexedWrite),
-		/* 4C */
-		OPCODE(o80_sourceDebug),
-		OPCODE(o80_readConfigFile),
-		OPCODE(o80_writeConfigFile),
-		OPCODE(o6_wordVarInc),
-		/* 50 */
-		OPCODE(o72_resetCutscene),
-		OPCODE(o6_invalid),
-		OPCODE(o72_findObjectWithClassOf),
-		OPCODE(o6_wordArrayInc),
-		/* 54 */
-		OPCODE(o72_getObjectImageX),
-		OPCODE(o72_getObjectImageY),
-		OPCODE(o72_captureWizImage),
-		OPCODE(o6_wordVarDec),
-		/* 58 */
-		OPCODE(o72_getTimer),
-		OPCODE(o72_setTimer),
-		OPCODE(o72_getSoundPosition),
-		OPCODE(o6_wordArrayDec),
-		/* 5C */
-		OPCODE(o6_if),
-		OPCODE(o6_ifNot),
-		OPCODE(o72_startScript),
-		OPCODE(o6_startScriptQuick),
-		/* 60 */
-		OPCODE(o72_startObject),
-		OPCODE(o72_drawObject),
-		OPCODE(o72_printWizImage),
-		OPCODE(o72_getArrayDimSize),
-		/* 64 */
-		OPCODE(o72_getNumFreeArrays),
-		OPCODE(o6_stopObjectCode),
-		OPCODE(o6_stopObjectCode),
-		OPCODE(o6_endCutscene),
-		/* 68 */
-		OPCODE(o6_cutscene),
-		OPCODE(o6_invalid),
-		OPCODE(o6_freezeUnfreeze),
-		OPCODE(o80_cursorCommand),
-		/* 6C */
-		OPCODE(o6_breakHere),
-		OPCODE(o6_ifClassOfIs),
-		OPCODE(o6_setClass),
-		OPCODE(o6_getState),
-		/* 70 */
-		OPCODE(o80_setState),
-		OPCODE(o6_setOwner),
-		OPCODE(o6_getOwner),
-		OPCODE(o6_jump),
-		/* 74 */
-		OPCODE(o70_startSound),
-		OPCODE(o6_stopSound),
-		OPCODE(o6_invalid),
-		OPCODE(o6_stopObjectScript),
-		/* 78 */
-		OPCODE(o6_panCameraTo),
-		OPCODE(o6_actorFollowCamera),
-		OPCODE(o6_setCameraAt),
-		OPCODE(o6_loadRoom),
-		/* 7C */
-		OPCODE(o6_stopScript),
-		OPCODE(o6_walkActorToObj),
-		OPCODE(o6_walkActorTo),
-		OPCODE(o6_putActorAtXY),
-		/* 80 */
-		OPCODE(o6_putActorAtObject),
-		OPCODE(o6_faceActor),
-		OPCODE(o6_animateActor),
-		OPCODE(o6_doSentence),
-		/* 84 */
-		OPCODE(o70_pickupObject),
-		OPCODE(o6_loadRoomWithEgo),
-		OPCODE(o6_invalid),
-		OPCODE(o6_getRandomNumber),
-		/* 88 */
-		OPCODE(o6_getRandomNumberRange),
-		OPCODE(o6_invalid),
-		OPCODE(o6_getActorMoving),
-		OPCODE(o6_isScriptRunning),
-		/* 8C */
-		OPCODE(o70_getActorRoom),
-		OPCODE(o6_getObjectX),
-		OPCODE(o6_getObjectY),
-		OPCODE(o6_getObjectOldDir),
-		/* 90 */
-		OPCODE(o6_getActorWalkBox),
-		OPCODE(o6_getActorCostume),
-		OPCODE(o6_findInventory),
-		OPCODE(o6_getInventoryCount),
-		/* 94 */
-		OPCODE(o90_getPaletteData),
-		OPCODE(o6_beginOverride),
-		OPCODE(o6_endOverride),
-		OPCODE(o6_invalid),
-		/* 98 */
-		OPCODE(o6_isSoundRunning),
-		OPCODE(o6_setBoxFlags),
-		OPCODE(o6_invalid),
-		OPCODE(o70_resourceRoutines),
-		/* 9C */
-		OPCODE(o72_roomOps),
-		OPCODE(o72_actorOps),
-		OPCODE(o90_paletteOps),
-		OPCODE(o6_getActorFromXY),
-		/* A0 */
-		OPCODE(o72_findObject),
-		OPCODE(o6_pseudoRoom),
-		OPCODE(o6_getActorElevation),
-		OPCODE(o6_getVerbEntrypoint),
-		/* A4 */
-		OPCODE(o72_arrayOps),
-		OPCODE(o90_fontUnk),
-		OPCODE(o6_drawBox),
-		OPCODE(o6_pop),
-		/* A8 */
-		OPCODE(o6_getActorWidth),
-		OPCODE(o6_wait),
-		OPCODE(o6_getActorScaleX),
-		OPCODE(o90_getActorAnimProgress),
-		/* AC */
-		OPCODE(o80_drawWizPolygon),
-		OPCODE(o6_isAnyOf),
-		OPCODE(o72_systemOps),
-		OPCODE(o6_isActorInBox),
-		/* B0 */
-		OPCODE(o6_delay),
-		OPCODE(o6_delaySeconds),
-		OPCODE(o6_delayMinutes),
-		OPCODE(o6_stopSentence),
-		/* B4 */
-		OPCODE(o6_printLine),
-		OPCODE(o6_printText),
-		OPCODE(o6_printDebug),
-		OPCODE(o6_printSystem),
-		/* B8 */
-		OPCODE(o6_printActor),
-		OPCODE(o6_printEgo),
-		OPCODE(o72_talkActor),
-		OPCODE(o72_talkEgo),
-		/* BC */
-		OPCODE(o72_dimArray),
-		OPCODE(o6_stopObjectCode),
-		OPCODE(o6_startObjectQuick),
-		OPCODE(o6_startScriptQuick2),
-		/* C0 */
-		OPCODE(o72_dim2dimArray),
-		OPCODE(o72_traceStatus),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* C4 */
-		OPCODE(o6_abs),
-		OPCODE(o6_distObjectObject),
-		OPCODE(o6_distObjectPt),
-		OPCODE(o6_distPtPt),
-		/* C8 */
-		OPCODE(o90_kernelGetFunctions),
-		OPCODE(o90_kernelSetFunctions),
-		OPCODE(o6_delayFrames),
-		OPCODE(o6_pickOneOf),
-		/* CC */
-		OPCODE(o6_pickOneOfDefault),
-		OPCODE(o6_stampObject),
-		OPCODE(o72_drawWizImage),
-		OPCODE(o72_debugInput),
-		/* D0 */
-		OPCODE(o6_getDateTime),
-		OPCODE(o6_stopTalking),
-		OPCODE(o6_getAnimateVariable),
-		OPCODE(o6_invalid),
-		/* D4 */
-		OPCODE(o6_shuffle),
-		OPCODE(o72_jumpToScript),
-		OPCODE(o6_band),
-		OPCODE(o6_bor),
-		/* D8 */
-		OPCODE(o6_isRoomScriptRunning),
-		OPCODE(o60_closeFile),
-		OPCODE(o72_openFile),
-		OPCODE(o72_readFile),
-		/* DC */
-		OPCODE(o72_writeFile),
-		OPCODE(o72_findAllObjects),
-		OPCODE(o72_deleteFile),
-		OPCODE(o72_rename),
-		/* E0 */
-		OPCODE(o80_drawLine),
-		OPCODE(o72_getPixel),
-		OPCODE(o60_localizeArrayToScript),
-		OPCODE(o80_pickVarRandom),
-		/* E4 */
-		OPCODE(o6_setBoxSet),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		/* E8 */
-		OPCODE(o6_invalid),
-		OPCODE(o60_seekFilePos),
-		OPCODE(o72_redimArray),
-		OPCODE(o60_readFilePos),
-		/* EC */
-		OPCODE(o71_copyString),
-		OPCODE(o71_getStringWidth),
-		OPCODE(o70_getStringLen),
-		OPCODE(o71_appendString),
-		/* F0 */
-		OPCODE(o71_concatString),
-		OPCODE(o71_compareString),
-		OPCODE(o70_isResourceLoaded),
-		OPCODE(o72_readINI),
-		/* F4 */
-		OPCODE(o72_writeINI),
-		OPCODE(o71_getStringLenForWidth),
-		OPCODE(o71_getCharIndexInString),
-		OPCODE(o71_findBox),
-		/* F8 */
-		OPCODE(o72_getResourceSize),
-		OPCODE(o72_createDirectory),
-		OPCODE(o72_setSystemMessage),
-		OPCODE(o71_polygonOps),
-		/* FC */
-		OPCODE(o71_polygonHit),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-		OPCODE(o6_invalid),
-	};
+	ScummEngine_v80he::setupOpcodes();
 
-	_opcodesV90he = opcodes;
-}
+	OPCODE(0x0a, o90_dup_n);
 
-void ScummEngine_v90he::executeOpcode(byte i) {
-	OpcodeProcV90he op = _opcodesV90he[i].proc;
-	(this->*op) ();
-}
+	/* 1C */
+	OPCODE(0x1c, o90_wizImageOps);
+	OPCODE(0x1d, o90_min);
+	OPCODE(0x1e, o90_max);
+	OPCODE(0x1f, o90_sin);
+	/* 20 */
+	OPCODE(0x20, o90_cos);
+	OPCODE(0x21, o90_sqrt);
+	OPCODE(0x22, o90_atan2);
+	OPCODE(0x23, o90_getSegmentAngle);
+	/* 24 */
+	OPCODE(0x24, o90_getDistanceBetweenPoints);
+	OPCODE(0x25, o90_getSpriteInfo);
+	OPCODE(0x26, o90_setSpriteInfo);
+	OPCODE(0x27, o90_getSpriteGroupInfo);
+	/* 28 */
+	OPCODE(0x28, o90_setSpriteGroupInfo);
+	OPCODE(0x29, o90_getWizData);
+	OPCODE(0x2a, o90_getActorData);
+	OPCODE(0x2b, o90_startScriptUnk);
+	/* 2C */
+	OPCODE(0x2c, o90_jumpToScriptUnk);
+	OPCODE(0x2d, o90_videoOps);
+	OPCODE(0x2e, o90_getVideoData);
+	OPCODE(0x2f, o90_floodFill);
+	/* 30 */
+	OPCODE(0x30, o90_mod);
+	OPCODE(0x31, o90_shl);
+	OPCODE(0x32, o90_shr);
+	OPCODE(0x33, o90_xor);
+	/* 34 */
+	OPCODE(0x34, o90_findAllObjectsWithClassOf);
+	OPCODE(0x35, o90_getPolygonOverlap);
+	OPCODE(0x36, o90_cond);
+	OPCODE(0x37, o90_dim2dim2Array);
+	/* 38 */
+	OPCODE(0x38, o90_redim2dimArray);
+	OPCODE(0x39, o90_getLinesIntersectionPoint);
+	OPCODE(0x3a, o90_sortArray);
 
-const char *ScummEngine_v90he::getOpcodeDesc(byte i) {
-	return _opcodesV90he[i].desc;
+	OPCODE(0x44, o90_getObjectData);
+
+	OPCODE(0x94, o90_getPaletteData);
+	OPCODE(0x9e, o90_paletteOps);
+	OPCODE(0xa5, o90_fontUnk);
+	OPCODE(0xab, o90_getActorAnimProgress);
+	OPCODE(0xc8, o90_kernelGetFunctions);
+	OPCODE(0xc9, o90_kernelSetFunctions);
 }
 
 void ScummEngine_v90he::o90_dup_n() {
@@ -463,8 +182,8 @@ void ScummEngine_v90he::o90_wizImageOps() {
 		_wizParams.processFlags = 0;
 		_wizParams.remapNum = 0;
 		_wizParams.img.flags = 0;
-		_wizParams.lineUnk2 = 0;
-		_wizParams.lineUnk1 = 0;
+		_wizParams.params1 = 0;
+		_wizParams.params2 = 0;
 		_wizParams.spriteId = 0;
 		_wizParams.spriteGroup = 0;
 		break;
@@ -556,9 +275,9 @@ void ScummEngine_v90he::o90_wizImageOps() {
 		_wizParams.dstResNum = pop();
 		break;
 	case 139: // HE99+
-		_wizParams.processFlags |= kWPFThickLine;
-		_wizParams.lineUnk1 = pop();
-		_wizParams.lineUnk2 = pop();
+		_wizParams.processFlags |= kWPFParams;
+		_wizParams.params1 = pop();
+		_wizParams.params2 = pop();
 		break;
 	case 141: // HE99+
 		_wizParams.processMode = 13;
@@ -1581,7 +1300,7 @@ void ScummEngine_v90he::o90_getWizData() {
 		x = pop();
 		state = pop();
 		resId = pop();
-		push(_wiz->getWizPixelColor(resId, state, x, y, 0));
+		push(_wiz->getWizPixelColor(resId, state, x, y));
 		break;
 	case 130:
 		h = pop();
@@ -1707,7 +1426,7 @@ void ScummEngine_v90he::o90_videoOps() {
 			if (_videoParams.flags == 0)
 				_videoParams.flags = 4;
 
-			const char *filename = (char *)_videoParams.filename + convertFilePath(_videoParams.filename);
+			const char *filename = (char *)_videoParams.filename + convertFilePath(_videoParams.filename, sizeof(_videoParams.filename));
 			if (_videoParams.flags & 2) {
 				VAR(119) = _moviePlay->load(filename, _videoParams.flags, _videoParams.wizResNum);
 			} else {

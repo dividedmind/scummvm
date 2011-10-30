@@ -78,7 +78,6 @@ void KyraEngine_HoF::setupLangButtonShapes() {
 	default:
 		_inventoryButtons[0].data0ShapePtr = _buttonShapes[6];
 		_inventoryButtons[0].data1ShapePtr = _inventoryButtons[0].data2ShapePtr = _buttonShapes[7];
-		break;
 	}
 }
 
@@ -96,7 +95,11 @@ const char *GUI_HoF::getMenuItemTitle(const MenuItem &menuItem) {
 	if (!menuItem.itemId)
 		return 0;
 
-	return _vm->getTableString(menuItem.itemId, _vm->_optionsBuffer, 1);
+	// Strings 41-45 are menu labels, those must be handled uncompressed!
+	if (menuItem.itemId >= 41 && menuItem.itemId <= 45)
+		return _vm->getTableString(menuItem.itemId, _vm->_optionsBuffer, 0);
+	else
+		return _vm->getTableString(menuItem.itemId, _vm->_optionsBuffer, 1);
 }
 
 const char *GUI_HoF::getMenuItemLabel(const MenuItem &menuItem) {
@@ -273,7 +276,7 @@ void KyraEngine_HoF::redrawInventory(int page) {
 }
 
 void KyraEngine_HoF::scrollInventoryWheel() {
-	WSAMovie_v2 movie(this, _screen);
+	WSAMovie_v2 movie(this);
 	movie.open("INVWHEEL.WSA", 0, 0);
 	int frames = movie.opened() ? movie.frames() : 6;
 	memcpy(_screenBuffer, _screen->getCPagePtr(2), 64000);
@@ -284,15 +287,11 @@ void KyraEngine_HoF::scrollInventoryWheel() {
 	_screen->showMouse();
 	snd_playSoundEffect(0x25);
 
-	movie.setDrawPage(0);
-	movie.setX(0);
-	movie.setY(0);
-
 	bool breakFlag = false;
 	for (int i = 0; i <= 6 && !breakFlag; ++i) {
 		if (movie.opened()) {
 			_screen->hideMouse();
-			movie.displayFrame(i % frames, 0, 0);
+			movie.displayFrame(i % frames, 0, 0, 0, 0, 0, 0);
 			_screen->showMouse();
 			_screen->updateScreen();
 		}
@@ -366,9 +365,9 @@ int KyraEngine_HoF::bookButton(Button *button) {
 		_screen->showMouse();
 	}
 
-	memcpy(_screen->getPalette(2), _screen->getPalette(0), 768);
+	_screen->copyPalette(2, 0);
 	_screen->fadeToBlack(7, &_updateFunctor);
-	_res->loadFileToBuf("_BOOK.COL", _screen->getPalette(0), 768);
+	_screen->loadPalette("_BOOK.COL", _screen->getPalette(0));
 	loadBookBkgd();
 	showBookPage();
 	_screen->copyRegion(0, 0, 0, 0, 0x140, 0xC8, 2, 0, Screen::CR_NO_P_CHECK);
@@ -394,7 +393,7 @@ int KyraEngine_HoF::bookButton(Button *button) {
 	}
 
 	setHandItem(_itemInHand);
-	memcpy(_screen->getPalette(0), _screen->getPalette(2), 768);
+	_screen->copyPalette(0, 2);
 	_screen->fadePalette(_screen->getPalette(0), 7, &_updateFunctor);
 	_screen->showMouse();
 
@@ -441,7 +440,6 @@ void KyraEngine_HoF::loadBookBkgd() {
 		default:
 			warning("loadBookBkgd unsupported language");
 			filename[1] = 'E';
-			break;
 		}
 	} else {
 		if (!_bookCurPage)
@@ -558,7 +556,7 @@ void KyraEngine_HoF::bookPrintText(int dstPage, const uint8 *str, int x, int y, 
 	_screen->_charWidth = -2;
 
 	_screen->hideMouse();
-	_screen->printText((const char*)str, x, y, color, (_flags.lang == Common::JA_JPN) ? 0xf6 : 0);
+	_screen->printText((const char *)str, x, y, color, (_flags.lang == Common::JA_JPN) ? 0xf6 : 0);
 	_screen->showMouse();
 
 	_screen->_charWidth = 0;
@@ -706,7 +704,6 @@ int GUI_HoF::optionsButton(Button *button) {
 	int oldHandItem = _vm->_itemInHand;
 	_screen->setMouseCursor(0, 0, _vm->getShapePtr(0));
 	_vm->displayInvWsaLastFrame();
-	//XXX
 	_displayMenu = true;
 
 	for (uint i = 0; i < ARRAYSIZE(_menuButtons); ++i) {
@@ -760,7 +757,6 @@ int GUI_HoF::optionsButton(Button *button) {
 	initMenu(*_currentMenu);
 	_madeSave = false;
 	_loadedSave = false;
-	_vm->_itemInHand = -1;
 	updateAllMenuButtons();
 
 	if (_isDeathMenu) {
@@ -769,7 +765,7 @@ int GUI_HoF::optionsButton(Button *button) {
 	}
 
 	while (_displayMenu) {
-		processHighlights(*_currentMenu, _vm->_mouseX, _vm->_mouseY);
+		processHighlights(*_currentMenu);
 		getInput();
 	}
 
@@ -802,16 +798,11 @@ void GUI_HoF::createScreenThumbnail(Graphics::Surface &dst) {
 }
 
 void GUI_HoF::setupPalette() {
-	memcpy(_screen->getPalette(1), _screen->getPalette(0), 768);
+	_screen->copyPalette(1, 0);
 
-	uint8 *palette = _screen->getPalette(0);
-	for (int i = 0; i < 768; ++i)
-		palette[i] >>= 1;
-
-	static const uint8 guiPal[] = { 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFc, 0xFD, 0xFE };
-
-	for (uint i = 0; i < ARRAYSIZE(guiPal); ++i)
-		memcpy(_screen->getPalette(0)+guiPal[i]*3, _screen->getPalette(1)+guiPal[i]*3, 3);
+	Palette &pal = _screen->getPalette(0);
+	for (int i = 0; i < 741; ++i)
+		pal[i] >>= 1;
 
 	if (_isDeathMenu)
 		_screen->fadePalette(_screen->getPalette(0), 0x64);
@@ -820,7 +811,7 @@ void GUI_HoF::setupPalette() {
 }
 
 void GUI_HoF::restorePalette() {
-	memcpy(_screen->getPalette(0), _screen->getPalette(1), 768);
+	_screen->copyPalette(0, 1);
 	_screen->setScreenPalette(_screen->getPalette(0));
 }
 
@@ -829,6 +820,7 @@ void GUI_HoF::resetState(int item) {
 	_vm->setNextIdleAnimTimer();
 	_isDeathMenu = false;
 	if (!_loadedSave) {
+		_vm->_itemInHand = -1;
 		_vm->setHandItem(item);
 	} else {
 		_vm->setHandItem(_vm->_itemInHand);
@@ -857,8 +849,7 @@ void GUI_HoF::drawSliderBar(int slider, const uint8 *shape) {
 			position = _vm->_configTextspeed;
 	}
 
-	position = MAX(2, position);
-	position = MIN(97, position);
+	position = CLIP(position, 2, 97);
 	_screen->drawShape(0, shape, x+position, y, 0, 0);
 }
 
@@ -914,7 +905,7 @@ int GUI_HoF::audioOptions(Button *caller) {
 	updateAllMenuButtons();
 	bool speechEnabled = _vm->speechEnabled();
 	while (_isOptionsMenu) {
-		processHighlights(_audioOptions, _vm->_mouseX, _vm->_mouseY);
+		processHighlights(_audioOptions);
 		getInput();
 	}
 
@@ -962,7 +953,7 @@ int GUI_HoF::gameOptions(Button *caller) {
 	}
 
 	while (_isOptionsMenu) {
-		processHighlights(_gameOptions, _vm->_mouseX, _vm->_mouseY);
+		processHighlights(_gameOptions);
 		getInput();
 	}
 
@@ -989,7 +980,7 @@ int GUI_HoF::gameOptionsTalkie(Button *caller) {
 	_isOptionsMenu = true;
 
 	while (_isOptionsMenu) {
-		processHighlights(_gameOptions, _vm->_mouseX, _vm->_mouseY);
+		processHighlights(_gameOptions);
 		getInput();
 	}
 
@@ -1100,8 +1091,7 @@ int GUI_HoF::sliderHandler(Button *caller) {
 	else
 		newVolume = _vm->_mouseX - caller->x - 7;
 
-	newVolume = MAX(2, newVolume);
-	newVolume = MIN(97, newVolume);
+	newVolume = CLIP(newVolume, 2, 97);
 
 	if (newVolume == oldVolume)
 		return 0;
@@ -1181,7 +1171,7 @@ int GUI_HoF::loadMenu(Button *caller) {
 
 	_screen->updateScreen();
 	while (_isLoadMenu) {
-		processHighlights(_loadMenu, _vm->_mouseX, _vm->_mouseY);
+		processHighlights(_loadMenu);
 		getInput();
 	}
 

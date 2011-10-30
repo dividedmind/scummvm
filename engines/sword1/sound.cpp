@@ -28,6 +28,7 @@
 
 #include "common/util.h"
 #include "common/events.h"
+#include "common/EventRecorder.h"
 #include "common/system.h"
 
 #include "sword1/sound.h"
@@ -39,6 +40,7 @@
 #include "sound/mp3.h"
 #include "sound/vorbis.h"
 #include "sound/wave.h"
+#include "sound/vag.h"
 
 namespace Sword1 {
 
@@ -46,10 +48,11 @@ namespace Sword1 {
 #define SPEECH_FLAGS (Audio::Mixer::FLAG_16BITS | Audio::Mixer::FLAG_AUTOFREE | Audio::Mixer::FLAG_LITTLE_ENDIAN)
 
 Sound::Sound(const char *searchPath, Audio::Mixer *mixer, ResMan *pResMan) {
-	g_system->getEventManager()->registerRandomSource(_rnd, "sword1sound");
+	g_eventRec.registerRandomSource(_rnd, "sword1sound");
 	strcpy(_filePath, searchPath);
 	_mixer = mixer;
 	_resMan = pResMan;
+	_bigEndianSpeech = false;
 	_cowHeader = NULL;
 	_endOfQueue = 0;
 	_currentCowFile = 0;
@@ -65,6 +68,83 @@ Sound::~Sound(void) {
 	_endOfQueue = 0;
 	closeCowSystem();
 }
+
+void Sound::checkSpeechFileEndianness() {
+	// Some mac versions (not all of them) use big endian wav, although
+	// the wav header doesn't indicate it.
+	// Use heuristic to determine endianness of speech.
+	// The heuristic consist in computing the sum of the absolute difference for
+	// every two consecutive samples. This is done both with a big endian and a
+	// little endian assumption. The one with the smallest sum should be the
+	// correct one (the sound wave is supposed to be relatively smooth).
+	// It needs at least 1000 samples to get stable result (the code below is
+	// using the first 2000 samples of the wav sound).
+
+	// Init speech file if not already done.
+	if (!_currentCowFile) {
+		// Open one of the speech files. It uses SwordEngine::_systemVars.currentCD
+		// to decide which file to open, therefore if it is currently set to zero
+		// we have to set it to either 1 or 2 (I decided to set it to 1 as this is
+		// more likely to be the first file that will be needed).
+		bool no_current_cd = false;
+		if (SwordEngine::_systemVars.currentCD == 0) {
+			SwordEngine::_systemVars.currentCD = 1;
+			no_current_cd = true;
+		}
+		initCowSystem();
+		if (no_current_cd) {
+			// In case it fails with CD1 retry with CD2
+			if (!_currentCowFile) {
+				SwordEngine::_systemVars.currentCD = 2;
+				initCowSystem();
+			}
+			// Reset currentCD flag
+			SwordEngine::_systemVars.currentCD = 0;
+		}
+	}
+
+	// Testing for endianness makes sense only if using the uncompressed files.
+	if (_cowHeader == NULL || (_cowMode != CowWave && _cowMode != CowDemo))
+		return;
+
+	// I picked the sample to use randomly (I just made sure it is long enough so that there is
+	// a fair change of the heuristic to have a stable result and work for every language).
+	int roomNo = _currentCowFile == 1 ? 1 : 129;
+	int localNo = _currentCowFile == 1 ? 2 : 933;
+	// Get the speech data and apply the heuristic
+	uint32 locIndex = _cowHeader[roomNo] >> 2;
+	uint32 sampleSize = _cowHeader[locIndex + (localNo * 2)];
+	uint32 index = _cowHeader[locIndex + (localNo * 2) - 1];
+	if (sampleSize) {
+		uint32 size;
+		double be_diff_sum = 0., le_diff_sum = 0.;
+		_bigEndianSpeech = false;
+		int16 *data = uncompressSpeech(index + _cowHeaderSize, sampleSize, &size);
+		// Compute average of difference between two consecutive samples for both BE and LE
+		if (data) {
+			if (size > 4000)
+				size = 2000;
+			else
+				size /= 2;
+			int16 prev_be_value = (int16)SWAP_BYTES_16(*((uint16*)(data)));
+			for (uint32 i = 1 ; i < size ; ++i) {
+				le_diff_sum += fabs((double)(data[i] - data[i-1]));
+				int16 be_value = (int16)SWAP_BYTES_16(*((uint16*)(data + i)));
+				be_diff_sum += fabs((double)(be_value - prev_be_value));
+				prev_be_value = be_value;
+			}
+			delete [] data;
+		}
+		// Set the big endian flag
+		_bigEndianSpeech = (be_diff_sum < le_diff_sum);
+		if (_bigEndianSpeech)
+			debug(6, "Mac version: using big endian speech file");
+		else
+			debug(6, "Mac version: using little endian speech file");
+		debug(8, "Speech endianness heuristic: average = %f for BE and %f for LE, computed on %d samples)", be_diff_sum / (size - 1), le_diff_sum / (size - 1), size);
+	}
+}
+
 
 int Sound::addToQueue(int32 fxNo) {
 	bool alreadyInQueue = false;
@@ -165,17 +245,24 @@ void Sound::playSample(QueueElement *elem) {
 					uint8 volR = (_fxList[elem->id].roomVolList[cnt].rightVol * 10 * _sfxVolR) / 255;
 					int8 pan = (volR - volL) / 2;
 					uint8 volume = (volR + volL) / 2;
-					uint32 size = READ_LE_UINT32(sampleData + 0x28);
-					uint8 flags;
-					if (READ_LE_UINT16(sampleData + 0x22) == 16)
-						flags = Audio::Mixer::FLAG_16BITS | Audio::Mixer::FLAG_LITTLE_ENDIAN;
-					else
-						flags = Audio::Mixer::FLAG_UNSIGNED;
-					if (READ_LE_UINT16(sampleData + 0x16) == 2)
-						flags |= Audio::Mixer::FLAG_STEREO;
-					if (_fxList[elem->id].type == FX_LOOP)
-						flags |= Audio::Mixer::FLAG_LOOP;
-					_mixer->playRaw(Audio::Mixer::kSFXSoundType, &elem->handle, sampleData + 0x2C, size, 11025, flags, elem->id, volume, pan);
+
+					if (SwordEngine::isPsx()) { ;
+						uint32 size = READ_LE_UINT32(sampleData);
+						Audio::AudioStream *audStream = new Audio::VagStream(new Common::MemoryReadStream(sampleData + 4, size-4), _fxList[elem->id].type == FX_LOOP);
+						_mixer->playInputStream(Audio::Mixer::kSFXSoundType, &elem->handle, audStream, elem->id, volume, pan, false, false, false);
+					} else {
+						uint32 size = READ_LE_UINT32(sampleData + 0x28);
+						uint8 flags;
+						if (READ_LE_UINT16(sampleData + 0x22) == 16)
+							flags = Audio::Mixer::FLAG_16BITS | Audio::Mixer::FLAG_LITTLE_ENDIAN;
+						else
+							flags = Audio::Mixer::FLAG_UNSIGNED;
+						if (READ_LE_UINT16(sampleData + 0x16) == 2)
+							flags |= Audio::Mixer::FLAG_STEREO;
+						if (_fxList[elem->id].type == FX_LOOP)
+							flags |= Audio::Mixer::FLAG_LOOP;
+						_mixer->playRaw(Audio::Mixer::kSFXSoundType, &elem->handle, sampleData + 0x2C, size, 11025, flags, elem->id, volume, pan);
+					}
 			}
 		} else
 			break;
@@ -188,10 +275,70 @@ bool Sound::startSpeech(uint16 roomNo, uint16 localNo) {
 		return false;
 	}
 
-	uint32 locIndex = _cowHeader[roomNo] >> 2;
-	uint32 sampleSize = _cowHeader[locIndex + (localNo * 2)];
-	uint32 index = _cowHeader[locIndex + (localNo * 2) - 1];
+	uint32 locIndex = 0xFFFFFFFF;
+	uint32 sampleSize = 0;
+	uint32 index = 0;
+
+	if (_cowMode == CowPSX) {
+		Common::File file;
+		uint16 i;
+
+		if (!file.open("speech.lis")) {
+			warning ("Could not open speech.lis");
+			return false;
+		}
+
+		for (i = 0; !file.eos() && !file.err(); i++)
+			if (file.readUint16LE() == roomNo) {
+				locIndex = i;
+				break;
+			}
+		file.close();
+
+		if (locIndex == 0xFFFFFFFF) {
+			warning ("Could not find room %d in speech.lis", roomNo);
+			return false;
+		}
+
+		if (!file.open("speech.inf")) {
+			warning ("Could not open speech.inf");
+			return false;
+		}
+		
+		uint16 numRooms = file.readUint16LE(); // Read number of rooms referenced in this file
+
+		file.seek(locIndex * 4 + 2); // 4 bytes per room, skip first 2 bytes
+
+		uint16 numLines = file.readUint16LE();
+		uint16 roomOffset = file.readUint16LE();
+
+		file.seek(2 + numRooms * 4 + roomOffset * 2); // The offset is in terms of uint16's, so multiply by 2. Skip the room indexes too.
+
+		locIndex = 0xFFFFFFFF;
+
+		for (i = 0; i < numLines; i++)
+			if (file.readUint16LE() == localNo) {
+				locIndex = i;
+				break;
+			}
+
+		if (locIndex == 0xFFFFFFFF) {
+			warning ("Could not find local number %d in room %d in speech.inf", roomNo, localNo);
+			return false;
+		}
+
+		file.close();
+
+		index = _cowHeader[(roomOffset + locIndex) * 2];
+		sampleSize = _cowHeader[(roomOffset + locIndex) * 2 + 1];
+	} else {
+		locIndex = _cowHeader[roomNo] >> 2;
+		sampleSize = _cowHeader[locIndex + (localNo * 2)];
+		index = _cowHeader[locIndex + (localNo * 2) - 1];
+	}
+
 	debug(6, "startSpeech(%d, %d): locIndex %d, sampleSize %d, index %d", roomNo, localNo, locIndex, sampleSize, index);
+
 	if (sampleSize) {
 		uint8 speechVol = (_speechVolR + _speechVolL) / 2;
 		int8 speechPan = (_speechVolR - _speechVolL) / 2;
@@ -200,6 +347,14 @@ bool Sound::startSpeech(uint16 roomNo, uint16 localNo) {
 			int16 *data = uncompressSpeech(index + _cowHeaderSize, sampleSize, &size);
 			if (data)
 				_mixer->playRaw(Audio::Mixer::kSpeechSoundType, &_speechHandle, data, size, 11025, SPEECH_FLAGS, SOUND_SPEECH_ID, speechVol, speechPan);
+		} else if (_cowMode == CowPSX && sampleSize != 0xffffffff) {
+			_cowFile.seek(index * 2048);
+			_mixer->playInputStream(Audio::Mixer::kSpeechSoundType, &_speechHandle, new Audio::VagStream(_cowFile.readStream(sampleSize)), SOUND_SPEECH_ID, speechVol, speechPan);
+			// with compressed audio, we can't calculate the wave volume.
+			// so default to talking.
+			for (int cnt = 0; cnt < 480; cnt++)
+				_waveVolume[cnt] = true;
+			_waveVolPos = 0;
 		}
 #ifdef USE_FLAC
 		else if (_cowMode == CowFlac) {
@@ -310,21 +465,32 @@ int16 *Sound::uncompressSpeech(uint32 index, uint32 cSize, uint32 *size) {
 		int16 *dstData = (int16*)malloc(resSize * 2);
 		int32 samplesLeft = resSize;
 		while (srcPos < cSize && samplesLeft > 0) {
-			length = (int16)READ_LE_UINT16(srcData + srcPos);
+			length = (int16)(_bigEndianSpeech ? READ_BE_UINT16(srcData + srcPos) : READ_LE_UINT16(srcData + srcPos));
 			srcPos++;
 			if (length < 0) {
 				length = -length;
 				if (length > samplesLeft)
 					length = samplesLeft;
+				int16 value;
+				if (_bigEndianSpeech) {
+					value = (int16)SWAP_BYTES_16(*((uint16*)(srcData + srcPos)));
+				} else {
+					value = srcData[srcPos];
+				}
 				for (uint16 cnt = 0; cnt < (uint16)length; cnt++)
-					dstData[dstPos++] = srcData[srcPos];
+					dstData[dstPos++] = value;
 				srcPos++;
 			} else {
 				if (length > samplesLeft)
 					length = samplesLeft;
-				memcpy(dstData + dstPos, srcData + srcPos, length * 2);
-				dstPos += length;
-				srcPos += length;
+				if (_bigEndianSpeech) {
+					for (uint16 cnt = 0; cnt < (uint16)length; cnt++)
+						dstData[dstPos++] = (int16)SWAP_BYTES_16(*((uint16*)(srcData + (srcPos++))));
+				} else {
+					memcpy(dstData + dstPos, srcData + srcPos, length * 2);
+					dstPos += length;
+					srcPos += length;
+				}
 			}
 			samplesLeft -= length;
 		}
@@ -419,21 +585,47 @@ void Sound::initCowSystem(void) {
 		debug(1, "Using uncompressed Speech Cluster");
 		_cowMode = CowWave;
 	}
+
+	if (SwordEngine::isPsx()) {
+		// There's only one file on the PSX, so set it to the current disc.
+		_currentCowFile = SwordEngine::_systemVars.currentCD;
+		if (!_cowFile.isOpen()) {
+			if (!_cowFile.open("speech.dat"))
+				error ("Could not open speech.dat");
+			_cowMode = CowPSX;
+		}
+	}
+
 	if (!_cowFile.isOpen())
 		_cowFile.open("speech.clu");
+
 	if (!_cowFile.isOpen()) {
 		_cowFile.open("cows.mad");
 		if (_cowFile.isOpen())
 			_cowMode = CowDemo;
 	}
+
 	if (_cowFile.isOpen()) {
-		_cowHeaderSize = _cowFile.readUint32LE();
-		_cowHeader = (uint32*)malloc(_cowHeaderSize);
-		if (_cowHeaderSize & 3)
-			error("Unexpected cow header size %d", _cowHeaderSize);
-		for (uint32 cnt = 0; cnt < (_cowHeaderSize / 4) - 1; cnt++)
-			_cowHeader[cnt] = _cowFile.readUint32LE();
-		_currentCowFile = SwordEngine::_systemVars.currentCD;
+		if (SwordEngine::isPsx()) {
+			// Get data from the external table file
+			Common::File tableFile;
+			if (!tableFile.open("speech.tab"))
+				error ("Could not open speech.tab");
+			_cowHeaderSize = tableFile.size();
+			_cowHeader = (uint32 *)malloc(_cowHeaderSize);
+			if (_cowHeaderSize & 3)
+				error("Unexpected cow header size %d", _cowHeaderSize);
+			for (uint32 cnt = 0; cnt < _cowHeaderSize / 4; cnt++)
+				_cowHeader[cnt] = tableFile.readUint32LE();
+		} else {
+			_cowHeaderSize = _cowFile.readUint32LE();
+			_cowHeader = (uint32*)malloc(_cowHeaderSize);
+			if (_cowHeaderSize & 3)
+				error("Unexpected cow header size %d", _cowHeaderSize);
+			for (uint32 cnt = 0; cnt < (_cowHeaderSize / 4) - 1; cnt++)
+				_cowHeader[cnt] = _cowFile.readUint32LE();
+			_currentCowFile = SwordEngine::_systemVars.currentCD;
+		}
 	} else
 		warning("Sound::initCowSystem: Can't open SPEECH%d.CLU", SwordEngine::_systemVars.currentCD);
 }

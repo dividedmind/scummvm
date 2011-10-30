@@ -49,34 +49,46 @@ Sound::~Sound() {
 }
 
 bool Sound::voiceFileIsPresent(const char *file) {
-	char filenamebuffer[25];
 	for (int i = 0; _supportedCodecs[i].fileext; ++i) {
-		strcpy(filenamebuffer, file);
-		strcat(filenamebuffer, _supportedCodecs[i].fileext);
-		if (_vm->resource()->getFileSize(filenamebuffer) > 0)
+		Common::String f = file;
+		f += _supportedCodecs[i].fileext;
+		if (_vm->resource()->getFileSize(f.c_str()) > 0)
 			return true;
 	}
-
-	strcpy(filenamebuffer, file);
-	strcat(filenamebuffer, ".VOC");
-
-	if (_vm->resource()->getFileSize(filenamebuffer) > 0)
-		return true;
 
 	return false;
 }
 
-int32 Sound::voicePlay(const char *file, uint8 volume, bool isSfx) {
+bool Sound::isVoicePresent(const char *file) {
 	char filenamebuffer[25];
 
-	int h = 0;
-	while (_mixer->isSoundHandleActive(_soundChannels[h].channelHandle) && h < kNumChannelHandles)
-		h++;
-	if (h >= kNumChannelHandles)
+	for (int i = 0; _supportedCodecs[i].fileext; ++i) {
+		strcpy(filenamebuffer, file);
+		strcat(filenamebuffer, _supportedCodecs[i].fileext);
+
+		if (_vm->resource()->exists(filenamebuffer))
+			return true;
+	}
+
+	return false;
+}
+
+int32 Sound::voicePlay(const char *file, Audio::SoundHandle *handle, uint8 volume, bool isSfx) {
+	Audio::AudioStream *audioStream = getVoiceStream(file);
+
+	if (!audioStream) {
 		return 0;
+	}
+
+	int playTime = audioStream->getTotalPlayTime();
+	playVoiceStream(audioStream, handle, volume, isSfx);
+	return playTime;
+}
+
+Audio::AudioStream *Sound::getVoiceStream(const char *file) {
+	char filenamebuffer[25];
 
 	Audio::AudioStream *audioStream = 0;
-
 	for (int i = 0; _supportedCodecs[i].fileext; ++i) {
 		strcpy(filenamebuffer, file);
 		strcat(filenamebuffer, _supportedCodecs[i].fileext);
@@ -84,121 +96,67 @@ int32 Sound::voicePlay(const char *file, uint8 volume, bool isSfx) {
 		Common::SeekableReadStream *stream = _vm->resource()->createReadStream(filenamebuffer);
 		if (!stream)
 			continue;
+
 		audioStream = _supportedCodecs[i].streamFunc(stream, true, 0, 0, 1);
 		break;
 	}
 
 	if (!audioStream) {
-		strcpy(filenamebuffer, file);
-		strcat(filenamebuffer, ".VOC");
-
-		uint32 fileSize = 0;
-		byte *fileData = _vm->resource()->fileData(filenamebuffer, &fileSize);
-		if (!fileData)
-			return 0;
-
-		Common::MemoryReadStream vocStream(fileData, fileSize);
-		audioStream = Audio::makeVOCStream(vocStream, Audio::Mixer::FLAG_UNSIGNED);
-
-		delete[] fileData;
-		fileSize = 0;
-	}
-
-	if (!audioStream) {
 		warning("Couldn't load sound file '%s'", file);
 		return 0;
+	} else {
+		return audioStream;
 	}
-
-	_soundChannels[h].file = file;
-	_mixer->playInputStream(isSfx ? Audio::Mixer::kSFXSoundType : Audio::Mixer::kSpeechSoundType, &_soundChannels[h].channelHandle, audioStream, -1, volume);
-
-	return audioStream->getTotalPlayTime();
 }
 
-void Sound::voicePlayFromList(Common::List<const char*> fileList) {
+bool Sound::playVoiceStream(Audio::AudioStream *stream, Audio::SoundHandle *handle, uint8 volume, bool isSfx) {
 	int h = 0;
-	while (_mixer->isSoundHandleActive(_soundChannels[h].channelHandle) && h < kNumChannelHandles)
+	while (_mixer->isSoundHandleActive(_soundChannels[h]) && h < kNumChannelHandles)
 		h++;
 	if (h >= kNumChannelHandles)
-		return;
+		return false;
 
-	Audio::AppendableAudioStream *out = Audio::makeAppendableAudioStream(22050, Audio::Mixer::FLAG_AUTOFREE | Audio::Mixer::FLAG_UNSIGNED);
-	
-	for (Common::List<const char*>::iterator i = fileList.begin(); i != fileList.end(); i++) {
-		Common::SeekableReadStream *file = _vm->resource()->createReadStream(*i);
+	_mixer->playInputStream(isSfx ? Audio::Mixer::kSFXSoundType : Audio::Mixer::kSpeechSoundType, &_soundChannels[h], stream, -1, volume);
+	if (handle)
+		*handle = _soundChannels[h];
 
-		// TODO: Maybe output an warning like "file not found"?
-		if (!file)
-			continue;
-
-		int size, rate;
-		uint8 *data = Audio::loadVOCFromStream(*file, size, rate);
-		delete file;
-
-		// FIXME/HACK: While loadVOCStream uses malloc / realloc,
-		// AppendableAudioStream uses delete[] to free the passed buffer.
-		// As a consequence we just 'move' the data to a buffer allocated
-		// via new[].
-		uint8 *vocBuffer = new uint8[size];
-		assert(vocBuffer);
-		memcpy(vocBuffer, data, size);
-		free(data);
-
-		out->queueBuffer(vocBuffer, size);
-	}
-
-	out->finish();
-	
-	_soundChannels[h].file = *fileList.begin();
-	_mixer->playInputStream(Audio::Mixer::kSpeechSoundType, &_soundChannels[h].channelHandle, out);
+	return true;
 }
 
-void Sound::voiceStop(const char *file) {
-	if (!file) {
+void Sound::voiceStop(const Audio::SoundHandle *handle) {
+	if (!handle) {
 		for (int h = 0; h < kNumChannelHandles; h++) {
-			if (_mixer->isSoundHandleActive(_soundChannels[h].channelHandle))
-				_mixer->stopHandle(_soundChannels[h].channelHandle);
+			if (_mixer->isSoundHandleActive(_soundChannels[h]))
+				_mixer->stopHandle(_soundChannels[h]);
 		}
 	} else {
-		for (int i = 0; i < kNumChannelHandles; ++i) {
-			if (_soundChannels[i].file == file)
-				_mixer->stopHandle(_soundChannels[i].channelHandle);
-		}
+		_mixer->stopHandle(*handle);
 	}
 }
 
-bool Sound::voiceIsPlaying(const char *file) {
-	bool res = false;
-	if (!file) {
+bool Sound::voiceIsPlaying(const Audio::SoundHandle *handle) {
+	if (!handle) {
 		for (int h = 0; h < kNumChannelHandles; h++) {
-			if (_mixer->isSoundHandleActive(_soundChannels[h].channelHandle))
-				res = true;
+			if (_mixer->isSoundHandleActive(_soundChannels[h]))
+				return true;
 		}
 	} else {
-		for (int i = 0; i < kNumChannelHandles; ++i) {
-			if (_soundChannels[i].file == file)
-				res = _mixer->isSoundHandleActive(_soundChannels[i].channelHandle);
-		}
+		return _mixer->isSoundHandleActive(*handle);
 	}
-	return res;
+
+	return false;
 }
 
-uint32 Sound::voicePlayedTime(const char *file) {
-	if (!file)
-		return 0;
-
-	for (int i = 0; i < kNumChannelHandles; ++i) {
-		if (_soundChannels[i].file == file)
-			return _mixer->getSoundElapsedTime(_soundChannels[i].channelHandle);
-	}
-
-	return 0;
+bool Sound::allVoiceChannelsPlaying() {
+	for (int i = 0; i < kNumChannelHandles; ++i)
+		if (!_mixer->isSoundHandleActive(_soundChannels[i]))
+			return false;
+	return true;
 }
 
 #pragma mark -
 
 void KyraEngine_v1::snd_playTheme(int file, int track) {
-	debugC(9, kDebugLevelMain | kDebugLevelSound, "KyraEngine_v1::snd_playTheme(%d, %d)", file, track);
 	if (_curMusicTheme == file)
 		return;
 
@@ -216,12 +174,10 @@ void KyraEngine_v1::snd_playTheme(int file, int track) {
 }
 
 void KyraEngine_v1::snd_playSoundEffect(int track, int volume) {
-	debugC(9, kDebugLevelMain | kDebugLevelSound, "KyraEngine_v1::snd_playSoundEffect(%d, %d)", track, volume);
 	_sound->playSoundEffect(track);
 }
 
 void KyraEngine_v1::snd_playWanderScoreViaMap(int command, int restart) {
-	debugC(9, kDebugLevelMain | kDebugLevelSound, "KyraEngine_v1::snd_playWanderScoreViaMap(%d, %d)", command, restart);
 	if (restart)
 		_lastMusicCommand = -1;
 
@@ -234,7 +190,7 @@ void KyraEngine_v1::snd_playWanderScoreViaMap(int command, int restart) {
 	//	XXX
 	//}
 
-	if (_flags.platform == Common::kPlatformPC) {
+	if (_flags.platform == Common::kPlatformPC || _flags.platform == Common::kPlatformMacintosh) {
 		assert(command*2+1 < _trackMapSize);
 		if (_curMusicTheme != _trackMap[command*2]) {
 			if (_trackMap[command*2] != -1 && _trackMap[command*2] != -2)
@@ -265,30 +221,49 @@ void KyraEngine_v1::snd_playWanderScoreViaMap(int command, int restart) {
 }
 
 void KyraEngine_v1::snd_stopVoice() {
-	debugC(9, kDebugLevelMain | kDebugLevelSound, "KyraEngine_v1::snd_stopVoice()");
-	if (!_speechFile.empty()) {
-		_sound->voiceStop(_speechFile.c_str());
-		_speechFile.clear();
-	}
+	_sound->voiceStop(&_speechHandle);
 }
 
 bool KyraEngine_v1::snd_voiceIsPlaying() {
-	debugC(9, kDebugLevelMain | kDebugLevelSound, "KyraEngine_v1::snd_voiceIsPlaying()");
-	return _speechFile.empty() ? false : _sound->voiceIsPlaying(_speechFile.c_str());
+	return _sound->voiceIsPlaying(&_speechHandle);
 }
 
 // static res
 
+namespace {
+
+// A simple wrapper to create VOC streams the way like creating MP3, OGG/Vorbis and FLAC streams.
+// Possible TODO: Think of making this complete and moving it to sound/voc.cpp ?
+Audio::AudioStream *makeVOCStream(Common::SeekableReadStream *stream, bool disposeAfterUse, uint32 startTime, uint32 duration, uint numLoops) {
+	Audio::AudioStream *as = Audio::makeVOCStream(*stream, Audio::Mixer::FLAG_UNSIGNED);
+
+	if (disposeAfterUse)
+		delete stream;
+
+	return as;
+}
+
+} // end of anonymous namespace
+
 const Sound::SpeechCodecs Sound::_supportedCodecs[] = {
-#ifdef USE_FLAC
-	{ ".VOF", Audio::makeFlacStream },
-#endif // USE_FLAC
-#ifdef USE_VORBIS
-	{ ".VOG", Audio::makeVorbisStream },
-#endif // USE_VORBIS
+	{ ".VOC", makeVOCStream },
+	{ "", makeVOCStream },
+
 #ifdef USE_MAD
 	{ ".VO3", Audio::makeMP3Stream },
+	{ ".MP3", Audio::makeMP3Stream },
 #endif // USE_MAD
+
+#ifdef USE_VORBIS
+	{ ".VOG", Audio::makeVorbisStream },
+	{ ".OGG", Audio::makeVorbisStream },
+#endif // USE_VORBIS
+
+#ifdef USE_FLAC
+	{ ".VOF", Audio::makeFlacStream },
+	{ ".FLA", Audio::makeFlacStream },
+#endif // USE_FLAC
+
 	{ 0, 0 }
 };
 

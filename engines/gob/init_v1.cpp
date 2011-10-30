@@ -35,6 +35,9 @@ namespace Gob {
 Init_v1::Init_v1(GobEngine *vm) : Init(vm) {
 }
 
+Init_v1::~Init_v1() {
+}
+
 void Init_v1::initVideo() {
 	if (_vm->_global->_videoMode)
 		_vm->validateVideoMode(_vm->_global->_videoMode);
@@ -43,7 +46,7 @@ void Init_v1::initVideo() {
 
 	_vm->_global->_inVM = 0;
 
-	if (_vm->_global->_videoMode == 0x13)
+	if ((_vm->_global->_videoMode == 0x13) && !_vm->isEGA())
 		_vm->_global->_colorCount = 256;
 
 	_vm->_global->_pPaletteDesc = &_vm->_global->_paletteStruct;

@@ -45,26 +45,28 @@ struct SkyVersion {
 	int dataDiskSize;
 	const char *extraDesc;
 	int version;
+	uint32 guioptions;
 };
 
 // TODO: Would be nice if Disk::determineGameVersion() used this table, too.
 static const SkyVersion skyVersions[] = {
-	{  243, -1, "pc gamer demo", 109 },
-	{  247, -1, "floppy demo", 267 },
-	{ 1404, -1, "floppy", 288 },
-	{ 1413, -1, "floppy", 303 },
-	{ 1445, 8830435, "floppy", 348 },
-	{ 1445, -1, "floppy", 331 },
-	{ 1711, -1, "cd demo", 365 },
-	{ 5099, -1, "cd", 368 },
-	{ 5097, -1, "cd", 372 },
-	{ 0, 0, 0, 0 }
+	{  232, -1, "floppy demo", 272, Common::GUIO_NOSPEECH }, // German
+	{  243, -1, "pc gamer demo", 109, Common::GUIO_NOSPEECH },
+	{  247, -1, "floppy demo", 267, Common::GUIO_NOSPEECH }, // English
+	{ 1404, -1, "floppy", 288, Common::GUIO_NOSPEECH },
+	{ 1413, -1, "floppy", 303, Common::GUIO_NOSPEECH },
+	{ 1445, 8830435, "floppy", 348, Common::GUIO_NOSPEECH },
+	{ 1445, -1, "floppy", 331, Common::GUIO_NOSPEECH },
+	{ 1711, -1, "cd demo", 365, Common::GUIO_NONE },
+	{ 5099, -1, "cd", 368, Common::GUIO_NONE },
+	{ 5097, -1, "cd", 372, Common::GUIO_NONE },
+	{ 0, 0, 0, 0, 0 }
 };
 
 class SkyMetaEngine : public MetaEngine {
 public:
 	virtual const char *getName() const;
-	virtual const char *getCopyright() const;
+	virtual const char *getOriginalCopyright() const;
 
 	virtual bool hasFeature(MetaEngineFeature f) const;
 	virtual GameList getSupportedGames() const;
@@ -82,7 +84,7 @@ const char *SkyMetaEngine::getName() const {
 	return "Beneath a Steel Sky";
 }
 
-const char *SkyMetaEngine::getCopyright() const {
+const char *SkyMetaEngine::getOriginalCopyright() const {
 	return "Beneath a Steel Sky (C) Revolution";
 }
 
@@ -154,6 +156,7 @@ GameList SkyMetaEngine::detectGames(const Common::FSList &fslist) const {
 				char buf[32];
 				snprintf(buf, sizeof(buf), "v0.0%d %s", sv->version, sv->extraDesc);
 				dg.updateDesc(buf);
+				dg.setGUIOptions(sv->guioptions);
 				break;
 			}
 			++sv;
@@ -209,7 +212,7 @@ SaveStateList SkyMetaEngine::listSaves(const char *target) const {
 		ext.toUppercase();
 		if (isdigit(ext[0]) && isdigit(ext[1]) && isdigit(ext[2])){
 			int slotNum = atoi(ext.c_str());
-			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
+			Common::InSaveFile *in = saveFileMan->openForLoading(*file);
 			if (in) {
 				saveList.push_back(SaveStateDescriptor(slotNum+1, savenames[slotNum]));
 				delete in;
@@ -261,7 +264,7 @@ void SkyMetaEngine::removeSaveState(const char *target, int slot) const {
 			outf->write(savenames[cnt].c_str(), savenames[cnt].size() + 1);
 		}
 		outf->finalize();
-		if (!outf->ioFailed())
+		if (!outf->err())
 			ioFailed = false;
 		delete outf;
 	}

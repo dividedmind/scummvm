@@ -60,6 +60,7 @@ enum Languages {
 
 enum Verbs {
 	kVerbDefault = -1,
+	kVerbNone = 0,
 	kVerbLook = 1,
 	kVerbPick = 2,
 	kVerbOpen = 3,
@@ -276,8 +277,7 @@ static const int interf_y[] ={ 51, 51, 51, 51, 83, 83, 83 };
 class DrasculaEngine : public ::Engine {
 protected:
 	// Engine APIs
-	virtual Common::Error init();
-	virtual Common::Error go();
+	virtual Common::Error run();
 
 public:
 	DrasculaEngine(OSystem *syst, const DrasculaGameDescription *gameDesc);
@@ -344,7 +344,6 @@ public:
 	byte *mouseCursor;
 
 	// Graphics buffers/pointers
-	byte *VGA;
 	byte *bgSurface;
 	byte *backSurface;
 	byte *drawSurface3;
@@ -353,7 +352,6 @@ public:
 	byte *extraSurface;	// not sure about this one, was "dir_hare_dch"
 	byte *screenSurface;
 	byte *frontSurface;
-	byte *textSurface;
 	byte *memPtr;
 	byte *mSession;
 
@@ -381,7 +379,7 @@ public:
 	int x1[40], y1[40], x2[40], y2[40];
 	int takeObject, pickedObject;
 	bool _subtitlesDisabled;
-	int menuBar, menuScreen, hasName;
+	bool _menuBar, _menuScreen, _hasName;
 	char textName[20];
 	int curExcuseLook;
 	int curExcuseAction;
@@ -538,7 +536,7 @@ public:
 	byte *TryInMem();
 	int playFrameSSN();
 
-	int UsingMem;
+	bool _useMemForArj;
 	byte CHUNK;
 	byte CMP, dacSSN[768];
 	int FrameSSN;
@@ -564,7 +562,7 @@ public:
 	void playTalkSequence(int sequence);
 	void doTalkSequenceCommand(TalkSequenceCommand cmd);
 	void converse(int);
-	void print_abc_opc(const char *, int, int);
+	int print_abc_opc(const char *, int, int);
 	void response(int);
 	void activatePendulum();
 

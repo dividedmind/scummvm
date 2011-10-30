@@ -112,6 +112,7 @@ void ConsoleDialog::init() {
 
 	_w = _w - _w / 20;
 	_h = _h * kConsoleLineHeight + 2;
+	_x = _w / 40;
 
 	// Set scrollbar dimensions
 	int scrollBarWidth = g_gui.xmlEval()->getVar("Globals.Scrollbar.Width", 0);
@@ -149,8 +150,8 @@ void ConsoleDialog::open() {
 	if (_w != w || _h != h)
 		init();
 
-	_x = _w / 40;
 	_y = -_h;
+
 	_slideTime = g_system->getMillis();
 	_slideMode = kDownSlideMode;
 
@@ -327,14 +328,13 @@ void ConsoleDialog::handleKeyDown(Common::KeyState state) {
 				str[i] = buffer(_promptStartPos + i);
 			str[len] = '\0';
 
-			char *completion = 0;
+			Common::String completion;
 			if ((*_completionCallbackProc)(this, str, completion, _callbackRefCon)) {
 				if (_caretVisible)
 					drawCaret(true);
-				insertIntoPrompt(completion);
+				insertIntoPrompt(completion.c_str());
 				scrollToCurrent();
 				drawLine(pos2line(_currentPos));
-				delete[] completion;
 			}
 			delete[] str;
 		}
@@ -663,6 +663,7 @@ void ConsoleDialog::scrollToCurrent() {
 	} else if (line > _scrollLine) {
 		_scrollLine = line;
 		updateScrollBuffer();
+		draw();
 	}
 }
 

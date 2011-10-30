@@ -28,17 +28,18 @@
 #include "common/config-manager.h"
 #include "common/savefile.h"
 #include "common/system.h"
+#include "common/zlib.h"
 
 #include "scumm/actor.h"
 #include "scumm/charset.h"
 #include "scumm/imuse_digi/dimuse.h"
 #include "scumm/imuse/imuse.h"
-#include "scumm/intern.h"
 #include "scumm/he/intern_he.h"
 #include "scumm/object.h"
 #include "scumm/resource.h"
 #include "scumm/saveload.h"
-#include "scumm/scumm.h"
+#include "scumm/scumm_v0.h"
+#include "scumm/scumm_v7.h"
 #include "scumm/sound.h"
 #include "scumm/he/sprite_he.h"
 #include "scumm/verbs.h"
@@ -85,6 +86,19 @@ bool ScummEngine::canLoadGameStateCurrently() {
 	// FIXME: Actually, we might wish to support loading in more places.
 	// As long as we are sure it won't cause any problems... Are we
 	// aware of *any* spots where loading is not supported?
+
+	// HE games are limited to original load and save interface only,
+	// due to numerous glitches (see bug #1726909) that can occur.
+	if (_game.heversion >= 60)
+		return false;
+
+	// COMI always disables saving/loading (to tell the truth:
+	// the main menu) via its scripts, thus we need to make an
+	// exception here. This the same forced overwriting of the
+	// script decisions as in ScummEngine::processKeyboard.
+	if (_game.id == GID_CMI)
+		return true;
+
 	return (VAR_MAINMENU_KEY == 0xFF || VAR(VAR_MAINMENU_KEY) != 0);
 }
 
@@ -98,7 +112,22 @@ bool ScummEngine::canSaveGameStateCurrently() {
 	// TODO: Should we disallow saving in some more places,
 	// e.g. when a SAN movie is playing? Not sure whether the
 	// original EXE allowed this.
-	return (VAR_MAINMENU_KEY == 0xFF || VAR(VAR_MAINMENU_KEY) != 0);
+
+	// HE games are limited to original load and save interface only,
+	// due to numerous glitches (see bug #1726909) that can occur.
+	if (_game.heversion >= 60)
+		return false;
+
+	// COMI always disables saving/loading (to tell the truth:
+	// the main menu) via its scripts, thus we need to make an
+	// exception here. This the same forced overwriting of the
+	// script decisions as in ScummEngine::processKeyboard.
+	if (_game.id == GID_CMI)
+		return true;
+
+	// SCUMM v4+ doesn't allow saving in room 0 or if  
+	// VAR(VAR_MAINMENU_KEY) to set to zero.
+	return (VAR_MAINMENU_KEY == 0xFF || (VAR(VAR_MAINMENU_KEY) != 0 && _currentRoom != 0));
 }
 
 
@@ -129,10 +158,27 @@ static bool saveSaveGameHeader(Common::OutSaveFile *out, SaveGameHeader &hdr) {
 	return true;
 }
 
+bool ScummEngine::saveState(Common::OutSaveFile *out, bool writeHeader) {
+	SaveGameHeader hdr;
+
+	if (writeHeader) {
+		memcpy(hdr.name, _saveLoadName, sizeof(hdr.name));
+		saveSaveGameHeader(out, hdr);
+	}
+#if !defined(__DS__) /* && !defined(__PLAYSTATION2__) */
+	Graphics::saveThumbnail(*out);
+#endif
+	saveInfos(out);
+
+	Serializer ser(0, out, CURRENT_VER);
+	saveOrLoad(&ser);
+	return true;
+}
+
 bool ScummEngine::saveState(int slot, bool compat) {
+	bool saveFailed;
 	Common::String filename;
 	Common::OutSaveFile *out;
-	SaveGameHeader hdr;
 
 	if (_saveLoadSlot == 255) {
 		// Allow custom filenames for save game system in HE Games
@@ -140,27 +186,109 @@ bool ScummEngine::saveState(int slot, bool compat) {
 	} else {
 		filename = makeSavegameName(slot, compat);
 	}
-	if (!(out = _saveFileMan->openForSaving(filename.c_str())))
+	if (!(out = _saveFileMan->openForSaving(filename)))
 		return false;
 
-	memcpy(hdr.name, _saveLoadName, sizeof(hdr.name));
-	saveSaveGameHeader(out, hdr);
-#if !defined(__DS__)
-	Graphics::saveThumbnail(*out);
-#endif
-	saveInfos(out);
+	saveFailed = false;
+	if (!saveState(out))
+		saveFailed = true;
 
-	Serializer ser(0, out, CURRENT_VER);
-	saveOrLoad(&ser);
 	out->finalize();
-	if (out->err()) {
-		delete out;
+	if (out->err())
+		saveFailed = true;
+	delete out;
+
+	if (saveFailed) {
 		debug(1, "State save as '%s' FAILED", filename.c_str());
 		return false;
 	}
-	delete out;
 	debug(1, "State saved as '%s'", filename.c_str());
 	return true;
+}
+
+
+void ScummEngine_v4::prepareSavegame() {
+	Common::MemoryWriteStreamDynamic *memStream;
+	Common::WriteStream *writeStream;
+
+	// free memory of the last prepared savegame
+	delete _savePreparedSavegame;
+	_savePreparedSavegame = NULL;
+
+	// store headerless savegame in a compressed memory stream
+	memStream = new Common::MemoryWriteStreamDynamic();
+	writeStream = Common::wrapCompressedWriteStream(memStream);
+	if (saveState(writeStream, false)) {
+		// we have to finalize the compression-stream first, otherwise the internal
+		// memory-stream pointer will be zero (Important: flush() does not work here!).
+		writeStream->finalize();
+		if (!writeStream->err()) {
+			// wrap uncompressing MemoryReadStream around the savegame data
+			_savePreparedSavegame = Common::wrapCompressedReadStream(
+				new Common::MemoryReadStream(memStream->getData(), memStream->size(), true));
+		}
+	}
+	// free the CompressedWriteStream and MemoryWriteStreamDynamic
+	// but not the memory stream's internal buffer
+	delete writeStream;
+}
+
+bool ScummEngine_v4::savePreparedSavegame(int slot, char *desc) {
+	bool success;
+	Common::String filename;
+	Common::OutSaveFile *out;
+	SaveGameHeader hdr;
+	uint32 nread, nwritten;
+
+	out = 0;
+	success = true;
+
+	// check if savegame was successfully stored in memory
+	if (!_savePreparedSavegame)
+		success = false;
+
+	// open savegame file
+	if (success) {
+		filename = makeSavegameName(slot, false);
+		if (!(out = _saveFileMan->openForSaving(filename))) {
+			success = false;
+		}
+	}
+
+	// write header to file
+	if (success) {
+		memset(hdr.name, 0, sizeof(hdr.name));
+		strncpy(hdr.name, desc, sizeof(hdr.name)-1);
+		success = saveSaveGameHeader(out, hdr);
+	}
+
+	// copy savegame from memory-stream to file
+	if (success) {
+		_savePreparedSavegame->seek(0, SEEK_SET);
+		byte buffer[1024];
+		while ((nread = _savePreparedSavegame->read(buffer, sizeof(buffer)))) {
+			nwritten = out->write(buffer, nread);
+			if (nwritten < nread) {
+				success = false;
+				break;
+			}
+		}
+	}
+
+	if (out) {
+		out->finalize();
+		if (out->err())
+			success = false;
+		delete out;
+	}
+
+	if (!success) {
+		debug(1, "State save as '%s' FAILED", filename.c_str());
+		return false;
+	} else {
+		debug(1, "State saved as '%s'", filename.c_str());
+		return true;
+	}
 }
 
 static bool loadSaveGameHeader(Common::SeekableReadStream *in, SaveGameHeader &hdr) {
@@ -184,7 +312,7 @@ bool ScummEngine::loadState(int slot, bool compat) {
 	} else {
 		filename = makeSavegameName(slot, compat);
 	}
-	if (!(in = _saveFileMan->openForLoading(filename.c_str())))
+	if (!(in = _saveFileMan->openForLoading(filename)))
 		return false;
 
 	if (!loadSaveGameHeader(in, hdr)) {
@@ -362,6 +490,17 @@ bool ScummEngine::loadState(int slot, bool compat) {
 		_scummVars[VAR_CAMERA_ACCEL_Y] = _scummVars[110];
 	}
 
+	// For a long time, we used incorrect values for some camera related
+	// scumm vars. We now know the proper values. To be able to properly use
+	// old save games, we update the old (bad) values to the new (correct)
+	// ones.
+	if (hdr.ver < VER(77) && _game.version >= 7) {
+		_scummVars[VAR_CAMERA_THRESHOLD_X] = 100;
+		_scummVars[VAR_CAMERA_THRESHOLD_Y] = 70;
+		_scummVars[VAR_CAMERA_ACCEL_X] = 100;
+		_scummVars[VAR_CAMERA_ACCEL_Y] = 100;
+	}
+
 	// With version 22, we replaced the scale items with scale slots. So when
 	// loading such an old save game, try to upgrade the old to new format.
 	if (hdr.ver < VER(22)) {
@@ -451,7 +590,7 @@ void ScummEngine::listSavegames(bool *marks, int num) {
 	prefix.setChar('*', prefix.size()-2);
 	prefix.setChar(0, prefix.size()-1);
 	memset(marks, false, num * sizeof(bool));	//assume no savegames for this title
-	files = _saveFileMan->listSavefiles(prefix.c_str());
+	files = _saveFileMan->listSavefiles(prefix);
 
 	for (Common::StringList::const_iterator file = files.begin(); file != files.end(); ++file) {
 		//Obtain the last 2 digits of the filename, since they correspond to the save slot
@@ -473,7 +612,7 @@ bool ScummEngine::getSavegameName(int slot, Common::String &desc) {
 
 	desc.clear();
 	Common::String filename = makeSavegameName(slot, false);
-	in = _saveFileMan->openForLoading(filename.c_str());
+	in = _saveFileMan->openForLoading(filename);
 	if (in) {
 		result = Scumm::getSavegameName(in, desc, _game.heversion);
 		delete in;
@@ -515,7 +654,7 @@ Graphics::Surface *ScummEngine::loadThumbnailFromSlot(const char *target, int sl
 		return  0;
 
 	Common::String filename = ScummEngine::makeSavegameName(target, slot, false);
-	if (!(in = g_system->getSavefileManager()->openForLoading(filename.c_str()))) {
+	if (!(in = g_system->getSavefileManager()->openForLoading(filename))) {
 		return 0;
 	}
 
@@ -553,7 +692,7 @@ bool ScummEngine::loadInfosFromSlot(const char *target, int slot, InfoStuff *stu
 		return  0;
 
 	Common::String filename = makeSavegameName(target, slot, false);
-	if (!(in = g_system->getSavefileManager()->openForLoading(filename.c_str()))) {
+	if (!(in = g_system->getSavefileManager()->openForLoading(filename))) {
 		return false;
 	}
 
@@ -569,8 +708,10 @@ bool ScummEngine::loadInfosFromSlot(const char *target, int slot, InfoStuff *stu
 		return false;
 	}
 
-	if (!Graphics::skipThumbnailHeader(*in))
+	if (!Graphics::skipThumbnailHeader(*in)) {
+		delete in;
 		return false;
+	}
 
 	if (!loadInfos(in, stuff)) {
 		delete in;
@@ -1255,11 +1396,31 @@ void ScummEngine::saveOrLoad(Serializer *s) {
 }
 
 void ScummEngine_v0::saveOrLoad(Serializer *s) {
+	ScummEngine_v2::saveOrLoad(s);
+
+	const SaveLoadEntry v0Entrys[] = {
+		MKLINE(ScummEngine_v0, _currentMode, sleByte, VER(78)),
+		MKLINE(ScummEngine_v0, _currentLights, sleByte, VER(78)),
+		MKEND()
+	};
+ 	s->saveLoadEntries(this, v0Entrys);
+}
+
+
+void ScummEngine_v2::saveOrLoad(Serializer *s) {
 	ScummEngine::saveOrLoad(s);
 
-	// TODO: Save additional variables
-	// _currentMode
-	// _currentLights
+	const SaveLoadEntry v2Entrys[] = {
+		MKLINE(ScummEngine_v2, _inventoryOffset, sleUint16, VER(79)),
+		MKEND()
+	};
+	s->saveLoadEntries(this, v2Entrys);
+
+	// In old saves we didn't store _inventoryOffset -> reset it to
+	// a sane default when loading one of those.
+	if (s->getVersion() < 79 && s->isLoading()) {
+		_inventoryOffset = 0;
+	}
 }
 
 void ScummEngine_v5::saveOrLoad(Serializer *s) {

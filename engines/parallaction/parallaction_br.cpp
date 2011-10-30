@@ -27,9 +27,12 @@
 #include "common/util.h"
 
 #include "parallaction/parallaction.h"
+#include "parallaction/exec.h"
 #include "parallaction/input.h"
+#include "parallaction/parser.h"
 #include "parallaction/saveload.h"
 #include "parallaction/sound.h"
+#include "parallaction/walk.h"
 
 namespace Parallaction {
 
@@ -42,8 +45,8 @@ const char *Parallaction_br::_partNames[] = {
 	"PART4"
 };
 
-Parallaction_br::Parallaction_br(OSystem* syst, const PARALLACTIONGameDescription *gameDesc) : Parallaction_ns(syst, gameDesc),
-	_locationParser(0), _programParser(0) {
+Parallaction_br::Parallaction_br(OSystem* syst, const PARALLACTIONGameDescription *gameDesc) : Parallaction(syst, gameDesc),
+	_locationParser(0), _programParser(0), _soundManI(0) {
 }
 
 Common::Error Parallaction_br::init() {
@@ -51,26 +54,24 @@ Common::Error Parallaction_br::init() {
 	_screenWidth = 640;
 	_screenHeight = 400;
 
-	if (getGameType() == GType_BRA) {
-		if (getPlatform() == Common::kPlatformPC) {
-			if (getFeatures() & GF_DEMO) {
-				_disk = new DosDemoDisk_br(this);
-			} else {
-				_disk = new DosDisk_br(this);
-			}
-			_disk->setLanguage(2);					// NOTE: language is now hardcoded to English. Original used command-line parameters.
-			_soundMan = new DummySoundMan(this);
+	if (getPlatform() == Common::kPlatformPC) {
+		if (getFeatures() & GF_DEMO) {
+			_disk = new DosDemoDisk_br(this);
 		} else {
-			_disk = new AmigaDisk_br(this);
-			_disk->setLanguage(2);					// NOTE: language is now hardcoded to English. Original used command-line parameters.
-			_soundMan = new AmigaSoundMan(this);
+			_disk = new DosDisk_br(this);
 		}
-
-		_disk->init();
+		_disk->setLanguage(2);					// NOTE: language is now hardcoded to English. Original used command-line parameters.
+		int midiDriver = MidiDriver::detectMusicDriver(MDT_MIDI | MDT_ADLIB | MDT_PREFER_MIDI);
+		MidiDriver *driver = MidiDriver::createMidi(midiDriver);
+		_soundManI = new DosSoundMan_br(this, driver);
 	} else {
-		error("unknown game type");
+		_disk = new AmigaDisk_br(this);
+		_disk->setLanguage(2);					// NOTE: language is now hardcoded to English. Original used command-line parameters.
+		_soundManI = new AmigaSoundMan_br(this);
 	}
 
+	_disk->init();
+	_soundMan = new SoundMan(_soundManI);
 
 	initResources();
 	initFonts();
@@ -80,18 +81,23 @@ Common::Error Parallaction_br::init() {
 	_programParser->init();
 
 	_cmdExec = new CommandExec_br(this);
-	_cmdExec->init();
 	_programExec = new ProgramExec_br(this);
-	_programExec->init();
+
+	_walker = new PathWalker_BR;
 
 	_part = -1;
 
 	_subtitle[0] = -1;
 	_subtitle[1] = -1;
 
+	memset(_zoneFlags, 0, sizeof(_zoneFlags));
+
 	_countersNames = 0;
 
 	_saveLoad = new SaveLoad_br(this, _saveFileMan);
+
+	initInventory();
+	setupBalloonManager();
 
 	Parallaction::init();
 
@@ -102,14 +108,42 @@ Parallaction_br::~Parallaction_br() {
 	freeFonts();
 	freeCharacter();
 
+	destroyInventory();
+
+	delete _objects;
+
 	delete _locationParser;
 	delete _programParser;
+
+	_location._animations.remove(_char._ani);
+
+	delete _walker;
 }
 
 void Parallaction_br::callFunction(uint index, void* parm) {
 	assert(index < 6);	// magic value 6 is maximum # of callables for Big Red Adventure
 
 	(this->*_callables[index])(parm);
+}
+
+bool Parallaction_br::processGameEvent(int event) {
+	if (event == kEvNone) {
+		return true;
+	}
+
+	bool c = true;
+	_input->stopHovering();
+
+	switch(event) {
+	case kEvIngameMenu:
+		startIngameMenu();
+		c = false;
+		break;
+	}
+
+	_input->setArrowCursor();
+
+	return c;
 }
 
 Common::Error Parallaction_br::go() {
@@ -141,15 +175,15 @@ Common::Error Parallaction_br::go() {
 }
 
 
-
 void Parallaction_br::freeFonts() {
 	delete _menuFont;
-	delete _dialogueFont;
-
 	_menuFont  = 0;
+
+	delete _dialogueFont;
 	_dialogueFont = 0;
+
+	// no need to delete _labelFont, since it is using the same buffer as _menuFont
 	_labelFont = 0;
-	_introFont = 0;
 }
 
 
@@ -160,8 +194,8 @@ void Parallaction_br::runPendingZones() {
 
 	if (_activeZone) {
 		z = _activeZone;	// speak Zone or sound
-		_activeZone = nullZonePtr;
-		if ((z->_type & 0xFFFF) == kZoneSpeak) {
+		_activeZone.reset();
+		if (ACTIONTYPE(z) == kZoneSpeak) {
 			enterDialogueMode(z);
 		} else {
 			runZone(z);			// FIXME: BRA doesn't handle sound yet
@@ -170,8 +204,8 @@ void Parallaction_br::runPendingZones() {
 
 	if (_activeZone2) {
 		z = _activeZone2;	// speak Zone or sound
-		_activeZone2 = nullZonePtr;
-		if ((z->_type & 0xFFFF) == kZoneSpeak) {
+		_activeZone2.reset();
+		if (ACTIONTYPE(z) == kZoneSpeak) {
 			enterDialogueMode(z);
 		} else {
 			runZone(z);			// FIXME: BRA doesn't handle sound yet
@@ -190,12 +224,23 @@ void Parallaction_br::freeCharacter() {
 }
 
 void Parallaction_br::freeLocation(bool removeAll) {
-
 	// free open location stuff
 	clearSubtitles();
 	_subtitle[0] = _subtitle[1] = -1;
 
+	_localFlagNames->clear();
+
 	_gfx->freeLocationObjects();
+
+	// save zone and animation flags
+	ZoneList::iterator zit = _location._zones.begin();
+	for ( ; zit != _location._zones.end(); ++zit) {
+		restoreOrSaveZoneFlags(*zit, false);
+	}
+	AnimationList::iterator ait = _location._animations.begin();
+	for ( ; ait != _location._animations.end(); ++ait) {
+		restoreOrSaveZoneFlags(*ait, false);
+	}
 
 	_location._animations.remove(_char._ani);
 	_location.cleanup(removeAll);
@@ -218,14 +263,20 @@ void Parallaction_br::cleanupGame() {
 }
 
 
-void Parallaction_br::changeLocation(char *location) {
+void Parallaction_br::changeLocation() {
+    if (_newLocationName.empty()) {
+        return;
+    }
+
+    char location[200];
+    strcpy(location, _newLocationName.c_str());
+
 	char *partStr = strrchr(location, '.');
 	if (partStr) {
 		cleanupGame();
 
 		int n = partStr - location;
-		strncpy(_location._name, location, n);
-		_location._name[n] = '\0';
+		location[n] = '\0';
 
 		_part = atoi(++partStr);
 		if (getFeatures() & GF_DEMO) {
@@ -246,7 +297,7 @@ void Parallaction_br::changeLocation(char *location) {
 		if (getPlatform() == Common::kPlatformPC) {
 			_objects = _disk->loadObjects("icone.ico");
 		} else {
-			_objects = _disk->loadObjects("icons.ico");
+			_objects = _disk->loadObjects("icons.ico", _part);
 		}
 
 		parseLocation("common.slf");
@@ -254,13 +305,41 @@ void Parallaction_br::changeLocation(char *location) {
 
 	freeLocation(false);
 	// load new location
+	strcpy(_location._name, location);
 	parseLocation(location);
 
 	if (_location._startPosition.x != -1000) {
-		_char.setFoot(_location._startPosition);
+		_char._ani->setFoot(_location._startPosition);
 		_char._ani->setF(_location._startFrame);
-		_location._startPosition.y = -1000;
-		_location._startPosition.x = -1000;
+	}
+
+	// re-link the follower animation
+	setFollower(_followerName);
+	if (_follower) {
+		Common::Point p = _location._followerStartPosition;
+		if (p.x == -1000) {
+			_char._ani->getFoot(p);
+		}
+		_follower->setFoot(p);
+		_follower->setF(_location._followerStartFrame);
+	}
+
+	_location._startPosition.x = -1000;
+	_location._startPosition.y = -1000;
+	_location._followerStartPosition.x = -1000;
+	_location._followerStartPosition.y = -1000;
+
+	_gfx->setScrollPosX(0);
+	_gfx->setScrollPosY(0);
+	if (_char._ani->gfxobj) {
+		Common::Point foot;
+		_char._ani->getFoot(foot);
+
+		if (foot.x > 550)
+			_gfx->setScrollPosX(320);
+
+		if (foot.y > 350)
+			_gfx->setScrollPosY(foot.y - 350);
 	}
 
 	// kFlagsRemove is cleared because the character is visible by default.
@@ -272,24 +351,71 @@ void Parallaction_br::changeLocation(char *location) {
 
 	_cmdExec->run(_location._aCommands);
 
+	// NOTE: music should not started here!
+	// TODO: implement the music commands which control music execution
+	_soundMan->execute(SC_PLAYMUSIC);
+
 	_engineFlags &= ~kEngineChangeLocation;
+	_newLocationName.clear();
 }
 
 // FIXME: Parallaction_br::parseLocation() is now a verbatim copy of the same routine from Parallaction_ns.
 void Parallaction_br::parseLocation(const char *filename) {
 	debugC(1, kDebugParser, "parseLocation('%s')", filename);
 
+	// find a new available slot
 	allocateLocationSlot(filename);
 	Script *script = _disk->loadLocation(filename);
 
-	_locationParser->parse(script);
+	// parse the text file
+	LocationParserOutput_br out;
+	_locationParser->parse(script, &out);
+	assert(out._info);
 	delete script;
 
-	// this loads animation scripts
-	AnimationList::iterator it = _location._animations.begin();
-	for ( ; it != _location._animations.end(); it++) {
-		if ((*it)->_scriptName) {
-			loadProgram(*it, (*it)->_scriptName);
+	bool visited = getLocationFlags() & kFlagsVisited;
+
+	// load background, mask and path
+	_disk->loadScenery(*out._info,
+		out._backgroundName.empty() ? 0 : out._backgroundName.c_str(),
+		out._maskName.empty()       ? 0 : out._maskName.c_str(),
+		out._pathName.empty()       ? 0 : out._pathName.c_str());
+	// assign background
+	_gfx->setBackground(kBackgroundLocation, out._info);
+
+
+	// process zones
+	ZoneList::iterator zit = _location._zones.begin();
+	for ( ; zit != _location._zones.end(); ++zit) {
+		ZonePtr z = *zit;
+		// restore the flags if the location has already been visited
+		restoreOrSaveZoneFlags(z, visited);
+
+		// (re)link the bounding animation if needed
+		if (z->_flags & kFlagsAnimLinked) {
+			z->_linkedAnim = _location.findAnimation(z->_linkedName.c_str());
+		}
+
+		bool visible = (z->_flags & kFlagsRemove) == 0;
+		if (visible) {
+			showZone(z, visible);
+		}
+	}
+
+	// load the character (must be done before animations are processed)
+	if (!out._characterName.empty()) {
+		changeCharacter(out._characterName.c_str());
+	}
+
+	// process animations
+	AnimationList::iterator ait = _location._animations.begin();
+	for ( ; ait != _location._animations.end(); ++ait) {
+		// restore the flags if the location has already been visited
+		restoreOrSaveZoneFlags(*ait, visited);
+
+		// load the script
+		if ((*ait)->_scriptName) {
+			loadProgram(*ait, (*ait)->_scriptName);
 		}
 	}
 
@@ -392,6 +518,76 @@ void Parallaction_br::testCounterCondition(const Common::String &name, int op, i
 	}
 }
 
+void Parallaction_br::updateWalkers() {
+	_walker->walk();
+}
 
+void Parallaction_br::scheduleWalk(int16 x, int16 y, bool fromUser) {
+	AnimationPtr a = _char._ani;
+
+	if ((a->_flags & kFlagsRemove) || (a->_flags & kFlagsActive) == 0) {
+		return;
+	}
+
+	_walker->setCharacterPath(a, x, y);
+
+	if (!fromUser) {
+		_walker->stopFollower();
+	} else {
+		if (_follower) {
+			_walker->setFollowerPath(_follower, x, y);
+		}
+	}
+
+	_engineFlags |= kEngineWalking;
+}
+
+void Parallaction_br::setFollower(const Common::String &name) {
+	if (name.empty()) {
+		_followerName.clear();
+		_follower.reset();
+	} else {
+		_followerName = name;
+		_follower = _location.findAnimation(name.c_str());
+	}
+}
+
+void Parallaction_br::restoreOrSaveZoneFlags(ZonePtr z, bool restore) {
+	if ((z->_locationIndex == INVALID_LOCATION_INDEX) || (z->_index == INVALID_ZONE_INDEX)) {
+		return;
+	}
+
+	if (restore) {
+		z->_flags = _zoneFlags[z->_locationIndex][z->_index];
+	} else {
+		_zoneFlags[z->_locationIndex][z->_index] = z->_flags;
+	}
+}
+
+int Parallaction_br::getSfxStatus() {
+	if (!_soundManI) {
+		return -1;
+	}
+	return _soundManI->isSfxEnabled() ? 1 : 0;
+}
+
+int Parallaction_br::getMusicStatus() {
+	if (!_soundManI) {
+		return -1;
+	}
+	return _soundManI->isMusicEnabled() ? 1 : 0;
+}
+
+void Parallaction_br::enableSfx(bool enable) {
+	if (_soundManI) {
+		_soundManI->enableSfx(enable);
+	}
+}
+
+void Parallaction_br::enableMusic(bool enable) {
+	if (_soundManI) {
+		_soundManI->enableMusic(enable);
+	}
+}
 
 } // namespace Parallaction

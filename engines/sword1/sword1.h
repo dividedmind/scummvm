@@ -66,9 +66,8 @@ struct SystemVars {
 	uint8	showText;
 	uint8	language;
 	bool    isDemo;
-	bool    isMac;
-
-	uint8	cutscenePackVersion;
+	uint32	engineStartTime;    // Used for playtime
+	Common::Platform platform;
 };
 
 class SwordEngine : public Engine {
@@ -82,19 +81,28 @@ public:
 
 	bool mouseIsActive();
 
+	static bool isMac() { return _systemVars.platform == Common::kPlatformMacintosh; }
+	static bool isPsx() { return _systemVars.platform == Common::kPlatformPSX; }
+	static bool isPc() { return _systemVars.platform == Common::kPlatformPC; }
+
 protected:
 	// Engine APIs
-	virtual Common::Error init();
-	virtual Common::Error go();
+	Common::Error init();
+	Common::Error go();
+	virtual Common::Error run() {
+		Common::Error err;
+		err = init();
+		if (err != Common::kNoError)
+			return err;
+		return go();
+	}
 	virtual bool hasFeature(EngineFeature f) const;
 	virtual void syncSoundSettings();
-	// FIXME: Loading a game through the GMM crashes the game
-#if 0
+
 	Common::Error loadGameState(int slot);
-	Common::Error saveGameState(int slot, const char *desc);
 	bool canLoadGameStateCurrently();
+	Common::Error saveGameState(int slot, const char *desc);
 	bool canSaveGameStateCurrently();
-#endif
 
 private:
 	void delay(int32 amount);
@@ -103,6 +111,9 @@ private:
 	void checkCd(void);
 	void showFileErrorMsg(uint8 type, bool *fileExists);
 	void flagsToBool(bool *dest, uint8 flags);
+
+	void reinitRes(void); //Reinits the resources after a GMM load
+
 	uint8 mainLoop(void);
 
 	Common::Point _mouseCoord;
@@ -121,6 +132,7 @@ private:
 	static const uint8  _cdList[TOTAL_SECTIONS];
 	static const CdFile	_pcCdFileList[];
 	static const CdFile	_macCdFileList[];
+	static const CdFile _psxCdFileList[];
 };
 
 } // End of namespace Sword1

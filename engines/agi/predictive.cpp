@@ -141,6 +141,7 @@ bool AgiEngine::predictiveDialog(void) {
 
 	// show the predictive dialog.
 	// if another window is already in display, save its state into tmpwindow
+	memset(&tmpwindow, 0, sizeof(tmpwindow));
 	tmpwindow.active = false;
 	if (_game.window.active)
 		memcpy(&tmpwindow, &(_game.window), sizeof(AgiBlock));
@@ -175,9 +176,7 @@ bool AgiEngine::predictiveDialog(void) {
 		}
 	}
 
-	/* clear key queue */
-	while (_gfx->keypress())
-		_gfx->getKey();
+	clearKeyQueue();
 
 	prefix.clear();
 	_currentCode.clear();
@@ -233,7 +232,7 @@ bool AgiEngine::predictiveDialog(void) {
 			_gfx->doUpdate();
 		}
 
-		_gfx->pollTimer();	/* msdos driver -> does nothing */
+		pollTimer();
 		key = doPollKeyboard();
 		processkey = false;
 		switch (key) {
@@ -273,7 +272,7 @@ bool AgiEngine::predictiveDialog(void) {
 			active = 14;
 			processkey = true;
 			break;
-		case 0x09:	/* Tab */
+		case 0x09:	// Tab
 			navigationwithkeys = true;
 			debugC(3, kDebugLevelText, "Focus change");
 			lastactive = active = lastactive + 1;

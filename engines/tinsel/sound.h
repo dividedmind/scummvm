@@ -34,6 +34,7 @@
 
 #include "tinsel/dw.h"
 #include "tinsel/tinsel.h"
+#include "tinsel/drives.h"
 
 namespace Tinsel {
 
@@ -56,6 +57,13 @@ protected:
 		kChannelSFX = 1
 	};
 	static const int kNumChannels = kChannelSFX + kNumSFX;
+
+	enum SoundMode {
+		kVOCMode,
+		kMP3Mode,
+		kVorbisMode,
+		kFlacMode
+	};
 
 	struct Channel {
 		// Sample handle
@@ -86,8 +94,11 @@ protected:
 	/** Number of entries in the sample index */
 	long _sampleIndexLen;
 
+	/** Specifies if the sample-data is compressed and if yes, how */
+	SoundMode _soundMode;
+
 	/** file stream for sample file */
-	Common::File _sampleStream;
+	TinselFile _sampleStream;
 
 	bool offscreenChecks(int x, int &y);
 	int8 getPan(int x);

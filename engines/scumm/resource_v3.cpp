@@ -24,8 +24,7 @@
  */
 
 
-#include "scumm/scumm.h"
-#include "scumm/intern.h"
+#include "scumm/scumm_v3.h"
 #include "scumm/file.h"
 #include "scumm/util.h"
 
@@ -81,7 +80,7 @@ void ScummEngine_v3old::readIndexFile() {
 	_fileHandle->seek(_numScripts * 3, SEEK_CUR);
 	_numSounds = _fileHandle->readByte();
 
-	_fileHandle->clearIOFailed();
+	_fileHandle->clearErr();
 	_fileHandle->seek(0, SEEK_SET);
 
 	readMAXS(0);

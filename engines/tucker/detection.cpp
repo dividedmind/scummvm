@@ -45,7 +45,8 @@ static const ADGameDescription tuckerGameDescriptions[] = {
 		AD_ENTRY1s("infobar.txt", "f1e42a95972643462b9c3c2ea79d6683", 543),
 		Common::FR_FRA,
 		Common::kPlatformPC,
-		Tucker::kGameFlagNoSubtitles
+		Tucker::kGameFlagNoSubtitles,
+		Common::GUIO_NONE
 	},
 	{
 		"tucker",
@@ -53,7 +54,8 @@ static const ADGameDescription tuckerGameDescriptions[] = {
 		AD_ENTRY1s("infobar.txt", "9c1ddeafc5283b90d1a284bd0924831c", 462),
 		Common::EN_ANY,
 		Common::kPlatformPC,
-		Tucker::kGameFlagEncodedData
+		Tucker::kGameFlagEncodedData,
+		Common::GUIO_NONE
 	},
 	{
 		"tucker",
@@ -62,6 +64,7 @@ static const ADGameDescription tuckerGameDescriptions[] = {
 		Common::ES_ESP,
 		Common::kPlatformPC,
 		Tucker::kGameFlagEncodedData,
+		Common::GUIO_NONE
 	},
 	{
 		"tucker",
@@ -69,7 +72,8 @@ static const ADGameDescription tuckerGameDescriptions[] = {
 		AD_ENTRY1s("infobrgr.txt", "4df9eb65722418d1a1723508115b146c", 552),
 		Common::DE_DEU,
 		Common::kPlatformPC,
-		Tucker::kGameFlagEncodedData
+		Tucker::kGameFlagEncodedData,
+		Common::GUIO_NONE
 	},
 	{
 		"tucker",
@@ -78,6 +82,7 @@ static const ADGameDescription tuckerGameDescriptions[] = {
 		Common::PL_POL,
 		Common::kPlatformPC,
 		0,
+		Common::GUIO_NONE
 	},
 	{
 		"tucker",
@@ -85,7 +90,8 @@ static const ADGameDescription tuckerGameDescriptions[] = {
 		AD_ENTRY1s("infobar.txt", "e548994877ff31ca304f6352ce022a8e", 497),
 		Common::CZ_CZE,
 		Common::kPlatformPC,
-		Tucker::kGameFlagEncodedData
+		Tucker::kGameFlagEncodedData,
+		Common::GUIO_NONE
 	},
 	{
 		"tucker",
@@ -94,6 +100,7 @@ static const ADGameDescription tuckerGameDescriptions[] = {
 		Common::EN_ANY,
 		Common::kPlatformPC,
 		ADGF_DEMO | Tucker::kGameFlagDemo,
+		Common::GUIO_NONE
 	},
 	AD_TABLE_END_MARKER
 };
@@ -106,7 +113,8 @@ static const ADParams detectionParams = {
 	0,
 	"tucker",
 	0,
-	0
+	0,
+	Common::GUIO_NONE
 };
 
 static const ADGameDescription tuckerDemoGameDescription = {
@@ -115,7 +123,8 @@ static const ADGameDescription tuckerDemoGameDescription = {
 	AD_ENTRY1(0, 0),
 	Common::EN_ANY,
 	Common::kPlatformPC,
-	ADGF_DEMO | Tucker::kGameFlagDemo | Tucker::kGameFlagIntroOnly
+	ADGF_DEMO | Tucker::kGameFlagDemo | Tucker::kGameFlagIntroOnly,
+	Common::GUIO_NONE
 };
 
 class TuckerMetaEngine : public AdvancedMetaEngine {
@@ -127,7 +136,7 @@ public:
 		return "Tucker Engine";
 	}
 
-	virtual const char *getCopyright() const {
+	virtual const char *getOriginalCopyright() const {
 		return "Bud Tucker in Double Trouble (C) Merit Studios";
 	}
 
@@ -164,7 +173,7 @@ public:
 
 	virtual SaveStateList listSaves(const char *target) const {
 		Common::String pattern = Tucker::generateGameStateFileName(target, 0, true);
-		Common::StringList filenames = g_system->getSavefileManager()->listSavefiles(pattern.c_str());
+		Common::StringList filenames = g_system->getSavefileManager()->listSavefiles(pattern);
 		bool slotsTable[Tucker::kLastSaveSlot + 1];
 		memset(slotsTable, 0, sizeof(slotsTable));
 		SaveStateList saveList;
@@ -172,7 +181,7 @@ public:
 			int slot;
 			const char *ext = strrchr(file->c_str(), '.');
 			if (ext && (slot = atoi(ext + 1)) >= 0 && slot <= Tucker::kLastSaveSlot) {
-				Common::InSaveFile *in = g_system->getSavefileManager()->openForLoading(file->c_str());
+				Common::InSaveFile *in = g_system->getSavefileManager()->openForLoading(*file);
 				if (in) {
 					slotsTable[slot] = true;
 					delete in;
@@ -195,7 +204,7 @@ public:
 
 	virtual void removeSaveState(const char *target, int slot) const {
 		Common::String filename = Tucker::generateGameStateFileName(target, slot);
-		g_system->getSavefileManager()->removeSavefile(filename.c_str());
+		g_system->getSavefileManager()->removeSavefile(filename);
 	}
 };
 

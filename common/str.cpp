@@ -28,6 +28,8 @@
 
 #include "common/memorypool.h"
 
+#include <stdarg.h>
+
 #if !defined(__SYMBIAN32__)
 #include <new>
 #endif
@@ -79,7 +81,7 @@ void String::initWithCStr(const char *str, uint32 len) {
 		// Not enough internal storage, so allocate more
 		_extern._capacity = computeCapacity(len+1);
 		_extern._refCount = 0;
-		_str = (char *)malloc(_extern._capacity);
+		_str = new char[_extern._capacity];
 		assert(_str != 0);
 	}
 
@@ -159,7 +161,7 @@ void String::ensureCapacity(uint32 new_size, bool keep_old) {
 		newCapacity = MAX(curCapacity * 2, computeCapacity(new_size+1));
 
 		// Allocate new storage
-		newStorage = (char *)malloc(newCapacity);
+		newStorage = new char[newCapacity];
 		assert(newStorage);
 	}
 
@@ -190,8 +192,10 @@ void String::ensureCapacity(uint32 new_size, bool keep_old) {
 void String::incRefCount() const {
 	assert(!isStorageIntern());
 	if (_extern._refCount == 0) {
-		if (g_refCountPool == 0)
+		if (g_refCountPool == 0) {
 			g_refCountPool = new MemoryPool(sizeof(int));
+			assert(g_refCountPool);
+		}
 
 		_extern._refCount = (int *)g_refCountPool->allocChunk();
 		*_extern._refCount = 2;
@@ -214,7 +218,7 @@ void String::decRefCount(int *oldRefCount) {
 			assert(g_refCountPool);
 			g_refCountPool->freeChunk(oldRefCount);
 		}
-		free(_str);
+		delete[] _str;
 
 		// Even though _str points to a freed memory block now,
 		// we do not change its value, because any code that calls
@@ -262,6 +266,9 @@ String& String::operator  =(char c) {
 }
 
 String &String::operator +=(const char *str) {
+	if (_str <= str && str <= _str + _size)
+		return operator+=(Common::String(str));
+
 	int len = strlen(str);
 	if (len > 0) {
 		ensureCapacity(_size + len, true);
@@ -273,6 +280,9 @@ String &String::operator +=(const char *str) {
 }
 
 String &String::operator +=(const String &str) {
+	if (&str == this)
+		return operator+=(Common::String(str));
+
 	int len = str._size;
 	if (len > 0) {
 		ensureCapacity(_size + len, true);
@@ -292,6 +302,10 @@ String &String::operator +=(char c) {
 	return *this;
 }
 
+bool String::hasPrefix(const String &x) const {
+	return hasPrefix(x.c_str());
+}
+
 bool String::hasPrefix(const char *x) const {
 	assert(x != 0);
 	// Compare x with the start of _str.
@@ -303,6 +317,10 @@ bool String::hasPrefix(const char *x) const {
 	// It's a prefix, if and only if all letters in x are 'used up' before
 	// _str ends.
 	return *x == 0;
+}
+
+bool String::hasSuffix(const String &x) const {
+	return hasSuffix(x.c_str());
 }
 
 bool String::hasSuffix(const char *x) const {
@@ -321,6 +339,10 @@ bool String::hasSuffix(const char *x) const {
 	return *x == 0;
 }
 
+bool String::contains(const String &x) const {
+	return strstr(c_str(), x.c_str()) != NULL;
+}
+
 bool String::contains(const char *x) const {
 	assert(x != 0);
 	return strstr(c_str(), x) != NULL;
@@ -330,12 +352,12 @@ bool String::contains(char x) const {
 	return strchr(c_str(), x) != NULL;
 }
 
-bool String::matchString(const char *pat) const {
-	return Common::matchString(c_str(), pat);
+bool String::matchString(const char *pat, bool pathMode) const {
+	return Common::matchString(c_str(), pat, pathMode);
 }
 
-bool String::matchString(const String &pat) const {
-	return Common::matchString(c_str(), pat.c_str());
+bool String::matchString(const String &pat, bool pathMode) const {
+	return Common::matchString(c_str(), pat.c_str(), pathMode);
 }
 
 void String::deleteLastChar() {
@@ -414,6 +436,33 @@ void String::trim() {
 uint String::hash() const {
 	return hashit(c_str());
 }
+
+// static
+String String::printf(const char *fmt, ...) {
+	String output;
+	assert(output.isStorageIntern());
+
+	va_list va;
+	va_start(va, fmt);
+	int len = vsnprintf(output._str, _builtinCapacity, fmt, va);
+	va_end(va);
+
+	if (len < (int)_builtinCapacity) {
+		// vsnprintf succeeded
+		output._size = len;
+	} else {
+		// vsnprintf didn't have enough space, so grow buffer
+		output.ensureCapacity(len, false);
+		va_start(va, fmt);
+		int len2 = vsnprintf(output._str, len+1, fmt, va);
+		va_end(va);
+		assert(len == len2);
+		output._size = len2;
+	}
+
+	return output;
+}
+
 
 #pragma mark -
 
@@ -615,7 +664,7 @@ Common::String normalizePath(const Common::String &path, const char sep) {
 	return result;
 }
 
-bool matchString(const char *str, const char *pat) {
+bool matchString(const char *str, const char *pat, bool pathMode) {
 	assert(str);
 	assert(pat);
 
@@ -623,6 +672,13 @@ bool matchString(const char *str, const char *pat) {
 	const char *q = 0;
 
 	for (;;) {
+		if (pathMode && *str == '/') {
+			p = 0;
+			q = 0;
+			if (*pat == '?')
+				return false;
+		}
+
 		switch (*pat) {
 		case '*':
 			// Record pattern / string possition for backtracking

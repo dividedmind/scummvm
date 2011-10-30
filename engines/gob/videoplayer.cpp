@@ -25,8 +25,8 @@
 
 
 #include "gob/videoplayer.h"
+#include "gob/helper.h"
 #include "gob/global.h"
-#include "gob/util.h"
 #include "gob/dataio.h"
 #include "gob/video.h"
 #include "gob/draw.h"
@@ -40,7 +40,7 @@ namespace Gob {
 
 const char *VideoPlayer::_extensions[] = { "IMD", "VMD", "RMD" };
 
-VideoPlayer::Video::Video(GobEngine *vm) : _vm(vm), _fileName(0), _stream(0), _video(0) {
+VideoPlayer::Video::Video(GobEngine *vm) : _vm(vm), _stream(0), _video(0) {
 }
 
 VideoPlayer::Video::~Video() {
@@ -60,11 +60,11 @@ bool VideoPlayer::Video::open(const char *fileName, Type which) {
 	_stream = _vm->_dataIO->openAsStream(handle, true);
 
 	if (which == kVideoTypeIMD) {
-		_video = new Imd();
+		_video = new Graphics::Imd();
 	} else if (which == kVideoTypeVMD) {
-		_video = new Vmd(_vm->_video->_palLUT);
+		_video = new Graphics::Vmd(_vm->_video->_palLUT);
 	} else if (which == kVideoTypeRMD) {
-		_video = new Vmd(_vm->_video->_palLUT);
+		_video = new Graphics::Vmd(_vm->_video->_palLUT);
 	} else {
 		warning("Couldn't open video \"%s\": Invalid video Type", fileName);
 		close();
@@ -77,8 +77,7 @@ bool VideoPlayer::Video::open(const char *fileName, Type which) {
 		return false;
 	}
 
-	_fileName = new char[strlen(fileName) + 1];
-	strcpy(_fileName, fileName);
+	_fileName = fileName;
 
 	_defaultX = _video->getX();
 	_defaultY = _video->getY();
@@ -89,12 +88,11 @@ bool VideoPlayer::Video::open(const char *fileName, Type which) {
 void VideoPlayer::Video::close() {
 	delete _video;
 	delete _stream;
-	delete[] _fileName;
 
 	_video = 0;
 	_stream = 0;
-	_fileName = 0;
-	memset(&_state, 0, sizeof(CoktelVideo::State));
+	_fileName.clear();
+	memset(&_state, 0, sizeof(Graphics::CoktelVideo::State));
 	_defaultX = _defaultY = 0;
 }
 
@@ -103,18 +101,22 @@ bool VideoPlayer::Video::isOpen() const {
 }
 
 const char *VideoPlayer::Video::getFileName() const {
-	return _fileName ? _fileName : "";
+	return _fileName.c_str();
 }
 
-CoktelVideo *VideoPlayer::Video::getVideo() {
+Graphics::CoktelVideo *VideoPlayer::Video::getVideo() {
 	return _video;
 }
 
-const CoktelVideo *VideoPlayer::Video::getVideo() const {
+const Graphics::CoktelVideo *VideoPlayer::Video::getVideo() const {
 	return _video;
 }
 
-CoktelVideo::State VideoPlayer::Video::getState() const {
+uint32 VideoPlayer::Video::getFeatures() const {
+	return _video->getFeatures();
+}
+
+Graphics::CoktelVideo::State VideoPlayer::Video::getState() const {
 	return _state;
 }
 
@@ -140,18 +142,21 @@ Common::MemoryReadStream *VideoPlayer::Video::getExtraData(const char *fileName)
 	return _video->getExtraData(fileName);
 }
 
-CoktelVideo::State VideoPlayer::Video::nextFrame() {
+Graphics::CoktelVideo::State VideoPlayer::Video::nextFrame() {
 	if (_video)
 		_state = _video->nextFrame();
 
 	return _state;
 }
 
+
 VideoPlayer::VideoPlayer(GobEngine *vm) : _vm(vm) {
 	_primaryVideo = new Video(vm);
+	_ownSurf = false;
 	_backSurf = false;
 	_needBlit = false;
 	_noCursorSwitch = false;
+	_woodruffCohCottWorkaround = false;
 }
 
 VideoPlayer::~VideoPlayer() {
@@ -196,15 +201,11 @@ bool VideoPlayer::findFile(char *fileName, Type &which) {
 		int i;
 		for (i = 0; i < ARRAYSIZE(_extensions); i++) {
 			if ((which == kVideoTypeTry) || (which == ((Type) i))) {
-				int16 handle;
-
 				fileName[len] = '.';
 				fileName[len + 1] = 0;
 				strcat(fileName, _extensions[i]);
 
-				handle = _vm->_dataIO->openData(fileName);
-				if (handle >= 0) {
-					_vm->_dataIO->closeData(handle);
+				if (_vm->_dataIO->existData(fileName)) {
 					which = (Type) i;
 					break;
 				}
@@ -222,7 +223,7 @@ bool VideoPlayer::findFile(char *fileName, Type &which) {
 }
 
 bool VideoPlayer::primaryOpen(const char *videoFile, int16 x, int16 y,
-		int16 flags, Type which) {
+		int32 flags, Type which) {
 
 	char fileName[256];
 
@@ -248,10 +249,21 @@ bool VideoPlayer::primaryOpen(const char *videoFile, int16 x, int16 y,
 				_noCursorSwitch = true;
 		}
 
+		// WORKAROUND: In Woodruff, Coh Cott vanished in one video on her party.
+		// This is a bug in video, so we work around it.
+		_woodruffCohCottWorkaround = false;
+		if (_vm->getGameType() == kGameTypeWoodruff) {
+			if (!scumm_stricmp(fileName, "SQ32-03.VMD"))
+				_woodruffCohCottWorkaround = true;
+		}
+
+		_ownSurf = false;
+
 		if (!(flags & kFlagNoVideo)) {
-			SurfaceDesc::Ptr surf;
+			SurfaceDescPtr surf;
 
 			if (flags & kFlagOtherSurface) {
+				_ownSurf = true;
 				_backSurf = false;
 
 				surf = _vm->_video->initSurfDesc(_vm->_global->_videoMode,
@@ -260,6 +272,13 @@ bool VideoPlayer::primaryOpen(const char *videoFile, int16 x, int16 y,
 				_vm->_draw->_spritesArray[x] = surf;
 
 				x = 0;
+			} else if (flags & kFlagScreenSurface) {
+				_ownSurf = true;
+				_backSurf = false;
+
+				surf = _vm->_video->initSurfDesc(_vm->_global->_videoMode,
+						_vm->_width, _vm->_height, 0);
+				_vm->_draw->_spritesArray[0] = surf;
 			} else {
 				_backSurf = ((flags & kFlagFrontSurface) == 0);
 				surf = _vm->_draw->_spritesArray[_backSurf ? 21 : 20];
@@ -286,14 +305,14 @@ bool VideoPlayer::primaryOpen(const char *videoFile, int16 x, int16 y,
 	return true;
 }
 
-void VideoPlayer::primaryPlay(int16 startFrame, int16 lastFrame, int16 breakKey,
+bool VideoPlayer::primaryPlay(int16 startFrame, int16 lastFrame, int16 breakKey,
 		uint16 palCmd, int16 palStart, int16 palEnd,
 		int16 palFrame, int16 endFrame, bool fade, int16 reverseTo, bool forceSeek) {
 
 	if (!_primaryVideo->isOpen())
-		return;
+		return false;
 
-	CoktelVideo &video = *(_primaryVideo->getVideo());
+	Graphics::CoktelVideo &video = *(_primaryVideo->getVideo());
 
 	breakKey = 27;
 	if (startFrame < 0)
@@ -306,8 +325,9 @@ void VideoPlayer::primaryPlay(int16 startFrame, int16 lastFrame, int16 breakKey,
 		endFrame = lastFrame;
 	palCmd &= 0x3F;
 
+	int16 realStartFrame = startFrame;
 	if (video.getCurrentFrame() != startFrame) {
-		if (!forceSeek && (video.getFeatures() & CoktelVideo::kFeaturesSound))
+		if (!forceSeek && (video.getFeatures() & Graphics::CoktelVideo::kFeaturesSound))
 			startFrame = video.getCurrentFrame();
 		else
 			video.seekFrame(startFrame);
@@ -318,9 +338,15 @@ void VideoPlayer::primaryPlay(int16 startFrame, int16 lastFrame, int16 breakKey,
 	if (fade)
 		_vm->_palAnim->fade(0, -2, 0);
 
+	bool canceled = false;
+
 	while (startFrame <= lastFrame) {
-		if (doPlay(startFrame, breakKey, palCmd, palStart, palEnd, palFrame, endFrame))
+		if (doPlay(startFrame, breakKey,
+					palCmd, palStart, palEnd, palFrame, endFrame, startFrame < realStartFrame)) {
+
+			canceled = true;
 			break;
+		}
 
 		evalBgShading(video);
 
@@ -355,6 +381,8 @@ void VideoPlayer::primaryPlay(int16 startFrame, int16 lastFrame, int16 breakKey,
 	}
 
 	evalBgShading(video);
+
+	return canceled;
 }
 
 void VideoPlayer::primaryClose() {
@@ -406,7 +434,7 @@ void VideoPlayer::slotPlay(int slot, int16 frame) {
 	if ((slot < 0) || (((uint) slot) >= _videoSlots.size()) || !_videoSlots[slot])
 		return;
 
-	CoktelVideo &video = *(_videoSlots[slot]->getVideo());
+	Graphics::CoktelVideo &video = *(_videoSlots[slot]->getVideo());
 
 	if (frame < 0)
 		frame = video.getCurrentFrame();
@@ -450,13 +478,14 @@ void VideoPlayer::slotCopyPalette(int slot, int16 palStart, int16 palEnd) {
 }
 
 void VideoPlayer::slotWaitEndFrame(int slot, bool onlySound) {
-	if ((slot < 0) || (((uint) slot) >= _videoSlots.size()) || !_videoSlots[slot])
-		return;
+	Video *video = getVideoBySlot(slot);
 
-	CoktelVideo &video = *(_videoSlots[slot]->getVideo());
+	if (video) {
+		Graphics::CoktelVideo &cVideo = *video->getVideo();
 
-	if (!onlySound || (video.getFeatures() & CoktelVideo::kFeaturesSound))
-		video.waitEndFrame();
+		if (!onlySound || (cVideo.getFeatures() & Graphics::CoktelVideo::kFeaturesSound))
+			cVideo.waitEndFrame();
+	}
 }
 
 bool VideoPlayer::slotIsOpen(int slot) const {
@@ -464,6 +493,13 @@ bool VideoPlayer::slotIsOpen(int slot) const {
 		return true;
 
 	return false;
+}
+
+void VideoPlayer::slotSetDoubleMode(int slot, bool doubleMode) {
+	Video *video = getVideoBySlot(slot);
+
+	if (video)
+		video->getVideo()->setDoubleMode(doubleMode);
 }
 
 const VideoPlayer::Video *VideoPlayer::getVideoBySlot(int slot) const {
@@ -484,6 +520,15 @@ VideoPlayer::Video *VideoPlayer::getVideoBySlot(int slot) {
 		return _videoSlots[slot];
 
 	return 0;
+}
+
+const char *VideoPlayer::getFileName(int slot) const {
+	const Video *video = getVideoBySlot(slot);
+
+	if (video)
+		return video->getFileName();
+
+	return "";
 }
 
 uint16 VideoPlayer::getFlags(int slot) const {
@@ -549,6 +594,25 @@ int16 VideoPlayer::getDefaultY(int slot) const {
 	return 0;
 }
 
+uint32 VideoPlayer::getFeatures(int slot) const {
+	const Video *video = getVideoBySlot(slot);
+
+	if (video)
+		return video->getFeatures();
+
+	return 0;
+}
+
+Graphics::CoktelVideo::State VideoPlayer::getState(int slot) const {
+	const Video *video = getVideoBySlot(slot);
+	Graphics::CoktelVideo::State state;
+
+	if (video)
+		state = video->getState();
+
+	return state;
+}
+
 bool VideoPlayer::hasExtraData(const char *fileName, int slot) const {
 	const Video *video = getVideoBySlot(slot);
 
@@ -567,9 +631,23 @@ Common::MemoryReadStream *VideoPlayer::getExtraData(const char *fileName, int sl
 	return 0;
 }
 
-bool VideoPlayer::doPlay(int16 frame, int16 breakKey,
+void VideoPlayer::playFrame(int16 frame, int16 breakKey,
 		uint16 palCmd, int16 palStart, int16 palEnd,
-		int16 palFrame, int16 endFrame) {
+		int16 palFrame, int16 endFrame, bool noRetrace) {
+
+	if (!_primaryVideo)
+		return;
+
+	Video &video = *_primaryVideo;
+	Graphics::CoktelVideo &cVideo = *video.getVideo();
+
+	if (cVideo.getCurrentFrame() != frame)
+		cVideo.seekFrame(frame);
+	if (palFrame < 0)
+		palFrame = 0;
+	if (endFrame < 0)
+		endFrame = cVideo.getFramesCount() - 1;
+
 
 	bool modifiedPal = false;
 
@@ -578,7 +656,7 @@ bool VideoPlayer::doPlay(int16 frame, int16 breakKey,
 		_vm->_draw->_applyPal = true;
 
 		if (palCmd >= 4)
-			copyPalette(*(_primaryVideo->getVideo()), palStart, palEnd);
+			copyPalette(cVideo, palStart, palEnd);
 	}
 
 	if (modifiedPal && (palCmd == 8) && !_backSurf)
@@ -588,8 +666,14 @@ bool VideoPlayer::doPlay(int16 frame, int16 breakKey,
 	if (_needBlit)
 		_vm->_draw->forceBlit();
 
-	CoktelVideo::State state = _primaryVideo->nextFrame();
+	Graphics::CoktelVideo::State state = video.nextFrame();
 	WRITE_VAR(11, frame);
+
+	if (_woodruffCohCottWorkaround && (frame == 32)) {
+		// WORKAROUND: This frame mistakenly masks Coh Cott, making her vanish
+		// To prevent that, we'll never draw that part
+		state.left += 50;
+	}
 
 	if (_needBlit)
 		_vm->_draw->forceBlit(true);
@@ -603,8 +687,8 @@ bool VideoPlayer::doPlay(int16 frame, int16 breakKey,
 		_vm->_video->dirtyRectsAll();
 	}
 
-	if ((state.flags & CoktelVideo::kStatePalette) && (palCmd > 1)) {
-		copyPalette(*(_primaryVideo->getVideo()), palStart, palEnd);
+	if ((state.flags & Graphics::CoktelVideo::kStatePalette) && (palCmd > 1)) {
+		copyPalette(cVideo, palStart, palEnd);
 
 		if (!_backSurf)
 			_vm->_video->setFullPalette(_vm->_global->_pPaletteDesc);
@@ -616,17 +700,30 @@ bool VideoPlayer::doPlay(int16 frame, int16 breakKey,
 		_vm->_video->setFullPalette(_vm->_global->_pPaletteDesc);
 
 
-	if (_backSurf) {
-		_vm->_draw->invalidateRect(state.left, state.top, state.right, state.bottom);
-		_vm->_draw->blitInvalidated();
-	} else
-		_vm->_video->dirtyRectsAdd(state.left, state.top, state.right, state.bottom);
-	_vm->_video->retrace();
+	if (!_ownSurf) {
+		if (_backSurf) {
+			_vm->_draw->invalidateRect(state.left, state.top, state.right, state.bottom);
+			_vm->_draw->blitInvalidated();
+		} else
+			_vm->_video->dirtyRectsAdd(state.left, state.top, state.right, state.bottom);
 
+		if (!noRetrace)
+			_vm->_video->retrace();
+	}
+
+	// Subtitle
+	if (state.flags & Graphics::CoktelVideo::kStateSpeech)
+		_vm->_draw->printTotText(state.speechId);
 
 	if (modifiedPal && ((palCmd == 2) || (palCmd == 4)))
 		_vm->_palAnim->fade(_vm->_global->_pPaletteDesc, -2, 0);
+}
 
+bool VideoPlayer::doPlay(int16 frame, int16 breakKey,
+		uint16 palCmd, int16 palStart, int16 palEnd,
+		int16 palFrame, int16 endFrame, bool noRetrace) {
+
+	playFrame(frame, breakKey, palCmd, palStart, palEnd, palFrame, endFrame, noRetrace);
 
 	_vm->_util->processInput();
 
@@ -642,6 +739,8 @@ bool VideoPlayer::doPlay(int16 frame, int16 breakKey,
 		_vm->_inter->storeKey(_vm->_util->checkKey());
 		if (VAR(0) == (unsigned) breakKey) {
 			_primaryVideo->getVideo()->disableSound();
+			// Seek to the last frame. Some scripts depend on that.
+			_primaryVideo->getVideo()->seekFrame(endFrame, SEEK_SET, true);
 			return true;
 		}
 	}
@@ -649,8 +748,8 @@ bool VideoPlayer::doPlay(int16 frame, int16 breakKey,
 	return false;
 }
 
-void VideoPlayer::copyPalette(CoktelVideo &video, int16 palStart, int16 palEnd) {
-	if (!(video.getFeatures() & CoktelVideo::kFeaturesPalette))
+void VideoPlayer::copyPalette(Graphics::CoktelVideo &video, int16 palStart, int16 palEnd) {
+	if (!(video.getFeatures() & Graphics::CoktelVideo::kFeaturesPalette))
 		return;
 
 	if (palStart < 0)
@@ -675,7 +774,7 @@ void VideoPlayer::writeVideoInfo(const char *videoFile, int16 varX, int16 varY,
 		height = _primaryVideo->getVideo()->getHeight();
 
 		if (VAR_OFFSET(varX) == 0xFFFFFFFF)
-			_primaryVideo->getVideo()->getAnchor(1, 2, x, y, width, height);
+			_primaryVideo->getVideo()->getFrameCoords(1, x, y, width, height);
 
 		WRITE_VAR_OFFSET(varX, x);
 		WRITE_VAR_OFFSET(varY, y);
@@ -693,20 +792,11 @@ void VideoPlayer::writeVideoInfo(const char *videoFile, int16 varX, int16 varY,
 	}
 }
 
-void VideoPlayer::evalBgShading(CoktelVideo &video) {
+void VideoPlayer::evalBgShading(Graphics::CoktelVideo &video) {
 	if (video.isSoundPlaying())
 		_vm->_sound->bgShade();
 	else
 		_vm->_sound->bgUnshade();
-}
-
-void VideoPlayer::notifyPaused(uint32 duration) {
-	if (_primaryVideo->isOpen())
-		_primaryVideo->getVideo()->notifyPaused(duration);
-
-	for (uint i = 0; i < _videoSlots.size(); i++)
-		if (_videoSlots[i] && _videoSlots[i]->isOpen())
-			_videoSlots[i]->getVideo()->notifyPaused(duration);
 }
 
 } // End of namespace Gob

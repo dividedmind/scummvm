@@ -32,7 +32,6 @@
 
 #include "saga/sprite.h"
 #include "saga/itedata.h"
-#include "saga/list.h"
 #include "saga/saga.h"
 #include "saga/font.h"
 
@@ -197,7 +196,7 @@ struct ActorFrameSequence {
 	ActorFrameRange directions[ACTOR_DIRECTIONS_COUNT];
 };
 
-int pathLine(Point *pointList, const Point &point1, const Point &point2);
+uint pathLine(PointList &pointList, uint idx, const Point &point1, const Point &point2);
 
 struct Location {
 	int32 x;					// logical coordinates
@@ -328,7 +327,7 @@ public:
 
 typedef CommonObjectData *CommonObjectDataPointer;
 
-typedef SortedList<CommonObjectDataPointer> CommonObjectOrderList;
+typedef Common::List<CommonObjectDataPointer> CommonObjectOrderList;
 
 class ObjectData: public CommonObjectData {
 public:
@@ -391,137 +390,17 @@ public:
 	int32 _walkFrameSequence;
 
 public:
-	void saveState(Common::OutSaveFile *out) {
-		int i = 0;
-		CommonObjectData::saveState(out);
-		out->writeUint16LE(_actorFlags);
-		out->writeSint32LE(_currentAction);
-		out->writeSint32LE(_facingDirection);
-		out->writeSint32LE(_actionDirection);
-		out->writeSint32LE(_actionCycle);
-		out->writeUint16LE(_targetObject);
+	ActorData();
+	~ActorData();
 
-		out->writeSint32LE(_cycleFrameSequence);
-		out->writeByte(_cycleDelay);
-		out->writeByte(_cycleTimeCount);
-		out->writeByte(_cycleFlags);
-		out->writeSint16LE(_fallVelocity);
-		out->writeSint16LE(_fallAcceleration);
-		out->writeSint16LE(_fallPosition);
-		out->writeByte(_dragonBaseFrame);
-		out->writeByte(_dragonStepCycle);
-		out->writeByte(_dragonMoveType);
-		out->writeSint32LE(_frameNumber);
+	void saveState(Common::OutSaveFile *out);
+	void loadState(uint32 version, Common::InSaveFile *in);
 
-		out->writeSint32LE(_tileDirectionsAlloced);
-		for (i = 0; i < _tileDirectionsAlloced; i++) {
-			out->writeByte(_tileDirections[i]);
-		}
-
-		out->writeSint32LE(_walkStepsAlloced);
-		for (i = 0; i < _walkStepsAlloced; i++) {
-			out->writeSint16LE(_walkStepsPoints[i].x);
-			out->writeSint16LE(_walkStepsPoints[i].y);
-		}
-
-		out->writeSint32LE(_walkStepsCount);
-		out->writeSint32LE(_walkStepIndex);
-		_finalTarget.saveState(out);
-		_partialTarget.saveState(out);
-		out->writeSint32LE(_walkFrameSequence);
-	}
-
-	void loadState(uint32 version, Common::InSaveFile *in) {
-		int i = 0;
-		CommonObjectData::loadState(in);
-		_actorFlags = in->readUint16LE();
-		_currentAction = in->readSint32LE();
-		_facingDirection = in->readSint32LE();
-		_actionDirection = in->readSint32LE();
-		_actionCycle = in->readSint32LE();
-		_targetObject = in->readUint16LE();
-
-		_lastZone = NULL;
-		_cycleFrameSequence = in->readSint32LE();
-		_cycleDelay = in->readByte();
-		_cycleTimeCount = in->readByte();
-		_cycleFlags = in->readByte();
-		if (version > 1) {
-			_fallVelocity = in->readSint16LE();
-			_fallAcceleration = in->readSint16LE();
-			_fallPosition = in->readSint16LE();
-		} else {
-			_fallVelocity = _fallAcceleration = _fallPosition = 0;
-		}
-		if (version > 2) {
-			_dragonBaseFrame = in->readByte();
-			_dragonStepCycle = in->readByte();
-			_dragonMoveType = in->readByte();
-		} else {
-			_dragonBaseFrame = _dragonStepCycle = _dragonMoveType = 0;
-		}
-
-		_frameNumber = in->readSint32LE();
-
-
-		setTileDirectionsSize(in->readSint32LE(), true);
-		for (i = 0; i < _tileDirectionsAlloced; i++) {
-			_tileDirections[i] = in->readByte();
-		}
-
-		setWalkStepsPointsSize(in->readSint32LE(), true);
-		for (i = 0; i < _walkStepsAlloced; i++) {
-			_walkStepsPoints[i].x = in->readSint16LE();
-			_walkStepsPoints[i].y = in->readSint16LE();
-		}
-
-		_walkStepsCount = in->readSint32LE();
-		_walkStepIndex = in->readSint32LE();
-		_finalTarget.loadState(in);
-		_partialTarget.loadState(in);
-		_walkFrameSequence = in->readSint32LE();
-	}
-
-	void setTileDirectionsSize(int size, bool forceRealloc) {
-		if ((size <= _tileDirectionsAlloced) && !forceRealloc) {
-			return;
-		}
-		_tileDirectionsAlloced = size;
-		_tileDirections = (byte*)realloc(_tileDirections, _tileDirectionsAlloced * sizeof(*_tileDirections));
-	}
-
-	void cycleWrap(int cycleLimit) {
-		if (_actionCycle >= cycleLimit)
-			_actionCycle = 0;
-	}
-
-	void setWalkStepsPointsSize(int size, bool forceRealloc) {
-		if ((size <= _walkStepsAlloced) && !forceRealloc) {
-			return;
-		}
-		_walkStepsAlloced = size;
-		_walkStepsPoints = (Point*)realloc(_walkStepsPoints, _walkStepsAlloced * sizeof(*_walkStepsPoints));
-	}
-
-	void addWalkStepPoint(const Point &point) {
-		setWalkStepsPointsSize(_walkStepsCount + 1, false);
-		_walkStepsPoints[_walkStepsCount++] = point;
-	}
-
-	void freeSpriteList() {
-		_spriteList.freeMem();
-	}
-
-	ActorData() {
-		memset(this, 0, sizeof(*this));
-	}
-	~ActorData() {
-		if (!_shareFrames)
-			free(_frames);
-		free(_tileDirections);
-		free(_walkStepsPoints);
-		freeSpriteList();
-	}
+	void setTileDirectionsSize(int size, bool forceRealloc);
+	void cycleWrap(int cycleLimit);
+	void setWalkStepsPointsSize(int size, bool forceRealloc);
+	void addWalkStepPoint(const Point &point);
+	void freeSpriteList();
 };
 
 struct ProtagStateData {
@@ -558,7 +437,7 @@ struct SpeechData {
 	}
 };
 
-
+typedef int (*CompareFunction) (const CommonObjectDataPointer& a, const CommonObjectDataPointer& b);
 
 class Actor {
 	friend class IsoMap;
@@ -662,6 +541,7 @@ private:
 	void stepZoneAction(ActorData *actor, const HitZone *hitZone, bool exit, bool stopped);
 	void loadActorSpriteList(ActorData *actor);
 
+	void drawOrderListAdd(const CommonObjectDataPointer& element, CompareFunction compareFunction);
 	void createDrawOrderList();
 	bool calcScreenPosition(CommonObjectData *commonObjectData);
 	bool getSpriteParams(CommonObjectData *commonObjectData, int &frameNumber, SpriteList *&spriteList);
@@ -740,7 +620,12 @@ private:
 	struct PathNode {
 		Point point;
 		int link;
+
+		PathNode() : link(0) {}
+		PathNode(const Point &p) : point(p), link(0) {}
+		PathNode(const Point &p, int l) : point(p), link(l) {}
 	};
+	typedef Common::Array<PathNode> PathNodeList;
 
 	Rect _barrierList[ACTOR_BARRIERS_MAX];
 	int _barrierCount;
@@ -750,76 +635,37 @@ private:
 	int _yCellCount;
 	Rect _pathRect;
 
-	PathDirectionData *_pathDirectionList;
-	int _pathDirectionListCount;
-	int _pathDirectionListAlloced;
-	PathDirectionData * addPathDirectionListData() {
-		if (_pathDirectionListCount + 1 >= _pathDirectionListAlloced) {
-			_pathDirectionListAlloced += 100;
-			_pathDirectionList = (PathDirectionData*) realloc(_pathDirectionList, _pathDirectionListAlloced * sizeof(*_pathDirectionList));
-		}
-		return &_pathDirectionList[_pathDirectionListCount++];
-	}
+	PointList _pathList;
+	uint _pathListIndex;
 
-	Point *_pathList;
-	int _pathListIndex;
-	int _pathListAlloced;
-	void addPathListPoint(const Point &point) {
-		++_pathListIndex;
-		if (_pathListIndex >= _pathListAlloced) {
-			_pathListAlloced += 100;
-			_pathList = (Point*) realloc(_pathList, _pathListAlloced * sizeof(*_pathList));
-
-		}
-		_pathList[_pathListIndex] = point;
-	}
-
-	int _pathNodeListIndex;
-	int _pathNodeListAlloced;
-	PathNode *_pathNodeList;
-	void addPathNodeListPoint(const Point &point) {
-		++_pathNodeListIndex;
-		if (_pathNodeListIndex >= _pathNodeListAlloced) {
-			_pathNodeListAlloced += 100;
-			_pathNodeList = (PathNode*) realloc(_pathNodeList, _pathNodeListAlloced * sizeof(*_pathNodeList));
-
-		}
-		_pathNodeList[_pathNodeListIndex].point = point;
-	}
-
-	int _newPathNodeListIndex;
-	int _newPathNodeListAlloced;
-	PathNode *_newPathNodeList;
-	void incrementNewPathNodeListIndex() {
-		++_newPathNodeListIndex;
-		if (_newPathNodeListIndex >= _newPathNodeListAlloced) {
-			_newPathNodeListAlloced += 100;
-			_newPathNodeList = (PathNode*) realloc(_newPathNodeList, _newPathNodeListAlloced * sizeof(*_newPathNodeList));
-
-		}
-	}
-	void addNewPathNodeListPoint(const PathNode &pathNode) {
-		incrementNewPathNodeListIndex();
-		_newPathNodeList[_newPathNodeListIndex] = pathNode;
-	}
+	PathNodeList _pathNodeList;
 
 public:
 #ifdef ACTOR_DEBUG
+#ifndef SAGA_DEBUG
+	you must also define SAGA_DEBUG
+#endif
 //path debug - use with care
 	struct DebugPoint {
 		Point point;
 		byte color;
+
+		DebugPoint() : color(0) {}
+
+		DebugPoint(const Point &p, byte c): point(p), color(c) {}
 	};
-	DebugPoint *_debugPoints;
-	int _debugPointsCount;
-	int _debugPointsAlloced;
+
+	Common::Array<DebugPoint> _debugPoints;
+	uint _debugPointsCount;
+	// we still need this trick to speedup debug points addition
 	void addDebugPoint(const Point &point, byte color) {
-		if (_debugPointsCount + 1 > _debugPointsAlloced) {
-			_debugPointsAlloced += 1000;
-			_debugPoints = (DebugPoint*) realloc(_debugPoints, _debugPointsAlloced * sizeof(*_debugPoints));
+		if (_debugPointsCount < _debugPoints.size()) {
+			_debugPoints[_debugPointsCount].point = point;
+			_debugPoints[_debugPointsCount].color = color;
+		} else {
+			_debugPoints.push_back(DebugPoint(point, color));
 		}
-		_debugPoints[_debugPointsCount].color = color;
-		_debugPoints[_debugPointsCount++].point = point;
+		++_debugPointsCount;
 	}
 #endif
 };

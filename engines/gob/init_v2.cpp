@@ -36,21 +36,26 @@ namespace Gob {
 Init_v2::Init_v2(GobEngine *vm) : Init_v1(vm) {
 }
 
+Init_v2::~Init_v2() {
+}
+
 void Init_v2::initVideo() {
 	if (_vm->_global->_videoMode)
 		_vm->validateVideoMode(_vm->_global->_videoMode);
 
 	_vm->_draw->_frontSurface = _vm->_global->_primarySurfDesc;
 	_vm->_video->initSurfDesc(_vm->_global->_videoMode,
-			_vm->_video->_surfWidth, _vm->_video->_surfHeight, 0x80);
+			_vm->_video->_surfWidth, _vm->_video->_surfHeight, PRIMARY_SURFACE);
 
 	_vm->_global->_mousePresent = 1;
 
 	_vm->_global->_inVM = 0;
 
 	_vm->_global->_colorCount = 16;
-	if (((_vm->getPlatform() == Common::kPlatformPC) ||
-	     (_vm->getPlatform() == Common::kPlatformMacintosh)) &&
+	if (!_vm->isEGA() &&
+	   ((_vm->getPlatform() == Common::kPlatformPC) ||
+	     (_vm->getPlatform() == Common::kPlatformMacintosh) ||
+	     (_vm->getPlatform() == Common::kPlatformWindows)) &&
 	    ((_vm->_global->_videoMode == 0x13) ||
 	     (_vm->_global->_videoMode == 0x14)))
 		_vm->_global->_colorCount = 256;

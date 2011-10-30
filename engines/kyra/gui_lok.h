@@ -34,7 +34,7 @@ namespace Kyra {
 	do { \
 		button.nextButton = 0; \
 		button.index = a; \
-		button.unk6 = button.unk8 = 0; \
+		button.keyCode = button.keyCode2 = 0; \
 		button.data0Val1 = b; \
 		button.data1Val1 = c; \
 		button.data2Val1 = d; \
@@ -47,6 +47,7 @@ namespace Kyra {
 		button.height = j; \
 		button.flags2 = k; \
 		button.mouseWheel = 0; \
+		button.arg = 0; \
 	} while (0)
 
 #define GUI_V1_MENU(menu, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q) \
@@ -88,7 +89,7 @@ namespace Kyra {
 		item.labelString = r; \
 		item.labelX = s; \
 		item.labelY = t; \
-		item.unk1F = v; \
+		item.keyCode = v; \
 	} while (0)
 
 class KyraEngine_LoK;

@@ -48,7 +48,9 @@ SystemVars SwordEngine::_systemVars;
 SwordEngine::SwordEngine(OSystem *syst)
 	: Engine(syst) {
 
-	if (!scumm_stricmp(ConfMan.get("gameid").c_str(), "sword1demo"))
+	if (!scumm_stricmp(ConfMan.get("gameid").c_str(), "sword1demo")	||
+		!scumm_stricmp(ConfMan.get("gameid").c_str(), "sword1psxdemo") ||
+		!scumm_stricmp(ConfMan.get("gameid").c_str(), "sword1macdemo"))
 		_features = GF_DEMO;
 	else
 		_features = 0;
@@ -58,10 +60,15 @@ SwordEngine::SwordEngine(OSystem *syst)
 	Common::File::addDefaultDirectory(_gameDataDir.getChild("MUSIC"));
 	Common::File::addDefaultDirectory(_gameDataDir.getChild("SPEECH"));
 	Common::File::addDefaultDirectory(_gameDataDir.getChild("VIDEO"));
+	Common::File::addDefaultDirectory(_gameDataDir.getChild("SMACKSHI"));
+	Common::File::addDefaultDirectory(_gameDataDir.getChild("ENGLISH"));//PSX Demo
+	Common::File::addDefaultDirectory(_gameDataDir.getChild("ITALIAN"));//PSX Demo
 	Common::File::addDefaultDirectory(_gameDataDir.getChild("clusters"));
 	Common::File::addDefaultDirectory(_gameDataDir.getChild("music"));
 	Common::File::addDefaultDirectory(_gameDataDir.getChild("speech"));
 	Common::File::addDefaultDirectory(_gameDataDir.getChild("video"));
+	Common::File::addDefaultDirectory(_gameDataDir.getChild("smackshi"));
+	
 }
 
 SwordEngine::~SwordEngine() {
@@ -82,14 +89,17 @@ Common::Error SwordEngine::init() {
 
 	if ( 0 == scumm_stricmp(ConfMan.get("gameid").c_str(), "sword1mac") ||
 	     0 == scumm_stricmp(ConfMan.get("gameid").c_str(), "sword1macdemo") )
-		_systemVars.isMac = true;
+		_systemVars.platform = Common::kPlatformMacintosh;
+	else if (0 == scumm_stricmp(ConfMan.get("gameid").c_str(), "sword1psx")	||
+			 0 == scumm_stricmp(ConfMan.get("gameid").c_str(), "sword1psxdemo")	)
+		_systemVars.platform = Common::kPlatformPSX;
 	else
-		_systemVars.isMac = false;
+		_systemVars.platform = Common::kPlatformWindows;
 
 	checkCdFiles();
 
 	debug(5, "Starting resource manager");
-	_resMan = new ResMan("swordres.rif", _systemVars.isMac);
+	_resMan = new ResMan("swordres.rif", _systemVars.platform == Common::kPlatformMacintosh);
 	debug(5, "Starting object manager");
 	_objectMan = new ObjectMan(_resMan);
 	_mouse = new Mouse(_system, _resMan, _objectMan);
@@ -135,6 +145,10 @@ Common::Error SwordEngine::init() {
 
 	_systemVars.playSpeech = 1;
 	_mouseState = 0;
+	
+	// Some Mac versions use big endian for the speech files but not all of them.
+	if (_systemVars.platform == Common::kPlatformMacintosh)
+		_sound->checkSpeechFileEndianness();
 
 	_logic->initialize();
 	_objectMan->initialize();
@@ -145,6 +159,7 @@ Common::Error SwordEngine::init() {
 }
 
 void SwordEngine::reinitialize(void) {
+	_sound->quitScreen();
 	_resMan->flush(); // free everything that's currently alloced and opened. (*evil*)
 
 	_logic->initialize();     // now reinitialize these objects as they (may) have locked
@@ -306,12 +321,34 @@ const CdFile SwordEngine::_macCdFileList[] = {
 #endif
 };
 
+const CdFile SwordEngine::_psxCdFileList[] = { // PSX edition has only one cd
+	{ "paris2.clu", FLAG_CD1 },
+	{ "ireland.clu", FLAG_CD1 },
+	{ "paris3.clu", FLAG_CD1 },
+	{ "paris4.clu", FLAG_CD1 },
+	{ "scotland.clu", FLAG_CD1 },
+	{ "spain.clu", FLAG_CD1 },
+	{ "syria.clu", FLAG_CD1 },
+	{ "train.clu", FLAG_CD1 },
+	{ "train.plx", FLAG_CD1 },
+	{ "compacts.clu", FLAG_CD1 | FLAG_DEMO | FLAG_IMMED },
+	{ "general.clu", FLAG_CD1 | FLAG_DEMO | FLAG_IMMED },
+	{ "maps.clu", FLAG_CD1 | FLAG_DEMO },
+	{ "paris1.clu", FLAG_CD1 | FLAG_DEMO},
+	{ "scripts.clu", FLAG_CD1 | FLAG_DEMO | FLAG_IMMED },
+	{ "swordres.rif", FLAG_CD1 | FLAG_DEMO | FLAG_IMMED },
+	{ "text.clu", FLAG_CD1 | FLAG_DEMO },
+	{ "speech.dat", FLAG_SPEECH1 | FLAG_DEMO },
+	{ "speech.tab", FLAG_SPEECH1 | FLAG_DEMO },
+	{ "speech.inf", FLAG_SPEECH1 | FLAG_DEMO },
+	{ "speech.lis", FLAG_SPEECH1 | FLAG_DEMO }
+};
 
 void SwordEngine::showFileErrorMsg(uint8 type, bool *fileExists) {
 	char msg[1024];
 	int missCnt = 0, missNum = 0;
 
-	if (_systemVars.isMac) {
+	if (SwordEngine::isMac()) {
 		for (int i = 0; i < ARRAYSIZE(_macCdFileList); i++)
 			if (!fileExists[i]) {
 				missCnt++;
@@ -331,6 +368,27 @@ void SwordEngine::showFileErrorMsg(uint8 type, bool *fileExists) {
 				if (!fileExists[i]) {
 					warning("\"%s\" (CD %d)", _macCdFileList[i].name, (_macCdFileList[i].flags & FLAG_CD2) ? 2 : 1);
 					pos += sprintf(pos, "\"%s\" (CD %d)\n", _macCdFileList[i].name, (_macCdFileList[i].flags & FLAG_CD2) ? 2 : 1);
+				}
+		}
+	} else if (SwordEngine::isPsx()) {
+		for (int i = 0; i < ARRAYSIZE(_psxCdFileList); i++)
+			if (!fileExists[i]) {
+				missCnt++;
+				missNum = i;
+			}
+		assert(missCnt > 0); // this function shouldn't get called if there's nothing missing.
+		warning("%d files missing", missCnt);
+		int msgId = (type == TYPE_IMMED) ? 0 : 2;
+		if (missCnt == 1) {
+			sprintf(msg, errorMsgs[msgId], _psxCdFileList[missNum].name, 1);
+			warning("%s", msg);
+		} else {
+			char *pos = msg + sprintf(msg, errorMsgs[msgId + 1], missCnt);
+			warning("%s", msg);
+			for (int i = 0; i < ARRAYSIZE(_psxCdFileList); i++)
+				if (!fileExists[i]) {
+					warning("\"%s\"", _macCdFileList[i].name);
+					pos += sprintf(pos, "\"%s\"\n", _macCdFileList[i].name);
 				}
 		}
 	} else {
@@ -372,7 +430,7 @@ void SwordEngine::checkCdFiles(void) { // check if we're running from cd, hdd or
 	_systemVars.playSpeech = true;
 
 	// check all files and look out if we can find a file that wouldn't exist if this was the demo version
-	if (_systemVars.isMac) {
+	if (SwordEngine::isMac()) {
 		for (int fcnt = 0; fcnt < ARRAYSIZE(_macCdFileList); fcnt++) {
 			if (Common::File::exists(_macCdFileList[fcnt].name)) {
 				fileExists[fcnt] = true;
@@ -383,6 +441,19 @@ void SwordEngine::checkCdFiles(void) { // check if we're running from cd, hdd or
 					cd2FilesFound = true;
 			} else {
 				flagsToBool(missingTypes, _macCdFileList[fcnt].flags);
+				fileExists[fcnt] = false;
+			}
+		}
+	} else if (SwordEngine::isPsx()) {
+		for (int fcnt = 0; fcnt < ARRAYSIZE(_psxCdFileList); fcnt++) {
+			if (Common::File::exists(_psxCdFileList[fcnt].name)) {
+				fileExists[fcnt] = true;
+				flagsToBool(foundTypes, _psxCdFileList[fcnt].flags);
+			if (!(_psxCdFileList[fcnt].flags & FLAG_DEMO))
+					isFullVersion = true;
+					cd2FilesFound = true;
+			} else {
+				flagsToBool(missingTypes, _psxCdFileList[fcnt].flags);
 				fileExists[fcnt] = false;
 			}
 		}
@@ -420,12 +491,20 @@ void SwordEngine::checkCdFiles(void) { // check if we're running from cd, hdd or
 		somethingMissing |= missingTypes[i];
 	if (somethingMissing) { // okay, there *are* files missing
 		// first, update the fileExists[] array depending on our changed missingTypes
-		if (_systemVars.isMac) {
+		if (SwordEngine::isMac()) {
 			for (int fileCnt = 0; fileCnt < ARRAYSIZE(_macCdFileList); fileCnt++)
 				if (!fileExists[fileCnt]) {
 					fileExists[fileCnt] = true;
 					for (int flagCnt = 0; flagCnt < 8; flagCnt++)
 						if (missingTypes[flagCnt] && ((_macCdFileList[fileCnt].flags & (1 << flagCnt)) != 0))
+							fileExists[fileCnt] = false; // this is one of the files we were looking for
+				}
+		} else if (SwordEngine::isPsx()) {
+			for (int fileCnt = 0; fileCnt < ARRAYSIZE(_psxCdFileList); fileCnt++)
+				if (!fileExists[fileCnt]) {
+					fileExists[fileCnt] = true;
+					for (int flagCnt = 0; flagCnt < 8; flagCnt++)
+						if (missingTypes[flagCnt] && ((_psxCdFileList[fileCnt].flags & (1 << flagCnt)) != 0))
 							fileExists[fileCnt] = false; // this is one of the files we were looking for
 				}
 		} else {
@@ -475,16 +554,11 @@ void SwordEngine::checkCdFiles(void) { // check if we're running from cd, hdd or
 	*/
 	// make the demo flag depend on the Gamesettings for now, and not on what the datafiles look like
 	_systemVars.isDemo = (_features & GF_DEMO) != 0;
-	_systemVars.cutscenePackVersion = 0;
-#ifdef USE_MPEG2
-	if (Common::File::exists("intro.snd")) {
-		_systemVars.cutscenePackVersion = 1;
-	}
-#endif
 }
 
 Common::Error SwordEngine::go() {
 	_control->checkForOldSaveGames();
+	SwordEngine::_systemVars.engineStartTime = _system->getMillis() / 1000;
 
 	uint16 startPos = ConfMan.getInt("boot_param");
 	_control->readSavegameDescriptions();
@@ -665,6 +739,17 @@ void SwordEngine::delay(int32 amount) { //copied and mutilated from sky.cpp
 
 bool SwordEngine::mouseIsActive() {
 	return Logic::_scriptVars[MOUSE_STATUS] & 1;
+}
+
+// The following function is needed to restore proper status after GMM load game
+void SwordEngine::reinitRes(void) {
+	checkCd(); // Reset currentCD var to correct value
+	_screen->newScreen(Logic::_scriptVars[NEW_SCREEN]);
+	_logic->newScreen(Logic::_scriptVars[NEW_SCREEN]);
+	_sound->newScreen(Logic::_scriptVars[NEW_SCREEN]);
+	Logic::_scriptVars[SCREEN] = Logic::_scriptVars[NEW_SCREEN];
+	_screen->fullRefresh();
+	_screen->draw();
 }
 
 } // End of namespace Sword1

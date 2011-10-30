@@ -29,7 +29,6 @@
 #include "common/stream.h"
 #include "common/stack.h"
 #include "parallaction/objects.h"
-#include "parallaction/walk.h"
 
 namespace Parallaction {
 
@@ -107,6 +106,7 @@ protected:
 
 	Table		*_zoneTypeNames;
 	Table		*_zoneFlagNames;
+	uint		_zoneProg;
 
 	// location parser
 	OpcodeSet	_locationParsers;
@@ -128,11 +128,6 @@ protected:
 		CommandList *list;
 		bool		endcommands;
 		CommandPtr	cmd;
-
-		// BRA specific
-		int numZones;
-		BackgroundInfo	*info;
-		char *characterName;
 	} ctxt;
 
 	void warning_unexpected();
@@ -177,22 +172,23 @@ protected:
 	DECLARE_UNQUALIFIED_COMMAND_PARSER(simple);
 	DECLARE_UNQUALIFIED_COMMAND_PARSER(move);
 	DECLARE_UNQUALIFIED_COMMAND_PARSER(endcommands);
-
+public:
 	virtual void parseGetData(ZonePtr z);
 	virtual void parseExamineData(ZonePtr z);
 	virtual void parseDoorData(ZonePtr z);
 	virtual void parseMergeData(ZonePtr z);
 	virtual void parseHearData(ZonePtr z);
 	virtual void parseSpeakData(ZonePtr z);
-
+protected:
 	Common::String	parseComment();
 	Common::String	parseDialogueString();
 	Dialogue	*parseDialogue();
-	void		resolveDialogueForwards(Dialogue *dialogue, uint numQuestions, Table &forwards);
 	virtual Answer *parseAnswer();
-	void 		parseAnswerFlags(Answer *answer);
-	void 		parseAnswerBody(Answer *answer);
-	Question	*parseQuestion();
+	void		parseAnswerFlags(Answer *answer);
+	void		parseAnswerBody(Answer *answer);
+	void		parseQuestion(Question *q);
+
+	uint32		buildZoneType(const char *t0, const char* t1);
 
 	void		parseZone(ZoneList &list, char *name);
 	virtual void parseZoneTypeBlock(ZonePtr z);
@@ -200,17 +196,9 @@ protected:
 	void		parseAnimation(AnimationList &list, char *name);
 	void		parseCommands(CommandList&);
 	void		parseCommandFlags();
-	void 		parseCommandFlag(CommandPtr cmd, const char *flag, Table *table, bool checkTrap);
-	void 		saveCommandForward(const char *name, CommandPtr cmd);
-	void 		resolveCommandForwards();
+	void		parseCommandFlag(CommandPtr cmd, const char *flag, Table *table);
 	void		createCommand(uint id);
 	void		addCommand();
-
-	struct CommandForwardReference {
-		char		name[20];
-		CommandPtr	cmd;
-	} _forwardedCommands[MAX_FORWARDS];
-	uint		_numForwardedCommands;
 
 	void clearSet(OpcodeSet &opcodes) {
 		for (Common::Array<const Opcode*>::iterator i = opcodes.begin(); i != opcodes.end(); ++i)
@@ -244,28 +232,23 @@ public:
 
 };
 
-/*
-	TODO: adapt the parser to effectively use the
-	statement list provided by preprocessor as its
-	input, instead of relying on the current Script
-	class.
 
-	This would need a major rewrite of the parsing
-	system!
+struct LocationParserOutput_br {
+	BackgroundInfo	*_info;
 
-	parseNextToken could then be sealed into the
-	PreProcessor class forever, together with the
-	_tokens[] and _numTokens stuff, now dangling as
-	global objects.
+	Common::String _characterName;
+	Common::String _backgroundName;
+	Common::String _maskName;
+	Common::String _pathName;
+};
 
-	NS balloons code should be dealt with before,
-	though.
-*/
 class LocationParser_br : public LocationParser_ns {
 
 protected:
 	Parallaction_br*	_vm;
 	Table		*_audioCommandsNames;
+
+	LocationParserOutput_br *_out;
 
 	DECLARE_UNQUALIFIED_LOCATION_PARSER(location);
 	DECLARE_UNQUALIFIED_LOCATION_PARSER(zone);
@@ -306,9 +289,12 @@ protected:
 	DECLARE_UNQUALIFIED_ANIM_PARSER(endanimation);
 
 	virtual void	parseZoneTypeBlock(ZonePtr z);
-	void			parsePathData(ZonePtr z);
-	void 			parseGetData(ZonePtr z);
-	void 			parseAnswerCounter(Answer *answer);
+public:
+	virtual void	parsePathData(ZonePtr z);
+	virtual void	parseGetData(ZonePtr z);
+	virtual void	parseDoorData(ZonePtr z);
+protected:
+	void	parseAnswerCounter(Answer *answer);
 	virtual Answer *parseAnswer();
 
 public:
@@ -322,7 +308,7 @@ public:
 		delete _audioCommandsNames;
 	}
 
-	void parse(Script *script);
+	void parse(Script *script, LocationParserOutput_br *out);
 
 };
 
@@ -341,14 +327,13 @@ protected:
 	OpcodeSet	_instructionParsers;
 	Table		*_instructionNames;
 
+	uint32		_currentInstruction; // index of the instruction being parsed
+
 	struct ParserContext {
 		bool		end;
 		AnimationPtr	a;
 		InstructionPtr inst;
 		LocalVariable *locals;
-
-		// BRA specific
-		InstructionPtr openIf;
 	} ctxt;
 
 	DECLARE_UNQUALIFIED_INSTRUCTION_PARSER(defLocal);
@@ -390,7 +375,7 @@ public:
 		clearSet(_instructionParsers);
 	}
 
-	void parse(Script *script, ProgramPtr program);
+	virtual void parse(Script *script, ProgramPtr program);
 
 };
 
@@ -408,6 +393,10 @@ protected:
 	DECLARE_UNQUALIFIED_INSTRUCTION_PARSER(if_op);
 	DECLARE_UNQUALIFIED_INSTRUCTION_PARSER(endif);
 
+	int32 _openIfStatement;
+	void beginIfStatement();
+	void endIfStatement();
+
 	virtual void parseRValue(ScriptVar &var, const char *str);
 
 public:
@@ -415,7 +404,7 @@ public:
 	}
 
 	virtual void init();
-
+	virtual void parse(Script *script, ProgramPtr program);
 };
 
 

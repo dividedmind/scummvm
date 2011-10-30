@@ -27,16 +27,17 @@
 
 #include "common/config-manager.h"
 
-#include "scumm/scumm.h"
 #include "scumm/actor.h"
 #include "scumm/charset.h"
 #include "scumm/dialogs.h"
 #include "scumm/file.h"
 #include "scumm/imuse_digi/dimuse.h"
-#include "scumm/intern.h"
 #ifdef ENABLE_HE
 #include "scumm/he/intern_he.h"
 #endif
+#include "scumm/scumm.h"
+#include "scumm/scumm_v6.h"
+#include "scumm/scumm_v8.h"
 #include "scumm/verbs.h"
 #include "scumm/he/sound_he.h"
 
@@ -174,7 +175,7 @@ void ScummEngine_v6::drawBlastTexts() {
 
 				// Some localizations may override colors
 				// See credits in Chinese COMI
-				if (_game.id == GID_CMI && 	_language == Common::ZH_TWN &&
+				if (_game.id == GID_CMI &&	_language == Common::ZH_TWN &&
 				      c == '^' && (buf == _blastTextQueue[i].text + 1)) {
 					if (*buf == 'c') {
 						int color = buf[3] - '0' + 10 *(buf[2] - '0');
@@ -634,7 +635,7 @@ void ScummEngine::CHARSET_1() {
 			if (_game.version <= 3) {
 				_charset->printChar(c, false);
 			} else {
-				if (_game.features & GF_HE_NOSUBTITLES) {
+				if (_game.features & GF_16BIT_COLOR) {
 					// HE games which use sprites for subtitles
 				} else if (_game.heversion >= 60 && !ConfMan.getBool("subtitles") && _sound->isSoundRunning(1)) {
 					// Special case for HE games
@@ -994,6 +995,11 @@ void ScummEngine::drawString(int a, const byte *msg) {
 	}
 
 	_string[a].xpos = _charset->_str.right;
+
+	if (_game.heversion >= 60) {
+		_string[a]._default.xpos = _string[a].xpos;
+		_string[a]._default.ypos = _string[a].ypos;
+	}
 }
 
 int ScummEngine::convertMessageToString(const byte *msg, byte *dst, int dstSize) {
@@ -1094,7 +1100,7 @@ int ScummEngine::convertMessageToString(const byte *msg, byte *dst, int dstSize)
 
 		// Check for a buffer overflow
 		if (dst >= end)
-			error("convertMessageToString: buffer overflow!");
+			error("convertMessageToString: buffer overflow");
 	}
 	*dst = 0;
 
@@ -1143,7 +1149,7 @@ int ScummEngine_v72he::convertMessageToString(const byte *msg, byte *dst, int ds
 
 		// Check for a buffer overflow
 		if (dst >= end)
-			error("convertMessageToString: buffer overflow!");
+			error("convertMessageToString: buffer overflow");
 	}
 	*dst = 0;
 
@@ -1361,7 +1367,7 @@ void ScummEngine_v7::loadLanguageBundle() {
 				// That was another index entry
 				_languageIndexSize++;
 			} else {
-				error("Unknown language.bnd entry found: '%s'\n", ptr);
+				error("Unknown language.bnd entry found: '%s'", ptr);
 			}
 
 			// Skip over newlines (and turn them into null bytes)
@@ -1414,6 +1420,9 @@ void ScummEngine_v7::loadLanguageBundle() {
 }
 
 void ScummEngine_v7::playSpeech(const byte *ptr) {
+	if (_game.id == GID_DIG && (ConfMan.getBool("speech_mute") || VAR(VAR_VOICE_MODE) == 2))
+		return;
+
 	if ((_game.id == GID_DIG || _game.id == GID_CMI) && ptr[0]) {
 		char pointer[20];
 		strcpy(pointer, (const char *)ptr);

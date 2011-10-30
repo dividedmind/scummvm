@@ -34,8 +34,8 @@
 
 namespace Groovie {
 
-GroovieEngine::GroovieEngine(OSystem *syst, GroovieGameDescription *gd) :
-	Engine(syst), _gameDescription(gd), _debugger(NULL), _script(this),
+GroovieEngine::GroovieEngine(OSystem *syst, const GroovieGameDescription *gd) :
+	Engine(syst), _gameDescription(gd), _debugger(NULL), _script(this, gd->version),
 	_resMan(NULL), _grvCursorMan(NULL), _videoPlayer(NULL), _musicPlayer(NULL),
 	_graphicsMan(NULL), _waitingForInput(false) {
 
@@ -68,7 +68,7 @@ GroovieEngine::~GroovieEngine() {
 	delete _graphicsMan;
 }
 
-Common::Error GroovieEngine::init() {
+Common::Error GroovieEngine::run() {
 	// Initialize the graphics
 	initGraphics(640, 480, true);
 
@@ -94,7 +94,11 @@ Common::Error GroovieEngine::init() {
 	}
 
 	// Create the music player
-	_musicPlayer = new MusicPlayer(this, _gameDescription->version == kGroovieT7G ? "fat" : "sample");
+	if (_gameDescription->desc.platform == Common::kPlatformMacintosh) {
+		_musicPlayer = new MusicPlayerMac(this);
+	} else {
+		_musicPlayer = new MusicPlayerXMI(this, _gameDescription->version == kGroovieT7G ? "fat" : "sample");
+	}
 
 	// Load volume levels
 	syncSoundSettings();
@@ -156,13 +160,8 @@ Common::Error GroovieEngine::init() {
 		_script.directGameLoad(slot);
 	}
 
-	return Common::kNoError;
-}
-
-Common::Error GroovieEngine::go() {
 	// Check that the game files and the audio tracks aren't together run from
 	// the same cd
-
 	checkCD();
 
 	// Game timer counter
@@ -269,6 +268,11 @@ void GroovieEngine::errorString(const char *buf_input, char *buf_output, int buf
 
 void GroovieEngine::syncSoundSettings() {
 	_musicPlayer->setUserVolume(ConfMan.getInt("music_volume"));
+	// VDX videos just contain one digital audio track, which can be used for
+	// both SFX or Speech, but the engine doesn't know what they contain, so
+	// we have to use just one volume setting for videos.
+	// We use "speech" because most users will want to change the videos
+	// volume when they can't hear the speech because of the music.
 	_mixer->setVolumeForSoundType(Audio::Mixer::kPlainSoundType, ConfMan.getInt("speech_volume"));
 }
 

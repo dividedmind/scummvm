@@ -43,7 +43,14 @@ class Interactive
 
 #include "softkbd.h"
 
-class OSystem_Dreamcast : public BaseBackend, public FilesystemFactory {
+class DCHardware {
+ private:
+  static void dc_init_hardware();
+ protected:
+  DCHardware() { dc_init_hardware(); }
+};
+
+class OSystem_Dreamcast : private DCHardware, public BaseBackend, public FilesystemFactory {
 
  public:
   OSystem_Dreamcast();
@@ -87,9 +94,6 @@ class OSystem_Dreamcast : public BaseBackend, public FilesystemFactory {
 
 	virtual Graphics::Surface *lockScreen();
 	virtual void unlockScreen();
-
-  // Clear the screen to black.
-  void clearScreen();
 
   // Update the dirty areas of the screen
   void updateScreen();
@@ -154,8 +158,8 @@ class OSystem_Dreamcast : public BaseBackend, public FilesystemFactory {
   void showOverlay();
   void hideOverlay();
   void clearOverlay();
-  void grabOverlay(int16 *buf, int pitch);
-  void copyRectToOverlay(const int16 *buf, int pitch, int x, int y, int w, int h);
+  void grabOverlay(OverlayColor *buf, int pitch);
+  void copyRectToOverlay(const OverlayColor *buf, int pitch, int x, int y, int w, int h);
   virtual Graphics::PixelFormat getOverlayFormat() const { return Graphics::createPixelFormat<4444>(); }
 
   // Mutex handling
@@ -190,7 +194,7 @@ class OSystem_Dreamcast : public BaseBackend, public FilesystemFactory {
   SoftKeyboard _softkbd;
 
   int _ms_cur_x, _ms_cur_y, _ms_cur_w, _ms_cur_h, _ms_old_x, _ms_old_y;
-  int _ms_hotspot_x, _ms_hotspot_y, _ms_visible, _devpoll;
+  int _ms_hotspot_x, _ms_hotspot_y, _ms_visible, _devpoll, _last_screen_refresh;
   int _current_shake_pos, _screen_w, _screen_h;
   int _overlay_x, _overlay_y;
   unsigned char *_ms_buf;
@@ -216,10 +220,14 @@ class OSystem_Dreamcast : public BaseBackend, public FilesystemFactory {
   uint initSound();
   void checkSound();
 
+  void updateScreenTextures(void);
+  void updateScreenPolygons(void);
+  void maybeRefreshScreen(void);
   void drawMouse(int xdraw, int ydraw, int w, int h,
 		 unsigned char *buf, bool visible);
 
   void setScaling();
+
 
   Common::SaveFileManager *createSavefileManager();
 };
@@ -228,5 +236,5 @@ class OSystem_Dreamcast : public BaseBackend, public FilesystemFactory {
 extern int handleInput(struct mapledev *pad,
 		       int &mouse_x, int &mouse_y,
 		       byte &shiftFlags, Interactive *inter = NULL);
-extern bool selectGame(char *&, char *&, class Icon &);
+extern bool selectGame(char *&, char *&, Common::Language &, Common::Platform &, class Icon &);
 

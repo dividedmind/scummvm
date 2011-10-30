@@ -39,6 +39,8 @@ static const PlainGameDescriptor toucheGames[] = {
 
 namespace Touche {
 
+using Common::GUIO_NONE;
+
 static const ADGameDescription gameDescriptions[] = {
 	{ // retail version
 		"touche",
@@ -46,7 +48,8 @@ static const ADGameDescription gameDescriptions[] = {
 		AD_ENTRY1s("touche.dat", "2af0177f8887e3430f345e6b4d8b1414", 26350211),
 		Common::EN_ANY,
 		Common::kPlatformPC,
-		ADGF_NO_FLAGS
+		ADGF_NO_FLAGS,
+		GUIO_NONE
 	},
 	{ // retail version - tracker item #1601818
 		"touche",
@@ -54,7 +57,8 @@ static const ADGameDescription gameDescriptions[] = {
 		AD_ENTRY1s("touche.dat", "95967f0b51d2e813e99ca00325098340", 26350190),
 		Common::EN_ANY,
 		Common::kPlatformPC,
-		ADGF_NO_FLAGS
+		ADGF_NO_FLAGS,
+		GUIO_NONE
 	},
 	{ // retail version
 		"touche",
@@ -62,7 +66,8 @@ static const ADGameDescription gameDescriptions[] = {
 		AD_ENTRY1s("touche.dat", "1caa20bb4d4fc2ce8eb867b6610082b3", 26558232),
 		Common::FR_FRA,
 		Common::kPlatformPC,
-		ADGF_NO_FLAGS
+		ADGF_NO_FLAGS,
+		GUIO_NONE
 	},
 	{ // retail version - tracker item #1598643
 		"touche",
@@ -70,7 +75,8 @@ static const ADGameDescription gameDescriptions[] = {
 		AD_ENTRY1s("touche.dat", "be2ae6454b3325e410946f2322547cd4", 26625537),
 		Common::DE_DEU,
 		Common::kPlatformPC,
-		ADGF_NO_FLAGS
+		ADGF_NO_FLAGS,
+		GUIO_NONE
 	},
 	{ // retail version - tracker item #1681643
 		"touche",
@@ -78,7 +84,8 @@ static const ADGameDescription gameDescriptions[] = {
 		AD_ENTRY1s("touche.dat", "64e95ba1decf5a5a60f8fa1840f40c62", 26529523),
 		Common::ES_ESP,
 		Common::kPlatformPC,
-		ADGF_NO_FLAGS
+		ADGF_NO_FLAGS,
+		GUIO_NONE
 	},
 	{ // fan-made translation (http://www.iagtg.net/) - tracker item #1602360
 		"touche",
@@ -86,7 +93,8 @@ static const ADGameDescription gameDescriptions[] = {
 		AD_ENTRY1s("touche.dat", "1f442331d4b327c3488a9f6ffe9bdd25", 26367792),
 		Common::IT_ITA,
 		Common::kPlatformPC,
-		ADGF_NO_FLAGS
+		ADGF_NO_FLAGS,
+		GUIO_NONE
 	},
 	{ // retail version - tracker item #1800500
 		"touche",
@@ -94,7 +102,8 @@ static const ADGameDescription gameDescriptions[] = {
 		AD_ENTRY1s("touche.dat", "42d19a0bef65465109020440a9caa228", 26487370),
 		Common::PL_POL,
 		Common::kPlatformPC,
-		ADGF_NO_FLAGS
+		ADGF_NO_FLAGS,
+		GUIO_NONE
 	},
 	{ // demo version
 		"touche",
@@ -102,7 +111,8 @@ static const ADGameDescription gameDescriptions[] = {
 		AD_ENTRY1s("touche.dat", "ddaed436445b2e77294ed19e8ae4aa2c", 8720683),
 		Common::EN_ANY,
 		Common::kPlatformPC,
-		ADGF_DEMO
+		ADGF_DEMO,
+		GUIO_NONE
 	},
 	AD_TABLE_END_MARKER
 };
@@ -122,7 +132,9 @@ static const ADParams detectionParams = {
 	0, // no obsolete targets data
 	"touche",
 	Touche::fileBasedFallback, // file-based detection data to enable not yet known versions to start
-	kADFlagPrintWarningOnFileBasedFallback
+	kADFlagPrintWarningOnFileBasedFallback,
+	// Additional GUI options (for every game}
+	Common::GUIO_NONE
 };
 
 class ToucheMetaEngine : public AdvancedMetaEngine {
@@ -133,7 +145,7 @@ public:
 		return "Touche Engine";
 	}
 
-	virtual const char *getCopyright() const {
+	virtual const char *getOriginalCopyright() const {
 		return "Touche: The Adventures of the 5th Musketeer (C) Clipper Software";
 	}
 
@@ -168,7 +180,7 @@ bool ToucheMetaEngine::createInstance(OSystem *syst, Engine **engine, const ADGa
 
 SaveStateList ToucheMetaEngine::listSaves(const char *target) const {
 	Common::String pattern = Touche::generateGameStateFileName(target, 0, true);
-	Common::StringList filenames = g_system->getSavefileManager()->listSavefiles(pattern.c_str());
+	Common::StringList filenames = g_system->getSavefileManager()->listSavefiles(pattern);
 	bool slotsTable[Touche::kMaxSaveStates];
 	memset(slotsTable, 0, sizeof(slotsTable));
 	SaveStateList saveList;
@@ -181,7 +193,7 @@ SaveStateList ToucheMetaEngine::listSaves(const char *target) const {
 	for (int slot = 0; slot < Touche::kMaxSaveStates; ++slot) {
 		if (slotsTable[slot]) {
 			Common::String file = Touche::generateGameStateFileName(target, slot);
-			Common::InSaveFile *in = g_system->getSavefileManager()->openForLoading(file.c_str());
+			Common::InSaveFile *in = g_system->getSavefileManager()->openForLoading(file);
 			if (in) {
 				char description[64];
 				Touche::readGameStateDescription(in, description, sizeof(description) - 1);
@@ -201,7 +213,7 @@ int ToucheMetaEngine::getMaximumSaveSlot() const {
 
 void ToucheMetaEngine::removeSaveState(const char *target, int slot) const {
 	Common::String filename = Touche::generateGameStateFileName(target, slot);
-	g_system->getSavefileManager()->removeSavefile(filename.c_str());
+	g_system->getSavefileManager()->removeSavefile(filename);
 }
 
 #if PLUGIN_ENABLED_DYNAMIC(TOUCHE)

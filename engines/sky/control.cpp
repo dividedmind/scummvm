@@ -50,8 +50,7 @@
 namespace Sky {
 
 ConResource::ConResource(void *pSpData, uint32 pNSprites, uint32 pCurSprite, uint16 pX, uint16 pY, uint32 pText, uint8 pOnClick, OSystem *system, uint8 *screen) {
-
-	_spriteData = (dataFileHeader *)pSpData;
+	_spriteData = (DataFileHeader *)pSpData;
 	_numSprites = pNSprites;
 	_curSprite = pCurSprite;
 	_x = pX;
@@ -63,7 +62,6 @@ ConResource::ConResource(void *pSpData, uint32 pNSprites, uint32 pCurSprite, uin
 }
 
 bool ConResource::isMouseOver(uint32 mouseX, uint32 mouseY) {
-
 	if ((mouseX >= _x) && (mouseY >= _y) && ((uint16)mouseX <= _x + _spriteData->s_width) && ((uint16)mouseY <= _y + _spriteData->s_height))
 		return true;
 	else
@@ -71,13 +69,12 @@ bool ConResource::isMouseOver(uint32 mouseX, uint32 mouseY) {
 }
 
 void ConResource::drawToScreen(bool doMask) {
-
 	uint8 *screenPos = _y * GAME_SCREEN_WIDTH + _x + _screen;
 	uint8 *updatePos = screenPos;
 
 	if (!_spriteData)
 		return;
-	uint8 *spriteData = ((uint8 *)_spriteData) + sizeof(dataFileHeader);
+	uint8 *spriteData = ((uint8 *)_spriteData) + sizeof(DataFileHeader);
 	spriteData += _spriteData->s_sp_size * _curSprite;
 	if (doMask) {
 		for (uint16 cnty = 0; cnty < _spriteData->s_height; cnty++) {
@@ -109,7 +106,6 @@ TextResource::~TextResource(void) {
 }
 
 void TextResource::flushForRedraw(void) {
-
 	if (_oldX < GAME_SCREEN_WIDTH) {
 		uint16 cpWidth = (PAN_LINE_WIDTH > (GAME_SCREEN_WIDTH - _oldX))?(GAME_SCREEN_WIDTH - _oldX):(PAN_LINE_WIDTH);
 		for (uint8 cnty = 0; cnty < PAN_CHAR_HEIGHT; cnty++)
@@ -119,7 +115,6 @@ void TextResource::flushForRedraw(void) {
 }
 
 void TextResource::drawToScreen(bool doMask) {
-
 	doMask = true;
 	uint16 cnty, cntx, cpWidth, cpHeight;
 	if ((_oldX == _x) && (_oldY == _y) && (_spriteData))
@@ -149,7 +144,7 @@ void TextResource::drawToScreen(bool doMask) {
 
 	uint8 *screenPos = _screen + _y * GAME_SCREEN_WIDTH + _x;
 	uint8 *copyDest = _oldScreen;
-	uint8 *copySrc = ((uint8 *)_spriteData) + sizeof(dataFileHeader);
+	uint8 *copySrc = ((uint8 *)_spriteData) + sizeof(DataFileHeader);
 	for (cnty = 0; cnty < cpHeight; cnty++) {
 		memcpy(copyDest, screenPos, cpWidth);
 		for (cntx = 0; cntx < cpWidth; cntx++)
@@ -182,8 +177,8 @@ void ControlStatus::setToText(const char *newText) {
 		_statusText->flushForRedraw();
 		free(_textData);
 	}
-	displayText_t disText = _skyText->displayText(tmpLine, NULL, true, STATUS_WIDTH, 255);
-	_textData = (dataFileHeader *)disText.textData;
+	DisplayedText disText = _skyText->displayText(tmpLine, NULL, true, STATUS_WIDTH, 255);
+	_textData = (DataFileHeader *)disText.textData;
 	_statusText->setSprite(_textData);
 	_statusText->drawToScreen(WITH_MASK);
 }
@@ -191,8 +186,8 @@ void ControlStatus::setToText(const char *newText) {
 void ControlStatus::setToText(uint16 textNum) {
 	if (_textData)
 		free(_textData);
-	displayText_t disText = _skyText->displayText(textNum, NULL, true, STATUS_WIDTH, 255);
-	_textData = (dataFileHeader *)disText.textData;
+	DisplayedText disText = _skyText->displayText(textNum, NULL, true, STATUS_WIDTH, 255);
+	_textData = (DataFileHeader *)disText.textData;
 	_statusText->setSprite(_textData);
 	_statusText->drawToScreen(WITH_MASK);
 }
@@ -217,7 +212,6 @@ Control::Control(Common::SaveFileManager *saveFileMan, Screen *screen, Disk *dis
 }
 
 ConResource *Control::createResource(void *pSpData, uint32 pNSprites, uint32 pCurSprite, int16 pX, int16 pY, uint32 pText, uint8 pOnClick, uint8 panelType) {
-
 	if (pText) pText += 0x7000;
 	if (panelType == MAINPANEL) {
 		pX += MPNL_X;
@@ -230,7 +224,6 @@ ConResource *Control::createResource(void *pSpData, uint32 pNSprites, uint32 pCu
 }
 
 void Control::removePanel(void) {
-
 	free(_screenBuf);
 	free(_sprites.controlPanel);	free(_sprites.button);
 	free(_sprites.buttonDown);		free(_sprites.savePanel);
@@ -257,7 +250,6 @@ void Control::removePanel(void) {
 }
 
 void Control::initPanel(void) {
-
 	_screenBuf = (uint8 *)malloc(GAME_SCREEN_WIDTH * FULL_SCREEN_HEIGHT);
 	memset(_screenBuf, 0, GAME_SCREEN_WIDTH * FULL_SCREEN_HEIGHT);
 
@@ -336,7 +328,6 @@ void Control::initPanel(void) {
 }
 
 void Control::buttonControl(ConResource *pButton) {
-
 	char autoSave[] = "Restore Autosave";
 	if (pButton == NULL) {
 		if (_textSprite)
@@ -352,12 +343,12 @@ void Control::buttonControl(ConResource *pButton) {
 		_textSprite = NULL;
 		_curButtonText = pButton->_text;
 		if (pButton->_text) {
-			displayText_t textRes;
+			DisplayedText textRes;
 			if (pButton->_text == 0xFFFF) // text for autosave button
 				textRes = _skyText->displayText(autoSave, NULL, false, PAN_LINE_WIDTH, 255);
 			else
 				textRes = _skyText->displayText(pButton->_text, NULL, false, PAN_LINE_WIDTH, 255);
-			_textSprite = (dataFileHeader *)textRes.textData;
+			_textSprite = (DataFileHeader *)textRes.textData;
 			_text->setSprite(_textSprite);
 		} else
 			_text->setSprite(NULL);
@@ -368,7 +359,6 @@ void Control::buttonControl(ConResource *pButton) {
 }
 
 void Control::drawTextCross(uint32 flags) {
-
 	_bodge->drawToScreen(NO_MASK);
 	if (!(flags & SF_ALLOW_SPEECH))
 		drawCross(151, 124);
@@ -377,7 +367,6 @@ void Control::drawTextCross(uint32 flags) {
 }
 
 void Control::drawCross(uint16 x, uint16 y) {
-
 	_text->flushForRedraw();
 	uint8 *bufPos, *crossPos;
 	bufPos = _screenBuf + y * GAME_SCREEN_WIDTH + x;
@@ -395,7 +384,6 @@ void Control::drawCross(uint16 x, uint16 y) {
 }
 
 void Control::animClick(ConResource *pButton) {
-
 	if (pButton->_curSprite != pButton->_numSprites -1) {
 		pButton->_curSprite++;
 		_text->flushForRedraw();
@@ -412,7 +400,6 @@ void Control::animClick(ConResource *pButton) {
 }
 
 void Control::drawMainPanel(void) {
-
 	memset(_screenBuf, 0, GAME_SCREEN_WIDTH * FULL_SCREEN_HEIGHT);
 	_system->copyRectToScreen(_screenBuf, GAME_SCREEN_WIDTH, 0, 0, GAME_SCREEN_WIDTH, FULL_SCREEN_HEIGHT);
 	_controlPanel->drawToScreen(NO_MASK);
@@ -462,10 +449,10 @@ void Control::doLoadSavePanel(void) {
 }
 
 void Control::doControlPanel(void) {
-
 	if (SkyEngine::isDemo()) {
 		return;
 	}
+
 	initPanel();
 
 	_savedCharSet = _skyText->giveCurrentCharSet();
@@ -538,7 +525,6 @@ void Control::doControlPanel(void) {
 }
 
 uint16 Control::handleClick(ConResource *pButton) {
-
 	char quitDos[] = "Quit to DOS?";
 	char restart[] = "Restart?";
 
@@ -615,18 +601,17 @@ uint16 Control::handleClick(ConResource *pButton) {
 }
 
 bool Control::getYesNo(char *text) {
-
 	bool retVal = false;
 	bool quitPanel = false;
 	uint8 mouseType = MOUSE_NORMAL;
 	uint8 wantMouse = MOUSE_NORMAL;
-	dataFileHeader *dlgTextDat;
+	DataFileHeader *dlgTextDat;
 	uint16 textY = MPNL_Y;
 
 	_yesNo->drawToScreen(WITH_MASK);
 	if (text) {
-		displayText_t dlgLtm = _skyText->displayText(text, NULL, true, _yesNo->_spriteData->s_width - 8, 37);
-		dlgTextDat = (dataFileHeader *)dlgLtm.textData;
+		DisplayedText dlgLtm = _skyText->displayText(text, NULL, true, _yesNo->_spriteData->s_width - 8, 37);
+		dlgTextDat = (DataFileHeader *)dlgLtm.textData;
 		textY = MPNL_Y + 44 + (28 - dlgTextDat->s_height) / 2;
 	} else
 		dlgTextDat = NULL;
@@ -669,7 +654,6 @@ bool Control::getYesNo(char *text) {
 }
 
 uint16 Control::doMusicSlide(void) {
-
 	Common::Point mouse = _system->getEventManager()->getMousePos();
 	int ofsY = _slide2->_y - mouse.y;
 	uint8 volume;
@@ -697,7 +681,6 @@ uint16 Control::doMusicSlide(void) {
 }
 
 uint16 Control::doSpeedSlide(void) {
-
 	Common::Point mouse = _system->getEventManager()->getMousePos();
 	int ofsY = _slide->_y - mouse.y;
 	uint16 speedDelay = _slide->_y - (MPNL_Y + 93);
@@ -728,7 +711,6 @@ uint16 Control::doSpeedSlide(void) {
 }
 
 void Control::toggleFx(ConResource *pButton) {
-
 	SkyEngine::_systemVars.systemFlags ^= SF_FX_OFF;
 	if (SkyEngine::_systemVars.systemFlags & SF_FX_OFF) {
 		pButton->_curSprite = 0;
@@ -745,7 +727,6 @@ void Control::toggleFx(ConResource *pButton) {
 }
 
 uint16 Control::toggleText(void) {
-
 	uint32 flags = SkyEngine::_systemVars.systemFlags & TEXT_FLAG_MASK;
 	SkyEngine::_systemVars.systemFlags &= ~TEXT_FLAG_MASK;
 
@@ -772,7 +753,6 @@ uint16 Control::toggleText(void) {
 }
 
 void Control::toggleMusic(ConResource *pButton) {
-
 	SkyEngine::_systemVars.systemFlags ^= SF_MUS_OFF;
 	if (SkyEngine::_systemVars.systemFlags & SF_MUS_OFF) {
 		_skyMusic->startMusic(0);
@@ -791,7 +771,6 @@ void Control::toggleMusic(ConResource *pButton) {
 }
 
 uint16 Control::shiftDown(uint8 speed) {
-
 	if (speed == SLOW) {
 		if (_firstText >= MAX_SAVE_GAMES - MAX_ON_SCREEN)
 			return 0;
@@ -804,11 +783,11 @@ uint16 Control::shiftDown(uint8 speed) {
 		else
 			return 0;
 	}
+
 	return SHIFTED;
 }
 
 uint16 Control::shiftUp(uint8 speed) {
-
 	if (speed == SLOW) {
 		if (_firstText > 0)
 			_firstText--;
@@ -826,7 +805,6 @@ uint16 Control::shiftUp(uint8 speed) {
 }
 
 bool Control::autoSaveExists(void) {
-
 	bool test = false;
 	Common::InSaveFile *f;
 	char fName[20];
@@ -844,7 +822,6 @@ bool Control::autoSaveExists(void) {
 }
 
 uint16 Control::saveRestorePanel(bool allowSave) {
-
 	_keyPressed.reset();
 	_mouseWheel = 0;
 	buttonControl(NULL);
@@ -867,7 +844,7 @@ uint16 Control::saveRestorePanel(bool allowSave) {
 	bool withAutoSave = (lookListLen == 7);
 
 	Common::StringList saveGameTexts;
-	dataFileHeader *textSprites[MAX_ON_SCREEN + 1];
+	DataFileHeader *textSprites[MAX_ON_SCREEN + 1];
 	for (cnt = 0; cnt < MAX_ON_SCREEN + 1; cnt++)
 		textSprites[cnt] = NULL;
 	_firstText = 0;
@@ -986,7 +963,6 @@ uint16 Control::saveRestorePanel(bool allowSave) {
 }
 
 void Control::handleKeyPress(Common::KeyState kbd, Common::String &textBuf) {
-
 	if (kbd.keycode == Common::KEYCODE_BACKSPACE) { // backspace
 		if (textBuf.size() > 0)
 			textBuf.deleteLastChar();
@@ -1011,13 +987,12 @@ void Control::handleKeyPress(Common::KeyState kbd, Common::String &textBuf) {
 	}
 }
 
-void Control::setUpGameSprites(const Common::StringList &saveGameNames, dataFileHeader **nameSprites, uint16 firstNum, uint16 selectedGame) {
-
+void Control::setUpGameSprites(const Common::StringList &saveGameNames, DataFileHeader **nameSprites, uint16 firstNum, uint16 selectedGame) {
 	char cursorChar[2] = "-";
-	displayText_t textSpr;
+	DisplayedText textSpr;
 	if (!nameSprites[MAX_ON_SCREEN]) {
 		textSpr = _skyText->displayText(cursorChar, NULL, false, 15, 0);
-		nameSprites[MAX_ON_SCREEN] = (dataFileHeader *)textSpr.textData;
+		nameSprites[MAX_ON_SCREEN] = (DataFileHeader *)textSpr.textData;
 	}
 	for (uint16 cnt = 0; cnt < MAX_ON_SCREEN; cnt++) {
 		char nameBuf[MAX_TEXT_LEN + 10];
@@ -1027,7 +1002,7 @@ void Control::setUpGameSprites(const Common::StringList &saveGameNames, dataFile
 			textSpr = _skyText->displayText(nameBuf, NULL, false, PAN_LINE_WIDTH, 0);
 		else
 			textSpr = _skyText->displayText(nameBuf, NULL, false, PAN_LINE_WIDTH, 37);
-		nameSprites[cnt] = (dataFileHeader *)textSpr.textData;
+		nameSprites[cnt] = (DataFileHeader *)textSpr.textData;
 		if (firstNum + cnt == selectedGame) {
 			nameSprites[cnt]->flag = 1;
 			_enteredTextWidth = (uint16)textSpr.textWidth;
@@ -1036,8 +1011,7 @@ void Control::setUpGameSprites(const Common::StringList &saveGameNames, dataFile
 	}
 }
 
-void Control::showSprites(dataFileHeader **nameSprites, bool allowSave) {
-
+void Control::showSprites(DataFileHeader **nameSprites, bool allowSave) {
 	ConResource *drawResource = new ConResource(NULL, 1, 0, 0, 0, 0, 0, _system, _screenBuf);
 	for (uint16 cnt = 0; cnt < MAX_ON_SCREEN; cnt++) {
 		drawResource->setSprite(nameSprites[cnt]);
@@ -1059,7 +1033,6 @@ void Control::showSprites(dataFileHeader **nameSprites, bool allowSave) {
 }
 
 void Control::loadDescriptions(Common::StringList &savenames) {
-
 	savenames.resize(MAX_SAVE_GAMES);
 
 	Common::InSaveFile *inf;
@@ -1078,7 +1051,6 @@ void Control::loadDescriptions(Common::StringList &savenames) {
 }
 
 bool Control::loadSaveAllowed(void) {
-
 	if (SkyEngine::_systemVars.systemFlags & SF_CHOOSING)
 		return false; // texts get lost during load/save, so don't allow it during choosing
 	if (Logic::_scriptVariables[SCREEN] >= 101)
@@ -1106,7 +1078,6 @@ int Control::displayMessage(const char *altButton, const char *message, ...) {
 }
 
 void Control::saveDescriptions(const Common::StringList &list) {
-
 	Common::OutSaveFile *outf;
 
 	outf = _saveFileMan->openForSaving("SKY-VM.SAV");
@@ -1116,7 +1087,7 @@ void Control::saveDescriptions(const Common::StringList &list) {
 			outf->write(list[cnt].c_str(), list[cnt].size() + 1);
 		}
 		outf->finalize();
-		if (!outf->ioFailed())
+		if (!outf->err())
 			ioFailed = false;
 		delete outf;
 	}
@@ -1143,8 +1114,8 @@ void Control::doAutoSave(void) {
 	outf->write(saveData, fSize);
 	outf->finalize();
 
-	if (outf->ioFailed())
-		displayMessage(0, "Unable to write autosave file '%s'. Disk full?", fName, _saveFileMan->popErrorDesc().c_str());
+	if (outf->err())
+		displayMessage(0, "Unable to write autosave file '%s'. Disk full? (%s)", fName, _saveFileMan->popErrorDesc().c_str());
 
 	delete outf;
 	free(saveData);
@@ -1164,7 +1135,7 @@ uint16 Control::saveGameToFile(void) {
 
 	uint32 writeRes = outf->write(saveData, fSize);
 	outf->finalize();
-	if (outf->ioFailed())
+	if (outf->err())
 		writeRes = 0;
 	free(saveData);
 	delete outf;
@@ -1176,7 +1147,6 @@ uint16 Control::saveGameToFile(void) {
 #define STOSW(ptr, val) { *(uint16 *)(ptr) = TO_LE_16(val); (ptr) += 2; }
 
 uint32 Control::prepareSaveData(uint8 *destBuf) {
-
 	uint32 cnt;
 	memset(destBuf, 0, 4); // space for data size
 	uint8 *destPos = destBuf + 4;
@@ -1225,15 +1195,15 @@ void Control::importOldCompact(Compact* destCpt, uint8 **srcPos, uint16 numElems
 	uint16 saveType;
 	LODSW(*srcPos, saveType);
 	if ((saveType & (SAVE_EXT | SAVE_TURNP)) && (numElems < 54))
-		error("Cpt %s: Savedata doesn't match cpt size (%d)!\n", name, numElems);
+		error("Cpt %s: Savedata doesn't match cpt size (%d)", name, numElems);
 	if ((saveType & SAVE_MEGA0) && (numElems < 54 + 13))
-		error("Cpt %s: Savedata doesn't match cpt size (%d)!\n", name, numElems);
+		error("Cpt %s: Savedata doesn't match cpt size (%d)", name, numElems);
 	if ((saveType & SAVE_MEGA1) && (numElems < 54 + 13 + 13))
-		error("Cpt %s: Savedata doesn't match cpt size (%d)!\n", name, numElems);
+		error("Cpt %s: Savedata doesn't match cpt size (%d)", name, numElems);
 	if ((saveType & SAVE_MEGA2) && (numElems < 54 + 13 + 13 + 13))
-		error("Cpt %s: Savedata doesn't match cpt size (%d)!\n", name, numElems);
+		error("Cpt %s: Savedata doesn't match cpt size (%d)", name, numElems);
 	if ((saveType & SAVE_MEGA3) && (numElems < 54 + 13 + 13 + 13))
-		error("Cpt %s: Savedata doesn't match cpt size (%d)!\n", name, numElems);
+		error("Cpt %s: Savedata doesn't match cpt size (%d)", name, numElems);
 	if (saveType & SAVE_GRAFX) {
 		uint16 graphType, target, pos;
 		LODSW(*srcPos, graphType);
@@ -1518,7 +1488,6 @@ void Control::restartGame(void) {
 }
 
 void Control::delay(unsigned int amount) {
-
 	Common::Event event;
 
 	uint32 start = _system->getMillis();
@@ -1569,10 +1538,9 @@ void Control::delay(unsigned int amount) {
 }
 
 void Control::showGameQuitMsg(void) {
-
 	_skyText->fnSetFont(0);
-	uint8 *textBuf1 = (uint8 *)malloc(GAME_SCREEN_WIDTH * 14 + sizeof(dataFileHeader));
-	uint8 *textBuf2 = (uint8 *)malloc(GAME_SCREEN_WIDTH * 14 + sizeof(dataFileHeader));
+	uint8 *textBuf1 = (uint8 *)malloc(GAME_SCREEN_WIDTH * 14 + sizeof(DataFileHeader));
+	uint8 *textBuf2 = (uint8 *)malloc(GAME_SCREEN_WIDTH * 14 + sizeof(DataFileHeader));
 	uint8 *screenData;
 	if (_skyScreen->sequenceRunning())
 		_skyScreen->stopSequence();
@@ -1581,8 +1549,8 @@ void Control::showGameQuitMsg(void) {
 
 	_skyText->displayText(_quitTexts[SkyEngine::_systemVars.language * 2 + 0], textBuf1, true, 320, 255);
 	_skyText->displayText(_quitTexts[SkyEngine::_systemVars.language * 2 + 1], textBuf2, true, 320, 255);
-	uint8 *curLine1 = textBuf1 + sizeof(dataFileHeader);
-	uint8 *curLine2 = textBuf2 + sizeof(dataFileHeader);
+	uint8 *curLine1 = textBuf1 + sizeof(DataFileHeader);
+	uint8 *curLine2 = textBuf2 + sizeof(DataFileHeader);
 	uint8 *targetLine = screenData + GAME_SCREEN_WIDTH * 80;
 	for (uint8 cnty = 0; cnty < PAN_CHAR_HEIGHT; cnty++) {
 		for (uint16 cntx = 0; cntx < GAME_SCREEN_WIDTH; cntx++) {

@@ -113,7 +113,6 @@ public:
 	KyraEngine_LoK(OSystem *system, const GameFlags &flags);
 	~KyraEngine_LoK();
 
-	//TODO: proper extended implementation of KyraEngine_v1::pauseEngineIntern.
 	// _sprites and _seqplayer should be paused here too, to avoid some animation glitches,
 	// also parts of the hardcoded Malcolm fight might need some special handling.
 
@@ -422,7 +421,7 @@ protected:
 	int32 _scaleMode;
 	int16 _scaleTable[145];
 
-	Rect _noDropRects[11];
+	Common::Rect _noDropRects[11];
 
 	int8 _birthstoneGemTable[4];
 	int8 _idolGemsTable[3];

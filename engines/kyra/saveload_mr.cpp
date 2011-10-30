@@ -33,8 +33,6 @@
 namespace Kyra {
 
 Common::Error KyraEngine_MR::saveGameState(int slot, const char *saveName, const Graphics::Surface *thumb) {
-	debugC(9, kDebugLevelMain, "KyraEngine_MR::saveGame(%d, '%s', %p)", slot, saveName, (const void *)thumb);
-
 	const char *fileName = getSavegameFilename(slot);
 
 	Common::OutSaveFile *out = openSaveForWriting(fileName, saveName, thumb);
@@ -124,8 +122,6 @@ Common::Error KyraEngine_MR::saveGameState(int slot, const char *saveName, const
 }
 
 Common::Error KyraEngine_MR::loadGameState(int slot) {
-	debugC(9, kDebugLevelMain, "KyraEngine_MR::loadGame(%d)", slot);
-
 	const char *fileName = getSavegameFilename(slot);
 
 	SaveHeader header;

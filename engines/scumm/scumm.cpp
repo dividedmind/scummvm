@@ -23,10 +23,10 @@
  *
  */
 
-
 #include "common/config-manager.h"
 #include "common/md5.h"
 #include "common/events.h"
+#include "common/EventRecorder.h"
 #include "common/system.h"
 
 #include "gui/message.h"
@@ -46,7 +46,6 @@
 #include "scumm/smush/smush_mixer.h"
 #include "scumm/smush/smush_player.h"
 #include "scumm/insane/insane.h"
-#include "scumm/intern.h"
 #include "scumm/he/animation_he.h"
 #include "scumm/he/intern_he.h"
 #include "scumm/he/logic_he.h"
@@ -58,7 +57,8 @@
 #include "scumm/player_v2a.h"
 #include "scumm/player_v3a.h"
 #include "scumm/he/resource_he.h"
-#include "scumm/scumm.h"
+#include "scumm/scumm_v0.h"
+#include "scumm/scumm_v8.h"
 #include "scumm/sound.h"
 #include "scumm/imuse/sysex.h"
 #include "scumm/he/sprite_he.h"
@@ -108,7 +108,7 @@ ScummEngine::ScummEngine(OSystem *syst, const DetectorResult &dr)
 	  _language(dr.language),
 	  _debugger(0),
 	  _currentScript(0xFF), // Let debug() work on init stage
-	  _pauseDialog(0), _scummMenuDialog(0), _versionDialog(0) {
+	  _messageDialog(0), _pauseDialog(0), _scummMenuDialog(0), _versionDialog(0) {
 
 	if (_game.platform == Common::kPlatformNES) {
 		_gdi = new GdiNES(this);
@@ -135,6 +135,8 @@ ScummEngine::ScummEngine(OSystem *syst, const DetectorResult &dr)
 
 
 	// Init all vars
+	_v0ObjectIndex = false;
+	_v0ObjectInInventory = false;
 	_imuse = NULL;
 	_imuseDigital = NULL;
 	_musicEngine = NULL;
@@ -182,6 +184,7 @@ ScummEngine::ScummEngine(OSystem *syst, const DetectorResult &dr)
 	_mouseAndKeyboardStat = 0;
 	_leftBtnPressed = 0;
 	_rightBtnPressed = 0;
+	_lastInputScriptTime = 0;
 	_bootParam = 0;
 	_dumpScripts = false;
 	_debugMode = 0;
@@ -215,7 +218,6 @@ ScummEngine::ScummEngine(OSystem *syst, const DetectorResult &dr)
 	_roomResource = 0;
 	OF_OWNER_ROOM = 0;
 	_verbMouseOver = 0;
-	_inventoryOffset = 0;
 	_classData = NULL;
 	_actorToPrintStrFor = 0;
 	_sentenceNum = 0;
@@ -250,6 +252,7 @@ ScummEngine::ScummEngine(OSystem *syst, const DetectorResult &dr)
 	_switchRoomEffect = 0;
 
 	_doEffect = false;
+	_snapScroll = false;
 	_currentLights = 0;
 	_shakeEnabled = false;
 	_shakeFrame = 0;
@@ -442,7 +445,6 @@ ScummEngine::ScummEngine(OSystem *syst, const DetectorResult &dr)
 	VAR_SCRIPT_CYCLE = 0xFF;
 
 	VAR_NUM_GLOBAL_OBJS = 0xFF;
-	VAR_KEY_STATE = 0xFF;
 
 	// Use g_scumm from error() ONLY
 	g_scumm = this;
@@ -538,7 +540,7 @@ ScummEngine::ScummEngine(OSystem *syst, const DetectorResult &dr)
 	for (int i = 0; i < ARRAYSIZE(debugChannels); ++i)
 		Common::addDebugChannel(debugChannels[i].flag,  debugChannels[i].channel, debugChannels[i].desc);
 
-	syst->getEventManager()->registerRandomSource(_rnd, "scumm");
+	g_eventRec.registerRandomSource(_rnd, "scumm");
 }
 
 
@@ -559,6 +561,7 @@ ScummEngine::~ScummEngine() {
 
 	delete _2byteFontPtr;
 	delete _charset;
+	delete _messageDialog;
 	delete _pauseDialog;
 	delete _scummMenuDialog;
 	delete _versionDialog;
@@ -629,6 +632,12 @@ ScummEngine_v3::ScummEngine_v3(OSystem *syst, const DetectorResult &dr)
 	// All v3 and older games only used 16 colors with exception of the GF_OLD256 games.
 	if (!(_game.features & GF_OLD256))
 		_game.features |= GF_16COLOR;
+
+	_savePreparedSavegame = NULL;
+}
+
+ScummEngine_v3::~ScummEngine_v3() {
+	delete _savePreparedSavegame;
 }
 
 ScummEngine_v3old::ScummEngine_v3old(OSystem *syst, const DetectorResult &dr)
@@ -639,6 +648,8 @@ ScummEngine_v3old::ScummEngine_v3old(OSystem *syst, const DetectorResult &dr)
 
 ScummEngine_v2::ScummEngine_v2(OSystem *syst, const DetectorResult &dr)
 	: ScummEngine_v3old(syst, dr) {
+
+	_inventoryOffset = 0;
 
 	_activeInventory = 0;
 	_activeObject = 0;
@@ -658,7 +669,17 @@ ScummEngine_v2::ScummEngine_v2(OSystem *syst, const DetectorResult &dr)
 ScummEngine_v0::ScummEngine_v0(OSystem *syst, const DetectorResult &dr)
 	: ScummEngine_v2(syst, dr) {
 
+	_verbExecuting = false;
+	_verbPickup = false;
 	_currentMode = 0;
+
+	_activeObject2 = 0;
+	_activeObjectIndex = 0;
+	_activeObject2Index = 0;
+	_activeInvExecute = false;
+	_activeObject2Inv = false;
+	_activeObjectObtained = false;
+	_activeObject2Obtained = false;
 }
 
 ScummEngine_v6::ScummEngine_v6(OSystem *syst, const DetectorResult &dr)
@@ -676,6 +697,7 @@ ScummEngine_v6::ScummEngine_v6(OSystem *syst, const DetectorResult &dr)
 	_curVerbSlot = 0;
 
 	_forcedWaitForMessage = false;
+	_skipVideo = false;
 
 	VAR_VIDEONAME = 0xFF;
 	VAR_RANDOM_NR = 0xFF;
@@ -777,6 +799,7 @@ ScummEngine_v80he::ScummEngine_v80he(OSystem *syst, const DetectorResult &dr)
 	VAR_PLATFORM = 0xFF;
 	VAR_PLATFORM_VERSION = 0xFF;
 	VAR_CURRENT_CHARSET = 0xFF;
+	VAR_KEY_STATE = 0xFF;
 	VAR_COLOR_DEPTH = 0xFF;
 }
 
@@ -824,13 +847,9 @@ ScummEngine_vCUPhe::~ScummEngine_vCUPhe() {
 	delete _cupPlayer;
 }
 
-Common::Error ScummEngine_vCUPhe::init() {
+Common::Error ScummEngine_vCUPhe::run() {
 	initGraphics(CUP_Player::kDefaultVideoWidth, CUP_Player::kDefaultVideoHeight, true);
 
-	return Common::kNoError;
-}
-
-Common::Error ScummEngine_vCUPhe::go() {
 	if (_cupPlayer->open(_filenamePattern.pattern)) {
 		_cupPlayer->play();
 		_cupPlayer->close();
@@ -1178,7 +1197,10 @@ void ScummEngine::setupScumm() {
 
 	int maxHeapThreshold = -1;
 
-	if (_game.features & GF_NEW_COSTUMES) {
+	if (_game.features & GF_16BIT_COLOR) {
+		// 16Bit color games require double the memory, due to increased resource sizes.
+		maxHeapThreshold = 12 * 1024 * 1024;
+	} else if (_game.features & GF_NEW_COSTUMES) {
 		// Since the new costumes are very big, we increase the heap limit, to avoid having
 		// to constantly reload stuff from the data files.
 		maxHeapThreshold = 6 * 1024 * 1024;
@@ -1203,6 +1225,11 @@ void ScummEngine::setupScumm() {
 
 #ifdef ENABLE_SCUMM_7_8
 void ScummEngine_v7::setupScumm() {
+
+	if (_game.id == GID_DIG && (_game.features & GF_DEMO))
+		_smushFrameRate = 15;
+	else
+		_smushFrameRate = (_game.id == GID_FT) ? 10 : 12;
 
 	_musicEngine = _imuseDigital = new IMuseDigital(this, _mixer, 10);
 
@@ -1428,7 +1455,7 @@ void ScummEngine_v0::resetScumm() {
 }
 
 void ScummEngine_v2::resetScumm() {
-	ScummEngine::resetScumm();
+	ScummEngine_v3::resetScumm();
 
 	if (_game.platform == Common::kPlatformNES) {
 		initNESMouseOver();
@@ -1442,6 +1469,13 @@ void ScummEngine_v2::resetScumm() {
 	}
 
 	_inventoryOffset = 0;
+}
+
+void ScummEngine_v3::resetScumm() {
+	ScummEngine_v4::resetScumm();
+
+	delete _savePreparedSavegame;
+	_savePreparedSavegame = NULL;
 }
 
 void ScummEngine_v4::resetScumm() {
@@ -1506,6 +1540,10 @@ void ScummEngine_v90he::resetScumm() {
 			_logicHE = new LogicHEsoccer(this);
 			break;
 
+		case GID_BASKETBALL:
+			_logicHE = new LogicHEbasketball(this);
+			break;
+
 		case GID_MOONBASE:
 			_logicHE = new LogicHEmoonbase(this);
 			break;
@@ -1563,6 +1601,13 @@ void ScummEngine::setupMusic(int midi) {
 	case MD_PCJR:
 		_musicType = MDT_PCSPK;
 		break;
+	case MD_CMS:
+#if 1
+		_musicType = MDT_ADLIB;
+#else
+		_musicType = MDT_CMS; // Still has number of bugs, disable by default
+#endif
+		break;
 	case MD_TOWNS:
 		_musicType = MDT_TOWNS;
 		break;
@@ -1617,35 +1662,41 @@ void ScummEngine::setupMusic(int midi) {
 	 * automatically when samples need to be generated */
 	if (!_mixer->isReady()) {
 		warning("Sound mixer initialization failed");
-		if (_musicType == MDT_ADLIB || _musicType == MDT_PCSPK)	{
+		if (_musicType == MDT_ADLIB || _musicType == MDT_PCSPK || _musicType == MDT_CMS)	{
 			midiDriver = MD_NULL;
 			_musicType = MDT_NONE;
-			warning("MIDI driver depends on sound mixer, switching to null MIDI driver\n");
+			warning("MIDI driver depends on sound mixer, switching to null MIDI driver");
 		}
 	}
 
 	// Init iMuse
 	if (_game.version >= 7) {
 		// Setup for digital iMuse is performed in another place
-	} else if (_game.platform == Common::kPlatformApple2GS || _game.platform == Common::kPlatformC64 ||
-		_game.platform == Common::kPlatformPCEngine) {
-		// TODO
-		_musicEngine = NULL;
-	} else if (_game.platform == Common::kPlatformNES) {
+	} else if (_game.platform == Common::kPlatformApple2GS && _game.version == 0){
+		// TODO: Add support for music format
+	} else if (_game.platform == Common::kPlatformC64 && _game.version <= 1) {
+		// TODO: Add support for music format
+	} else if (_game.platform == Common::kPlatformNES && _game.version == 1) {
 		_musicEngine = new Player_NES(this, _mixer);
-	} else if ((_game.platform == Common::kPlatformAmiga) && (_game.version == 2)) {
+	} else if (_game.platform == Common::kPlatformAmiga && _game.version == 2) {
 		_musicEngine = new Player_V2A(this, _mixer);
-	} else if ((_game.platform == Common::kPlatformAmiga) && (_game.version == 3)) {
+	} else if (_game.platform == Common::kPlatformAmiga && _game.version == 3) {
 		_musicEngine = new Player_V3A(this, _mixer);
-	} else if ((_game.platform == Common::kPlatformAmiga) && (_game.version <= 4)) {
-		_musicEngine = NULL;
-	} else if (_game.id == GID_MANIAC && (_game.version == 1)) {
+	} else if (_game.platform == Common::kPlatformPCEngine && _game.version == 3) {
+		// TODO: Add support for music format
+	} else if (_game.platform == Common::kPlatformAmiga && _game.version <= 4) {
+		// TODO: Add support for music format
+	} else if (_game.id == GID_MANIAC && _game.version == 1) {
 		_musicEngine = new Player_V1(this, _mixer, midiDriver != MD_PCSPK);
 	} else if (_game.version <= 2) {
 		_musicEngine = new Player_V2(this, _mixer, midiDriver != MD_PCSPK);
-	} else if ((_musicType == MDT_PCSPK) && ((_game.version > 2) && (_game.version <= 4))) {
+	} else if ((_musicType == MDT_PCSPK) && (_game.version > 2 && _game.version <= 4)) {
 		_musicEngine = new Player_V2(this, _mixer, midiDriver != MD_PCSPK);
-	} else if (_game.version >= 3 && _game.heversion <= 61 && _game.platform != Common::kPlatform3DO) {
+	} else if (_musicType == MDT_CMS) {
+		_musicEngine = new Player_V2CMS(this, _mixer);
+	} else if (_game.platform == Common::kPlatform3DO && _game.heversion == 61) {
+		// 3DO versions use digital music and sound samples.
+	} else if (_game.version >= 3 && _game.heversion <= 61) {
 		MidiDriver *nativeMidiDriver = 0;
 		MidiDriver *adlibMidiDriver = 0;
 
@@ -1707,18 +1758,18 @@ void ScummEngine::syncSoundSettings() {
 		VAR(VAR_VOICE_MODE) = _voiceMode;
 
 	if (ConfMan.hasKey("talkspeed", _targetName)) {
-		_defaultTalkDelay = getTalkDelay();
+		_defaultTalkDelay = getTalkSpeed();
 		if (VAR_CHARINC != 0xFF)
 			VAR(VAR_CHARINC) = _defaultTalkDelay;
 	}
 }
 
-void ScummEngine::setTalkDelay(int talkdelay) {
-	ConfMan.setInt("talkspeed", ((9 - talkdelay) * 255 + 9 / 2) / 9);
+void ScummEngine::setTalkSpeed(int talkspeed) {
+	ConfMan.setInt("talkspeed", (talkspeed * 255 + 9 / 2) / 9);
 }
 
-int ScummEngine::getTalkDelay() {
-	return 9 - (ConfMan.getInt("talkspeed") * 9 + 255 / 2) / 255;
+int ScummEngine::getTalkSpeed() {
+	return (ConfMan.getInt("talkspeed") * 9 + 255 / 2) / 255;
 }
 
 
@@ -1860,7 +1911,7 @@ void ScummEngine::scummLoop(int delta) {
 	}
 
 	// Trigger autosave if necessary.
-	if (!_saveLoadFlag && shouldPerformAutoSave(_lastSaveTime)) {
+	if (!_saveLoadFlag && shouldPerformAutoSave(_lastSaveTime) && canSaveGameStateCurrently()) {
 		_saveLoadSlot = 0;
 		sprintf(_saveLoadName, "Autosave %d", _saveLoadSlot);
 		_saveLoadFlag = 1;
@@ -2065,6 +2116,32 @@ void ScummEngine::scummLoop_handleSaveLoad() {
 
 		_saveLoadFlag = 0;
 		_lastSaveTime = _system->getMillis();
+	}
+}
+
+void ScummEngine_v4::scummLoop_handleSaveLoad() {
+	// copy saveLoadFlag as handleSaveLoad() resets it
+	byte saveLoad = _saveLoadFlag;
+
+	ScummEngine_v5::scummLoop_handleSaveLoad();
+
+	// update IQ points after loading
+	if (saveLoad == 2) {
+		if (_game.id == GID_INDY3)
+			updateIQPoints();
+	}
+}
+
+void ScummEngine_v5::scummLoop_handleSaveLoad() {
+	// copy saveLoadFlag as handleSaveLoad() resets it
+	byte saveLoad = _saveLoadFlag;
+
+	ScummEngine::scummLoop_handleSaveLoad();
+
+	// update IQ points after loading
+	if (saveLoad == 2) {
+		if (_game.id == GID_INDY4)
+			runScript(145, 0, 0, 0);
 	}
 }
 
@@ -2305,6 +2382,13 @@ int ScummEngine_v7::runDialog(Dialog &dialog) {
 	return result;
 }
 #endif
+
+void ScummEngine::messageDialog(const char *message) {
+	if (!_messageDialog)
+		_messageDialog = new InfoDialog(this, message);
+	((InfoDialog *)_messageDialog)->setInfoText(message);
+	runDialog(*_messageDialog);
+}
 
 void ScummEngine::pauseDialog() {
 	if (!_pauseDialog)

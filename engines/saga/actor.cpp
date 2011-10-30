@@ -41,6 +41,140 @@
 
 namespace Saga {
 
+ActorData::ActorData() {
+	memset(this, 0, sizeof(*this));
+}
+
+ActorData::~ActorData() {
+	if (!_shareFrames)
+		free(_frames);
+	free(_tileDirections);
+	free(_walkStepsPoints);
+	freeSpriteList();
+}
+void ActorData::saveState(Common::OutSaveFile *out) {
+	int i = 0;
+	CommonObjectData::saveState(out);
+	out->writeUint16LE(_actorFlags);
+	out->writeSint32LE(_currentAction);
+	out->writeSint32LE(_facingDirection);
+	out->writeSint32LE(_actionDirection);
+	out->writeSint32LE(_actionCycle);
+	out->writeUint16LE(_targetObject);
+
+	out->writeSint32LE(_cycleFrameSequence);
+	out->writeByte(_cycleDelay);
+	out->writeByte(_cycleTimeCount);
+	out->writeByte(_cycleFlags);
+	out->writeSint16LE(_fallVelocity);
+	out->writeSint16LE(_fallAcceleration);
+	out->writeSint16LE(_fallPosition);
+	out->writeByte(_dragonBaseFrame);
+	out->writeByte(_dragonStepCycle);
+	out->writeByte(_dragonMoveType);
+	out->writeSint32LE(_frameNumber);
+
+	out->writeSint32LE(_tileDirectionsAlloced);
+	for (i = 0; i < _tileDirectionsAlloced; i++) {
+		out->writeByte(_tileDirections[i]);
+	}
+
+	out->writeSint32LE(_walkStepsAlloced);
+	for (i = 0; i < _walkStepsAlloced; i++) {
+		out->writeSint16LE(_walkStepsPoints[i].x);
+		out->writeSint16LE(_walkStepsPoints[i].y);
+	}
+
+	out->writeSint32LE(_walkStepsCount);
+	out->writeSint32LE(_walkStepIndex);
+	_finalTarget.saveState(out);
+	_partialTarget.saveState(out);
+	out->writeSint32LE(_walkFrameSequence);
+}
+
+void ActorData::loadState(uint32 version, Common::InSaveFile *in) {
+	int i = 0;
+	CommonObjectData::loadState(in);
+	_actorFlags = in->readUint16LE();
+	_currentAction = in->readSint32LE();
+	_facingDirection = in->readSint32LE();
+	_actionDirection = in->readSint32LE();
+	_actionCycle = in->readSint32LE();
+	_targetObject = in->readUint16LE();
+
+	_lastZone = NULL;
+	_cycleFrameSequence = in->readSint32LE();
+	_cycleDelay = in->readByte();
+	_cycleTimeCount = in->readByte();
+	_cycleFlags = in->readByte();
+	if (version > 1) {
+		_fallVelocity = in->readSint16LE();
+		_fallAcceleration = in->readSint16LE();
+		_fallPosition = in->readSint16LE();
+	} else {
+		_fallVelocity = _fallAcceleration = _fallPosition = 0;
+	}
+	if (version > 2) {
+		_dragonBaseFrame = in->readByte();
+		_dragonStepCycle = in->readByte();
+		_dragonMoveType = in->readByte();
+	} else {
+		_dragonBaseFrame = _dragonStepCycle = _dragonMoveType = 0;
+	}
+
+	_frameNumber = in->readSint32LE();
+
+
+	setTileDirectionsSize(in->readSint32LE(), true);
+	for (i = 0; i < _tileDirectionsAlloced; i++) {
+		_tileDirections[i] = in->readByte();
+	}
+
+	setWalkStepsPointsSize(in->readSint32LE(), true);
+	for (i = 0; i < _walkStepsAlloced; i++) {
+		_walkStepsPoints[i].x = in->readSint16LE();
+		_walkStepsPoints[i].y = in->readSint16LE();
+	}
+
+	_walkStepsCount = in->readSint32LE();
+	_walkStepIndex = in->readSint32LE();
+	_finalTarget.loadState(in);
+	_partialTarget.loadState(in);
+	_walkFrameSequence = in->readSint32LE();
+}
+
+void ActorData::setTileDirectionsSize(int size, bool forceRealloc) {
+	if ((size <= _tileDirectionsAlloced) && !forceRealloc) {
+		return;
+	}
+	_tileDirectionsAlloced = size;
+	_tileDirections = (byte*)realloc(_tileDirections, _tileDirectionsAlloced * sizeof(*_tileDirections));
+}
+
+void ActorData::cycleWrap(int cycleLimit) {
+	if (_actionCycle >= cycleLimit)
+		_actionCycle = 0;
+}
+
+void ActorData::setWalkStepsPointsSize(int size, bool forceRealloc) {
+	if ((size <= _walkStepsAlloced) && !forceRealloc) {
+		return;
+	}
+	_walkStepsAlloced = size;
+	_walkStepsPoints = (Point*)realloc(_walkStepsPoints, _walkStepsAlloced * sizeof(*_walkStepsPoints));
+}
+
+void ActorData::addWalkStepPoint(const Point &point) {
+	setWalkStepsPointsSize(_walkStepsCount + 1, false);
+	_walkStepsPoints[_walkStepsCount++] = point;
+}
+
+void ActorData::freeSpriteList() {
+	_spriteList.freeMem();
+}
+
+
+
 static int commonObjectCompare(const CommonObjectDataPointer& obj1, const CommonObjectDataPointer& obj2) {
 	int p1 = obj1->_location.y - obj1->_location.z;
 	int p2 = obj2->_location.y - obj2->_location.z;
@@ -92,20 +226,14 @@ Actor::Actor(SagaEngine *vm) : _vm(vm) {
 	_objsCount = 0;
 
 #ifdef ACTOR_DEBUG
-	_debugPoints = NULL;
-	_debugPointsAlloced = _debugPointsCount = 0;
+	_debugPointsCount = 0;
 #endif
 
 	_protagStates = NULL;
 	_protagStatesCount = 0;
 
-	_pathNodeList = _newPathNodeList = NULL;
-	_pathList = NULL;
-	_pathDirectionList = NULL;
-	_pathListAlloced = _pathNodeListAlloced = _newPathNodeListAlloced = 0;
-	_pathListIndex = _pathNodeListIndex = _newPathNodeListIndex = -1;
-	_pathDirectionListCount = 0;
-	_pathDirectionListAlloced = 0;
+	_pathList.resize(600);
+	_pathListIndex = 0;
 
 	_centerActor = _protagonist = NULL;
 	_protagState = 0;
@@ -119,7 +247,7 @@ Actor::Actor(SagaEngine *vm) : _vm(vm) {
 	_pathRect.left = 0;
 	_pathRect.right = _vm->getDisplayInfo().width;
 	_pathRect.top = _vm->getDisplayInfo().pathStartY;
-	_pathRect.bottom = _vm->getDisplayInfo().height;
+	_pathRect.bottom = _vm->_scene->getHeight();
 
 	// Get actor resource file context
 	_actorContext = _vm->_resource->getContext(GAME_RESOURCEFILE);
@@ -183,16 +311,6 @@ Actor::Actor(SagaEngine *vm) : _vm(vm) {
 			obj->_location.y = ITE_ObjectTable[i].y;
 			obj->_location.z = ITE_ObjectTable[i].z;
 		}
-	} else {
-#ifdef ENABLE_IHNM
-		// TODO. This is causing problems for SYMBIAN os as it doesn't like a static class here
-		ActorData dummyActor;
-
-		dummyActor._frames = NULL;
-		dummyActor._walkStepsPoints = NULL;
-
-		_protagonist = &dummyActor;
-#endif
 	}
 
 	_dragonHunt = true;
@@ -201,13 +319,6 @@ Actor::Actor(SagaEngine *vm) : _vm(vm) {
 Actor::~Actor() {
 	debug(9, "Actor::~Actor()");
 
-#ifdef ACTOR_DEBUG
-	free(_debugPoints);
-#endif
-	free(_pathDirectionList);
-	free(_pathNodeList);
-	free(_newPathNodeList);
-	free(_pathList);
 	free(_pathCell);
 	_actorsStrings.freeMem();
 	//release resources
@@ -944,7 +1055,7 @@ uint16 Actor::hitTest(const Point &testPoint, bool skipProtagonist) {
 	createDrawOrderList();
 
 	for (drawOrderIterator = _drawOrderList.begin(); drawOrderIterator != _drawOrderList.end(); ++drawOrderIterator) {
-		drawObject = drawOrderIterator.operator*();
+		drawObject = *drawOrderIterator;
 		if (skipProtagonist && (drawObject == _protagonist)) {
 			continue;
 		}
@@ -960,11 +1071,24 @@ uint16 Actor::hitTest(const Point &testPoint, bool skipProtagonist) {
 	return result;					// in IHNM, return the last result found (read above)
 }
 
+void Actor::drawOrderListAdd(const CommonObjectDataPointer& element, CompareFunction compareFunction) {
+	int res;
+
+	for (CommonObjectOrderList::iterator i = _drawOrderList.begin(); i !=_drawOrderList.end(); ++i) {
+		res = compareFunction(element, *i);
+		if	(res < 0) {
+			_drawOrderList.insert(i, element);
+			return;
+		}
+	}
+	_drawOrderList.push_back(element);
+}
+
 void Actor::createDrawOrderList() {
 	int i;
 	ActorData *actor;
 	ObjectData *obj;
-	CommonObjectOrderList::CompareFunction compareFunction = 0;
+	CompareFunction compareFunction = 0;
 
 	if (_vm->_scene->getFlags() & kSceneFlagISO) {
 		compareFunction = &tileCommonObjectCompare;
@@ -985,7 +1109,7 @@ void Actor::createDrawOrderList() {
 			continue;
 
 		if (calcScreenPosition(actor)) {
-			_drawOrderList.pushBack(actor, compareFunction);
+			drawOrderListAdd(actor, compareFunction);
 		}
 	}
 
@@ -1005,7 +1129,7 @@ void Actor::createDrawOrderList() {
 			continue;
 
 		if (calcScreenPosition(obj)) {
-			_drawOrderList.pushBack(obj, compareFunction);
+			drawOrderListAdd(obj, compareFunction);
 		}
 	}
 }
@@ -1070,7 +1194,7 @@ void Actor::drawActors() {
 	createDrawOrderList();
 
 	for (drawOrderIterator = _drawOrderList.begin(); drawOrderIterator != _drawOrderList.end(); ++drawOrderIterator) {
-		drawObject = drawOrderIterator.operator*();
+		drawObject = *drawOrderIterator;
 
 		if (!getSpriteParams(drawObject, frameNumber, spriteList)) {
 			continue;

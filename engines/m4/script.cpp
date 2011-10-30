@@ -236,12 +236,12 @@ void ScriptInterpreter::open(const char *filename) {
 	_scriptFile = new Common::File();
 	_scriptFile->open(filename);
 	if (!_scriptFile->isOpen())
-		error("ScriptInterpreter::open() Error opening %s.", filename);
+		error("ScriptInterpreter::open() Error opening %s", filename);
 
 	_scriptFile->readUint32LE(); // skip magic for now
 	uint32 version = _scriptFile->readUint32LE();
 	if (version != kScriptFileVersion) {
-		error("ScriptInterpreter::open() DAT file version mismatch; requested %li, got %i\n", kScriptFileVersion, version);
+		error("ScriptInterpreter::open() DAT file version mismatch; requested %li, got %i", kScriptFileVersion, version);
 	}
 
 	int functionCount = _scriptFile->readUint32LE();
@@ -369,13 +369,13 @@ int ScriptInterpreter::runFunction(ScriptFunction *scriptFunction) {
 
 void ScriptInterpreter::push(const ScriptValue &value) {
 	if (_stackPtr == ARRAYSIZE(_stack))
-		error("ScriptInterpreter::push() Stack overflow!\n");
+		error("ScriptInterpreter::push() Stack overflow");
 	_stack[_stackPtr++] = value;
 }
 
 void ScriptInterpreter::pop(ScriptValue &value) {
 	if (_stackPtr == 0)
-		error("ScriptInterpreter::pop() Stack underflow!\n");
+		error("ScriptInterpreter::pop() Stack underflow");
 	value = _stack[_stackPtr--];
 }
 
@@ -556,7 +556,7 @@ void ScriptInterpreter::callKernelFunction(uint32 index) {
 
 	int args = (this->*(_kernelFunctions[index].proc))();
 	// Now remove values from the stack if the function used any
- 	if (args > 4)
+	if (args > 4)
 		_stackPtr -= args - 4;
 
 	printf("-------------\n");
@@ -720,7 +720,7 @@ bool ScriptInterpreter::execOpcode(byte opcode) {
 		derefValue(value1);
 		derefValue(value2);
 		if (value1.type != kInteger || value2.type != kInteger)
-			warning("ScriptInterpreter::execOpcode() Trying to compare non-integer values (%d, %d, line %d)!\n", value1.type, value2.type, _lineNum);
+			warning("ScriptInterpreter::execOpcode() Trying to compare non-integer values (%d, %d, line %d)", value1.type, value2.type, _lineNum);
 		_cmpFlags = value1.value - value2.value;
 		printf("-> cmp %d, %d\n", value1.value, value2.value);
 		printf("-> _cmpFlags  = %d\n", _cmpFlags);

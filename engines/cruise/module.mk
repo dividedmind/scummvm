@@ -9,11 +9,11 @@ MODULE_OBJS := \
 	cruise_main.o \
 	ctp.o \
 	dataLoader.o \
+	debugger.o \
 	decompiler.o \
 	delphine-unpack.o \
 	detection.o \
 	font.o \
-	fontCharacterTable.o \
 	function.o \
 	gfxModule.o \
 	linker.o \
@@ -26,6 +26,7 @@ MODULE_OBJS := \
 	polys.o \
 	saveload.o \
 	script.o \
+	sound.o \
 	stack.o \
 	staticres.o \
 	various.o \

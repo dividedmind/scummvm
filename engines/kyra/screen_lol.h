@@ -23,6 +23,8 @@
  *
  */
 
+#ifdef ENABLE_LOL
+
 #ifndef KYRA_SCREEN_LOL_H
 #define KYRA_SCREEN_LOL_H
 
@@ -37,29 +39,51 @@ public:
 	Screen_LoL(LoLEngine *vm, OSystem *system);
 	~Screen_LoL();
 
+	bool init();
+
 	void setScreenDim(int dim);
 	const ScreenDim *getScreenDim(int dim);
 	int curDimIndex() { return _curDimIndex; }
 	void modifyScreenDim(int dim, int x, int y, int w, int h);
-	void clearDim(int dim);
-	void clearCurDim();
 
-	void fprintString(const char *format, int x, int y, uint8 col1, uint8 col2, uint16 flags, ...);
-	void fprintStringIntro(const char *format, int x, int y, uint8 c1, uint8 c2, uint8 c3, uint16 flags, ...);
+	void fprintString(const char *format, int x, int y, uint8 col1, uint8 col2, uint16 flags, ...) GCC_PRINTF(2, 8);
+	void fprintStringIntro(const char *format, int x, int y, uint8 c1, uint8 c2, uint8 c3, uint16 flags, ...) GCC_PRINTF(2, 9);
 
 	void drawGridBox(int x, int y, int w, int h, int col);
 	void fadeClearSceneWindow(int delay);
 
-	void fadeToBlack(int delay=0x54, const UpdateFunctor *upFunc = 0);
-	void setPaletteBrightness(uint8 *palDst, int brightness, int modifier);
-	void generateBrightnessPalette(uint8 *palSrc, uint8 *palDst, int brightness, int modifier);
-	void loadSpecialColours(uint8 *destPalette);
-	void loadColour254(uint8 *destPalEntry);
-	bool copyColour(int dstColorIndex, int srcColorIndex, uint32 time1, uint32 time2);
+	// smooth scrolling
+	void backupSceneWindow(int srcPageNum, int dstPageNum);
+	void restoreSceneWindow(int srcPageNum, int dstPageNum);
+	void clearGuiShapeMemory(int pageNum);
+	void copyGuiShapeFromSceneBackupBuffer(int srcPageNum, int dstPageNum);
+	void copyGuiShapeToSurface(int srcPageNum, int dstPageNum);
+	void smoothScrollZoomStepTop(int srcPageNum, int dstPageNum, int x, int y);
+	void smoothScrollZoomStepBottom(int srcPageNum, int dstPageNum, int x, int y);
+	void smoothScrollHorizontalStep(int pageNum, int x, int u2, int w);
+	void smoothScrollTurnStep1(int srcPage1Num, int srcPage2Num, int dstPageNum);
+	void smoothScrollTurnStep2(int srcPage1Num, int srcPage2Num, int dstPageNum);
+	void smoothScrollTurnStep3(int srcPage1Num, int srcPage2Num, int dstPageNum);
 
-	void generateGrayOverlay(const uint8 *srcPal, uint8 *grayOverlay, int factor, int addR, int addG, int addB, int lastColor, bool skipSpecialColours);
-	uint8 *generateLevelOverlay(const uint8 *srcPal, uint8 *ovl, int opColor, int weight);
+	void copyRegionSpecial(int page1, int w1, int h1, int x1, int y1, int page2, int w2, int h2, int x2, int y2, int w3, int h3, int mode, ...);
+
+	// palette stuff
+	void fadeToBlack(int delay=0x54, const UpdateFunctor *upFunc = 0);
+	void fadeToPalette1(int delay);
+	void loadSpecialColors(Palette &dst);
+	void copyColor(int dstColorIndex, int srcColorIndex);
+	bool fadeColor(int dstColorIndex, int srcColorIndex, uint32 elapsedTime, uint32 targetTime);
+	bool fadePaletteStep(uint8 *pal1, uint8 *pal2, uint32 elapsedTime, uint32 targetTime);
+	uint8 *generateFadeTable(uint8 *dst, uint8 *src1, uint8 *src2, int numTabs);
+
+	void generateGrayOverlay(const Palette &Pal, uint8 *grayOverlay, int factor, int addR, int addG, int addB, int lastColor, bool skipSpecialColors);
+	uint8 *generateLevelOverlay(const Palette &Pal, uint8 *ovl, int opColor, int weight);
 	uint8 *getLevelOverlay(int index) { return _levelOverlays[index]; }
+
+	void copyBlockAndApplyOverlay(int page1, int x1, int y1, int page2, int x2, int y2, int w, int h, int dim, uint8 *ovl);
+	void applyOverlaySpecial(int page1, int x1, int y1, int page2, int x2, int y2, int w, int h, int dim, int flag, uint8 *ovl);
+
+	void copyBlockAndApplyOverlayOutro(int srcPage, int dstPage, const uint8 *ovl);
 
 	uint8 getShapePaletteSize(const uint8 *shp);
 
@@ -67,22 +91,31 @@ public:
 	uint8 *_paletteOverlay2;
 	uint8 *_grayOverlay;
 	int _fadeFlag;
-	int _drawGuiFlag;
-	int _dimLineCount;
+
+	// PC98 specific
+	static void convertPC98Gfx(uint8 *data, int w, int h, int pitch);
 
 private:
 	LoLEngine *_vm;
 
-	static const ScreenDim _screenDimTable[];
+	const ScreenDim *_screenDimTable;
 	static const int _screenDimTableCount;
+
+	static const ScreenDim _screenDimTable256C[];
+	static const ScreenDim _screenDimTable16C[];
 
 	ScreenDim **_customDimTable;
 	int _curDimIndex;
 
 	uint8 *_levelOverlays[8];
+
+	void mergeOverlay(int x, int y, int w, int h);
+	void postProcessCursor(uint8 *data, int width, int height, int pitch);
 };
 
 } // end of namespace Kyra
 
 #endif
+
+#endif // ENABLE_LOL
 

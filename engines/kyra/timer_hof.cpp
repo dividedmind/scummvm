@@ -31,8 +31,6 @@ namespace Kyra {
 #define TimerV2(x) new Common::Functor1Mem<int, void, KyraEngine_HoF>(this, &KyraEngine_HoF::x)
 
 void KyraEngine_HoF::setupTimers() {
-	debugC(9, kDebugLevelMain | kDebugLevelTimer, "KyraEngine_HoF::setupTimers()");
-
 	_timer->addTimer(0, 0, 5, 1);
 	_timer->addTimer(1, TimerV2(timerFadeOutMessage), -1, 1);
 	_timer->addTimer(2, TimerV2(timerCauldronAnimation), 1, 1);
@@ -42,13 +40,11 @@ void KyraEngine_HoF::setupTimers() {
 }
 
 void KyraEngine_HoF::timerFadeOutMessage(int arg) {
-	debugC(9, kDebugLevelMain | kDebugLevelTimer, "KyraEngine_HoF::timerFadeOutMessage(%d)", arg);
 	if (_shownMessage)
 		_fadeMessagePalette = 1;
 }
 
 void KyraEngine_HoF::timerCauldronAnimation(int arg) {
-	debugC(9, kDebugLevelMain | kDebugLevelTimer, "KyraEngine_HoF::timerCauldronAnimation(%d)", arg);
 	int animation = -1;
 
 	// HACK: We don't allow inventory animations while the inventory is backed off, which means not shown usually.
@@ -69,13 +65,11 @@ void KyraEngine_HoF::timerCauldronAnimation(int arg) {
 }
 
 void KyraEngine_HoF::timerFunc4(int arg) {
-	debugC(9, kDebugLevelMain | kDebugLevelTimer, "KyraEngine_HoF::timerFunc4(%d)", arg);
 	_timer->disable(3);
 	setGameFlag(0xD8);
 }
 
 void KyraEngine_HoF::timerFunc5(int arg) {
-	debugC(9, kDebugLevelMain | kDebugLevelTimer, "KyraEngine_HoF::timerFunc5(%d)", arg);
 	_timer->disable(4);
 	_screen->hideMouse();
 	_specialSceneScriptState[5] = 1;
@@ -87,7 +81,6 @@ void KyraEngine_HoF::timerFunc5(int arg) {
 }
 
 void KyraEngine_HoF::timerBurnZanthia(int arg) {
-	debugC(9, kDebugLevelMain | kDebugLevelTimer, "KyraEngine_HoF::timerBurnZanthia(%d)", arg);
 	_timer->disable(5);
 	_screen->hideMouse();
 	snd_playSoundEffect(0x2D);
@@ -97,8 +90,6 @@ void KyraEngine_HoF::timerBurnZanthia(int arg) {
 }
 
 void KyraEngine_HoF::setTimer1DelaySecs(int secs) {
-	debugC(9, kDebugLevelMain | kDebugLevelTimer, "KyraEngine_HoF::setTimer1DelaySecs(%d)", secs);
-
 	if (secs == -1)
 		secs = 32000;
 
@@ -106,8 +97,6 @@ void KyraEngine_HoF::setTimer1DelaySecs(int secs) {
 }
 
 void KyraEngine_HoF::setWalkspeed(uint8 newSpeed) {
-	debugC(9, kDebugLevelMain | kDebugLevelTimer, "KyraEngine_HoF::setWalkspeed(%i)", newSpeed);
-
 	if (newSpeed < 5)
 		newSpeed = 3;
 	else

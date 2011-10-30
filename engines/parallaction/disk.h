@@ -33,6 +33,7 @@
 #include "common/file.h"
 
 #include "graphics/surface.h"
+#include "graphics/iff.h"
 
 
 
@@ -48,6 +49,9 @@ struct Frames;
 struct Cnv;
 struct Sprites;
 struct BackgroundInfo;
+class GfxObj;
+struct MaskBuffer;
+struct PathBuffer;
 
 class Disk {
 
@@ -63,7 +67,7 @@ public:
 	virtual Script* loadLocation(const char *name) = 0;
 	virtual Script* loadScript(const char* name) = 0;
 	virtual GfxObj* loadTalk(const char *name) = 0;
-	virtual GfxObj* loadObjects(const char *name) = 0;
+	virtual GfxObj* loadObjects(const char *name, uint8 part = 0) = 0;
 	virtual Frames* loadPointer(const char *name) = 0;
 	virtual GfxObj* loadHead(const char* name) = 0;
 	virtual Font* loadFont(const char* name) = 0;
@@ -73,9 +77,38 @@ public:
 	virtual void loadScenery(BackgroundInfo& info, const char* background, const char* mask, const char* path) = 0;
 	virtual Table* loadTable(const char* name) = 0;
 	virtual Common::SeekableReadStream* loadMusic(const char* name) = 0;
-	virtual Common::ReadStream* loadSound(const char* name) = 0;
-	virtual void loadMask(const char *name, MaskBuffer &buffer) { }
-	virtual void loadPath(const char *name, PathBuffer &buffer) { }
+	virtual Common::SeekableReadStream* loadSound(const char* name) = 0;
+	virtual MaskBuffer *loadMask(const char *name, uint32 w, uint32 h) { return 0; }
+	virtual PathBuffer *loadPath(const char *name, uint32 w, uint32 h) { return 0; }
+};
+
+struct PaletteFxRange;
+
+struct ILBMLoader {
+	enum {
+		BODYMODE_SURFACE,
+		BODYMODE_MASKBUFFER,
+		BODYMODE_PATHBUFFER
+	};
+	uint32 _bodyMode;
+	Graphics::Surface *_surf;
+	MaskBuffer *_maskBuffer;
+	PathBuffer *_pathBuffer;
+	byte *_palette;
+	PaletteFxRange *_crng;
+	uint32 _mode;
+	byte* _intBuffer;
+	uint32 _numCRNG;
+	Graphics::ILBMDecoder _decoder;
+
+	ILBMLoader(uint32 bodyMode, byte *palette = 0, PaletteFxRange *crng = 0);
+	ILBMLoader(Graphics::Surface *surf, byte *palette = 0, PaletteFxRange *crng = 0);
+	ILBMLoader(MaskBuffer *buffer);
+	ILBMLoader(PathBuffer *buffer);
+
+	bool callback(Common::IFFChunk &chunk);
+	void setupBuffer(uint32 w, uint32 h);
+	void load(Common::ReadStream *in, bool disposeStream = false);
 };
 
 
@@ -94,29 +127,34 @@ protected:
 
 	void addArchive(const Common::String& name, int priority);
 
+	virtual void decodeCnv(byte *data, uint16 numFrames, uint16 width, uint16 height, Common::SeekableReadStream *stream) = 0;
+	Cnv *makeCnv(Common::SeekableReadStream *stream);
+
 public:
 	Disk_ns(Parallaction *vm);
 	virtual ~Disk_ns();
 
 	Common::String selectArchive(const Common::String &name);
 	void setLanguage(uint16 language);
+
+	virtual Script* loadLocation(const char *name);
+	virtual Script* loadScript(const char* name);
 };
 
 class DosDisk_ns : public Disk_ns {
 
 private:
 	void unpackBackground(Common::ReadStream *stream, byte *screen, byte *mask, byte *path);
-	Cnv* loadExternalCnv(const char *filename);
-	Frames* loadCnv(const char *filename);
+	Cnv* loadCnv(const char *filename);
 	void loadBackground(BackgroundInfo& info, const char *filename);
-	void loadMaskAndPath(BackgroundInfo& info, const char *name);
+	void createMaskAndPathBuffers(BackgroundInfo &info);
 	void parseDepths(BackgroundInfo &info, Common::SeekableReadStream &stream);
-	void parseBackground(BackgroundInfo& info, Common::SeekableReadStream &stream);
 	Font *createFont(const char *name, Cnv* cnv);
 
 protected:
 	Gfx	 *_gfx;
 	virtual Common::SeekableReadStream *tryOpenFile(const char* name);
+	virtual void decodeCnv(byte *data, uint16 numFrames, uint16 width, uint16 height, Common::SeekableReadStream *stream);
 
 public:
 	DosDisk_ns(Parallaction *vm);
@@ -124,10 +162,8 @@ public:
 
 	void init();
 
-	Script* loadLocation(const char *name);
-	Script* loadScript(const char* name);
 	GfxObj* loadTalk(const char *name);
-	GfxObj* loadObjects(const char *name);
+	GfxObj* loadObjects(const char *name, uint8 part = 0);
 	Frames* loadPointer(const char *name);
 	GfxObj* loadHead(const char* name);
 	Font* loadFont(const char* name);
@@ -137,13 +173,12 @@ public:
 	void loadScenery(BackgroundInfo& info, const char* background, const char* mask, const char* path);
 	Table* loadTable(const char* name);
 	Common::SeekableReadStream* loadMusic(const char* name);
-	Common::ReadStream* loadSound(const char* name);
+	Common::SeekableReadStream* loadSound(const char* name);
 };
 
 class AmigaDisk_ns : public Disk_ns {
 
 protected:
-	Cnv* makeCnv(Common::SeekableReadStream *stream, bool disposeStream);
 	void patchFrame(byte *dst, byte *dlta, uint16 bytesPerPlane, uint16 height);
 	void unpackFrame(byte *dst, byte *src, uint16 planeSize);
 	void unpackBitmap(byte *dst, byte *src, uint16 numFrames, uint16 bytesPerPlane, uint16 height);
@@ -154,16 +189,16 @@ protected:
 	void loadBackground(BackgroundInfo& info, const char *name);
 	void buildMask(byte* buf);
 
+	virtual void decodeCnv(byte *data, uint16 numFrames, uint16 width, uint16 height, Common::SeekableReadStream *stream);
+
 public:
 	AmigaDisk_ns(Parallaction *vm);
 	virtual ~AmigaDisk_ns();
 
 	void init();
 
-	Script* loadLocation(const char *name);
-	Script* loadScript(const char* name);
 	GfxObj* loadTalk(const char *name);
-	GfxObj* loadObjects(const char *name);
+	GfxObj* loadObjects(const char *name, uint8 part = 0);
 	Frames* loadPointer(const char *name);
 	GfxObj* loadHead(const char* name);
 	Font* loadFont(const char* name);
@@ -173,7 +208,7 @@ public:
 	void loadScenery(BackgroundInfo& info, const char* background, const char* mask, const char* path);
 	Table* loadTable(const char* name);
 	Common::SeekableReadStream* loadMusic(const char* name);
-	Common::ReadStream* loadSound(const char* name);
+	Common::SeekableReadStream* loadSound(const char* name);
 };
 
 
@@ -205,7 +240,7 @@ class DosDisk_br : public Disk_br {
 
 protected:
 	Font *createFont(const char *name, Common::ReadStream &stream);
-	Sprites*	createSprites(Common::ReadStream &stream);
+	Sprites*	createSprites(Common::ReadStream *stream);
 	void loadBitmap(Common::SeekableReadStream &stream, Graphics::Surface &surf, byte *palette);
 	GfxObj* createInventoryObjects(Common::SeekableReadStream &stream);
 
@@ -219,7 +254,7 @@ public:
 	Script* loadLocation(const char *name);
 	Script* loadScript(const char* name);
 	GfxObj* loadTalk(const char *name);
-	GfxObj* loadObjects(const char *name);
+	GfxObj* loadObjects(const char *name, uint8 part = 0);
 	Frames* loadPointer(const char *name);
 	GfxObj* loadHead(const char* name);
 	Font* loadFont(const char* name);
@@ -229,9 +264,9 @@ public:
 	void loadScenery(BackgroundInfo& info, const char* name, const char* mask, const char* path);
 	Table* loadTable(const char* name);
 	Common::SeekableReadStream* loadMusic(const char* name);
-	Common::ReadStream* loadSound(const char* name);
-	void loadMask(const char *name, MaskBuffer &buffer);
-	void loadPath(const char *name, PathBuffer &buffer);
+	Common::SeekableReadStream* loadSound(const char* name);
+	MaskBuffer *loadMask(const char *name, uint32 w, uint32 h);
+	PathBuffer *loadPath(const char *name, uint32 w, uint32 h);
 };
 
 class DosDemoDisk_br : public DosDisk_br {
@@ -247,25 +282,27 @@ public:
 class AmigaDisk_br : public DosDisk_br {
 
 protected:
-	Sprites*	createSprites(Common::ReadStream &stream);
+	Sprites*	createSprites(Common::ReadStream *stream);
 	Font *createFont(const char *name, Common::SeekableReadStream &stream);
-	void loadBackground(BackgroundInfo& info, Common::SeekableReadStream &stream);
+	void loadBackground(BackgroundInfo& info, const char *filename);
+	void adjustForPalette(Graphics::Surface &surf, int transparentColor = -1);
+
 public:
 	AmigaDisk_br(Parallaction *vm);
 
 	virtual void init();
 
+	Common::String selectArchive(const Common::String& name);
 	GfxObj* loadTalk(const char *name);
 	Font* loadFont(const char* name);
 	GfxObj* loadStatic(const char* name);
 	Frames* loadFrames(const char* name);
 	void loadSlide(BackgroundInfo& info, const char *filename);
 	void loadScenery(BackgroundInfo& info, const char* name, const char* mask, const char* path);
-	GfxObj* loadObjects(const char *name);
+	GfxObj* loadObjects(const char *name, uint8 part = 0);
 	Common::SeekableReadStream* loadMusic(const char* name);
-	Common::ReadStream* loadSound(const char* name);
-	Common::String selectArchive(const Common::String& name);
-
+	Common::SeekableReadStream* loadSound(const char* name);
+	MaskBuffer *loadMask(const char *name, uint32 w, uint32 h);
 };
 
 } // namespace Parallaction

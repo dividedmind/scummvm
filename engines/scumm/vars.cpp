@@ -26,7 +26,8 @@
 
 #include "common/config-manager.h"
 #include "scumm/scumm.h"
-#include "scumm/intern.h"
+#include "scumm/scumm_v0.h"
+#include "scumm/scumm_v8.h"
 #include "scumm/he/intern_he.h"
 #include "scumm/he/logic_he.h"
 #include "sound/mididrv.h"
@@ -537,9 +538,7 @@ void ScummEngine_v8::setupScummVars() {
 #endif
 
 void ScummEngine_v0::resetScummVars() {
-	_activeInventory = 0;
-	_activeObject = 0;
-	_activeVerb = 13;
+	resetSentence();
 
 	VAR(VAR_EGO) = 3;
 
@@ -705,6 +704,9 @@ void ScummEngine::resetScummVars() {
 		case MDT_PCSPK:
 			VAR(VAR_SOUNDCARD) = 0;
 			break;
+		case MDT_CMS:
+			VAR(VAR_SOUNDCARD) = 2;
+			break;
 		case MDT_ADLIB:
 			VAR(VAR_SOUNDCARD) = 3;
 			break;
@@ -720,8 +722,10 @@ void ScummEngine::resetScummVars() {
 
 		if (_game.platform == Common::kPlatformFMTowns)
 			VAR(VAR_VIDEOMODE) = 42;
-		else if (_game.platform == Common::kPlatformMacintosh)
+		// Value only used by the Macintosh version of Indiana Jones and the Last Crusade
+		else if (_game.platform == Common::kPlatformMacintosh && _game.version == 3)
 			VAR(VAR_VIDEOMODE) = 50;
+		// Value only used by the Amiga version of Monkey Island 2
 		else if (_game.platform == Common::kPlatformAmiga)
 			VAR(VAR_VIDEOMODE) = 82;
 		else if (_renderMode == Common::kRenderCGA)

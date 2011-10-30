@@ -136,8 +136,8 @@ public:
 	// Returns true if an event was retrieved.
 	virtual bool pollEvent(Common::Event &event); // overloaded by CE backend
 
-	// Sets up the keymapper with the backends hardware key set
-	virtual void setupKeymapper();
+	// Define all hardware keys for keymapper
+	virtual Common::HardwareKeySet *getHardwareKeySet();
 
 	// Set function that generates samples
 	virtual void setupMixer();
@@ -267,7 +267,7 @@ protected:
 		bool setup;
 
 		bool fullscreen;
-		bool aspectRatio;
+		bool aspectRatioCorrection;
 
 		int mode;
 		int scaleFactor;
@@ -341,7 +341,7 @@ protected:
 	// mouse
 	KbdMouse _km;
 	bool _mouseVisible;
-	bool _mouseDrawn;
+	bool _mouseNeedsRedraw;
 	byte *_mouseData;
 	SDL_Rect _mouseBackup;
 	MousePos _mouseCurState;
@@ -425,7 +425,7 @@ protected:
 	virtual bool saveScreenshot(const char *filename); // overloaded by CE backend
 
 	int effectiveScreenHeight() const {
-		return (_videoMode.aspectRatio ? real2Aspect(_videoMode.screenHeight) : _videoMode.screenHeight)
+		return (_videoMode.aspectRatioCorrection ? real2Aspect(_videoMode.screenHeight) : _videoMode.screenHeight)
 			* _videoMode.scaleFactor;
 	}
 

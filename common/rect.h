@@ -40,9 +40,7 @@ struct Point {
 	int16 y;	//!< The vertical part of the point
 
 	Point() : x(0), y(0) {}
-	Point(const Point &p) : x(p.x), y(p.y) {}
-	explicit Point(int16 x1, int16 y1) : x(x1), y(y1) {}
-	Point & operator=(const Point & p) { x = p.x; y = p.y; return *this; };
+	Point(int16 x1, int16 y1) : x(x1), y(y1) {}
 	bool operator==(const Point & p) const { return x == p.x && y == p.y; };
 	bool operator!=(const Point & p) const { return x != p.x || y != p.y; };
 
@@ -127,14 +125,25 @@ struct Rect {
 	}
 
 	/**
-	 * Check if the given rect is _fully_ contained inside this rectangle.
+	 * Check if the given rect is contained inside this rectangle.
 	 *
 	 * @param r The rectangle to check
 	 *
 	 * @return true if the given rect is inside, false otherwise
 	 */
 	bool contains(const Rect &r) const {
-		return (left < r.left) && (right > r.right) && (top < r.top) && (bottom > r.bottom);
+		return (left <= r.left) && (r.right <= right) && (top <= r.top) && (r.bottom <= bottom);
+	}
+
+	/**
+	 * Check if the given rect is equal to this one.
+	 *
+	 * @param r The rectangle to check
+	 *
+	 * @return true if the given rect is equal, false otherwise
+	 */
+	bool equals(const Rect &r) const {
+		return (left == r.left) && (right == r.right) && (top == r.top) && (bottom == r.bottom);
 	}
 
 	/**

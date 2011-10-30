@@ -33,7 +33,7 @@
 #include "common/archive.h"
 #include "common/config-manager.h"
 #include "common/debug.h"
-#include "common/events.h"
+#include "common/EventRecorder.h"
 #include "common/util.h"
 
 #ifdef UNIX
@@ -123,12 +123,12 @@ void OSystem_SDL::initBackend() {
 #if !defined(_WIN32_WCE) && !defined(__SYMBIAN32__) && !defined(DISABLE_SCALERS)
 	_videoMode.mode = GFX_DOUBLESIZE;
 	_videoMode.scaleFactor = 2;
-	_videoMode.aspectRatio = ConfMan.getBool("aspect_ratio");
+	_videoMode.aspectRatioCorrection = ConfMan.getBool("aspect_ratio");
 	_scalerProc = Normal2x;
 #else // for small screen platforms
 	_videoMode.mode = GFX_NORMAL;
 	_videoMode.scaleFactor = 1;
-	_videoMode.aspectRatio = false;
+	_videoMode.aspectRatioCorrection = false;
 	_scalerProc = Normal1x;
 #endif
 	_scalerType = 0;
@@ -170,11 +170,6 @@ void OSystem_SDL::initBackend() {
 		setupMixer();
 	}
 
-	// Setup the keymapper with backend's set of keys
-	// NOTE: must be done before creating TimerManager 
-	// to avoid race conditions in creating EventManager
-	setupKeymapper();
-
 	// Create and hook up the timer manager, if none exists yet (we check for
 	// this to allow subclasses to provide their own).
 	if (_timer == 0) {
@@ -205,7 +200,7 @@ OSystem_SDL::OSystem_SDL()
 	_overlayscreen(0), _tmpscreen2(0),
 	_samplesPerSec(0),
 	_cdrom(0), _scalerProc(0), _modeChanged(false), _screenChangeCount(0), _dirtyChecksums(0),
-	_mouseVisible(false), _mouseDrawn(false), _mouseData(0), _mouseSurface(0),
+	_mouseVisible(false), _mouseNeedsRedraw(false), _mouseData(0), _mouseSurface(0),
 	_mouseOrigSurface(0), _cursorTargetScale(1), _cursorPaletteDisabled(true),
 	_joystick(0),
 	_currentShakePos(0), _newShakePos(0),
@@ -262,7 +257,7 @@ OSystem_SDL::~OSystem_SDL() {
 
 uint32 OSystem_SDL::getMillis() {
 	uint32 millis = SDL_GetTicks();
-	getEventManager()->processMillis(millis);
+	g_eventRec.processMillis(millis);
 	return millis;
 }
 
@@ -301,7 +296,7 @@ void OSystem_SDL::addSysArchivesToSearchSet(Common::SearchSet &s, int priority) 
 	}
 #endif
 
-#if defined(MACOSX) || defined(IPHONE)
+#ifdef MACOSX
 	// Get URL of the Resource directory of the .app bundle
 	CFURLRef fileUrl = CFBundleCopyResourcesDirectoryURL(CFBundleGetMainBundle());
 	if (fileUrl) {
@@ -396,7 +391,21 @@ Common::WriteStream *OSystem_SDL::createConfigWriteStream() {
 }
 
 void OSystem_SDL::setWindowCaption(const char *caption) {
-	SDL_WM_SetCaption(caption, caption);
+	Common::String cap;
+	byte c;
+
+	// The string caption is supposed to be in LATIN-1 encoding.
+	// SDL expects UTF-8. So we perform the conversion here.
+	while ((c = *(const byte *)caption++)) {
+		if (c < 0x80)
+			cap += c;
+		else {
+			cap += 0xC0 | (c >> 6);
+			cap += 0x80 | (c & 0x3F);
+		}
+	}
+
+	SDL_WM_SetCaption(cap.c_str(), cap.c_str());
 }
 
 bool OSystem_SDL::hasFeature(Feature f) {
@@ -438,7 +447,7 @@ bool OSystem_SDL::getFeatureState(Feature f) {
 	case kFeatureFullscreenMode:
 		return _videoMode.fullscreen;
 	case kFeatureAspectRatioCorrection:
-		return _videoMode.aspectRatio;
+		return _videoMode.aspectRatioCorrection;
 	case kFeatureAutoComputeDirtyRects:
 		return _modeFlags & DF_WANT_RECT_OPTIM;
 	default:
@@ -466,12 +475,14 @@ void OSystem_SDL::quit() {
 	free(_cursorPalette);
 	free(_mouseData);
 
-	delete _savefile;
 	delete _timer;
 
 	SDL_Quit();
 
+	// Even Manager requires save manager for storing
+	// recorded events
 	delete getEventManager();
+	delete _savefile;
 
 	exit(0);
 }
@@ -479,7 +490,7 @@ void OSystem_SDL::quit() {
 void OSystem_SDL::setupIcon() {
 	int x, y, w, h, ncols, nbytes, i;
 	unsigned int rgba[256];
-        unsigned int *icon;
+	unsigned int *icon;
 
 	sscanf(scummvm_icon[0], "%d %d %d %d", &w, &h, &ncols, &nbytes);
 	if ((w > 512) || (h > 512) || (ncols > 255) || (nbytes > 1)) {

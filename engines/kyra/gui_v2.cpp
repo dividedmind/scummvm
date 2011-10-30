@@ -27,13 +27,14 @@
 #include "kyra/kyra_v2.h"
 #include "kyra/screen_v2.h"
 #include "kyra/text.h"
+#include "kyra/util.h"
 
 #include "common/savefile.h"
 
 namespace Kyra {
 
 GUI_v2::GUI_v2(KyraEngine_v2 *vm) : GUI(vm), _vm(vm), _screen(vm->screen_v2()) {
-	_backUpButtonList = _unknownButtonList = 0;
+	_backUpButtonList = _specialProcessButton = 0;
 	_buttonListChanged = false;
 	_lastScreenUpdate = 0;
 	_flagsModifier = 0;
@@ -114,7 +115,7 @@ void GUI_v2::processButton(Button *button) {
 
 	case 1:
 		_screen->hideMouse();
-		_screen->printText((const char*)dataPtr, x, y, val2, val3);
+		_screen->printText((const char *)dataPtr, x, y, val2, val3);
 		_screen->showMouse();
 		break;
 
@@ -147,7 +148,7 @@ int GUI_v2::processButtonList(Button *buttonList, uint16 inputFlag, int8 mouseWh
 		return inputFlag & 0x7FFF;
 
 	if (_backUpButtonList != buttonList || _buttonListChanged) {
-		_unknownButtonList = 0;
+		_specialProcessButton = 0;
 		//flagsModifier |= 0x2200;
 		_backUpButtonList = buttonList;
 		_buttonListChanged = false;
@@ -158,8 +159,9 @@ int GUI_v2::processButtonList(Button *buttonList, uint16 inputFlag, int8 mouseWh
 		}
 	}
 
-	int mouseX = _vm->_mouseX;
-	int mouseY = _vm->_mouseY;
+	Common::Point p = _vm->getMousePos();
+	int mouseX = _vm->_mouseX = p.x;
+	int mouseY = _vm->_mouseY = p.y;
 
 	uint16 flags = 0;
 
@@ -185,10 +187,10 @@ int GUI_v2::processButtonList(Button *buttonList, uint16 inputFlag, int8 mouseWh
 	}
 
 	buttonList = _backUpButtonList;
-	if (_unknownButtonList) {
-		buttonList = _unknownButtonList;
-		if (_unknownButtonList->flags & 8)
-			_unknownButtonList = 0;
+	if (_specialProcessButton) {
+		buttonList = _specialProcessButton;
+		if (_specialProcessButton->flags & 8)
+			_specialProcessButton = 0;
 	}
 
 	int returnValue = 0;
@@ -218,20 +220,20 @@ int GUI_v2::processButtonList(Button *buttonList, uint16 inputFlag, int8 mouseWh
 		buttonList->flags2 &= ~0x80;
 		uint16 inFlags = inputFlag & 0x7FFF;
 		if (inFlags) {
-			if (buttonList->unk6 == inFlags) {
+			if (buttonList->keyCode == inFlags) {
 				progress = true;
 				flags = buttonList->flags & 0x0F00;
 				buttonList->flags2 |= 0x80;
 				inputFlag = 0;
-				_unknownButtonList = buttonList;
-			} else if (buttonList->unk8 == inFlags) {
+				_specialProcessButton = buttonList;
+			} else if (buttonList->keyCode2 == inFlags) {
 				flags = buttonList->flags & 0xF000;
 				if (!flags)
 					flags = buttonList->flags & 0x0F00;
 				progress = true;
 				buttonList->flags2 |= 0x80;
 				inputFlag = 0;
-				_unknownButtonList = buttonList;
+				_specialProcessButton = buttonList;
 			}
 		}
 
@@ -245,10 +247,10 @@ int GUI_v2::processButtonList(Button *buttonList, uint16 inputFlag, int8 mouseWh
 		if (!progress)
 			buttonList->flags2 &= ~6;
 
-		if ((flags & 0x3300) && (buttonList->flags & 4) && progress && (buttonList == _unknownButtonList || !_unknownButtonList)) {
+		if ((flags & 0x3300) && (buttonList->flags & 4) && progress && (buttonList == _specialProcessButton || !_specialProcessButton)) {
 			buttonList->flags |= 6;
-			if (!_unknownButtonList)
-				_unknownButtonList = buttonList;
+			if (!_specialProcessButton)
+				_specialProcessButton = buttonList;
 		} else if ((flags & 0x8800) && !(buttonList->flags & 4) && progress) {
 			buttonList->flags2 |= 6;
 		} else {
@@ -256,19 +258,19 @@ int GUI_v2::processButtonList(Button *buttonList, uint16 inputFlag, int8 mouseWh
 		}
 
 		bool progressSwitch = false;
-		if (!_unknownButtonList) {
+		if (!_specialProcessButton) {
 			progressSwitch = progress;
 		} else  {
-			if (_unknownButtonList->flags & 0x40)
-				progressSwitch = (_unknownButtonList == buttonList);
+			if (_specialProcessButton->flags & 0x40)
+				progressSwitch = (_specialProcessButton == buttonList);
 			else
 				progressSwitch = progress;
 		}
 
 		if (progressSwitch) {
-			if ((flags & 0x1100) && progress && !_unknownButtonList) {
+			if ((flags & 0x1100) && progress && !_specialProcessButton) {
 				inputFlag = 0;
-				_unknownButtonList = buttonList;
+				_specialProcessButton = buttonList;
 			}
 
 			if ((buttonList->flags & flags) && (progress || !(buttonList->flags & 1))) {
@@ -285,7 +287,7 @@ int GUI_v2::processButtonList(Button *buttonList, uint16 inputFlag, int8 mouseWh
 
 				switch (flagTable[combinedFlags]) {
 				case 0x400:
-					if (!(buttonList->flags & 1) || ((buttonList->flags & 1) && _unknownButtonList == buttonList)) {
+					if (!(buttonList->flags & 1) || ((buttonList->flags & 1) && _specialProcessButton == buttonList)) {
 						buttonList->flags2 ^= 1;
 						returnValue = buttonList->index | 0x8000;
 						unk1 = true;
@@ -326,8 +328,7 @@ int GUI_v2::processButtonList(Button *buttonList, uint16 inputFlag, int8 mouseWh
 						buttonList->flags2 |= 4;
 						buttonList->flags2 |= 2;
 					}
-					_unknownButtonList = buttonList;
-					break;
+					_specialProcessButton = buttonList;
 				}
 			}
 		}
@@ -342,13 +343,13 @@ int GUI_v2::processButtonList(Button *buttonList, uint16 inputFlag, int8 mouseWh
 		}
 
 		if ((flags & 0x8800) == 0x8800) {
-			_unknownButtonList = 0;
+			_specialProcessButton = 0;
 			if (!progress || (buttonList->flags & 4))
 				buttonList->flags2 &= ~6;
 		}
 
-		if (!progress && buttonList == _unknownButtonList && !(buttonList->flags & 0x40))
-			_unknownButtonList = 0;
+		if (!progress && buttonList == _specialProcessButton && !(buttonList->flags & 0x40))
+			_specialProcessButton = 0;
 
 		if ((buttonList->flags2 & 0x18) != ((buttonList->flags2 & 3) << 3))
 			processButton(buttonList);
@@ -370,7 +371,7 @@ int GUI_v2::processButtonList(Button *buttonList, uint16 inputFlag, int8 mouseWh
 				break;
 		}
 
-		if (_unknownButtonList == buttonList && (buttonList->flags & 0x40))
+		if (_specialProcessButton == buttonList && (buttonList->flags & 0x40))
 			break;
 
 		buttonList = buttonList->nextButton;
@@ -455,8 +456,11 @@ void GUI_v2::setupSavegameNames(Menu &menu, int num) {
 	Common::InSaveFile *in;
 	for (int i = startSlot; i < num && uint(_savegameOffset + i) < _saveSlots.size(); ++i) {
 		if ((in = _vm->openSaveForReading(_vm->getSavegameFilename(_saveSlots[i + _savegameOffset]), header)) != 0) {
-			strncpy(getTableString(menu.item[i].itemId), header.description.c_str(), 80);
-			getTableString(menu.item[i].itemId)[79] = 0;
+			char *s = getTableString(menu.item[i].itemId);
+			strncpy(s, header.description.c_str(), 80);
+			s[79] = 0;
+			Util::convertISOToDOS(s);
+
 			menu.item[i].saveSlot = _saveSlots[i + _savegameOffset];
 			menu.item[i].enabled = true;
 			delete in;
@@ -602,7 +606,7 @@ int GUI_v2::saveMenu(Button *caller) {
 	updateAllMenuButtons();
 
 	while (_isSaveMenu) {
-		processHighlights(_saveMenu, _vm->_mouseX, _vm->_mouseY);
+		processHighlights(_saveMenu);
 		getInput();
 	}
 
@@ -621,6 +625,7 @@ int GUI_v2::saveMenu(Button *caller) {
 
 	Graphics::Surface thumb;
 	createScreenThumbnail(thumb);
+	Util::convertDOSToISO(_saveDescription);
 	_vm->saveGameState(_saveSlot, _saveDescription, &thumb);
 	thumb.free();
 
@@ -698,7 +703,7 @@ int GUI_v2::deleteMenu(Button *caller) {
 		updateAllMenuButtons();
 
 		while (_isDeleteMenu) {
-			processHighlights(_saveMenu, _vm->_mouseX, _vm->_mouseY);
+			processHighlights(_saveMenu);
 			getInput();
 		}
 
@@ -728,7 +733,7 @@ int GUI_v2::deleteMenu(Button *caller) {
 			break;
 		Common::String oldName = _vm->getSavegameFilename(*i);
 		Common::String newName = _vm->getSavegameFilename(*i-1);
-		_vm->_saveFileMan->renameSavefile(oldName.c_str(), newName.c_str());
+		_vm->_saveFileMan->renameSavefile(oldName, newName);
 	}
 	_saveMenu.menuNameId = _vm->gameFlags().isTalkie ? 9 : 17;
 	return 0;
@@ -750,7 +755,11 @@ const char *GUI_v2::nameInputProcess(char *buffer, int x, int y, uint8 c1, uint8
 	_cancelNameInput = _finishNameInput = false;
 	while (running && !_vm->shouldQuit()) {
 		checkTextfieldInput();
-		processHighlights(_savenameMenu, _vm->_mouseX, _vm->_mouseY);
+		processHighlights(_savenameMenu);
+
+		char inputKey = _keyPressed.ascii;
+		Util::convertISOToDOS(inputKey);
+
 		if (_keyPressed.keycode == Common::KEYCODE_RETURN || _keyPressed.keycode == Common::KEYCODE_KP_ENTER || _finishNameInput) {
 			if (checkSavegameDescription(buffer, curPos)) {
 				buffer[curPos] = 0;
@@ -768,12 +777,12 @@ const char *GUI_v2::nameInputProcess(char *buffer, int x, int y, uint8 c1, uint8
 			drawTextfieldBlock(x2, y2, c3);
 			_screen->updateScreen();
 			_lastScreenUpdate = _vm->_system->getMillis();
-		} else if (_keyPressed.ascii > 31 && _keyPressed.ascii < 127 && curPos < bufferSize) {
-			if (x2 + getCharWidth(_keyPressed.ascii) + 7 < 0x11F) {
-				buffer[curPos] = _keyPressed.ascii;
+		} else if ((uint8)inputKey > 31 && (uint8)inputKey < 226 && curPos < bufferSize) {
+			if (x2 + getCharWidth(inputKey) + 7 < 0x11F) {
+				buffer[curPos] = inputKey;
 				const char text[2] = { buffer[curPos], 0 };
 				_text->printText(text, x2, y2, c1, c2, c2);
-				x2 += getCharWidth(_keyPressed.ascii);
+				x2 += getCharWidth(inputKey);
 				drawTextfieldBlock(x2, y2, c3);
 				++curPos;
 				_screen->updateScreen();
@@ -841,7 +850,7 @@ bool GUI_v2::choiceDialog(int name, bool type) {
 	_choice = false;
 
 	while (_isChoiceMenu) {
-		processHighlights(_choiceMenu, _vm->_mouseX, _vm->_mouseY);
+		processHighlights(_choiceMenu);
 		getInput();
 	}
 

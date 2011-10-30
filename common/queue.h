@@ -35,17 +35,12 @@ namespace Common {
  */
 template<class T>
 class Queue {
-public:
-	typedef T value_type;
+//public:
+//	typedef T value_type;
 
 public:
 	Queue<T>() : _impl() {}
 	Queue<T>(const Queue<T> &queue) : _impl(queue._impl) {}
-
-	Queue<T> &operator=(const Queue<T> &queue) {
-		_impl = queue._impl;
-		return *this;
-	}
 
 	bool empty() const {
 		return _impl.empty();
@@ -60,19 +55,19 @@ public:
 	}
 
 	T &front() {
-		return *_impl.begin();
+		return _impl.front();
 	}
 
 	const T &front() const {
-		return *_impl.begin();
+		return _impl.front();
 	}
 
 	T &back() {
-		return *_impl.reverse_begin();
+		return _impl.back();
 	}
 
 	const T &back() const {
-		return *_impl.reverse_begin();
+		return _impl.back();
 	}
 
 	T pop() {

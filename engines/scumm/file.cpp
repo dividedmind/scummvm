@@ -126,7 +126,7 @@ bool ScummFile::openSubFile(const Common::String &filename) {
 
 
 bool ScummFile::eos() const {
-	return _subFileLen ? (pos() >= _subFileLen) : File::eos(); // FIXME
+	return _subFileLen ? _myEos : File::eos();
 }
 
 int32 ScummFile::pos() const {
@@ -142,7 +142,7 @@ bool ScummFile::seek(int32 offs, int whence) {
 		// Constrain the seek to the subfile
 		switch (whence) {
 		case SEEK_END:
-			offs = _subFileStart + _subFileLen - offs;
+			offs = _subFileStart + _subFileLen + offs;
 			break;
 		case SEEK_SET:
 			offs += _subFileStart;
@@ -154,7 +154,10 @@ bool ScummFile::seek(int32 offs, int whence) {
 		assert((int32)_subFileStart <= offs && offs <= (int32)(_subFileStart + _subFileLen));
 		whence = SEEK_SET;
 	}
-	return File::seek(offs, whence);
+	bool ret = File::seek(offs, whence);
+	if (ret)
+		_myEos = false;
+	return ret;
 }
 
 uint32 ScummFile::read(void *dataPtr, uint32 dataSize) {
@@ -167,7 +170,7 @@ uint32 ScummFile::read(void *dataPtr, uint32 dataSize) {
 		int32 newPos = curPos + dataSize;
 		if (newPos > _subFileLen) {
 			dataSize = _subFileLen - curPos;
-			_myIoFailed = true;
+			_myEos = true;
 		}
 	}
 
@@ -304,7 +307,7 @@ bool ScummDiskImage::open(const Common::String &filename) {
 
 	signature = fileReadUint16LE();
 	if (signature != 0x0A31) {
-		error("ScummDiskImage::open(): signature not found in disk 1!");
+		error("ScummDiskImage::open(): signature not found in disk 1");
 		return false;
 	}
 
@@ -316,12 +319,12 @@ bool ScummDiskImage::open(const Common::String &filename) {
 		File::seek(143104);
 		signature = fileReadUint16LE();
 		if (signature != 0x0032)
-			error("Error: signature not found in disk 2!\n");
+			error("Error: signature not found in disk 2");
 	} else {
 		File::seek(0);
 		signature = fileReadUint16LE();
 		if (signature != 0x0132)
-			error("Error: signature not found in disk 2!\n");
+			error("Error: signature not found in disk 2");
 	}
 
 

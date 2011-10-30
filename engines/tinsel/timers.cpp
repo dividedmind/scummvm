@@ -30,7 +30,7 @@
 
 #include "tinsel/timers.h"
 #include "tinsel/dw.h"
-#include "tinsel/serializer.h"
+#include "common/serializer.h"
 
 #include "common/system.h"
 
@@ -41,7 +41,7 @@ namespace Tinsel {
 #define MAX_TIMERS 16
 
 struct TIMER {
-	int 	tno;		/**< Timer number */
+	int	tno;		/**< Timer number */
 	int		ticks;		/**< Tick count */
 	int		secs;		/**< Second count */
 	int		delta;		/**< Increment/decrement value */
@@ -81,7 +81,7 @@ void RebootTimers(void) {
 /**
  * (Un)serialize the timer data for save/restore game.
  */
-void syncTimerInfo(Serializer &s) {
+void syncTimerInfo(Common::Serializer &s) {
 	for (int i = 0; i < MAX_TIMERS; i++) {
 		s.syncAsSint32LE(timers[i].tno);
 		s.syncAsSint32LE(timers[i].ticks);

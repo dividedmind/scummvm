@@ -23,11 +23,10 @@
  *
  */
 
-
 #include "scumm/scumm.h"
 #include "scumm/actor.h"
 #include "scumm/boxes.h"
-#include "scumm/intern.h"
+#include "scumm/scumm_v6.h"
 #include "scumm/util.h"
 
 #include "common/util.h"
@@ -230,7 +229,7 @@ void ScummEngine::setBoxScale(int box, int scale) {
 	if (_game.version == 8)
 		ptr->v8.scale = TO_LE_32(scale);
 	else if (_game.version <= 2)
-		error("This should not ever be called!");
+		error("This should not ever be called");
 	else
 		ptr->old.scale = TO_LE_16(scale);
 }
@@ -370,7 +369,7 @@ void ScummEngine::convertScaleTableToScaleSlot(int slot) {
 	 */
 
 	// Search for the bend on the left side
-	m = (resptr[199] - resptr[0]) / 199.0;
+	m = (resptr[199] - resptr[0]) / 199.0f;
 	for (lowerIdx = 0; lowerIdx < 199 && (resptr[lowerIdx] == 1 || resptr[lowerIdx] == 255); lowerIdx++) {
 		oldM = m;
 		m = (resptr[199] - resptr[lowerIdx+1]) / (float)(199 - (lowerIdx+1));
@@ -384,7 +383,7 @@ void ScummEngine::convertScaleTableToScaleSlot(int slot) {
 	}
 
 	// Search for the bend on the right side
-	m = (resptr[199] - resptr[0]) / 199.0;
+	m = (resptr[199] - resptr[0]) / 199.0f;
 	for (upperIdx = 199; upperIdx > 1 && (resptr[upperIdx] == 1 || resptr[upperIdx] == 255); upperIdx--) {
 		oldM = m;
 		m = (resptr[upperIdx-1] - resptr[0]) / (float)(upperIdx-1);
@@ -446,7 +445,7 @@ byte ScummEngine::getNumBoxes() {
 		return 0;
 	if (_game.version == 8)
 		return (byte)READ_LE_UINT32(ptr);
-	else if (_game.features >= 5)
+	else if (_game.version >= 5)
 		return (byte)READ_LE_UINT16(ptr);
 	else
 		return ptr[0];

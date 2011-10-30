@@ -37,124 +37,121 @@ enum fileTypeEnum {
 
 int loadSingleFile;
 
-// TODO: Unify decodeGfxFormat1, decodeGfxFormat4 and decodeGfxFormat5
-
-void decodeGfxFormat1(dataFileEntry *pCurrentFileEntry) {
-	uint8 *buffer;
+/**
+ * Takes care of decoding a compressed graphic
+ */
+void decodeGfxUnified(dataFileEntry *pCurrentFileEntry, int16 format) {
 	uint8 *dataPtr = pCurrentFileEntry->subData.ptr;
+	int spriteSize;
 
-	int spriteSize = pCurrentFileEntry->height * pCurrentFileEntry->width;
-	int x = 0;
+	// Unified how to get spriteSize
+	switch (format) {
+	case 1:
+	case 4:
+		spriteSize = pCurrentFileEntry->height * pCurrentFileEntry->width;
+		break;
+	case 5:
+		spriteSize = pCurrentFileEntry->height * pCurrentFileEntry->widthInColumn;
+		break;
 
-	buffer = (uint8 *) malloc(spriteSize);
-
-	while (x < spriteSize) {
-		uint8 c;
-		uint16 p0;
-
-		p0 = (dataPtr[0] << 8) | dataPtr[1];
-
-		/* decode planes */
-		for (c = 0; c < 16; c++) {
-			buffer[x + c] = ((p0 >> 15) & 1);
-
-			p0 <<= 1;
-		}
-
-		x += 16;
-
-		dataPtr += 2;
+	default:
+		error("Unkown gfx format %d", format);
 	}
 
+	uint8 *buffer = (uint8 *)malloc(spriteSize);
+
+	// Perform format specific decoding
+	switch (format) {
+	case 1:
+	case 4: {
+		int x = 0;
+		while (x < spriteSize) {
+			uint8 c;
+			uint16 p0;
+			// Format 4
+			uint16 p1 = 0, p2 = 0, p3 = 0;
+
+			p0 = (dataPtr[0] << 8) | dataPtr[1];
+
+			// Format 4
+			if (format == 4) {
+				p1 = (dataPtr[2] << 8) | dataPtr[3];
+				p2 = (dataPtr[4] << 8) | dataPtr[5];
+				p3 = (dataPtr[6] << 8) | dataPtr[7];
+			}
+
+			/* decode planes */
+			for (c = 0; c < 16; c++) {
+				// Format 4
+				if (format == 4) {
+					buffer[x + c] = ((p0 >> 15) & 1) | ((p1 >> 14) & 2) | ((p2 >> 13) & 4) | ((p3 >> 12) & 8);
+				} else {
+					buffer[x + c] = ((p0 >> 15) & 1);
+				}
+
+				p0 <<= 1;
+
+				// Format 4
+				if (format == 4) {
+					p1 <<= 1;
+					p2 <<= 1;
+					p3 <<= 1;
+				}
+			}
+
+			x += 16;
+
+			dataPtr += (2 * format);
+		}
+
+		break;
+	}
+	case 5: {
+		uint8 *destP = buffer;
+		int range = pCurrentFileEntry->height * pCurrentFileEntry->width;
+
+		for (int line = 0; line < pCurrentFileEntry->height; line++) {
+			uint8 p0, p1, p2, p3, p4;
+
+			for (int x = 0; x < pCurrentFileEntry->widthInColumn; x++) {
+				int bit = 7 - (x % 8);
+				int col = x / 8;
+
+				p0 = (dataPtr[line*pCurrentFileEntry->width + col + range * 0] >> bit) & 1;
+				p1 = (dataPtr[line*pCurrentFileEntry->width + col + range * 1] >> bit) & 1;
+				p2 = (dataPtr[line*pCurrentFileEntry->width + col + range * 2] >> bit) & 1;
+				p3 = (dataPtr[line*pCurrentFileEntry->width + col + range * 3] >> bit) & 1;
+				p4 = (dataPtr[line*pCurrentFileEntry->width + col + range * 4] >> bit) & 1;
+
+				*destP++ = p0 | (p1 << 1) | (p2 << 2) | (p3 << 3) | (p4 << 4);
+			}
+		}
+
+		break;
+	}
+	}
+
+	free(pCurrentFileEntry->subData.ptr);
 	pCurrentFileEntry->subData.ptr = buffer;
 }
 
-void decodeGfxFormat4(dataFileEntry *pCurrentFileEntry) {
-	uint8 *buffer;
-	uint8 *dataPtr = pCurrentFileEntry->subData.ptr;
-
-	int spriteSize = pCurrentFileEntry->height * pCurrentFileEntry->width;
-	int x = 0;
-
-	buffer = (uint8 *) malloc(spriteSize);
-
-	while (x < spriteSize) {
-		uint8 c;
-		uint16 p0;
-		uint16 p1;
-		uint16 p2;
-		uint16 p3;
-
-		p0 = (dataPtr[0] << 8) | dataPtr[1];
-		p1 = (dataPtr[2] << 8) | dataPtr[3];
-		p2 = (dataPtr[4] << 8) | dataPtr[5];
-		p3 = (dataPtr[6] << 8) | dataPtr[7];
-
-		/* decode planes */
-		for (c = 0; c < 16; c++) {
-			buffer[x + c] = ((p0 >> 15) & 1) | ((p1 >> 14) & 2) | ((p2 >> 13) & 4) | ((p3 >> 12) & 8);
-
-			p0 <<= 1;
-			p1 <<= 1;
-			p2 <<= 1;
-			p3 <<= 1;
-		}
-
-		x += 16;
-
-		dataPtr += 8;
-	}
-
-	pCurrentFileEntry->subData.ptr = buffer;
-}
-
-void decodeGfxFormat5(dataFileEntry *pCurrentFileEntry) {
-	uint8 *dataPtr = pCurrentFileEntry->subData.ptr;
-	int spriteSize = pCurrentFileEntry->height * pCurrentFileEntry->widthInColumn;
-	int range = pCurrentFileEntry->height * pCurrentFileEntry->width;
-
-	uint8 *buffer = (uint8 *) malloc(spriteSize);
-
-	for (int line = 0; line < pCurrentFileEntry->height; line++) {
-		uint8 p0;
-		uint8 p1;
-		uint8 p2;
-		uint8 p3;
-		uint8 p4;
-
-		for (int x = 0; x < pCurrentFileEntry->widthInColumn; x++) {
-			int bit = 7 - (x % 8);
-			int col = x / 8;
-
-			p0 = (dataPtr[line*pCurrentFileEntry->width + col + range * 0] >> bit) & 1;
-			p1 = (dataPtr[line*pCurrentFileEntry->width + col + range * 1] >> bit) & 1;
-			p2 = (dataPtr[line*pCurrentFileEntry->width + col + range * 2] >> bit) & 1;
-			p3 = (dataPtr[line*pCurrentFileEntry->width + col + range * 3] >> bit) & 1;
-			p4 = (dataPtr[line*pCurrentFileEntry->width + col + range * 4] >> bit) & 1;
-
-			buffer[line * pCurrentFileEntry->widthInColumn + x] = p0 | (p1 << 1) | (p2 << 2) | (p3 << 3) | (p4 << 4);
-		}
-	}
-
-	pCurrentFileEntry->subData.ptr = buffer;
-}
-
-int updateResFileEntry(int height, int width, int entryNumber, int resType) {
+int updateResFileEntry(int height, int width, int size, int entryNumber, int resType) {
 	int div = 0;
 
 	resetFileEntry(entryNumber);
 
 	filesDatabase[entryNumber].subData.compression = 0;
 
-	int maskSize = height * width;	// for sprites: width * height
+	int maskSize = size;
 
 	if (resType == 4) {
 		div = maskSize / 4;
 	} else if (resType == 5) {
 		width = (width * 8) / 5;
+		maskSize = MAX(size, height * width);
 	}
 
-	filesDatabase[entryNumber].subData.ptr = (uint8 *) mallocAndZero(maskSize + div);
+	filesDatabase[entryNumber].subData.ptr = (uint8 *)mallocAndZero(maskSize + div);
 
 	if (!filesDatabase[entryNumber].subData.ptr)
 		return (-2);
@@ -169,29 +166,25 @@ int updateResFileEntry(int height, int width, int entryNumber, int resType) {
 	return entryNumber;
 }
 
-int createResFileEntry(int width, int height, int resType) {
+int createResFileEntry(int width, int height, int size, int resType) {
 	int i;
 	int entryNumber;
 	int div = 0;
-	int size;
 
-	printf("Executing untested createResFileEntry!\n");
-	exit(1);
+	error("Executing untested createResFileEntry");
 
-	for (i = 0; i < 257; i++) {
+	for (i = 0; i < NUM_FILE_ENTRIES; i++) {
 		if (!filesDatabase[i].subData.ptr)
 			break;
 	}
 
-	if (i >= 257) {
+	if (i >= NUM_FILE_ENTRIES) {
 		return (-19);
 	}
 
 	entryNumber = i;
 
 	filesDatabase[entryNumber].subData.compression = 0;
-
-	size = width * height;	// for sprites: width * height
 
 	if (resType == 4) {
 		div = size / 4;
@@ -201,7 +194,7 @@ int createResFileEntry(int width, int height, int resType) {
 
 	filesDatabase[entryNumber].subData.ptr = (uint8 *) mallocAndZero(size + div);
 
-	if (filesDatabase[entryNumber].subData.ptr) {
+	if (!filesDatabase[entryNumber].subData.ptr) {
 		return (-2);
 	}
 
@@ -236,9 +229,7 @@ fileTypeEnum getFileType(const char *name) {
 }
 
 int getNumMaxEntiresInSet(uint8 *ptr) {
-	uint16 numEntries = *(uint16 *)(ptr + 4);
-	flipShort(&numEntries);
-
+	uint16 numEntries = READ_BE_UINT16(ptr + 4);
 	return numEntries;
 }
 
@@ -255,10 +246,10 @@ int loadFile(const char* name, int idx, int destIdx) {
 
 		int numMaxEntriesInSet = getNumMaxEntiresInSet(ptr);
 
-		if (idx > numMaxEntriesInSet) {
+		if (destIdx > numMaxEntriesInSet) {
 			return 0;	// exit if limit is reached
 		}
-		return loadSetEntry(name, ptr, idx, destIdx);
+		return loadSetEntry(name, ptr, destIdx, idx);
 
 		break;
 	}
@@ -266,13 +257,15 @@ int loadFile(const char* name, int idx, int destIdx) {
 		return loadFNTSub(ptr, idx);
 		break;
 	}
-	case type_UNK: {
-		break;
-	}
 	case type_SPL: {
+		// Sound file
+		loadSPLSub(ptr, idx);
 		break;
 	}
+	default:
+		error("Unknown fileType in loadFile");
 	}
+
 	return -1;
 }
 
@@ -302,13 +295,15 @@ int loadFileRange(const char *name, int startIdx, int currentEntryIdx, int numId
 		loadFNTSub(ptr, startIdx);
 		break;
 	}
-	case type_UNK: {
-		break;
-	}
 	case type_SPL: {
+		// Sound file
+		loadSPLSub(ptr, startIdx);
 		break;
 	}
+	default:
+		error("Unknown fileType in loadFileRange");
 	}
+
 	return 0;
 }
 
@@ -325,6 +320,7 @@ int loadFullBundle(const char *name, int startIdx) {
 
 	switch (fileType) {
 	case type_SET: {
+		// Sprite set
 		int i;
 		int numMaxEntriesInSet;
 
@@ -337,15 +333,17 @@ int loadFullBundle(const char *name, int startIdx) {
 		break;
 	}
 	case type_FNT: {
+		// Font file
 		loadFNTSub(ptr, startIdx);
 		break;
 	}
-	case type_UNK: {
-		break;
-	}
 	case type_SPL: {
+		// Sound file
+		loadSPLSub(ptr, startIdx);
 		break;
 	}
+	default:
+		error("Unknown fileType in loadFullBundle");
 	}
 
 	return 0;
@@ -358,22 +356,19 @@ int loadFNTSub(uint8 *ptr, int destIdx) {
 	uint32 fontSize;
 
 	ptr2 += 4;
-	memcpy(&loadFileVar1, ptr2, 4);
-
-	flipLong(&loadFileVar1);
+	loadFileVar1 = READ_BE_UINT32(ptr2);
 
 	if (destIdx == -1) {
-		fileIndex = createResFileEntry(loadFileVar1, 1, 1);
+		fileIndex = createResFileEntry(loadFileVar1, 1, loadFileVar1, 1);
 	} else {
-		fileIndex = updateResFileEntry(loadFileVar1, 1, destIdx, 1);
+		fileIndex = updateResFileEntry(loadFileVar1, 1, loadFileVar1, destIdx, 1);
 	}
 
 	destPtr = filesDatabase[fileIndex].subData.ptr;
 
 	memcpy(destPtr, ptr2, loadFileVar1);
 
-	memcpy(&fontSize, ptr2, 4);
-	flipLong(&fontSize);
+	fontSize = READ_BE_UINT32(ptr2);
 
 	if (destPtr != NULL) {
 		int32 i;
@@ -381,14 +376,14 @@ int loadFNTSub(uint8 *ptr, int destIdx) {
 
 		destPtr = filesDatabase[fileIndex].subData.ptr;
 
-		flipLong((int32 *) destPtr);
-		flipLong((int32 *)(destPtr + 4));
+		bigEndianLongToNative((int32 *) destPtr);
+		bigEndianLongToNative((int32 *)(destPtr + 4));
 		flipGen(destPtr + 8, 6);
 
 		currentPtr = destPtr + 14;
 
-		for (i = 0; i < *(int16 *)(destPtr + 8); i++) {
-			flipLong((int32 *) currentPtr);
+		for (i = 0; i < (int16)READ_UINT16(destPtr + 8); i++) {
+			bigEndianLongToNative((int32 *) currentPtr);
 			currentPtr += 4;
 
 			flipGen(currentPtr, 8);
@@ -398,6 +393,23 @@ int loadFNTSub(uint8 *ptr, int destIdx) {
 
 	return 1;
 }
+
+int loadSPLSub(uint8 *ptr, int destIdx) {
+	uint8 *destPtr;
+	int fileIndex;
+
+	if (destIdx == -1) {
+		fileIndex = createResFileEntry(loadFileVar1, 1, loadFileVar1, 1);
+	} else {
+		fileIndex = updateResFileEntry(loadFileVar1, 1, loadFileVar1, destIdx, 1);
+	}
+
+	destPtr = filesDatabase[fileIndex].subData.ptr;
+	memcpy(destPtr, ptr, loadFileVar1);
+
+	return 1;
+}
+
 
 int loadSetEntry(const char *name, uint8 *ptr, int currentEntryIdx, int currentDestEntry) {
 	uint8 *ptr3;
@@ -423,79 +435,92 @@ int loadSetEntry(const char *name, uint8 *ptr, int currentEntryIdx, int currentD
 
 		Common::MemoryReadStream s4(ptr + offset + 6, 16);
 
-		localBuffer.field_0 = s4.readUint32BE();
+		localBuffer.offset = s4.readUint32BE();
 		localBuffer.width = s4.readUint16BE();
 		localBuffer.height = s4.readUint16BE();
 		localBuffer.type = s4.readUint16BE();
-		localBuffer.transparency = s4.readUint16BE();
-		localBuffer.field_C = s4.readUint16BE();
-		localBuffer.field_E = s4.readUint16BE();
+		localBuffer.transparency = s4.readUint16BE() & 0x1F;
+		localBuffer.hotspotY = s4.readUint16BE();
+		localBuffer.hotspotX = s4.readUint16BE();
 
-		if (sec == 1) {
-			localBuffer.width = localBuffer.width - (localBuffer.type * 2);	// Type 1: Width - (1*2) , Type 5: Width - (5*2)
-		}
+		if (sec == 1)
+			// Type 1: Width - (1*2) , Type 5: Width - (5*2)
+			localBuffer.width -= localBuffer.type * 2;
 
 		resourceSize = localBuffer.width * localBuffer.height;
 
+		if (!sec && (localBuffer.type == 5))
+			// Type 5: Width - (2*5)
+			localBuffer.width -= 10;
+
 		if (currentDestEntry == -1) {
-			fileIndex = createResFileEntry(localBuffer.width, localBuffer.height, localBuffer.type);
+			fileIndex = createResFileEntry(localBuffer.width, localBuffer.height, resourceSize, localBuffer.type);
 		} else {
-			fileIndex = updateResFileEntry(localBuffer.height, localBuffer.width, currentDestEntry, localBuffer.type);
+			fileIndex = updateResFileEntry(localBuffer.height, localBuffer.width, resourceSize, currentDestEntry, localBuffer.type);
 		}
 
 		if (fileIndex < 0) {
 			return -1;	// TODO: buffer is not freed
 		}
 
-		ptr5 = ptr3 + localBuffer.field_0 + numIdx * 16;
+		if (!sec && (localBuffer.type == 5)) {
+			// There are sometimes sprites with a reduced width than what their pixels provide.
+			// The original handled this here by copy parts of each line - for ScummVM, we're
+			// simply setting the width in bytes and letting the decoder do the rest
+			filesDatabase[fileIndex].width += 2;
+		}
+
+		ptr5 = ptr3 + localBuffer.offset + numIdx * 16;
 
 		memcpy(filesDatabase[fileIndex].subData.ptr, ptr5, resourceSize);
+
 		ptr5 += resourceSize;
 
 		switch (localBuffer.type) {
 		case 0: { // polygon
-			filesDatabase[fileIndex].subData.resourceType = 8;
+			filesDatabase[fileIndex].subData.resourceType = OBJ_TYPE_POLY;
 			filesDatabase[fileIndex].subData.index = currentEntryIdx;
 			break;
 		}
 		case 1: {
 			filesDatabase[fileIndex].width = filesDatabase[fileIndex].widthInColumn * 8;
-			filesDatabase[fileIndex].subData.resourceType = 2;
-			decodeGfxFormat1(&filesDatabase[fileIndex]);
+			filesDatabase[fileIndex].subData.resourceType = OBJ_TYPE_BGMASK;
+			decodeGfxUnified(&filesDatabase[fileIndex], localBuffer.type);
 			filesDatabase[fileIndex].subData.index = currentEntryIdx;
 			filesDatabase[fileIndex].subData.transparency = 0;
 			break;
 		}
 		case 4: {
 			filesDatabase[fileIndex].width = filesDatabase[fileIndex].widthInColumn * 2;
-			filesDatabase[fileIndex].subData.resourceType = 4;
-			decodeGfxFormat4(&filesDatabase[fileIndex]);
+			filesDatabase[fileIndex].subData.resourceType = OBJ_TYPE_SPRITE;
+			decodeGfxUnified(&filesDatabase[fileIndex], localBuffer.type);
 			filesDatabase[fileIndex].subData.index = currentEntryIdx;
 			filesDatabase[fileIndex].subData.transparency = localBuffer.transparency % 0x10;
 			break;
 		}
 		case 5: {
-			filesDatabase[fileIndex].subData.resourceType = 4;
-			decodeGfxFormat5(&filesDatabase[fileIndex]);
+			filesDatabase[fileIndex].subData.resourceType = OBJ_TYPE_SPRITE;
+			decodeGfxUnified(&filesDatabase[fileIndex], localBuffer.type);
 			filesDatabase[fileIndex].width = filesDatabase[fileIndex].widthInColumn;
 			filesDatabase[fileIndex].subData.index = currentEntryIdx;
 			filesDatabase[fileIndex].subData.transparency = localBuffer.transparency;
 			break;
 		}
 		case 8: {
-			filesDatabase[fileIndex].subData.resourceType = 4;
+			filesDatabase[fileIndex].subData.resourceType = OBJ_TYPE_SPRITE;
 			filesDatabase[fileIndex].width = filesDatabase[fileIndex].widthInColumn;
 			filesDatabase[fileIndex].subData.index = currentEntryIdx;
 			filesDatabase[fileIndex].subData.transparency = localBuffer.transparency;
 			break;
 		}
 		default: {
-			printf("Unsuported gfx loading type: %d\n", localBuffer.type);
+			warning("Unsuported gfx loading type: %d", localBuffer.type);
 			break;
 		}
 		}
 
-		strcpy(filesDatabase[fileIndex].subData.name, name);
+		if (name != filesDatabase[fileIndex].subData.name)
+			strcpy(filesDatabase[fileIndex].subData.name, name);
 
 		// create the mask
 		switch (localBuffer.type) {
@@ -515,6 +540,7 @@ int loadSetEntry(const char *name, uint8 *ptr, int currentEntryIdx, int currentD
 					}
 				}
 			}
+
 			break;
 		}
 		default: {

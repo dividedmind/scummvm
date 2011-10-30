@@ -1,4 +1,4 @@
-/* ScummVM - Graphic Adventure Engine
+/* ScummVM - Graphic Adventure Engin
  *
  * ScummVM is the legal property of its developers, whose names
  * are too numerous to list here. Please refer to the COPYRIGHT
@@ -47,7 +47,7 @@ enum Buffers {
 #define ANIM_STACK_SIZE (1024 * 32)
 
 #define DEFAULT_PAL_X		175
-#define DEFAULT_PAL_Y		60
+#define DEFAULT_PAL_Y		72 // 60
 #define DEFAULT_NTSC_X		165
 #define DEFAULT_NTSC_Y		45
 #define ORG_X 256
@@ -141,18 +141,31 @@ Gs2dScreen::Gs2dScreen(uint16 width, uint16 height, TVMode tvMode) {
 	clearOverlay();
 
 	if (tvMode == TV_DONT_CARE) {
+#if 1
+	char romver[8];
+	int fd = fioOpen("rom0:ROMVER", O_RDONLY);
+	fioRead(fd, &romver, 8);
+	fioClose(fd);
+
+	if (romver[4] == 'E')
+		_tvMode = TV_PAL;
+	else
+		_tvMode = TV_NTSC;
+#else
 		if (PAL_NTSC_FLAG == 'E')
-			_videoMode = TV_PAL;
+			_tvMode = TV_PAL;
 		else
-			_videoMode = TV_NTSC;
+			_tvMode = TV_NTSC;
+#endif
 	} else
-		_videoMode = tvMode;
+		_tvMode = tvMode;
 
-	printf("Setting up %s mode\n", (_videoMode == TV_PAL) ? "PAL" : "NTSC");
+	// _tvMode = TV_NTSC;
+	printf("Setting up %s mode\n", (_tvMode == TV_PAL) ? "PAL" : "NTSC");
 
-    // set screen size, 640x544 for pal, 640x448 for ntsc
+    // set screen size, 640x512 for pal, 640x448 for ntsc
 	_tvWidth = 640;
-	_tvHeight = ((_videoMode == TV_PAL) ? 544 : 448);
+	_tvHeight = ((_tvMode == TV_PAL) ? 512 /*544*/ : 448);
 	kFullScreen[0].z = kFullScreen[1].z = 0;
 	kFullScreen[0].x = ORIGIN_X;
 	kFullScreen[0].y = ORIGIN_Y;
@@ -186,6 +199,18 @@ Gs2dScreen::Gs2dScreen(uint16 width, uint16 height, TVMode tvMode) {
 	_mTraCol = 255;
 	_shakePos = 0;
 
+	_overlayFormat.bytesPerPixel = 2;
+
+	_overlayFormat.rLoss = 3;
+    _overlayFormat.gLoss = 3;
+    _overlayFormat.bLoss = 3;
+    _overlayFormat.aLoss = 7;
+
+    _overlayFormat.rShift = 0;
+    _overlayFormat.gShift = 5;
+    _overlayFormat.bShift = 10;
+    _overlayFormat.aShift = 15;
+
 	// setup hardware now.
 	GS_CSR = CSR_RESET; // Reset GS
 	asm ("sync.p");
@@ -194,7 +219,7 @@ Gs2dScreen::Gs2dScreen(uint16 width, uint16 height, TVMode tvMode) {
 
 	uint16 dispPosX, dispPosY;
 
-	if (_videoMode == TV_PAL) {
+	if (_tvMode == TV_PAL) {
 		SetGsCrt(GS_INTERLACED, 3, 0);
 		dispPosX = DEFAULT_PAL_X;
 		dispPosY = DEFAULT_PAL_Y;
@@ -312,6 +337,7 @@ void Gs2dScreen::newScreenSize(uint16 width, uint16 height) {
 	memset(_screenBuf, 0, _width * height);
 	memset(_overlayBuf, 0, _width * height * 2);
 	memset(_clut, 0, 256 * sizeof(uint32));
+	_clut[1] = GS_RGBA(0xC0, 0xC0, 0xC0, 0);
 
 	// clear video ram
 	_dmaPipe->uploadTex(_clutPtrs[MOUSE], 64, 0, 0, GS_PSMCT32, _clut, 16, 16);
@@ -320,7 +346,8 @@ void Gs2dScreen::newScreenSize(uint16 width, uint16 height) {
 	_dmaPipe->flush();
 	_dmaPipe->waitForDma();
 
-	_clutChanged = _screenChanged = _overlayChanged = false;
+	/*_clutChanged = */ _screenChanged = _overlayChanged = false;
+	_clutChanged = true; // reload palette on scr change
 
 	_texCoords[1].u = SCALE(_width);
 	_texCoords[1].v = SCALE(_height);
@@ -367,6 +394,13 @@ void Gs2dScreen::copyScreenRect(const uint8 *buf, int pitch, int x, int y, int w
 void Gs2dScreen::clearScreen(void) {
 	WaitSema(g_DmacSema);
 	memset(_screenBuf, 0, _width * _height);
+	_screenChanged = true;
+	SignalSema(g_DmacSema);
+}
+
+void Gs2dScreen::fillScreen(uint32 col) {
+	WaitSema(g_DmacSema);
+	memset(_screenBuf, col, _width * _height);
 	_screenChanged = true;
 	SignalSema(g_DmacSema);
 }
@@ -511,6 +545,18 @@ void Gs2dScreen::hideOverlay(void) {
 	_showOverlay = false;
 }
 
+Graphics::PixelFormat Gs2dScreen::getOverlayFormat(void) {
+	return _overlayFormat;
+}
+
+int16 Gs2dScreen::getOverlayWidth(void) {
+	return _width; // _videoMode.overlayWidth;
+}
+
+int16 Gs2dScreen::getOverlayHeight(void) {
+	return _height; // _videoMode.overlayHeight;
+}
+
 void Gs2dScreen::setShakePos(int shake) {
 	_shakePos = (shake * _mouseScaleY) >> 8;
 	_blitCoords[0].y = SCALE(_shakePos) + ORIGIN_Y;
@@ -535,6 +581,16 @@ void Gs2dScreen::clearPrintfOverlay(void) {
 
 void Gs2dScreen::copyOverlayRect(const uint16 *buf, uint16 pitch, uint16 x, uint16 y, uint16 w, uint16 h) {
 	WaitSema(g_DmacSema);
+
+	// warning("_overlayBuf [dst] = %x", _overlayBuf);
+	// warning("buf [src] = %x", buf);
+
+	// warning("pitch=%d _width=%d - x=%d y=%d w=%d h=%d",
+	//	pitch, _width, x, y, w, h);
+
+	if (x >= 65535) x=0;
+	if (y >= 65535) y=0;
+
 	_overlayChanged = true;
 	uint16 *dest = _overlayBuf + y * _width + x;
 	for (uint32 cnt = 0; cnt < h; cnt++) {
@@ -599,7 +655,7 @@ void Gs2dScreen::setMouseXy(int16 x, int16 y) {
 }
 
 uint8 Gs2dScreen::tvMode(void) {
-	return _videoMode;
+	return _tvMode;
 }
 
 uint16 Gs2dScreen::getWidth(void) {
@@ -624,7 +680,7 @@ void Gs2dScreen::animThread(void) {
 	g_RunAnim = false;
 	float yPos   = 0.0;
 	uint8 texSta = 0;
-	float scrlSpeed = (_videoMode == TV_PAL) ? (_tvHeight / (SCRL_TIME * 50.0)) : (_tvHeight / (SCRL_TIME * 60.0));
+	float scrlSpeed = (_tvMode == TV_PAL) ? (_tvHeight / (SCRL_TIME * 50.0)) : (_tvHeight / (SCRL_TIME * 60.0));
 	uint8 texMax = (_tvHeight / LINE_SPACE) + (ORG_Y / LINE_SPACE);
 	TexVertex texNodes[4] = {
 		{ SCALE(1),   SCALE(1) }, { SCALE(1),   SCALE(14) },

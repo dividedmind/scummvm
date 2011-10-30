@@ -32,12 +32,14 @@
 // The jung2.vqa movie does work, but only thanks to a grotesque hack.
 
 
+#include "kyra/vqa.h"
+
 #include "common/system.h"
 #include "sound/audiostream.h"
 #include "sound/mixer.h"
+
 #include "kyra/sound.h"
 #include "kyra/screen.h"
-#include "kyra/vqa.h"
 #include "kyra/resource.h"
 
 namespace Kyra {
@@ -45,6 +47,7 @@ namespace Kyra {
 VQAMovie::VQAMovie(KyraEngine_v1 *vm, OSystem *system) {
 	_system = system;
 	_vm = vm;
+	_screen = _vm->screen();
 	_opened = false;
 	_x = _y = _drawPage = -1;
 }
@@ -182,7 +185,6 @@ void VQAMovie::decodeSND1(byte *inbuf, uint32 insize, byte *outbuf, uint32 outsi
 }
 
 bool VQAMovie::open(const char *filename) {
-	debugC(9, kDebugLevelMovie, "VQAMovie::open('%s')", filename);
 	close();
 
 	_file = _vm->resource()->createReadStream(filename);
@@ -344,7 +346,6 @@ bool VQAMovie::open(const char *filename) {
 		default:
 			warning("VQAMovie::open: Unknown tag `%c%c%c%c'", char((tag >> 24) & 0xFF), char((tag >> 16) & 0xFF), char((tag >> 8) & 0xFF), char(tag & 0xFF));
 			_file->seek(size, SEEK_CUR);
-			break;
 		}
 	}
 
@@ -355,7 +356,6 @@ bool VQAMovie::open(const char *filename) {
 }
 
 void VQAMovie::close() {
-	debugC(9, kDebugLevelMovie, "VQAMovie::close()");
 	if (_opened) {
 		delete[] _frameInfo;
 		delete[] _frame;
@@ -384,7 +384,6 @@ void VQAMovie::close() {
 }
 
 void VQAMovie::displayFrame(uint frameNum) {
-	debugC(9, kDebugLevelMovie, "VQAMovie::displayFrame(%d)", frameNum);
 	if (frameNum >= _header.numFrames || !_opened)
 		return;
 
@@ -478,13 +477,13 @@ void VQAMovie::displayFrame(uint frameNum) {
 
 				case MKID_BE('CPL0'):	// Palette
 					assert(size <= 3 * 256);
-					_file->read(_vm->screen()->_currentPalette, size);
+					_file->read(_screen->getPalette(0).getData(), size);
 					break;
 
 				case MKID_BE('CPLZ'):	// Palette
 					inbuf = (byte *)allocBuffer(0, size);
 					_file->read(inbuf, size);
-					Screen::decodeFrame4(inbuf, _vm->screen()->_currentPalette, 768);
+					Screen::decodeFrame4(inbuf, _screen->getPalette(0).getData(), 768);
 					break;
 
 				case MKID_BE('VPT0'):	// Frame data
@@ -510,7 +509,6 @@ void VQAMovie::displayFrame(uint frameNum) {
 				default:
 					warning("VQAMovie::displayFrame: Unknown `VQFR' sub-tag `%c%c%c%c'", char((tag >> 24) & 0xFF), char((tag >> 16) & 0xFF), char((tag >> 8) & 0xFF), char(tag & 0xFF));
 					_file->seek(size, SEEK_CUR);
-					break;
 				}
 
 			}
@@ -520,15 +518,13 @@ void VQAMovie::displayFrame(uint frameNum) {
 		default:
 			warning("VQAMovie::displayFrame: Unknown tag `%c%c%c%c'", char((tag >> 24) & 0xFF), char((tag >> 16) & 0xFF), char((tag >> 8) & 0xFF), char(tag & 0xFF));
 			_file->seek(size, SEEK_CUR);
-			break;
 		}
 	}
 
 	// The frame has been decoded
 
-	if (_frameInfo[frameNum] & 0x80000000) {
-		_vm->screen()->setScreenPalette(_vm->screen()->_currentPalette);
-	}
+	if (_frameInfo[frameNum] & 0x80000000)
+		_screen->setScreenPalette(_screen->getPalette(0));
 
 	int blockPitch = _header.width / _header.blockW;
 
@@ -568,7 +564,7 @@ void VQAMovie::displayFrame(uint frameNum) {
 		_partialCodeBookSize = 0;
 	}
 
-	_vm->screen()->copyBlockToPage(_drawPage, _x, _y, _header.width, _header.height, _frame);
+	_screen->copyBlockToPage(_drawPage, _x, _y, _header.width, _header.height, _frame);
 }
 
 void VQAMovie::play() {
@@ -633,19 +629,18 @@ void VQAMovie::play() {
 				break;
 
 			case MKID_BE('CMDS'):	// Unused tag, always empty in kyra3
-				debugC(9, kDebugLevelMovie, "VQAMovie::play: skipping CMDS tag");
 				_file->seek(size, SEEK_CUR);
 				break;
 
 			default:
 				warning("VQAMovie::play: Unknown tag `%c%c%c%c'", char((tag >> 24) & 0xFF), char((tag >> 16) & 0xFF), char((tag >> 8) & 0xFF), char(tag & 0xFF));
 				_file->seek(size, SEEK_CUR);
-				break;
 			}
 		}
 	}
 
 	_vm->_mixer->playInputStream(Audio::Mixer::kSFXSoundType, &_sound, _stream);
+	Common::EventManager *eventMan = _vm->getEventManager();
 
 	for (uint i = 0; i < _header.numFrames; i++) {
 		displayFrame(i);
@@ -664,17 +659,17 @@ void VQAMovie::play() {
 				break;
 
 			Common::Event event;
-
-			Common::EventManager *eventMan = _system->getEventManager();
 			while (eventMan->pollEvent(event)) {
 				switch (event.type) {
 				case Common::EVENT_KEYDOWN:
-					if (event.kbd.ascii == 27)
+					if (event.kbd.keycode == Common::KEYCODE_ESCAPE)
 						return;
 					break;
+
 				case Common::EVENT_RTL:
 				case Common::EVENT_QUIT:
 					return;
+
 				default:
 					break;
 				}
@@ -683,7 +678,7 @@ void VQAMovie::play() {
 			_system->delayMillis(10);
 		}
 
-		_vm->screen()->updateScreen();
+		_screen->updateScreen();
 	}
 
 	// TODO: Wait for the sound to finish?

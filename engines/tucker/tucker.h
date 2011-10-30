@@ -32,7 +32,7 @@
 #include "common/events.h"
 #include "common/stream.h"
 
-#include "graphics/video/flic_player.h"
+#include "graphics/video/flic_decoder.h"
 
 #include "sound/mixer.h"
 
@@ -225,7 +225,7 @@ public:
 		kLocationAnimationsTableSize = 20,
 		kLocationObjectsTableSize = 10,
 		kActionsTableSize = 100,
-		kFlagsTableSize = 800,
+		kFlagsTableSize = 300,
 		kLocationSoundsTableSize = 30,
 		kLocationMusicsTableSize = 4,
 		kSpriteFramesTableSize = 200,
@@ -240,8 +240,7 @@ public:
 	TuckerEngine(OSystem *system, Common::Language language, uint32 flags);
 	virtual ~TuckerEngine();
 
-	virtual Common::Error init();
-	virtual Common::Error go();
+	virtual Common::Error run();
 	virtual bool hasFeature(EngineFeature f) const;
 	virtual void syncSoundSettings();
 
@@ -299,6 +298,7 @@ protected:
 	void startSpeechSound(int num, int volume);
 	void stopSpeechSound();
 	bool isSpeechSoundPlaying();
+	void rememberSpeechSound();
 	void redrawPanelItems();
 	void redrawPanelItemsHelper();
 	void drawSprite(int i);
@@ -318,13 +318,15 @@ protected:
 	void drawStringAlt(int offset, int color, const uint8 *str, int strLen = -1);
 	void drawItemString(int offset, int num, const uint8 *str);
 	void drawCreditsString(int x, int y, int num);
-	void updateCharSpeechSound();
+	void updateCharSpeechSound(bool displayText);
 	void updateItemsGfxColors(int bit0, int bit7);
 	int testLocationMask(int x, int y);
 	int getStringWidth(int num, const uint8 *ptr);
 	int getPositionForLine(int num, const uint8 *ptr);
-	void findActionKey(int count);
-	int parseTableInstruction();
+	void resetCharacterAnimationIndex(int count);
+	int readTableInstructionCode(int *index);
+	int readTableInstructionParam(int len);
+	int executeTableInstruction();
 	void moveUpInventoryObjects();
 	void moveDownInventoryObjects();
 	void setActionVerbUnderCursor();
@@ -340,7 +342,7 @@ protected:
 	void playSpeechForAction(int i);
 	void drawSpeechText(int xStart, int y, const uint8 *dataPtr, int num, int color);
 	int splitSpeechTextLines(const uint8 *dataPtr, int pos, int x, int &lineCharsCount, int &lineWidth);
-	void drawSpeechTextLine(const uint8 *dataPtr, int pos, int count, int dstOffset, uint8 color);
+	void drawSpeechTextLine(const uint8 *dataPtr, int pos, int count, int x, int y, uint8 color);
 	void redrawScreen(int offset);
 	void redrawScreenRect(const Common::Rect &clip, const Common::Rect &dirty);
 	void addDirtyRect(int x, int y, int w, int h);
@@ -551,7 +553,7 @@ protected:
 	void loadCharSizeDta();
 	void loadPanel();
 	void loadBudSpr(int startOffset);
-	void loadCTable01(int firstObjNum, int firstSpriteNum, int &lastSpriteNum);
+	int loadCTable01(int index, int firstSpriteNum);
 	void loadCTable02(int fl);
 	void loadLoc();
 	void loadObj();
@@ -589,7 +591,6 @@ protected:
 	int _locationNum;
 	int _nextLocationNum;
 	bool _gamePaused;
-	bool _gamePaused2;
 	bool _gameDebug;
 	bool _displayGameHints;
 	int _execData3Counter;
@@ -639,11 +640,11 @@ protected:
 	bool _inputKeys[kInputKeyCount];
 	int _cursorNum;
 	int _cursorType;
-	int _updateCursorFlag;
+	bool _updateCursorFlag;
 
 	int _panelNum;
 	int _panelState;
-	int _forceRedrawPanelItems;
+	bool _forceRedrawPanelItems;
 	int _redrawPanelItemsCounter;
 	int _switchPanelFlag;
 	int _panelObjectsOffsetTable[50];
@@ -687,7 +688,7 @@ protected:
 	Audio::SoundHandle _sfxHandles[6];
 	Audio::SoundHandle _musicHandles[2];
 	Audio::SoundHandle _speechHandle;
-	int _soundsMapTable[2];
+	int _miscSoundFxNum[2];
 	int _speechHistoryTable[kSpeechHistoryTableSize];
 	int _charSpeechSoundVolumeTable[kMaxCharacters];
 	int _charSpeechSoundCounter;
@@ -733,10 +734,10 @@ protected:
 	int _actionCharacterNum;
 
 	bool _csDataLoaded;
-	int _csDataHandled;
-	int _stopActionOnSoundFlag;
-	int _csDataTableFlag2;
-	int _stopActionOnPanelLock;
+	bool _csDataHandled;
+	bool _stopActionOnSoundFlag;
+	bool _stopActionOnSpeechFlag;
+	bool _stopActionOnPanelLock;
 	int _csDataTableCount;
 	int _stopActionCounter;
 	int _actionTextColor;
@@ -749,7 +750,7 @@ protected:
 	int _tableInstructionFlag;
 	int _tableInstructionItemNum1, _tableInstructionItemNum2;
 	int _instructionsActionsTable[6];
-	int _validInstructionId;
+	bool _validInstructionId;
 
 	SpriteFrame _spriteFramesTable[kSpriteFramesTableSize];
 	SpriteAnimation _spriteAnimationsTable[200];
@@ -768,8 +769,8 @@ protected:
 	int _characterAnimationsTable[200];
 	int _characterStateTable[200];
 	int _backgroundSprOffset;
-	int _updateCharPositionNewType;
-	int _updateCharPositionType;
+	int _currentActionVerb;
+	int _previousActionVerb;
 	int _mainSpritesBaseOffset;
 	int _currentSpriteAnimationLength;
 	int _currentSpriteAnimationFrame;
@@ -800,7 +801,7 @@ protected:
 	uint8 *_currentGfxBackground;
 	int _fadePaletteCounter;
 	uint8 _currentPalette[768];
-	int _fullRedrawCounter;
+	bool _fullRedraw;
 	int _dirtyRectsPrevCount, _dirtyRectsCount;
 	Common::Rect _dirtyRectsTable[2][kMaxDirtyRects];
 
@@ -847,11 +848,32 @@ enum AnimationSoundType {
 	kAnimationSoundTypeLoopingWAV
 };
 
+enum {
+	kSoundsList_Seq3_4,
+	kSoundsList_Seq9_10,
+	kSoundsList_Seq21_20,
+	kSoundsList_Seq13_14,
+	kSoundsList_Seq15_16,
+	kSoundsList_Seq27_28,
+	kSoundsList_Seq17_18,
+	kSoundsList_Seq19_20
+};
+
 struct SoundSequenceData {
 	int timestamp;
 	int index;
-	int opcode;
+	int num;
 	int volume;
+	int opcode;
+};
+
+struct SoundSequenceDataList {
+	int musicIndex;
+	int musicVolume;
+	int soundList1Count;
+	int soundList2Count;
+	int soundSeqDataCount;
+	const SoundSequenceData *soundSeqData;
 };
 
 class AnimationSequencePlayer {
@@ -876,7 +898,7 @@ public:
 private:
 
 	void syncTime();
-	void loadSounds(int type, int num);
+	void loadSounds(int num);
 	Audio::AudioStream *loadSoundFileAsStream(int index, AnimationSoundType type);
 	void updateSounds();
 	void fadeInPalette();
@@ -884,7 +906,7 @@ private:
 	void unloadAnimation();
 	uint8 *loadPicture(const char *fileName);
 	void openAnimation(int index, const char *fileName);
-	void decodeNextAnimationFrame(int index);
+	bool decodeNextAnimationFrame(int index);
 	void loadIntroSeq17_18();
 	void playIntroSeq17_18();
 	void loadIntroSeq19_20();
@@ -906,6 +928,7 @@ private:
 	void playIntroSeq15_16();
 	void loadIntroSeq27_28();
 	void playIntroSeq27_28();
+	void getRGBPalette(int index);
 
 	OSystem *_system;
 	Audio::Mixer *_mixer;
@@ -915,16 +938,11 @@ private:
 	bool _changeToNextSequence;
 	const SequenceUpdateFunc *_updateFunc;
 	int _updateFuncIndex;
-	::Graphics::FlicPlayer _flicPlayer[2];
+	::Graphics::FlicDecoder _flicPlayer[2];
 	uint8 _animationPalette[256 * 4];
-	int _soundsList1Offset;
-	int _soundsList1Count;
-	int _soundsList2Offset;
-	int _soundsList2Count;
-	int _soundSeqDataOffset;
 	int _soundSeqDataCount;
 	int _soundSeqDataIndex;
-	int _musicVolume;
+	const SoundSequenceData *_soundSeqData;
 	uint8 *_offscreenBuffer;
 	int _updateScreenWidth;
 	int _updateScreenPicture;
@@ -937,8 +955,7 @@ private:
 	Audio::SoundHandle _sfxHandle;
 	Audio::SoundHandle _musicHandle;
 
-	static const SoundSequenceData _soundSeqData[];
-	static const char *_musicFileNamesTable[];
+	static const SoundSequenceDataList _soundSeqDataList[];
 	static const char *_audioFileNamesTable[];
 };
 

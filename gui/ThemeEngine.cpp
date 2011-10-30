@@ -42,13 +42,17 @@
 #include "gui/ThemeEval.h"
 #include "gui/ThemeParser.h"
 
-#ifdef MACOSX
+#if defined(MACOSX) || defined(IPHONE)
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
 #define GUI_ENABLE_BUILTIN_THEME
 
 namespace GUI {
+
+const char * const ThemeEngine::kImageLogo = "logo.bmp";
+const char * const ThemeEngine::kImageLogoSmall = "logo_small.bmp";
+const char * const ThemeEngine::kImageSearch = "search.bmp";
 
 struct TextDrawData {
 	const Graphics::Font *_fontPtr;
@@ -163,6 +167,7 @@ static const DrawDataInfo kDrawDataDefaults[] = {
 	{kDDPlainColorBackground,		"plain_bg",			true,	kDDNone},
 	{kDDDefaultBackground,			"default_bg",		true,	kDDNone},
 	{kDDTextSelectionBackground,	"text_selection",	false,	kDDNone},
+	{kDDTextSelectionFocusBackground,	"text_selection_focus",	false,	kDDNone},
 
 	{kDDWidgetBackgroundDefault,	"widget_default",	true,	kDDNone},
 	{kDDWidgetBackgroundSmall,		"widget_small",		true,	kDDNone},
@@ -382,7 +387,7 @@ bool ThemeEngine::init() {
 		if (node.getName().hasSuffix(".zip") && !node.isDirectory()) {
 #ifdef USE_ZLIB
 			Common::ZipArchive *zipArchive = new Common::ZipArchive(node);
-	
+
 			if (!zipArchive || !zipArchive->isOpen()) {
 				delete zipArchive;
 				zipArchive = 0;
@@ -397,7 +402,7 @@ bool ThemeEngine::init() {
 			_themeArchive = new Common::FSDirectory(node);
 		}
 	}
-	
+
 	// Load the theme
 	// We pass the theme file here by default, so the user will
 	// have a descriptive error message. The only exception will
@@ -415,7 +420,7 @@ void ThemeEngine::clearAll() {
 }
 
 void ThemeEngine::refresh() {
-	
+
 	// Flush all bitmaps if the overlay pixel format changed.
 	if (_overlayFormat != _system->getOverlayFormat()) {
 		for (ImagesMap::iterator i = _bitmaps.begin(); i != _bitmaps.end(); ++i) {
@@ -622,7 +627,7 @@ void ThemeEngine::loadTheme(const Common::String &themeId) {
 		// Load the archive containing image and XML data
 		_themeOk = loadThemeXML(themeId);
 	}
-	
+
 	if (!_themeOk) {
 		warning("Failed to load theme '%s'", themeId.c_str());
 		return;
@@ -907,21 +912,21 @@ void ThemeEngine::drawDialogBackground(const Common::Rect &r, DialogBackground b
 		return;
 
 	switch (bgtype) {
-		case kDialogBackgroundMain:
-			queueDD(kDDMainDialogBackground, r);
-			break;
+	case kDialogBackgroundMain:
+		queueDD(kDDMainDialogBackground, r);
+		break;
 
-		case kDialogBackgroundSpecial:
-			queueDD(kDDSpecialColorBackground, r);
-			break;
+	case kDialogBackgroundSpecial:
+		queueDD(kDDSpecialColorBackground, r);
+		break;
 
-		case kDialogBackgroundPlain:
-			queueDD(kDDPlainColorBackground, r);
-			break;
+	case kDialogBackgroundPlain:
+		queueDD(kDDPlainColorBackground, r);
+		break;
 
-		case kDialogBackgroundDefault:
-			queueDD(kDDDefaultBackground, r);
-			break;
+	case kDialogBackgroundDefault:
+		queueDD(kDDDefaultBackground, r);
+		break;
 	}
 }
 
@@ -952,7 +957,7 @@ void ThemeEngine::drawPopUpWidget(const Common::Rect &r, const Common::String &s
 	queueDD(dd, r);
 
 	if (!sel.empty()) {
-		Common::Rect text(r.left, r.top, r.right - 16, r.bottom);
+		Common::Rect text(r.left + 3, r.top + 1, r.right - 10, r.bottom);
 		queueDDText(getTextData(dd), text, sel, true, false, _widgets[dd]->_textAlignH, _widgets[dd]->_textAlignV, deltax);
 	}
 }
@@ -991,60 +996,66 @@ void ThemeEngine::drawTab(const Common::Rect &r, int tabHeight, int tabWidth, co
 	if (!ready())
 		return;
 
-	const int tabOffset = 2;
-	tabWidth -= tabOffset;
-
 	queueDD(kDDTabBackground, Common::Rect(r.left, r.top, r.right, r.top + tabHeight));
 
 	for (int i = 0; i < (int)tabs.size(); ++i) {
 		if (i == active)
 			continue;
 
-		Common::Rect tabRect(r.left + i * (tabWidth + tabOffset), r.top, r.left + i * (tabWidth + tabOffset) + tabWidth, r.top + tabHeight);
+		Common::Rect tabRect(r.left + i * tabWidth, r.top, r.left + (i + 1) * tabWidth, r.top + tabHeight);
 		queueDD(kDDTabInactive, tabRect);
 		queueDDText(getTextData(kDDTabInactive), tabRect, tabs[i], false, false, _widgets[kDDTabInactive]->_textAlignH, _widgets[kDDTabInactive]->_textAlignV);
 	}
 
 	if (active >= 0) {
-		Common::Rect tabRect(r.left + active * (tabWidth + tabOffset), r.top, r.left + active * (tabWidth + tabOffset) + tabWidth, r.top + tabHeight);
-		const uint16 tabLeft = active * (tabWidth + tabOffset);
+		Common::Rect tabRect(r.left + active * tabWidth, r.top, r.left + (active + 1) * tabWidth, r.top + tabHeight);
+		const uint16 tabLeft = active * tabWidth;
 		const uint16 tabRight =  MAX(r.right - tabRect.right, 0);
 		queueDD(kDDTabActive, tabRect, (tabLeft << 16) | (tabRight & 0xFFFF));
 		queueDDText(getTextData(kDDTabActive), tabRect, tabs[active], false, false, _widgets[kDDTabActive]->_textAlignH, _widgets[kDDTabActive]->_textAlignV);
 	}
 }
 
-void ThemeEngine::drawText(const Common::Rect &r, const Common::String &str, WidgetStateInfo state, Graphics::TextAlign align, bool inverted, int deltax, bool useEllipsis, FontStyle font) {
+void ThemeEngine::drawText(const Common::Rect &r, const Common::String &str, WidgetStateInfo state, Graphics::TextAlign align, TextInversionState inverted, int deltax, bool useEllipsis, FontStyle font) {
 	if (!ready())
 		return;
 
-	if (inverted) {
+	switch (inverted) {
+	case kTextInversion:
 		queueDD(kDDTextSelectionBackground, r);
 		queueDDText(kTextDataInverted, r, str, false, useEllipsis, align, kTextAlignVCenter, deltax);
 		return;
+
+	case kTextInversionFocus:
+		queueDD(kDDTextSelectionFocusBackground, r);
+		queueDDText(kTextDataInverted, r, str, false, useEllipsis, align, kTextAlignVCenter, deltax);
+		return;
+
+	default:
+		break;
 	}
 
 	switch (font) {
-		case kFontStyleNormal:
-			queueDDText(kTextDataNormalFont, r, str, true, useEllipsis, align, kTextAlignVCenter, deltax);
-			return;
+	case kFontStyleNormal:
+		queueDDText(kTextDataNormalFont, r, str, true, useEllipsis, align, kTextAlignVCenter, deltax);
+		return;
 
-		default:
-			break;
+	default:
+		break;
 	}
 
 	switch (state) {
-		case kStateDisabled:
-			queueDDText(kTextDataDisabled, r, str, true, useEllipsis, align, kTextAlignVCenter, deltax);
-			return;
+	case kStateDisabled:
+		queueDDText(kTextDataDisabled, r, str, true, useEllipsis, align, kTextAlignVCenter, deltax);
+		return;
 
-		case kStateHighlight:
-			queueDDText(kTextDataHover, r, str, true, useEllipsis, align, kTextAlignVCenter, deltax);
-			return;
+	case kStateHighlight:
+		queueDDText(kTextDataHover, r, str, true, useEllipsis, align, kTextAlignVCenter, deltax);
+		return;
 
-		case kStateEnabled:
-			queueDDText(kTextDataDefault, r, str, true, useEllipsis, align, kTextAlignVCenter, deltax);
-			return;
+	case kStateEnabled:
+		queueDDText(kTextDataDefault, r, str, true, useEllipsis, align, kTextAlignVCenter, deltax);
+		return;
 	}
 }
 
@@ -1103,16 +1114,40 @@ void ThemeEngine::updateScreen() {
 	renderDirtyScreen();
 }
 
+void ThemeEngine::addDirtyRect(Common::Rect r) {
+	// Clip the rect to screen coords
+	r.clip(_screen.w, _screen.h);
+
+	// If it is empty after clipping, we are done
+	if (r.isEmpty())
+		return;
+
+	// Check if the new rectangle is contained within another in the list
+	Common::List<Common::Rect>::iterator it;
+	for (it = _dirtyScreen.begin(); it != _dirtyScreen.end(); ) {
+		// If we find a rectangle which fully contains the new one,
+		// we can abort the search.
+		if (it->contains(r))
+			return;
+
+		// Conversely, if we find rectangles which are contained in
+		// the new one, we can remove them
+		if (r.contains(*it))
+			it = _dirtyScreen.erase(it);
+		else
+			++it;
+	}
+
+	// If we got here, we can safely add r to the list of dirty rects.
+	_dirtyScreen.push_back(r);
+}
+
 void ThemeEngine::renderDirtyScreen() {
 	if (_dirtyScreen.empty())
 		return;
 
-	Common::List<Common::Rect>::const_iterator i, j;
+	Common::List<Common::Rect>::iterator i, j;
 	for (i = _dirtyScreen.begin(); i != _dirtyScreen.end(); ++i) {
-		for (j = i; j != _dirtyScreen.end(); ++j)
-			if (j != i && i->contains(*j))
-				j = _dirtyScreen.reverse_erase(j);
-
 		_vectorRenderer->copyFrame(_system, *i);
 	}
 
@@ -1385,7 +1420,7 @@ void ThemeEngine::listUsableThemes(Common::List<ThemeDescriptor> &list) {
 	listUsableThemes(Common::FSNode(DATA_PATH), list);
 #endif
 
-#ifdef MACOSX
+#if defined(MACOSX) || defined(IPHONE)
 	CFURLRef resourceUrl = CFBundleCopyResourcesDirectoryURL(CFBundleGetMainBundle());
 	if (resourceUrl) {
 		char buf[256];
@@ -1411,7 +1446,7 @@ void ThemeEngine::listUsableThemes(Common::List<ThemeDescriptor> &list) {
 	Common::List<ThemeDescriptor> output;
 
 	for (Common::List<ThemeDescriptor>::const_iterator i = list.begin(); i != list.end(); ++i) {
-		if (find_if(output.begin(), output.end(), TDComparator(i->id)) == output.end())
+		if (Common::find_if(output.begin(), output.end(), TDComparator(i->id)) == output.end())
 			output.push_back(*i);
 	}
 
@@ -1419,7 +1454,7 @@ void ThemeEngine::listUsableThemes(Common::List<ThemeDescriptor> &list) {
 	output.clear();
 }
 
-void ThemeEngine::listUsableThemes(Common::FSNode node, Common::List<ThemeDescriptor> &list, int depth) {
+void ThemeEngine::listUsableThemes(const Common::FSNode &node, Common::List<ThemeDescriptor> &list, int depth) {
 	if (!node.exists() || !node.isReadable() || !node.isDirectory())
 		return;
 
@@ -1463,10 +1498,10 @@ void ThemeEngine::listUsableThemes(Common::FSNode node, Common::List<ThemeDescri
 			list.push_back(td);
 		}
 	}
-	
+
 	fileList.clear();
 #endif
-	
+
 	// Check if we exceeded the given recursion depth
 	if (depth - 1 == -1)
 		return;
@@ -1485,7 +1520,7 @@ Common::String ThemeEngine::getThemeFile(const Common::String &id) {
 	// of the builtin one.
 	if (id.equalsIgnoreCase("default"))
 		return Common::String();
-	
+
 	// For our builtin theme we don't have to do anything for now too
 	if (id.equalsIgnoreCase("builtin"))
 		return Common::String();

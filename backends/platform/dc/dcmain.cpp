@@ -199,7 +199,7 @@ void OSystem_Dreamcast::getTimeAndDate(struct tm &t) const {
   t = *localtime(&curTime);
 }
 
-void dc_init_hardware()
+void DCHardware::dc_init_hardware()
 {
 #ifndef NOSERIAL
   serial_init(57600);
@@ -213,21 +213,20 @@ void dc_init_hardware()
   init_arm();
 }
 
+static OSystem_Dreamcast osys_dc;
+
 int main()
 {
-  static char *argv[] = { "scummvm", NULL, };
+  static const char *argv[] = { "scummvm", NULL, };
   static int argc = 1;
 
-  dc_init_hardware();
-
-  g_system = new OSystem_Dreamcast();
-  assert(g_system);
+  g_system = &osys_dc;
 
 #ifdef DYNAMIC_MODULES
-	PluginManager::instance().addPluginProvider(new DCPluginProvider());
+  PluginManager::instance().addPluginProvider(new DCPluginProvider());
 #endif
 
-  int res = scummvm_main(argc, argv);
+  scummvm_main(argc, argv);
 
   g_system->quit();
 }
@@ -235,14 +234,24 @@ int main()
 int DCLauncherDialog::runModal()
 {
   char *base = NULL, *dir = NULL;
+  Common::Language language = Common::UNK_LANG;
+  Common::Platform platform = Common::kPlatformUnknown;
 
-  if (!selectGame(base, dir, icon))
+  if (!selectGame(base, dir, language, platform, icon))
     g_system->quit();
 
   // Set the game path.
   ConfMan.addGameDomain(base);
   if (dir != NULL)
     ConfMan.set("path", dir, base);
+
+  // Set the game language.
+  if (language != Common::UNK_LANG)
+    ConfMan.set("language", Common::getLanguageCode(language), base);
+
+  // Set the game platform.
+  if (platform != Common::kPlatformUnknown)
+    ConfMan.set("platform", Common::getPlatformCode(platform), base);
 
   // Set the target.
   ConfMan.setActiveDomain(base);

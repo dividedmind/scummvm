@@ -23,9 +23,12 @@
  *
  */
 
+#ifdef ENABLE_LOL
+
 #include "kyra/lol.h"
 #include "kyra/screen_lol.h"
 #include "kyra/resource.h"
+#include "kyra/timer.h"
 #include "kyra/sound.h"
 
 #include "common/endian.h"
@@ -33,7 +36,7 @@
 namespace Kyra {
 
 void LoLEngine::loadLevel(int index) {
-	_unkFlag |= 0x800;
+	_flagsTable[73] |= 0x08;
 	setMouseCursorToIcon(0x85);
 	_nextScriptFunc = 0;
 
@@ -48,49 +51,50 @@ void LoLEngine::loadLevel(int index) {
 	_emc->unload(&_scriptData);
 
 	resetItems(1);
-	resetLvlBuffer();
-	resetBlockProperties();	
+	disableMonsters();
+	resetBlockProperties();
 
 	releaseMonsterShapes(0);
 	releaseMonsterShapes(1);
 
-	// TODO
-	
+	for (int i = 0x50; i < 0x53; i++)
+		_timer->disable(i);
+
 	_currentLevel = index;
 	_updateFlags = 0;
 
-	// TODO
+	setDefaultButtonState();
 
 	loadTalkFile(index);
 
-	loadLevelWLL(index, true);
+	loadLevelWallData(index, true);
 	_loadLevelFlag = 1;
 
 	char filename[13];
 	snprintf(filename, sizeof(filename), "LEVEL%d.INI", index);
-	
-	int f = _levelFlagUnk & (1 << ((index + 0xff) & 0xff));
+
+	int f = _hasTempDataFlags & (1 << (index - 1));
 
 	runInitScript(filename, f ? 0 : 1);
 
 	if (f)
-		loadLevelCmzFile(index);
+		restoreBlockTempData(index);
 
 	snprintf(filename, sizeof(filename), "LEVEL%d.INF", index);
 	runInfScript(filename);
 
 	addLevelItems();
-	initCmzWithScript(_currentBlock);
+	deleteMonstersFromBlock(_currentBlock);
 
-	_screen->generateGrayOverlay(_screen->_currentPalette, _screen->_grayOverlay,32, 16, 0, 0, 128, true);
+	_screen->generateGrayOverlay(_screen->getPalette(0), _screen->_grayOverlay, 32, 16, 0, 0, 128, true);
 
-	_loadLevelFlag2 = false;
+	_sceneDefaultUpdate = 0;
 	if (_screen->_fadeFlag == 3)
 		_screen->fadeToBlack(10);
 
 	gui_drawPlayField();
 
-	_screen->setPaletteBrightness(_screen->_currentPalette, _brightness, _lampOilStatus);
+	setPaletteBrightness(_screen->getPalette(0), _brightness, _lampEffect);
 	setMouseCursorToItemInHand();
 
 	snd_playTrack(_curMusicTheme);
@@ -101,189 +105,22 @@ void LoLEngine::addLevelItems() {
 		if (_itemsInPlay[i].level != _currentLevel)
 			continue;
 
-		moveItemToBlock(&_levelBlockProperties[_itemsInPlay[i].blockPropertyIndex].itemIndex, i);
+		assignBlockObject(&_levelBlockProperties[_itemsInPlay[i].block].assignedObjects, i);
 
-		_levelBlockProperties[_itemsInPlay[i].blockPropertyIndex].field_8 = 5;
-		_itemsInPlay[i].unk2 = 0;
+		_levelBlockProperties[_itemsInPlay[i].block].direction = 5;
+		_itemsInPlay[i].nextDrawObject = 0;
 	}
 }
 
-int LoLEngine::initCmzWithScript(int block) {
-	int i = _levelBlockProperties[block].itemIndex;
-	int cnt = 0;
-	CLevelItem *t = 0;
+void LoLEngine::assignBlockObject(uint16 *cmzItemIndex, uint16 item) {
+	ItemInPlay *tmp = 0;
 
-	while (i) {		
-		t = findItem(i);
-		i = t->itemIndexUnk;
-		if (!(i & 0x8000))
-			continue;
-
-		i &= 0x7fff;
-		t = &_cLevelItems[i];
-
-		cnt++;
-		initCMZ1(t, 14);
-
-		checkScriptUnk(t->blockPropertyIndex);
-
-		initCMZ2(t, 0, 0);
-	}
-	return cnt;
-}
-
-void LoLEngine::initCMZ1(CLevelItem *l, int a) {
-	if (l->field_14 == 13 && a != 14)
-		return;
-	if (a == 7) {
-		l->itemPosX = _partyPosX;
-		l->itemPosY = _partyPosX;
+	while (*cmzItemIndex & 0x8000) {
+		tmp = findObject(*cmzItemIndex);
+		cmzItemIndex = &tmp->nextAssignedObject;
 	}
 
-	if (l->field_14 == 1 && a == 7) {
-		for (int i = 0; i < 30; i++) {
-			if (l->field_14 != 1)
-				continue;
-			l->field_14 = a;
-			l->field_15 = 0;
-			l->itemPosX = _partyPosX;
-			l->itemPosY = _partyPosY;
-			cmzS2(l, cmzS1(l->p_1a, l->p_1b, l->itemPosX, l->itemPosY));
-		}		
-	} else {
-		l->field_14 = a;
-		l->field_15 = 0;
-		if (a == 14)
-			l->field_1D = 0;
-		if (a == 13 && (l->field_19 & 0x20)) {
-			l->field_14 = 0;
-			cmzS3(l);
-			if (_currentLevel != 29)
-				initCMZ1(l, 14);
-			runResidentScriptCustom(0x404, -1, l->field_16, l->field_16, 0, 0);
-			checkScriptUnk(l->blockPropertyIndex);
-			if (l->field_14 == 14)
-				initCMZ2(l, 0, 0);
-		}
-	}
-
-}
-
-void LoLEngine::initCMZ2(CLevelItem *l, uint16 a, uint16 b) {
-	bool cont = true;
-	int t = l->blockPropertyIndex;
-	if (l->blockPropertyIndex) {
-		cmzS4(_levelBlockProperties[l->blockPropertyIndex].itemIndex, ((uint16)l->field_16) | 0x8000);
-		_levelBlockProperties[l->blockPropertyIndex].field_8 = 5;
-		checkScriptUnk(l->blockPropertyIndex);
-	} else {
-		cont = false;
-	}
-	
-	l->blockPropertyIndex = cmzS5(a, b);
-	
-	if (l->p_1a != a || l->p_1b != b) {
-		l->p_1a = a;
-		l->p_1b = b;
-		l->anon9 = (++l->anon9) & 3;
-	}
-
-	if (l->blockPropertyIndex == 0)
-		return;
-
-	cmzS6(_levelBlockProperties[l->blockPropertyIndex].itemIndex, ((uint16)l->field_16) | 0x8000);
-	_levelBlockProperties[l->blockPropertyIndex].field_8 = 5;
-	checkScriptUnk(l->blockPropertyIndex);
-	
-	if (l->monsters->unk8[0] == 0 || cont == false)
-		return;
-
-	if ((!(l->monsters->unk5[0] & 0x100) || ((l->anon9 & 1) == 0)) && l->blockPropertyIndex == t)
-		return;
-
-	if (l->blockPropertyIndex != t)
-		runResidentScriptCustom(l->blockPropertyIndex, 0x800, -1, l->field_16, 0, 0);
-
-	if (_updateFlags & 1)
-		return;
-
-	cmzS7(l->monsters->unk3[5], l->blockPropertyIndex);
-}
-
-int LoLEngine::cmzS1(uint16 x1, uint16 y1, uint16 x2, uint16 y2) {
-	int16 r = 0;
-	int16 t1 = y1 - y2;
-	if (t1 < 0) {
-		r++;
-		t1 = -t1;
-	}
-
-	r <<= 1;
-
-	int16 t2 = x2 - x1;
-
-	if (t2 < 0) {
-		r++;
-		t2 = -t2;
-	}
-
-	uint8 f = 0;
-	
-	if (t2 >= t1) {
-		if (t2 > t1)
-			f = 1;
-		SWAP(t1, t2);		
-	}
-
-	r = (r << 1) | f;
-	
-	t1 = (t1 + 1) >> 1;
-
-	f = 0;
-	f = (t2 > t1) ? 1 : 0;
-	r = (r << 1) | f;
-
-	static const uint8 Retv[] = { 1, 2, 1, 0, 7, 6, 7, 0, 3, 2, 3, 4, 5, 6, 5, 4};
-	return Retv[r];
-}
-
-void LoLEngine::cmzS2(CLevelItem *l, int a) {
-	// TODO
-}
-
-void LoLEngine::cmzS3(CLevelItem *l) {
-	// TODO
-}
-
-void LoLEngine::cmzS4(uint16 &itemIndex, int a) {
-	// TODO
-}
-
-int LoLEngine::cmzS5(uint16 a, uint16 b) {
-	// TODO
-	return 0;
-}
-
-void LoLEngine::cmzS6(uint16 &itemIndex, int a) {
-	// TODO
-}
-
-void LoLEngine::cmzS7(int a, int block) {
-	if (!(_unkGameFlag & 1))
-		return;
-
-	// TODO
-}
-
-void LoLEngine::moveItemToBlock(uint16 *cmzItemIndex, uint16 item) {
-	CLevelItem *tmp = 0;
-
-	while (*cmzItemIndex & 0x8000) {		
-		tmp = findItem(*cmzItemIndex);
-		cmzItemIndex = &tmp->itemIndexUnk;
-	}
-
-	tmp = findItem(item);
+	tmp = findObject(item);
 	tmp->level = -1;
 
 	uint16 ix = *cmzItemIndex;
@@ -292,17 +129,17 @@ void LoLEngine::moveItemToBlock(uint16 *cmzItemIndex, uint16 item) {
 		return;
 
 	*cmzItemIndex = item;
-	cmzItemIndex = &tmp->itemIndexUnk;
+	cmzItemIndex = &tmp->nextAssignedObject;
 
 	while (*cmzItemIndex) {
-		tmp = findItem(*cmzItemIndex);
-		cmzItemIndex = &tmp->itemIndexUnk;
+		tmp = findObject(*cmzItemIndex);
+		cmzItemIndex = &tmp->nextAssignedObject;
 	}
 
 	*cmzItemIndex = ix;
 }
 
-void LoLEngine::loadLevelWLL(int index, bool mapShapes) {
+void LoLEngine::loadLevelWallData(int index, bool mapShapes) {
 	char filename[13];
 	snprintf(filename, sizeof(filename), "LEVEL%d.WLL", index);
 
@@ -322,7 +159,7 @@ void LoLEngine::loadLevelWLL(int index, bool mapShapes) {
 
 		if (mapShapes) {
 			int16 sh = (int16) READ_LE_UINT16(d);
-			if (sh > 0)				
+			if (sh > 0)
 				_wllShapeMap[c] = assignLevelShapes(sh);
 			else
 				_wllShapeMap[c] = *d;
@@ -333,18 +170,18 @@ void LoLEngine::loadLevelWLL(int index, bool mapShapes) {
 		_wllWallFlags[c] = *d;
 		d += 2;
 		_wllBuffer4[c] = *d;
-		d += 2;		
+		d += 2;
 	}
 
 	delete[] file;
 
 	delete _lvlShpFileHandle;
-	_lvlShpFileHandle = 0;	
+	_lvlShpFileHandle = 0;
 }
 
 int LoLEngine::assignLevelShapes(int index) {
-	uint16 *p1 = (uint16 *) _tempBuffer5120;
-	uint16 *p2 = (uint16 *) (_tempBuffer5120 + 4000);
+	uint16 *p1 = (uint16 *)_tempBuffer5120;
+	uint16 *p2 = (uint16 *)(_tempBuffer5120 + 4000);
 
 	uint16 r = p2[index];
 	if (r)
@@ -353,7 +190,7 @@ int LoLEngine::assignLevelShapes(int index) {
 	uint16 o = _lvlBlockIndex++;
 
 	memcpy(&_levelShapeProperties[o], &_levelFileData[index], sizeof(LevelShapeProperty));
-	
+
 	for (int i = 0; i < 10; i++) {
 		uint16 t = _levelShapeProperties[o].shapeIndex[i];
 		if (t == 0xffff)
@@ -391,72 +228,62 @@ uint8 *LoLEngine::getLevelShapes(int shapeIndex) {
 	_lvlShpFileHandle->seek(offs, SEEK_SET);
 	uint8 *res = new uint8[size];
 	_lvlShpFileHandle->read(res, size);
-	
+
 	return res;
 }
 
-void LoLEngine::loadLevelCmzFile(int index) {
-	//char filename[13];
-	//snprintf(filename, sizeof(filename), "_LEVEL%d.TMP", index);
-	// TODO ???
+void LoLEngine::restoreBlockTempData(int index) {
 	memset(_tempBuffer5120, 0, 5120);
-	uint16 tmpLvlVal = 0;
+	int l = index - 1;
 
+	memcpy(_monsters, _lvlTempData[l]->monsters, sizeof(MonsterInPlay) * 30);
+	memcpy(_flyingObjects, _lvlTempData[l]->flyingObjects, sizeof(FlyingObject) * 8);
 
 	char filename[13];
 	snprintf(filename, sizeof(filename), "LEVEL%d.CMZ", index);
-	
+
 	_screen->loadBitmap(filename, 3, 3, 0);
 	const uint8 *p = _screen->getCPagePtr(2);
 	uint16 len = READ_LE_UINT16(p + 4);
-
-	uint8 *cmzdata = new uint8[0x1000];
-
-	for (int i = 0; i < 1024; i++)
-		 memcpy(&cmzdata[i << 2], &p[i * len + 6], 4);
+	p += 6;
 
 	memset(_levelBlockProperties, 0, 1024 * sizeof(LevelBlockProperty));
 
-	uint8 *c = cmzdata;
-	uint8 *t = _tempBuffer5120;
+	uint8 *t = _lvlTempData[l]->wallsXorData;
+	uint8 *t2 = _lvlTempData[l]->flags;
 
 	for (int i = 0; i < 1024; i++) {
 		for (int ii = 0; ii < 4; ii++)
-			_levelBlockProperties[i].walls[ii] = *c++ ^ *t++;
+			_levelBlockProperties[i].walls[ii] = p[i * len + ii] ^ *t++;
+		_levelBlockProperties[i].flags = *t2++;
 	}
 
-	for (int i = 0; i < 1024; i++)
-		_levelBlockProperties[i].flags = *t++;
-
 	for (int i = 0; i < 30; i++) {
-		if (_cLevelItems[i].blockPropertyIndex) {
-			_cLevelItems[i].blockPropertyIndex = 0;
-			_cLevelItems[i].monsters = _monsterProperties + _cLevelItems[i].field_20;
-			initCMZ2(&_cLevelItems[i], _cLevelItems[i].p_1a, _cLevelItems[i].p_1b);
+		if (_monsters[i].block) {
+			_monsters[i].block = 0;
+			_monsters[i].properties = &_monsterProperties[_monsters[i].type];
+			placeMonster(&_monsters[i], _monsters[i].x, _monsters[i].y);
 		}
 	}
-		
-	loadCMZ_Sub(tmpLvlVal, (_unkGameFlag & 0x30) >> 4);
 
-	delete[] cmzdata;
+	restoreTempDataAdjustMonsterStrength(l);
 }
 
-void LoLEngine::loadCMZ_Sub(int index1, int index2) {
-	static const int table[] = { 0x66, 0x100, 0x180, 0x100, 0x100, 0xC0, 0x140, 0x100, 0x80, 0x80, 0x100, 0x100 };
-	int val = (table[index2] << 8) / table[index1];
+void LoLEngine::restoreTempDataAdjustMonsterStrength(int index) {
+	if (_lvlTempData[index]->monsterDifficulty == _monsterDifficulty)
+		return;
 
-	//int r = 0;
-	
+	uint16 d = (_monsterModifiers[_lvlTempData[index]->monsterDifficulty] << 8) / _monsterModifiers[_monsterDifficulty];
+
 	for (int i = 0; i < 30; i++) {
-		if (_cLevelItems[i].field_14 >= 14 || _cLevelItems[i].blockPropertyIndex == 0 || _cLevelItems[i].field_1D <= 0)
+		if (_monsters[i].mode >= 14 || _monsters[i].block == 0 || _monsters[i].hitPoints <= 0)
 			continue;
 
-		int t = (val * _cLevelItems[i].field_1D) >> 8;
-		_cLevelItems[i].field_1D = t;
-		if (index2 < index1)
-			_cLevelItems[i].field_1D++;
-		if (_cLevelItems[i].field_1D == 0)
-			_cLevelItems[i].field_1D = 1;
+		_monsters[i].hitPoints = (d * _monsters[i].hitPoints) >> 8;
+		if (_monsterDifficulty < _lvlTempData[index]->monsterDifficulty)
+			_monsters[i].hitPoints++;
+		if (_monsters[i].hitPoints == 0)
+			_monsters[i].hitPoints = 1;
 	}
 }
 
@@ -466,122 +293,17 @@ void LoLEngine::loadCmzFile(const char *file) {
 	const uint8 *h = _screen->getCPagePtr(2);
 	uint16 len = READ_LE_UINT16(&h[4]);
 	const uint8 *p = h + 6;
-	
+
 	for (int i = 0; i < 1024; i++) {
 		for (int ii = 0; ii < 4; ii++)
 			_levelBlockProperties[i].walls[ii] = p[i * len + ii];
 
-		_levelBlockProperties[i].field_8 = 5;
+		_levelBlockProperties[i].direction = 5;
 
 		if (_wllBuffer4[_levelBlockProperties[i].walls[0]] == 17) {
 			_levelBlockProperties[i].flags &= 0xef;
 			_levelBlockProperties[i].flags |= 0x20;
 		}
-	}
-}
-
-void LoLEngine::loadMonsterShapes(const char *file, int monsterIndex, int b) {
-	releaseMonsterShapes(monsterIndex);
-	_screen->loadBitmap(file, 3, 3, 0);
-
-	const uint8 *p = _screen->getCPagePtr(2);
-	const uint8 *ts[16];
-
-	for (int i = 0; i < 16; i++) {
-		ts[i] = _screen->getPtrToShape(p, i);
-
-		bool replaced = false;
-		int pos = monsterIndex << 4;
-		
-		for (int ii = 0; ii < i; ii++) {
-			if (ts[i] != ts[ii])
-				continue;
-
-			_monsterShapes[pos + i] = _monsterShapes[pos + ii];
-			replaced = true;
-			break;			
-		}
-
-		if (!replaced)
-			_monsterShapes[pos + i] = _screen->makeShapeCopy(p, i);
-
-		int size = _screen->getShapePaletteSize(_monsterShapes[pos + i]) << 3;
-		_monsterPalettes[pos + i] = new uint8[size];
-		memset(_monsterPalettes[pos + i], 0, size);
-	}
-
-	for (int i = 0; i < 4; i++) {
-		for (int ii = 0; ii < 16; ii++) {
-			uint8 **of = &_buf4[(monsterIndex << 7) + (i << 5) + (ii << 1)];
-			int s = (i << 4) + ii + 17;
-			*of = _screen->makeShapeCopy(p, s);
-			
-			////TODO
-		}
-	}
-	_monsterUnk[monsterIndex] = b & 0xff;
-
-	uint8 *tsh = _screen->makeShapeCopy(p, 16);
-
-	_screen->clearPage(3);
-	_screen->drawShape(2, tsh, 0, 0, 0, 0);
-
-	uint8 *tmpPal1 = new uint8[64];
-	uint8 *tmpPal2 = new uint8[256];
-	uint16 *tmpPal3 = new uint16[256];
-	memset (tmpPal1, 0, 64);
-	memset (tmpPal2, 0, 256);
-	memset (tmpPal3, 0xff, 512);
-
-	for (int i = 0; i < 64; i++) {
-		tmpPal1[i] = *p;
-		p += 320;
-	}
-
-	p = _screen->getCPagePtr(2);
-
-	for (int i = 0; i < 16; i++) {
-		int pos = (monsterIndex << 4) + i;
-		memcpy(tmpPal2, _monsterShapes[pos] + 10, 256);
-		uint8 numCol = *tmpPal2;
-		
-		for (int ii = 0; ii < numCol; ii++) {
-			uint8 *cl = (uint8*)memchr(tmpPal1, tmpPal2[1 + ii], 64);
-			if (!cl)
-				continue;			
-			tmpPal3[ii] = (uint16) (cl - tmpPal1);
-		}
-
-		for (int ii = 0; ii < 8; ii++) {
-			memcpy(tmpPal2, _monsterShapes[pos] + 10, 256);
-			for (int iii = 0; iii < numCol; iii++) {
-				if (tmpPal3[iii] == 0xffff)
-					continue;
-				if (p[tmpPal3[iii] * 320 + ii + 1])
-					tmpPal2[1 + iii] = p[tmpPal3[iii] * 320 + ii + 1];
-			}
-			memcpy(_monsterPalettes[pos] + ii * numCol, &tmpPal2[1], numCol);
-		}
-	}
-
-	delete[] tmpPal1;
-	delete[] tmpPal2;
-	delete[] tmpPal3;
-	delete[]  tsh;
-}
-
-void LoLEngine::releaseMonsterShapes(int monsterIndex) {
-	for (int i = 0; i < 16; i++) {
-		int pos = (monsterIndex << 4) + i;
-		if (_monsterShapes[pos]) {
-			delete[] _monsterShapes[pos];
-			_monsterShapes[pos] = 0;
-		}
-
-		if (_monsterPalettes[pos]) {
-			delete[] _monsterPalettes[pos];
-			_monsterPalettes[pos] = 0;
-		}		
 	}
 }
 
@@ -603,9 +325,9 @@ void LoLEngine::loadLevelShpDat(const char *shpFile, const char *datFile, bool f
 		for (int ii = 0; ii < 10; ii++)
 			l->scaleFlag[ii] = s->readByte();
 		for (int ii = 0; ii < 10; ii++)
-			l->shapeX[ii] = s->readUint16LE();
+			l->shapeX[ii] = s->readSint16LE();
 		for (int ii = 0; ii < 10; ii++)
-			l->shapeY[ii] = s->readUint16LE();
+			l->shapeY[ii] = s->readSint16LE();
 		l->next = s->readByte();
 		l->flags = s->readByte();
 	}
@@ -630,7 +352,7 @@ void LoLEngine::loadLevelGraphics(const char *file, int specialColor, int weight
 			_lastOverridePalFilePtr = 0;
 		}
 	}
-	
+
 	char fname[13];
 	snprintf(fname, sizeof(fname), "%s.VCN", _lastSuppFile);
 
@@ -652,25 +374,33 @@ void LoLEngine::loadLevelGraphics(const char *file, int specialColor, int weight
 
 	memcpy(_vcnShift, v, tlen);
 	v += tlen;
-	
+
 	memcpy(_vcnExpTable, v, 128);
 	v += 128;
-	
+
 	if (_lastOverridePalFilePtr) {
-		uint8 *tpal = _res->fileData(_lastOverridePalFilePtr, 0);
-		memcpy(_screen->_currentPalette, tpal, 384);
-		delete[] tpal;		
+		_res->loadFileToBuf(_lastOverridePalFilePtr, _screen->getPalette(0).getData(), 384);
 	} else {
-		memcpy(_screen->_currentPalette, v, 384);
+		_screen->getPalette(0).copy(v, 0, 128);
 	}
 
 	v += 384;
 	/*uint8 tmpPal = new uint8[384];
-	memcpy(tmpPal, _screen->_currentPalette + 384, 384);
-	memset(_screen->_currentPalette + 384, 0xff, 384);
-	memcpy(_screen->_currentPalette + 384, tmpPal, 384);*/
-	
-	//loadSwampIceCol();
+	memcpy(tmpPal, _screen->getPalette(0) + 384, 384);
+	memset(_screen->getPalette(0) + 384, 0xff, 384);
+	memcpy(_screen->getPalette(0) + 384, tmpPal, 384);*/
+
+	if (_currentLevel == 11) {
+		_screen->loadPalette("SWAMPICE.COL", _screen->getPalette(2));
+		_screen->getPalette(2).copy(_screen->getPalette(0), 128);
+
+		if (_flagsTable[52] & 0x04) {
+			uint8 *pal0 = _screen->getPalette(0).getData();
+			uint8 *pal2 = _screen->getPalette(2).getData();
+			for (int i = 1; i < 768; i++)
+				SWAP(pal0[i], pal2[i]);
+		}
+	}
 
 	memcpy(_vcnBlocks, v, vcnLen);
 	v += vcnLen;
@@ -693,7 +423,7 @@ void LoLEngine::loadLevelGraphics(const char *file, int specialColor, int weight
 	for (int i = 0; i < 7; i++) {
 		weight = 100 - (i * _lastSpecialColorWeight);
 		weight = (weight > 0) ? (weight * 255) / 100 : 0;
-		_screen->generateLevelOverlay(_screen->_currentPalette, _screen->getLevelOverlay(i), _lastSpecialColor, weight);
+		_screen->generateLevelOverlay(_screen->getPalette(0), _screen->getLevelOverlay(i), _lastSpecialColor, weight);
 
 		for (int ii = 0; ii < 128; ii++) {
 			if (_screen->getLevelOverlay(i)[ii] == 255)
@@ -708,7 +438,7 @@ void LoLEngine::loadLevelGraphics(const char *file, int specialColor, int weight
 		_screen->getLevelOverlay(7)[i] = i & 0xff;
 
 	_loadSuppFilesFlag = 0;
-	_screen->generateBrightnessPalette(_screen->_currentPalette, _screen->getPalette(1), _brightness, _lampOilStatus);
+	generateBrightnessPalette(_screen->getPalette(0), _screen->getPalette(1), _brightness, _lampEffect);
 
 	char tname[13];
 	snprintf(tname, sizeof(tname), "LEVEL%.02d.TLC", _currentLevel);
@@ -722,14 +452,13 @@ void LoLEngine::loadLevelGraphics(const char *file, int specialColor, int weight
 
 void LoLEngine::resetItems(int flag) {
 	for (int i = 0; i < 1024; i++) {
-		_levelBlockProperties[i].field_8 = 5;
-		uint16 id = _levelBlockProperties[i].itemIndex;
-		CLevelItem *r = 0;
+		_levelBlockProperties[i].direction = 5;
+		uint16 id = _levelBlockProperties[i].assignedObjects;
+		MonsterInPlay *r = 0;
 
 		while (id & 0x8000) {
-			r = (CLevelItem*)findItem(id);
-			assert(r);
-			id = r->itemIndexUnk;
+			r = (MonsterInPlay *)findObject(id);
+			id = r->nextAssignedObject;
 		}
 
 		if (!id)
@@ -737,18 +466,19 @@ void LoLEngine::resetItems(int flag) {
 
 		ItemInPlay *it = &_itemsInPlay[id];
 		it->level = _currentLevel;
-		it->blockPropertyIndex = i;
-		r->itemIndexUnk = 0;
+		it->block = i;
+		if (r)
+			r->nextAssignedObject = 0;
 	}
 
 	if (flag)
-		memset(_tmpData136, 0, 136);
+		memset(_flyingObjects, 0, 8 * sizeof(FlyingObject));
 }
 
-void LoLEngine::resetLvlBuffer() {
-	memset(_cLevelItems, 0, 30 * sizeof(CLevelItem));
+void LoLEngine::disableMonsters() {
+	memset(_monsters, 0, 30 * sizeof(MonsterInPlay));
 	for (int i = 0; i < 30; i++)
-		_cLevelItems[i].field_14 = 0x10;
+		_monsters[i].mode = 0x10;
 }
 
 void LoLEngine::resetBlockProperties() {
@@ -762,9 +492,24 @@ void LoLEngine::resetBlockProperties() {
 			if (l->flags & 0x40)
 				l->flags &= 0xbf;
 			else if (l->flags & 0x80)
-				l->flags &= 0x7f;			
+				l->flags &= 0x7f;
 		}
 	}
+}
+
+bool LoLEngine::testWallFlag(int block, int direction, int flag) {
+	if (_levelBlockProperties[block].flags & 0x10)
+		return true;
+
+	if (direction != -1)
+		return (_wllWallFlags[_levelBlockProperties[block].walls[direction ^ 2]] & flag) ? true : false;
+
+	for (int i = 0; i < 4; i++) {
+		if (_wllWallFlags[_levelBlockProperties[block].walls[i]] & flag)
+			return true;
+	}
+
+	return false;
 }
 
 bool LoLEngine::testWallInvisibility(int block, int direction) {
@@ -775,261 +520,1173 @@ bool LoLEngine::testWallInvisibility(int block, int direction) {
 }
 
 void LoLEngine::resetLampStatus() {
-	_screen->_drawGuiFlag |= 0x400;
-	_lampOilStatus = 255;
+	_flagsTable[31] |= 0x04;
+	_lampEffect = -1;
 	updateLampStatus();
 }
 
 void LoLEngine::setLampMode(bool lampOn) {
-	_screen->_drawGuiFlag &= 0xFBFF;
-	if (!(_screen->_drawGuiFlag & 0x800) || !lampOn)
+	_flagsTable[31] &= 0xFB;
+	if (!(_flagsTable[30] & 0x08) || !lampOn)
 		return;
 
 	_screen->drawShape(0, _gameShapes[43], 291, 56, 0, 0);
-	_lampOilStatus = 8;
+	_lampEffect = 8;
 }
 
 void LoLEngine::updateLampStatus() {
-	uint8 newLampOilStatus = 0;
-	uint8 tmp2 = 0;
+	uint8 newLampEffect = 0;
+	uint8 tmpOilStatus = 0;
 
-	if ((_updateFlags & 4) || !(_screen->_drawGuiFlag & 0x800))
+	if ((_updateFlags & 4) || !(_flagsTable[31] & 0x08))
 		return;
 
-	if (!_brightness || !_lampStatusUnk) {
-		newLampOilStatus = 8;
-		if (newLampOilStatus != _lampOilStatus && _screen->_fadeFlag == 0)
-			_screen->setPaletteBrightness(_screen->_currentPalette, _lampOilStatus, newLampOilStatus);			
+	if (!_brightness || !_lampOilStatus) {
+		newLampEffect = 8;
+		if (newLampEffect != _lampEffect && _screen->_fadeFlag == 0)
+			setPaletteBrightness(_screen->getPalette(0), _brightness, newLampEffect);
 	} else {
-		tmp2 = (_lampStatusUnk < 100) ? _lampStatusUnk : 100;
-		newLampOilStatus = (3 - (tmp2 - 1) / 25) << 1;
+		tmpOilStatus = (_lampOilStatus < 100) ? _lampOilStatus : 100;
+		newLampEffect = (3 - ((tmpOilStatus - 1) / 25)) << 1;
 
-		if (_lampOilStatus == 255) {
+		if (_lampEffect == -1) {
 			if (_screen->_fadeFlag == 0)
-					_screen->setPaletteBrightness(_screen->_currentPalette, _brightness, newLampOilStatus);
-			_lampStatusTimer = _system->getMillis() + (10 + _rnd.getRandomNumberRng(1, 30)) * _tickLength;
+				setPaletteBrightness(_screen->getPalette(0), _brightness, newLampEffect);
+			_lampStatusTimer = _system->getMillis() + (10 + rollDice(1, 30)) * _tickLength;
 		} else {
-			if ((_lampOilStatus & 0xfe) == (newLampOilStatus & 0xfe)) {
+			if ((_lampEffect & 0xfe) == (newLampEffect & 0xfe)) {
 				if (_system->getMillis() <= _lampStatusTimer) {
-					newLampOilStatus = _lampOilStatus;
+					newLampEffect = _lampEffect;
 				} else {
-					newLampOilStatus = _lampOilStatus ^ 1;
-					_lampStatusTimer = _system->getMillis() + (10 + _rnd.getRandomNumberRng(1, 30)) * _tickLength;
+					newLampEffect = _lampEffect ^ 1;
+					_lampStatusTimer = _system->getMillis() + (10 + rollDice(1, 30)) * _tickLength;
 				}
 			} else {
 				if (_screen->_fadeFlag == 0)
-					_screen->setPaletteBrightness(_screen->_currentPalette, _lampOilStatus, newLampOilStatus);
+					setPaletteBrightness(_screen->getPalette(0), _lampEffect, newLampEffect);
 			}
 		}
 	}
 
-	if (newLampOilStatus == _lampOilStatus)
+	if (newLampEffect == _lampEffect)
 		return;
 
 	_screen->hideMouse();
 
-	_screen->drawShape(_screen->_curPage, _gameShapes[35 + newLampOilStatus], 291, 56, 0, 0);
+	_screen->drawShape(_screen->_curPage, _gameShapes[35 + newLampEffect], 291, 56, 0, 0);
 	_screen->showMouse();
 
-	_lampOilStatus = newLampOilStatus;
+	_lampEffect = newLampEffect;
 }
 
 void LoLEngine::updateCompass() {
-	
+	if (!(_flagsTable[31] & 0x40) || (_updateFlags & 4))
+		return;
+
+	if (_compassDirection == -1) {
+		_compassStep = 0;
+		gui_drawCompass();
+		return;
+	}
+
+	if (_compassTimer >= _system->getMillis())
+		return;
+
+	if ((_currentDirection << 6) == _compassDirection && (!_compassStep))
+		return;
+
+	_compassTimer = _system->getMillis() + 3 * _tickLength;
+	int dir = _compassStep >= 0 ? 1 : -1;
+	if (_compassStep)
+		_compassStep -= (((ABS(_compassStep) >> 4) + 2) * dir);
+
+	int16 d = _compassBroken ? (int8(_rnd.getRandomNumber(255)) - _compassDirection) : (_currentDirection << 6) - _compassDirection;
+	if (d <= -128)
+		d += 256;
+	if (d >= 128)
+		d -= 256;
+
+	d >>= 2;
+	_compassStep += d;
+	_compassStep = CLIP(_compassStep, -24, 24);
+	_compassDirection += _compassStep;
+
+	if (_compassDirection < 0)
+		_compassDirection += 256;
+	if (_compassDirection > 255)
+		_compassDirection -= 256;
+
+	if ((_compassDirection >> 6) == _currentDirection && _compassStep < 2) {
+		int16 d2 = d >> 16;
+		d ^= d2;
+		d -= d2;
+		if (d < 4) {
+			_compassDirection = _currentDirection << 6;
+			_compassStep = 0;
+		}
+	}
+
+	gui_drawCompass();
 }
 
-void LoLEngine::moveParty(uint16 direction, int unk1, int unk2, int unk3) {
-	// TODO
-	_currentBlock = calcNewBlockPostion(_currentBlock, direction);
-	// XXXX
+void LoLEngine::moveParty(uint16 direction, int unk1, int unk2, int buttonShape) {
+	if (buttonShape)
+		gui_toggleButtonDisplayMode(buttonShape, 1);
+
+	uint16 opos = _currentBlock;
+	uint16 npos = calcNewBlockPosition(_currentBlock, direction);
+
+	if (!checkBlockPassability(npos, direction)) {
+		notifyBlockNotPassable(unk2 ? 0 : 1);
+		gui_toggleButtonDisplayMode(buttonShape, 0);
+		return;
+	}
+
+	_scriptDirection = direction;
+	_currentBlock = npos;
+	_sceneDefaultUpdate = 1;
+
+	calcCoordinates(_partyPosX, _partyPosY, _currentBlock, 0x80, 0x80);
+	_flagsTable[73] &= 0xFD;
+
+	runLevelScript(opos, 4);
+	runLevelScript(npos, 1);
+
+	if (!(_flagsTable[73] & 0x02)) {
+		initTextFading(2, 0);
+
+		if (_sceneDefaultUpdate) {
+			switch (unk2) {
+			case 0:
+				movePartySmoothScrollUp(2);
+				break;
+			case 1:
+				movePartySmoothScrollDown(2);
+				break;
+			case 2:
+				movePartySmoothScrollLeft(1);
+				break;
+			case 3:
+				movePartySmoothScrollRight(1);
+				break;
+			default:
+				break;
+			}
+		} else {
+			gui_drawScene(0);
+		}
+
+		gui_toggleButtonDisplayMode(buttonShape, 0);
+
+		if (npos == _currentBlock) {
+			runLevelScript(opos, 8);
+			runLevelScript(npos, 2);
+
+			if (_levelBlockProperties[npos].walls[0] == 0x1a)
+				memset(_levelBlockProperties[npos].walls, 0, 4);
+		}
+	}
+
+	updateAutoMap(_currentBlock);
 }
 
-uint16 LoLEngine::calcNewBlockPostion(uint16 curBlock, uint16 direction) {
-	static const int16 blockPosTable[] = { -32, 1, 32, -1, 1, -1, 3, 2, -1, 0, -1, 0, 1, -32, 0, 32 };
+uint16 LoLEngine::calcNewBlockPosition(uint16 curBlock, uint16 direction) {
+	static const int16 blockPosTable[] = { -32, 1, 32, -1 };
 	return (curBlock + blockPosTable[direction]) & 0x3ff;
 }
 
-void LoLEngine::setLF2(int block) {
-	if (!(_screen->_drawGuiFlag & 0x1000))
-		return;		
-	_levelBlockProperties[block].flags |= 7;
-	// TODO
+uint16 LoLEngine::calcBlockIndex(uint16 x, uint16 y) {
+	return (((y & 0xff00) >> 3) | (x >> 8)) & 0x3ff;
+}
+
+void LoLEngine::calcCoordinates(uint16 &x, uint16 &y, int block, uint16 xOffs, uint16 yOffs) {
+	x = (block & 0x1f) << 8 | xOffs;
+	y = ((block & 0xffe0) << 3) | yOffs;
+}
+
+void LoLEngine::calcCoordinatesForSingleCharacter(int charNum, uint16 &x, uint16 &y) {
+	static const uint8 xOffsets[] = {  0x80, 0x00, 0x00, 0x40, 0xC0, 0x00, 0x40, 0x80, 0xC0 };
+	int c = countActiveCharacters();
+	if (!c)
+		return;
+
+	c = (c - 1) * 3 + charNum;
+
+	x = xOffsets[c];
+	y = 0x80;
+
+	calcCoordinatesAddDirectionOffset(x, y, _currentDirection);
+
+	x |= (_partyPosX & 0xff00);
+	y |= (_partyPosY & 0xff00);
+}
+
+void LoLEngine::calcCoordinatesAddDirectionOffset(uint16 &x, uint16 &y, int direction) {
+	if (!direction)
+		return;
+
+	int tx = x;
+	int ty = y;
+
+	if (direction & 1)
+		SWAP(tx, ty);
+
+	if (direction != 1)
+		ty = (ty - 256) * -1;
+
+	if (direction != 3) {
+		tx = (tx - 256) * -1;
+	}
+
+	x = tx;
+	y = ty;
+}
+
+bool LoLEngine::checkBlockPassability(uint16 block, uint16 direction) {
+	if (testWallFlag(block, direction, 1))
+		return false;
+
+	uint16 d = _levelBlockProperties[block].assignedObjects;
+
+	while (d) {
+		if (d & 0x8000)
+			return false;
+		d = findObject(d)->nextAssignedObject;
+	}
+
+	return true;
+}
+
+void LoLEngine::notifyBlockNotPassable(int scrollFlag) {
+	if (scrollFlag)
+		movePartySmoothScrollBlocked(2);
+
+	snd_stopSpeech(true);
+	_txt->printMessage(0x8002, getLangString(0x403f));
+	snd_playSoundEffect(19, -1);
+}
+
+int LoLEngine::clickedWallShape(uint16 block, uint16 direction) {
+	uint8 v = _wllShapeMap[_levelBlockProperties[block].walls[direction]];
+	if (!clickedShape(v))
+		return 0;
+
+	snd_stopSpeech(true);
+	runLevelScript(block, 0x40);
+
+	return 1;
+}
+
+int LoLEngine::clickedLeverOn(uint16 block, uint16 direction) {
+	uint8 v = _wllShapeMap[_levelBlockProperties[block].walls[direction]];
+	if (!clickedShape(v))
+		return 0;
+
+	_levelBlockProperties[block].walls[direction]++;
+	_sceneUpdateRequired = true;
+
+	snd_playSoundEffect(30, -1);
+
+	runLevelScript(block, 0x40);
+
+	return 1;
+}
+
+int LoLEngine::clickedLeverOff(uint16 block, uint16 direction) {
+	uint8 v = _wllShapeMap[_levelBlockProperties[block].walls[direction]];
+	if (!clickedShape(v))
+		return 0;
+
+	_levelBlockProperties[block].walls[direction]--;
+	_sceneUpdateRequired = true;
+
+	snd_playSoundEffect(29, -1);
+
+	runLevelScript(block, 0x40);
+	return 1;
+}
+
+int LoLEngine::clickedWallOnlyScript(uint16 block) {
+	runLevelScript(block, 0x40);
+	return 1;
+}
+
+int LoLEngine::clickedDoorSwitch(uint16 block, uint16 direction) {
+	uint8 v = _wllShapeMap[_levelBlockProperties[block].walls[direction]];
+	if (!clickedShape(v))
+		return 0;
+
+	snd_playSoundEffect(78, -1);
+	_blockDoor = 0;
+	runLevelScript(block, 0x40);
+
+	if (!_blockDoor) {
+		delay(15 * _tickLength);
+		processDoorSwitch(block, 0);
+	}
+
+	return 1;
+}
+
+int LoLEngine::clickedNiche(uint16 block, uint16 direction) {
+	uint8 v = _wllShapeMap[_levelBlockProperties[block].walls[direction]];
+	if (!clickedShape(v) || !_itemInHand)
+		return 0;
+
+	uint16 x = 0x80;
+	uint16 y = 0xff;
+	calcCoordinatesAddDirectionOffset(x, y, _currentDirection);
+	calcCoordinates(x, y, block, x, y);
+	setItemPosition(_itemInHand, x, y, 8, 1);
+	setHandItem(0);
+	return 1;
+}
+
+bool LoLEngine::clickedShape(int shapeIndex) {
+	while (shapeIndex) {
+		uint16 s = _levelShapeProperties[shapeIndex].shapeIndex[1];
+
+		if (s == 0xffff) {
+			shapeIndex = _levelShapeProperties[shapeIndex].next;
+			continue;
+		}
+
+		int w = _levelShapes[s][3];
+		int h = _levelShapes[s][2];
+		int x = _levelShapeProperties[shapeIndex].shapeX[1] + 136;
+		int y = _levelShapeProperties[shapeIndex].shapeY[1] + 8;
+
+		if (_levelShapeProperties[shapeIndex].flags & 1)
+			w <<= 1;
+
+		if (posWithinRect(_mouseX, _mouseY, x - 4, y - 4, x + w + 8, y + h + 8))
+			return true;
+
+		shapeIndex = _levelShapeProperties[shapeIndex].next;
+	}
+
+	return false;
+}
+
+void LoLEngine::processDoorSwitch(uint16 block, int openClose) {
+	if ((block == _currentBlock) || (_levelBlockProperties[block].assignedObjects & 0x8000))
+		return;
+
+	if (openClose == 0) {
+		for (int i = 0; i < 3; i++) {
+			if (_openDoorState[i].block != block)
+				continue;
+			openClose = -_openDoorState[i].state;
+			break;
+		}
+	}
+
+	if (openClose == 0)
+		openClose = (_wllWallFlags[_levelBlockProperties[block].walls[_wllWallFlags[_levelBlockProperties[block].walls[0]] & 8 ? 0 : 1]] & 1) ? 1 : -1;
+
+	openCloseDoor(block, openClose);
+}
+
+void LoLEngine::openCloseDoor(uint16 block, int openClose) {
+	int s1 = -1;
+	int s2 = -1;
+
+	int c = (_wllWallFlags[_levelBlockProperties[block].walls[0]] & 8) ? 0 : 1;
+	int v = _levelBlockProperties[block].walls[c];
+	int flg = (openClose == 1) ? 0x10 : (openClose == -1 ? 0x20 : 0);
+
+	if (_wllWallFlags[v] & flg)
+		return;
+
+	for (int i = 0; i < 3; i++) {
+		if (_openDoorState[i].block == block) {
+			s1 = i;
+			break;
+		} else if (_openDoorState[i].block == 0 && s2 == -1) {
+			s2 = i;
+		}
+	}
+
+	if (s1 != -1 || s2 != -1) {
+		if (s1 == -1)
+			s1 = s2;
+
+		_openDoorState[s1].block = block;
+		_openDoorState[s1].state = openClose;
+		_openDoorState[s1].wall = c;
+
+		flg = (-openClose == 1) ? 0x10 : (-openClose == -1 ? 0x20 : 0);
+
+		if (_wllWallFlags[v] & flg) {
+			_levelBlockProperties[block].walls[c] += openClose;
+			_levelBlockProperties[block].walls[c ^ 2] += openClose;
+
+			int snd = (openClose == -1) ? 32 : 31;
+
+			snd_processEnvironmentalSoundEffect(snd, block);
+			if (!checkSceneUpdateNeed(block))
+				updateEnvironmentalSfx(0);
+		}
+
+		enableTimer(0);
+
+	} else {
+		while (!(flg & _wllWallFlags[v]))
+			v += openClose;
+
+		_levelBlockProperties[block].walls[c] = _levelBlockProperties[block].walls[c ^ 2] = v;
+		checkSceneUpdateNeed(block);
+	}
+}
+
+void LoLEngine::completeDoorOperations() {
+	for (int i = 0; i < 3; i++) {
+		if (!_openDoorState[i].block)
+			continue;
+
+		uint16 b = _openDoorState[i].block;
+
+		do {
+			_levelBlockProperties[b].walls[_openDoorState[i].wall] += _openDoorState[i].state;
+			_levelBlockProperties[b].walls[_openDoorState[i].wall ^ 2] += _openDoorState[i].state;
+		} while	(!(_wllWallFlags[_levelBlockProperties[b].walls[_openDoorState[i].wall]] & 0x30));
+
+		_openDoorState[i].block = 0;
+	}
+}
+
+void LoLEngine::movePartySmoothScrollBlocked(int speed) {
+	if (!_smoothScrollingEnabled || (_smoothScrollingEnabled && _needSceneRestore))
+		return;
+
+	_screen->backupSceneWindow(_sceneDrawPage2 == 2 ? 2 : 6, 6);
+
+	for (int i = 0; i < 2; i++) {
+		uint32 delayTimer = _system->getMillis() + speed * _tickLength;
+		_screen->smoothScrollZoomStepTop(6, 2, _scrollXTop[i], _scrollYTop[i]);
+		_screen->smoothScrollZoomStepBottom(6, 2, _scrollXBottom[i], _scrollYBottom[i]);
+		_screen->restoreSceneWindow(2, 0);
+		_screen->updateScreen();
+		fadeText();
+		delayUntil(delayTimer);
+		if (!_smoothScrollModeNormal)
+			i++;
+	}
+
+	for (int i = 2; i; i--) {
+		uint32 delayTimer = _system->getMillis() + speed * _tickLength;
+		_screen->smoothScrollZoomStepTop(6, 2, _scrollXTop[i], _scrollYTop[i]);
+		_screen->smoothScrollZoomStepBottom(6, 2, _scrollXBottom[i], _scrollYBottom[i]);
+		_screen->restoreSceneWindow(2, 0);
+		_screen->updateScreen();
+		fadeText();
+		delayUntil(delayTimer);
+		if (!_smoothScrollModeNormal)
+			i++;
+	}
+
+	if (_sceneDefaultUpdate != 2) {
+		_screen->restoreSceneWindow(6, 0);
+		_screen->updateScreen();
+	}
+
+	updateDrawPage2();
+}
+
+void LoLEngine::movePartySmoothScrollUp(int speed) {
+	if (!_smoothScrollingEnabled || (_smoothScrollingEnabled && _needSceneRestore))
+		return;
+
+	int d = 0;
+
+	if (_sceneDrawPage2 == 2) {
+		d = smoothScrollDrawSpecialGuiShape(6);
+		gui_drawScene(6);
+		_screen->backupSceneWindow(6, 12);
+		_screen->backupSceneWindow(2, 6);
+	} else {
+		d = smoothScrollDrawSpecialGuiShape(2);
+		gui_drawScene(2);
+		_screen->backupSceneWindow(2, 12);
+		_screen->backupSceneWindow(6, 6);
+	}
+
+	for (int i = 0; i < 5; i++) {
+		uint32 delayTimer = _system->getMillis() + speed * _tickLength;
+		_screen->smoothScrollZoomStepTop(6, 2, _scrollXTop[i], _scrollYTop[i]);
+		_screen->smoothScrollZoomStepBottom(6, 2, _scrollXBottom[i], _scrollYBottom[i]);
+
+		if (d)
+			_screen->copyGuiShapeToSurface(14, 2);
+
+		_screen->restoreSceneWindow(2, 0);
+		_screen->updateScreen();
+		fadeText();
+		delayUntil(delayTimer);
+		if (!_smoothScrollModeNormal)
+			i++;
+	}
+
+	if (d)
+		_screen->copyGuiShapeToSurface(14, 12);
+
+	if (_sceneDefaultUpdate != 2) {
+		_screen->restoreSceneWindow(12, 0);
+		_screen->updateScreen();
+	}
+
+	updateDrawPage2();
+}
+
+void LoLEngine::movePartySmoothScrollDown(int speed) {
+	if (!_smoothScrollingEnabled)
+		return;
+
+	int d = smoothScrollDrawSpecialGuiShape(2);
+	gui_drawScene(2);
+	_screen->backupSceneWindow(2, 6);
+
+	for (int i = 4; i >= 0; i--) {
+		uint32 delayTimer = _system->getMillis() + speed * _tickLength;
+		_screen->smoothScrollZoomStepTop(6, 2, _scrollXTop[i], _scrollYTop[i]);
+		_screen->smoothScrollZoomStepBottom(6, 2, _scrollXBottom[i], _scrollYBottom[i]);
+
+		if (d)
+			_screen->copyGuiShapeToSurface(14, 2);
+
+		_screen->restoreSceneWindow(2, 0);
+		_screen->updateScreen();
+		fadeText();
+		delayUntil(delayTimer);
+		if (!_smoothScrollModeNormal)
+			i++;
+	}
+
+	if (d)
+		_screen->copyGuiShapeToSurface(14, 12);
+
+	if (_sceneDefaultUpdate != 2) {
+		_screen->restoreSceneWindow(6, 0);
+		_screen->updateScreen();
+	}
+
+	updateDrawPage2();
+}
+
+void LoLEngine::movePartySmoothScrollLeft(int speed) {
+	if (!_smoothScrollingEnabled)
+		return;
+
+	speed <<= 1;
+
+	gui_drawScene(_sceneDrawPage1);
+
+	for (int i = 88, d = 88; i > 22; i -= 22, d += 22) {
+		uint32 delayTimer = _system->getMillis() + speed * _tickLength;
+		_screen->smoothScrollHorizontalStep(_sceneDrawPage2, 66, d, i);
+		_screen->copyRegion(112 + i, 0, 112, 0, d, 120, _sceneDrawPage1, _sceneDrawPage2, Screen::CR_NO_P_CHECK);
+		_screen->copyRegion(112, 0, 112, 0, 176, 120, _sceneDrawPage2, 0, Screen::CR_NO_P_CHECK);
+		_screen->updateScreen();
+		fadeText();
+		delayUntil(delayTimer);
+	}
+
+	if (_sceneDefaultUpdate != 2) {
+		_screen->copyRegion(112, 0, 112, 0, 176, 120, _sceneDrawPage1, 0, Screen::CR_NO_P_CHECK);
+		_screen->updateScreen();
+	}
+
+	SWAP(_sceneDrawPage1, _sceneDrawPage2);
+}
+
+void LoLEngine::movePartySmoothScrollRight(int speed) {
+	if (!_smoothScrollingEnabled)
+		return;
+
+	speed <<= 1;
+
+	gui_drawScene(_sceneDrawPage1);
+
+	uint32 delayTimer = _system->getMillis() + speed * _tickLength;
+	_screen->copyRegion(112, 0, 222, 0, 66, 120, _sceneDrawPage1, _sceneDrawPage2, Screen::CR_NO_P_CHECK);
+	_screen->copyRegion(112, 0, 112, 0, 176, 120, _sceneDrawPage2, 0, Screen::CR_NO_P_CHECK);
+	_screen->updateScreen();
+	fadeText();
+	delayUntil(delayTimer);
+
+	delayTimer = _system->getMillis() + speed * _tickLength;
+	_screen->smoothScrollHorizontalStep(_sceneDrawPage2, 22, 0, 66);
+	_screen->copyRegion(112, 0, 200, 0, 88, 120, _sceneDrawPage1, _sceneDrawPage2, Screen::CR_NO_P_CHECK);
+	_screen->copyRegion(112, 0, 112, 0, 176, 120, _sceneDrawPage2, 0, Screen::CR_NO_P_CHECK);
+	_screen->updateScreen();
+	fadeText();
+	delayUntil(delayTimer);
+
+	delayTimer = _system->getMillis() + speed * _tickLength;
+	_screen->smoothScrollHorizontalStep(_sceneDrawPage2, 44, 0, 22);
+	_screen->copyRegion(112, 0, 178, 0, 110, 120, _sceneDrawPage1, _sceneDrawPage2, Screen::CR_NO_P_CHECK);
+	_screen->copyRegion(112, 0, 112, 0, 176, 120, _sceneDrawPage2, 0, Screen::CR_NO_P_CHECK);
+	_screen->updateScreen();
+	fadeText();
+	delayUntil(delayTimer);
+
+	if (_sceneDefaultUpdate != 2) {
+		_screen->copyRegion(112, 0, 112, 0, 176, 120, _sceneDrawPage1, 0, Screen::CR_NO_P_CHECK);
+		_screen->updateScreen();
+	}
+
+	SWAP(_sceneDrawPage1, _sceneDrawPage2);
+}
+
+void LoLEngine::movePartySmoothScrollTurnLeft(int speed) {
+	if (!_smoothScrollingEnabled)
+		return;
+
+	speed <<= 1;
+
+	int d = smoothScrollDrawSpecialGuiShape(_sceneDrawPage1);
+	gui_drawScene(_sceneDrawPage1);
+	int dp = _sceneDrawPage2 == 2 ? _sceneDrawPage2 : _sceneDrawPage1;
+
+	uint32 delayTimer = _system->getMillis() + speed * _tickLength;
+	_screen->smoothScrollTurnStep1(_sceneDrawPage1, _sceneDrawPage2, dp);
+	if (d)
+		_screen->copyGuiShapeToSurface(14, dp);
+	_screen->restoreSceneWindow(dp, 0);
+	_screen->updateScreen();
+	fadeText();
+	delayUntil(delayTimer);
+
+	delayTimer = _system->getMillis() + speed * _tickLength;
+	_screen->smoothScrollTurnStep2(_sceneDrawPage1, _sceneDrawPage2, dp);
+	if (d)
+		_screen->copyGuiShapeToSurface(14, dp);
+	_screen->restoreSceneWindow(dp, 0);
+	_screen->updateScreen();
+	fadeText();
+	delayUntil(delayTimer);
+
+	delayTimer = _system->getMillis() + speed * _tickLength;
+	_screen->smoothScrollTurnStep3(_sceneDrawPage1, _sceneDrawPage2, dp);
+	if (d)
+		_screen->copyGuiShapeToSurface(14, dp);
+	_screen->restoreSceneWindow(dp, 0);
+	_screen->updateScreen();
+	fadeText();
+	delayUntil(delayTimer);
+
+	if (_sceneDefaultUpdate != 2) {
+		drawSpecialGuiShape(_sceneDrawPage1);
+		_screen->copyRegion(112, 0, 112, 0, 176, 120, _sceneDrawPage1, 0, Screen::CR_NO_P_CHECK);
+		_screen->updateScreen();
+	}
+}
+
+void LoLEngine::movePartySmoothScrollTurnRight(int speed) {
+	if (!_smoothScrollingEnabled)
+		return;
+
+	speed <<= 1;
+
+	int d = smoothScrollDrawSpecialGuiShape(_sceneDrawPage1);
+	gui_drawScene(_sceneDrawPage1);
+	int dp = _sceneDrawPage2 == 2 ? _sceneDrawPage2 : _sceneDrawPage1;
+
+	uint32 delayTimer = _system->getMillis() + speed * _tickLength;
+	_screen->smoothScrollTurnStep3(_sceneDrawPage2, _sceneDrawPage1, dp);
+	if (d)
+		_screen->copyGuiShapeToSurface(14, dp);
+	_screen->restoreSceneWindow(dp, 0);
+	_screen->updateScreen();
+	fadeText();
+	delayUntil(delayTimer);
+
+	delayTimer = _system->getMillis() + speed * _tickLength;
+	_screen->smoothScrollTurnStep2(_sceneDrawPage2, _sceneDrawPage1, dp);
+	if (d)
+		_screen->copyGuiShapeToSurface(14, dp);
+	_screen->restoreSceneWindow(dp, 0);
+	_screen->updateScreen();
+	fadeText();
+	delayUntil(delayTimer);
+
+	delayTimer = _system->getMillis() + speed * _tickLength;
+	_screen->smoothScrollTurnStep1(_sceneDrawPage2, _sceneDrawPage1, dp);
+	if (d)
+		_screen->copyGuiShapeToSurface(14, dp);
+	_screen->restoreSceneWindow(dp, 0);
+	_screen->updateScreen();
+	fadeText();
+	delayUntil(delayTimer);
+
+	if (_sceneDefaultUpdate != 2) {
+		drawSpecialGuiShape(_sceneDrawPage1);
+		_screen->copyRegion(112, 0, 112, 0, 176, 120, _sceneDrawPage1, 0, Screen::CR_NO_P_CHECK);
+		_screen->updateScreen();
+	}
+}
+
+void LoLEngine::pitDropScroll(int numSteps) {
+	_screen->copyRegionSpecial(0, 320, 200, 112, 0, 6, 176, 120, 0, 0, 176, 120, 0);
+	uint32 etime = 0;
+
+	for (int i = 0; i < numSteps; i++) {
+		etime = _system->getMillis() + _tickLength;
+		int ys = ((30720 / numSteps) * i) >> 8;
+		_screen->copyRegionSpecial(6, 176, 120, 0, ys, 0, 320, 200, 112, 0, 176, 120 - ys, 0);
+		_screen->copyRegionSpecial(2, 320, 200, 112, 0, 0, 320, 200, 112, 120 - ys, 176, ys, 0);
+		_screen->updateScreen();
+
+		delayUntil(etime);
+	}
+
+	etime = _system->getMillis() + _tickLength;
+
+	_screen->copyRegionSpecial(2, 320, 200, 112, 0, 0, 320, 200, 112, 0, 176, 120, 0);
+	_screen->updateScreen();
+
+	delayUntil(etime);
+
+	updateDrawPage2();
+}
+
+void LoLEngine::shakeScene(int duration, int width, int height, int restore) {
+	_screen->copyRegion(112, 0, 112, 0, 176, 120, 0, 6, Screen::CR_NO_P_CHECK);
+	uint32 endTime = _system->getMillis() + duration * _tickLength;
+
+	while (endTime > _system->getMillis()) {
+		uint32 delayTimer = _system->getMillis() + 2 * _tickLength;
+
+		int s1 = width ? (_rnd.getRandomNumber(255) % (width << 1)) - width : 0;
+		int s2 = height ? (_rnd.getRandomNumber(255) % (height << 1)) - height : 0;
+
+		int x1, y1, x2, y2, w, h;
+		if (s1 >= 0) {
+			x1 = 112;
+			x2 = 112 + s1;
+			w = 176 - s1;
+		} else {
+			x1 = 112 - s1;
+			x2 = 112;
+			w = 176 + s1;
+		}
+
+		if (s2 >= 0) {
+			y1 = 0;
+			y2 = s2;
+			h = 120 - s2;
+		} else {
+			y1 = -s2;
+			y2 = 0;
+			h = 120 + s2;
+		}
+
+		_screen->copyRegion(x1, y1, x2, y2, w, h, 6, 0, Screen::CR_NO_P_CHECK);
+		_screen->updateScreen();
+
+		delayUntil(delayTimer);
+	}
+
+	if (restore) {
+		_screen->copyRegion(112, 0, 112, 0, 176, 120, 6, 0, Screen::CR_NO_P_CHECK);
+		_screen->updateScreen();
+		updateDrawPage2();
+	}
+}
+
+void LoLEngine::processGasExplosion(int soundId) {
+	int cp = _screen->setCurPage(2);
+	_screen->copyPage(0, 12);
+
+	static const uint8 sounds[] = { 0x62, 0xA7, 0xA7, 0xA8 };
+	snd_playSoundEffect(sounds[soundId], -1);
+
+	uint16 targetBlock = 0;
+	int dist = getSpellTargetBlock(_currentBlock, _currentDirection, 3, targetBlock);
+
+	uint8 *p1 = _screen->getPalette(1).getData();
+	uint8 *p2 = _screen->getPalette(3).getData();
+
+	if (dist) {
+		WSAMovie_v2 *mov = new WSAMovie_v2(this);
+		char file[13];
+		snprintf(file, 13, "gasexp%0d.wsa", dist);
+		mov->open(file, 1, 0);
+		if (!mov->opened())
+			error("Gas: Unable to load gasexp.wsa");
+
+		playSpellAnimation(mov, 0, 6, 1, (176 - mov->width()) / 2 + 112, (120 - mov->height()) / 2, 0, 0, 0, 0, false);
+
+		mov->close();
+		delete mov;
+
+	} else {
+		memcpy(p2, p1, 768);
+
+		for (int i = 1; i < 128; i++)
+			p2[i * 3] = 0x3f;
+
+		uint32 ctime = _system->getMillis();
+		while (_screen->fadePaletteStep(_screen->getPalette(0).getData(), p2, _system->getMillis() - ctime, 10))
+			updateInput();
+
+		ctime = _system->getMillis();
+		while (_screen->fadePaletteStep(p2, _screen->getPalette(0).getData(), _system->getMillis() - ctime, 50))
+			updateInput();
+	}
+
+	_screen->copyPage(12, 2);
+	_screen->setCurPage(cp);
+
+	updateDrawPage2();
+	_sceneUpdateRequired = true;
+	gui_drawScene(0);
+}
+
+int LoLEngine::smoothScrollDrawSpecialGuiShape(int pageNum) {
+	if(!_specialGuiShape)
+		return 0;
+
+	_screen->clearGuiShapeMemory(pageNum);
+	_screen->drawShape(pageNum, _specialGuiShape, _specialGuiShapeX, _specialGuiShapeY, 2, 0);
+	_screen->copyGuiShapeFromSceneBackupBuffer(pageNum, 14);
+	return 1;
 }
 
 void LoLEngine::drawScene(int pageNum) {
 	if (pageNum && pageNum != _sceneDrawPage1) {
-		_sceneDrawPage1 ^= _sceneDrawPage2;
-		_sceneDrawPage2 ^= _sceneDrawPage1;
-		_sceneDrawPage1 ^= _sceneDrawPage2;
-		updateSceneWindow();
+		SWAP(_sceneDrawPage1, _sceneDrawPage2);
+		updateDrawPage2();
 	}
 
 	if (pageNum && pageNum != _sceneDrawPage1) {
-		_sceneDrawPage1 ^= _sceneDrawPage2;
-		_sceneDrawPage2 ^= _sceneDrawPage1;
-		_sceneDrawPage1 ^= _sceneDrawPage2;
-		updateSceneWindow();
+		SWAP(_sceneDrawPage1, _sceneDrawPage2);
+		updateDrawPage2();
 	}
 
-	generateBlockDrawingBuffer(_currentBlock, _currentDirection);
-	drawVcnBlocks(_vcnBlocks, _blockDrawingBuffer, _vcnShift, _sceneDrawPage1);
+	generateBlockDrawingBuffer();
+	drawVcnBlocks();
 	drawSceneShapes();
 
 	if (!pageNum) {
-		drawScriptShapes(_sceneDrawPage1);
+		drawSpecialGuiShape(_sceneDrawPage1);
 		_screen->copyRegion(112, 0, 112, 0, 176, 120, _sceneDrawPage1, _sceneDrawPage2, Screen::CR_NO_P_CHECK);
 		_screen->copyRegion(112, 0, 112, 0, 176, 120, _sceneDrawPage1, 0, Screen::CR_NO_P_CHECK);
-		_sceneDrawPage1 ^= _sceneDrawPage2;
-		_sceneDrawPage2 ^= _sceneDrawPage1;
-		_sceneDrawPage1 ^= _sceneDrawPage2;
+		_screen->updateScreen();
+		SWAP(_sceneDrawPage1, _sceneDrawPage2);
 	}
 
-	runLoopSub4(0);
+	updateEnvironmentalSfx(0);
 	gui_drawCompass();
 
 	_sceneUpdateRequired = false;
 }
 
-void LoLEngine::updateSceneWindow() {
-	_screen->hideMouse();
-	_screen->copyRegion(112, 0, 112, 0, 176, 120, 0, _sceneDrawPage2, Screen::CR_NO_P_CHECK);
-	_screen->showMouse();
+
+void LoLEngine::setWallType(int block, int wall, int val) {
+	if (wall == -1) {
+		for (int i = 0; i < 4; i++)
+			_levelBlockProperties[block].walls[i] = val;
+		if (_wllBuffer4[val] == 17) {
+			_levelBlockProperties[block].flags &= 0xef;
+			_levelBlockProperties[block].flags |= 0x20;
+		} else {
+			_levelBlockProperties[block].flags &= 0xdf;
+		}
+	} else {
+		_levelBlockProperties[block].walls[wall] = val;
+	}
+
+	checkSceneUpdateNeed(block);
 }
 
-void LoLEngine::generateBlockDrawingBuffer(int block, int direction) {
-	_sceneDrawVar1 = _dscBlockMap[_currentDirection];
-	_sceneDrawVar2 = _dscBlockMap[_currentDirection + 4];
-	_sceneDrawVar3 = _dscBlockMap[_currentDirection + 8];
+void LoLEngine::updateDrawPage2() {
+	_screen->copyRegion(112, 0, 112, 0, 176, 120, 0, _sceneDrawPage2, Screen::CR_NO_P_CHECK);
+}
+
+void LoLEngine::prepareSpecialScene(int fieldType, int hasDialogue, int suspendGui, int allowSceneUpdate, int controlMode, int fadeFlag) {
+	resetPortraitsAndDisableSysTimer();
+	if (fieldType) {
+		if (suspendGui)
+			gui_specialSceneSuspendControls(1);
+
+		if (!allowSceneUpdate)
+			_sceneDefaultUpdate = 0;
+
+		if (hasDialogue)
+			initDialogueSequence(fieldType, 0);
+
+		if (fadeFlag) {
+			_screen->fadePalette(_screen->getPalette(3), 10);
+			_screen->_fadeFlag = 0;
+		}
+
+		setSpecialSceneButtons(0, 0, 320, 130, controlMode);
+
+	} else {
+		if (suspendGui)
+			gui_specialSceneSuspendControls(0);
+
+		if (!allowSceneUpdate)
+			_sceneDefaultUpdate = 0;
+
+		gui_disableControls(controlMode);
+
+		if (fadeFlag) {
+			_screen->getPalette(3).copy(_screen->getPalette(0), 128);
+			_screen->loadSpecialColors(_screen->getPalette(3));
+			_screen->fadePalette(_screen->getPalette(3), 10);
+			_screen->_fadeFlag = 0;
+		}
+
+		if (hasDialogue)
+			initDialogueSequence(fieldType, 0);
+
+		setSpecialSceneButtons(112, 0, 176, 120, controlMode);
+	}
+}
+
+int LoLEngine::restoreAfterSpecialScene(int fadeFlag, int redrawPlayField, int releaseTimScripts, int sceneUpdateMode) {
+	if (!_needSceneRestore)
+		return 0;
+
+	_needSceneRestore = 0;
+	enableSysTimer(2);
+
+	if (_dialogueField)
+		restoreAfterDialogueSequence(_currentControlMode);
+
+	if (_specialSceneFlag)
+		gui_specialSceneRestoreControls(_currentControlMode);
+
+	int l = _currentControlMode;
+	_currentControlMode = 0;
+
+	gui_specialSceneRestoreButtons();
+	calcCharPortraitXpos();
+
+	_currentControlMode = l;
+
+	if (releaseTimScripts) {
+		for (int i = 0; i < TIM::kWSASlots; i++)
+			_tim->freeAnimStruct(i);
+
+		for (int i = 0; i < 10; i++)
+			_tim->unload(_activeTim[i]);
+	}
+
+	gui_enableControls();
+
+	if (fadeFlag) {
+		if ((_screen->_fadeFlag != 1 && _screen->_fadeFlag != 2) || (_screen->_fadeFlag == 1 && _currentControlMode)) {
+			if (_currentControlMode)
+				_screen->fadeToBlack(10);
+			else
+				_screen->fadeClearSceneWindow(10);
+		}
+
+		_currentControlMode = 0;
+		calcCharPortraitXpos();
+
+		if (redrawPlayField)
+			gui_drawPlayField();
+
+		setPaletteBrightness(_screen->getPalette(0), _brightness, _lampEffect);
+
+	} else {
+		_currentControlMode = 0;
+		calcCharPortraitXpos();
+
+		if (redrawPlayField)
+			gui_drawPlayField();
+	}
+
+	_sceneDefaultUpdate = sceneUpdateMode;
+	return 1;
+}
+
+void LoLEngine::setSequenceButtons(int x, int y, int w, int h, int enableFlags) {
+	gui_enableSequenceButtons(x, y, w, h, enableFlags);
+	_seqWindowX1 = x;
+	_seqWindowY1 = y;
+	_seqWindowX2 = x + w;
+	_seqWindowY2 = y + h;
+	int offs = _itemInHand ? 10 : 0;
+	_screen->setMouseCursor(offs, offs, getItemIconShapePtr(_itemInHand));
+	_currentFloatingCursor = -1;
+	if (w == 320) {
+		setLampMode(0);
+		_lampStatusSuspended = true;
+	}
+}
+
+void LoLEngine::setSpecialSceneButtons(int x, int y, int w, int h, int enableFlags) {
+	gui_enableSequenceButtons(x, y, w, h, enableFlags);
+	_spsWindowX = x;
+	_spsWindowY = y;
+	_spsWindowW = w;
+	_spsWindowH = h;
+}
+
+void LoLEngine::setDefaultButtonState() {
+	gui_enableDefaultPlayfieldButtons();
+	_seqWindowX1 = _seqWindowY1 = _seqWindowX2 = _seqWindowY2 = _seqTrigger = 0;
+	if (_lampStatusSuspended)
+		resetLampStatus();
+	_lampStatusSuspended = false;
+}
+
+void LoLEngine::generateBlockDrawingBuffer() {
+	_sceneDrawVarDown = _dscBlockMap[_currentDirection];
+	_sceneDrawVarRight = _dscBlockMap[_currentDirection + 4];
+	_sceneDrawVarLeft = _dscBlockMap[_currentDirection + 8];
+
+	/*******************************************
+    *             _visibleBlocks map           *
+	*                                          *
+	*     |     |     |     |     |     |      *
+	*  00 |  01 |  02 |  03 |  04 |  05 |  06  *
+	* ____|_____|_____|_____|_____|_____|_____ *
+	*     |     |     |     |     |     |      *
+	*     |  07 |  08 |  09 |  10 |  11 |      *
+	*     |_____|_____|_____|_____|_____|      *
+	*           |     |     |     |            *
+	*           |  12 |  13 |  14 |            *
+	*           |_____|_____|_____|            *
+	*                 |     |                  *
+	*              15 |  16 |  17              *
+	*                 | (P) |                  *
+	********************************************/
 
 	memset(_blockDrawingBuffer, 0, 660 * sizeof(uint16));
 
-	_wllProcessFlag = ((block >> 5) + (block & 0x1f) + _currentDirection) & 1;
+	_wllProcessFlag = ((_currentBlock >> 5) + (_currentBlock & 0x1f) + _currentDirection) & 1;
 
-	if (_wllProcessFlag)
-		generateBlockDrawingBufferF1(0, 15, 1, -330, 22, 15);
+	if (_wllProcessFlag) // floor and ceiling
+		generateVmpTileDataFlipped(0, 15, 1, -330, 22, 15);
 	else
-		generateBlockDrawingBufferF0(0, 15, 1, -330, 22, 15);
+		generateVmpTileData(0, 15, 1, -330, 22, 15);
 
-	assignBlockCaps(block, direction);
+	assignVisibleBlocks(_currentBlock, _currentDirection);
 
-	uint8 t = _curBlockCaps[0]->walls[_sceneDrawVar2];
+	uint8 t = _visibleBlocks[0]->walls[_sceneDrawVarRight];
 	if (t)
-		generateBlockDrawingBufferF0(-2, 3, t, 102, 3, 5);
+		generateVmpTileData(-2, 3, t, 102, 3, 5);
 
-	t = _curBlockCaps[6]->walls[_sceneDrawVar3];
+	t = _visibleBlocks[6]->walls[_sceneDrawVarLeft];
 	if (t)
-		generateBlockDrawingBufferF1(21, 3, t, 102, 3, 5);
+		generateVmpTileDataFlipped(21, 3, t, 102, 3, 5);
 
-	t = _curBlockCaps[1]->walls[_sceneDrawVar2];
-	uint8 t2 = _curBlockCaps[2]->walls[_sceneDrawVar1];
+	t = _visibleBlocks[1]->walls[_sceneDrawVarRight];
+	uint8 t2 = _visibleBlocks[2]->walls[_sceneDrawVarDown];
 
 	if (hasWall(t) && !(_wllWallFlags[t2] & 8))
-		generateBlockDrawingBufferF0(2, 3, t, 102, 3, 5);
+		generateVmpTileData(2, 3, t, 102, 3, 5);
 	else if (t && (_wllWallFlags[t2] & 8))
-		generateBlockDrawingBufferF0(2, 3, t2, 102, 3, 5);
+		generateVmpTileData(2, 3, t2, 102, 3, 5);
 
-	t = _curBlockCaps[5]->walls[_sceneDrawVar3];
-	t2 = _curBlockCaps[4]->walls[_sceneDrawVar1];
+	t = _visibleBlocks[5]->walls[_sceneDrawVarLeft];
+	t2 = _visibleBlocks[4]->walls[_sceneDrawVarDown];
 
 	if (hasWall(t) && !(_wllWallFlags[t2] & 8))
-		generateBlockDrawingBufferF1(17, 3, t, 102, 3, 5);
+		generateVmpTileDataFlipped(17, 3, t, 102, 3, 5);
 	else if (t && (_wllWallFlags[t2] & 8))
-		generateBlockDrawingBufferF1(17, 3, t2, 102, 3, 5);
+		generateVmpTileDataFlipped(17, 3, t2, 102, 3, 5);
 
-	t = _curBlockCaps[2]->walls[_sceneDrawVar2];
+	t = _visibleBlocks[2]->walls[_sceneDrawVarRight];
 	if (t)
-		generateBlockDrawingBufferF0(8, 3, t, 97, 1, 5);
+		generateVmpTileData(8, 3, t, 97, 1, 5);
 
-	t = _curBlockCaps[4]->walls[_sceneDrawVar3];
+	t = _visibleBlocks[4]->walls[_sceneDrawVarLeft];
 	if (t)
-		generateBlockDrawingBufferF1(13, 3, t, 97, 1, 5);
+		generateVmpTileDataFlipped(13, 3, t, 97, 1, 5);
 
-	t = _curBlockCaps[1]->walls[_sceneDrawVar1];
+	t = _visibleBlocks[1]->walls[_sceneDrawVarDown];
 	if (hasWall(t))
-		generateBlockDrawingBufferF0(-4, 3, t, 129, 6, 5);
+		generateVmpTileData(-4, 3, t, 129, 6, 5);
 
-	t = _curBlockCaps[5]->walls[_sceneDrawVar1];
+	t = _visibleBlocks[5]->walls[_sceneDrawVarDown];
 	if (hasWall(t))
-		generateBlockDrawingBufferF0(20, 3, t, 129, 6, 5);
+		generateVmpTileData(20, 3, t, 129, 6, 5);
 
-	t = _curBlockCaps[2]->walls[_sceneDrawVar1];
+	t = _visibleBlocks[2]->walls[_sceneDrawVarDown];
 	if (hasWall(t))
-		generateBlockDrawingBufferF0(2, 3, t, 129, 6, 5);
+		generateVmpTileData(2, 3, t, 129, 6, 5);
 
-	t = _curBlockCaps[4]->walls[_sceneDrawVar1];
+	t = _visibleBlocks[4]->walls[_sceneDrawVarDown];
 	if (hasWall(t))
-		generateBlockDrawingBufferF0(14, 3, t, 129, 6, 5);
+		generateVmpTileData(14, 3, t, 129, 6, 5);
 
-	t = _curBlockCaps[3]->walls[_sceneDrawVar1];
+	t = _visibleBlocks[3]->walls[_sceneDrawVarDown];
 	if (t)
-		generateBlockDrawingBufferF0(8, 3, t, 129, 6, 5);
+		generateVmpTileData(8, 3, t, 129, 6, 5);
 
-	t = _curBlockCaps[7]->walls[_sceneDrawVar2];
+	t = _visibleBlocks[7]->walls[_sceneDrawVarRight];
 	if (t)
-		generateBlockDrawingBufferF0(0, 3, t, 117, 2, 6);
+		generateVmpTileData(0, 3, t, 117, 2, 6);
 
-	t = _curBlockCaps[11]->walls[_sceneDrawVar3];
+	t = _visibleBlocks[11]->walls[_sceneDrawVarLeft];
 	if (t)
-		generateBlockDrawingBufferF1(20, 3, t, 117, 2, 6);
+		generateVmpTileDataFlipped(20, 3, t, 117, 2, 6);
 
-	t = _curBlockCaps[8]->walls[_sceneDrawVar2];
+	t = _visibleBlocks[8]->walls[_sceneDrawVarRight];
 	if (t)
-		generateBlockDrawingBufferF0(6, 2, t, 81, 2, 8);
+		generateVmpTileData(6, 2, t, 81, 2, 8);
 
-	t = _curBlockCaps[10]->walls[_sceneDrawVar3];
+	t = _visibleBlocks[10]->walls[_sceneDrawVarLeft];
 	if (t)
-		generateBlockDrawingBufferF1(14, 2, t, 81, 2, 8);
+		generateVmpTileDataFlipped(14, 2, t, 81, 2, 8);
 
-	t = _curBlockCaps[8]->walls[_sceneDrawVar1];
+	t = _visibleBlocks[8]->walls[_sceneDrawVarDown];
 	if (hasWall(t))
-		generateBlockDrawingBufferF0(-4, 2, t, 159, 10, 8);
+		generateVmpTileData(-4, 2, t, 159, 10, 8);
 
-	t = _curBlockCaps[10]->walls[_sceneDrawVar1];
+	t = _visibleBlocks[10]->walls[_sceneDrawVarDown];
 	if (hasWall(t))
-		generateBlockDrawingBufferF0(16, 2, t, 159, 10, 8);
+		generateVmpTileData(16, 2, t, 159, 10, 8);
 
-	t = _curBlockCaps[9]->walls[_sceneDrawVar1];
+	t = _visibleBlocks[9]->walls[_sceneDrawVarDown];
 	if (t)
-		generateBlockDrawingBufferF0(6, 2, t, 159, 10, 8);
+		generateVmpTileData(6, 2, t, 159, 10, 8);
 
-	t = _curBlockCaps[12]->walls[_sceneDrawVar2];
+	t = _visibleBlocks[12]->walls[_sceneDrawVarRight];
 	if (t)
-		generateBlockDrawingBufferF0(3, 1, t, 45, 3, 12);
+		generateVmpTileData(3, 1, t, 45, 3, 12);
 
-	t = _curBlockCaps[14]->walls[_sceneDrawVar3];
+	t = _visibleBlocks[14]->walls[_sceneDrawVarLeft];
 	if (t)
-		generateBlockDrawingBufferF1(16, 1, t, 45, 3, 12);
+		generateVmpTileDataFlipped(16, 1, t, 45, 3, 12);
 
-	t = _curBlockCaps[12]->walls[_sceneDrawVar1];
+	t = _visibleBlocks[12]->walls[_sceneDrawVarDown];
 	if (!(_wllWallFlags[t] & 8))
-		generateBlockDrawingBufferF0(-13, 1, t, 239, 16, 12);
+		generateVmpTileData(-13, 1, t, 239, 16, 12);
 
-	t = _curBlockCaps[14]->walls[_sceneDrawVar1];
+	t = _visibleBlocks[14]->walls[_sceneDrawVarDown];
 	if (!(_wllWallFlags[t] & 8))
-		generateBlockDrawingBufferF0(19, 1, t, 239, 16, 12);
+		generateVmpTileData(19, 1, t, 239, 16, 12);
 
-	t = _curBlockCaps[13]->walls[_sceneDrawVar1];
+	t = _visibleBlocks[13]->walls[_sceneDrawVarDown];
 	if (t)
-		generateBlockDrawingBufferF0(3, 1, t, 239, 16, 12);
+		generateVmpTileData(3, 1, t, 239, 16, 12);
 
-	t = _curBlockCaps[15]->walls[_sceneDrawVar2];
-	t2 = _curBlockCaps[17]->walls[_sceneDrawVar3];
+	t = _visibleBlocks[15]->walls[_sceneDrawVarRight];
+	t2 = _visibleBlocks[17]->walls[_sceneDrawVarLeft];
 	if (t)
-		generateBlockDrawingBufferF0(0, 0, t, 0, 3, 15);
+		generateVmpTileData(0, 0, t, 0, 3, 15);
 	if (t2)
-		generateBlockDrawingBufferF1(19, 0, t, 0, 3, 15);
+		generateVmpTileDataFlipped(19, 0, t2, 0, 3, 15);
 }
 
-void LoLEngine::generateBlockDrawingBufferF0(int16 wllOffset, uint8 wllIndex, uint8 wllVmpIndex, int16 vmpOffset, uint8 len, uint8 numEntries) {
-	if (!_wllVmpMap[wllVmpIndex])
+void LoLEngine::generateVmpTileData(int16 startBlockX, uint8 startBlockY, uint8 vmpMapIndex, int16 vmpOffset, uint8 numBlocksX, uint8 numBlocksY) {
+	if (!_wllVmpMap[vmpMapIndex])
 		return;
 
-	uint16 *vmp = &_vmpPtr[(_wllVmpMap[wllVmpIndex] - 1) * 431 + vmpOffset + 330];
+	uint16 *vmp = &_vmpPtr[(_wllVmpMap[vmpMapIndex] - 1) * 431 + vmpOffset + 330];
 
-	for (int i = 0; i < numEntries; i++) {
-		uint16 *bl = &_blockDrawingBuffer[(wllIndex + i) * 22 + wllOffset];
-		for (int ii = 0; ii < len; ii++) {
-			if ((wllOffset + ii >= 0) && (wllOffset + ii < 22) && *vmp)
+	for (int i = 0; i < numBlocksY; i++) {
+		uint16 *bl = &_blockDrawingBuffer[(startBlockY + i) * 22 + startBlockX];
+		for (int ii = 0; ii < numBlocksX; ii++) {
+			if ((startBlockX + ii >= 0) && (startBlockX + ii < 22) && *vmp)
 				*bl = *vmp;
 			bl++;
 			vmp++;
@@ -1037,25 +1694,27 @@ void LoLEngine::generateBlockDrawingBufferF0(int16 wllOffset, uint8 wllIndex, ui
 	}
 }
 
-void LoLEngine::generateBlockDrawingBufferF1(int16 wllOffset, uint8 wllIndex, uint8 wllVmpIndex, int16 vmpOffset, uint8 len, uint8 numEntries) {
-	if (!_wllVmpMap[wllVmpIndex])
+void LoLEngine::generateVmpTileDataFlipped(int16 startBlockX, uint8 startBlockY, uint8 vmpMapIndex, int16 vmpOffset, uint8 numBlocksX, uint8 numBlocksY) {
+	if (!_wllVmpMap[vmpMapIndex])
 		return;
 
-	uint16 *vmp = &_vmpPtr[(_wllVmpMap[wllVmpIndex] - 1) * 431 + vmpOffset + 330];
+	uint16 *vmp = &_vmpPtr[(_wllVmpMap[vmpMapIndex] - 1) * 431 + vmpOffset + 330];
 
-	for (int i = 0; i < numEntries; i++) {
-		for (int ii = 0; ii < len; ii++) {
-			if ((wllOffset + ii >= 0) && (wllOffset + ii < 22)) {
-				uint16 t = vmp[len * i + len - 1 - ii];
-				if (t) {				
-					if (t & 04000)
-						t -= 0x4000;
-					else
-						t |= 0x4000;
+	for (int i = 0; i < numBlocksY; i++) {
+		for (int ii = 0; ii < numBlocksX; ii++) {
+			if ((startBlockX + ii) < 0 || (startBlockX + ii) > 21)
+				continue;
 
-					_blockDrawingBuffer[(wllIndex + i) * 22 + wllOffset + ii] = t;
-				}
-			}
+			uint16 v = vmp[i * numBlocksX + (numBlocksX - 1 - ii)];
+			if (!v)
+				continue;
+
+			if (v & 0x4000)
+				v -= 0x4000;
+			else
+				v |= 0x4000;
+
+			_blockDrawingBuffer[(startBlockY + i) * 22 + startBlockX + ii] = v;
 		}
 	}
 }
@@ -1066,48 +1725,51 @@ bool LoLEngine::hasWall(int index) {
 	return true;
 }
 
-void LoLEngine::assignBlockCaps(int block, int direction) {
+void LoLEngine::assignVisibleBlocks(int block, int direction) {
 	for (int i = 0; i < 18; i++) {
 		uint16 t = (block + _dscBlockIndex[direction * 18 + i]) & 0x3ff;
-		_scriptExecutedFuncs[i] = t;
+		_visibleBlockIndex[i] = t;
 
-		_curBlockCaps[i] = &_levelBlockProperties[t];
+		_visibleBlocks[i] = &_levelBlockProperties[t];
 		_lvlShapeLeftRight[i] = _lvlShapeLeftRight[18 + i] = -1;
 	}
 }
 
-void LoLEngine::drawVcnBlocks(uint8 *vcnBlocks, uint16 *blockDrawingBuffer, uint8 *vcnShift, int pageNum) {
-	uint8 *d = _sceneWindowBuffer;	
-	
+void LoLEngine::drawVcnBlocks() {
+	uint8 *d = _sceneWindowBuffer;
+	uint16 *bdb = _blockDrawingBuffer;
+
 	for (int y = 0; y < 15; y++) {
 		for (int x = 0; x < 22; x++) {
-			bool flag = false;
+			bool horizontalFlip = false;
 			int remainder = 0;
 
-			uint16 vcnOffset = *blockDrawingBuffer++;
+			uint16 vcnOffset = *bdb++;
 
 			if (vcnOffset & 0x8000) {
+				// this renders a wall block over the transparent pixels of a floor/ceiling block
 				remainder = vcnOffset - 0x8000;
 				vcnOffset = 0;
 			}
 
 			if (vcnOffset & 0x4000) {
-				flag = true;
+				horizontalFlip = true;
 				vcnOffset &= 0x3fff;
 			}
 
 			if (!vcnOffset) {
-				vcnOffset = blockDrawingBuffer[329];
+				// floor/ceiling blocks
+				vcnOffset = bdb[329];
 				if (vcnOffset & 0x4000) {
-					flag = true;
+					horizontalFlip = true;
 					vcnOffset &= 0x3fff;
 				}
 			}
-	
-			uint8 shift = vcnShift[vcnOffset];
-			uint8 *src = &vcnBlocks[vcnOffset << 5];
 
-			if (flag) {				
+			uint8 shift = _vcnShift[vcnOffset];
+			uint8 *src = &_vcnBlocks[vcnOffset << 5];
+
+			if (horizontalFlip) {
 				for (int blockY = 0; blockY < 8; blockY++) {
 					src += 3;
 					for (int blockX = 0; blockX < 4; blockX++) {
@@ -1126,33 +1788,33 @@ void LoLEngine::drawVcnBlocks(uint8 *vcnBlocks, uint16 *blockDrawingBuffer, uint
 						*d++ = _vcnExpTable[(t & 0x0f) | shift];
 					}
 					d += 168;
-				}				
+				}
 			}
 			d -= 1400;
 
 			if (remainder) {
 				d -= 8;
-				flag = false;
+				horizontalFlip = false;
 
 				if (remainder & 0x4000) {
 					remainder &= 0x3fff;
-					flag = true;
+					horizontalFlip = true;
 				}
 
-				shift = vcnShift[remainder];
-				src = &vcnBlocks[remainder << 5];
+				shift = _vcnShift[remainder];
+				src = &_vcnBlocks[remainder << 5];
 
-				if (flag) {	
+				if (horizontalFlip) {
 					for (int blockY = 0; blockY < 8; blockY++) {
 						src += 3;
 						for (int blockX = 0; blockX < 4; blockX++) {
 							uint8 t = *src--;
 							uint8 h = _vcnExpTable[(t & 0x0f) | shift];
 							uint8 l = _vcnExpTable[(t >> 4) | shift];
-							if (h) 
+							if (h)
 								*d = h;
 							d++;
-							if (l) 
+							if (l)
 								*d = l;
 							d++;
 						}
@@ -1163,12 +1825,12 @@ void LoLEngine::drawVcnBlocks(uint8 *vcnBlocks, uint16 *blockDrawingBuffer, uint
 					for (int blockY = 0; blockY < 8; blockY++) {
 						for (int blockX = 0; blockX < 4; blockX++) {
 							uint8 t = *src++;
-							uint8 h = _vcnExpTable[(t >> 4) | shift]; 
+							uint8 h = _vcnExpTable[(t >> 4) | shift];
 							uint8 l = _vcnExpTable[(t & 0x0f) | shift];
-							if (h) 
+							if (h)
 								*d = h;
 							d++;
-							if (l) 
+							if (l)
 								*d = l;
 							d++;
 						}
@@ -1181,13 +1843,13 @@ void LoLEngine::drawVcnBlocks(uint8 *vcnBlocks, uint16 *blockDrawingBuffer, uint
 		d += 1232;
 	}
 
-	_screen->copyBlockToPage(pageNum, 112, 0, 176, 120, _sceneWindowBuffer);
+	_screen->copyBlockToPage(_sceneDrawPage1, 112, 0, 176, 120, _sceneWindowBuffer);
 }
 
 void LoLEngine::drawSceneShapes() {
 	for (int i = 0; i < 18; i++) {
 		uint8 t = _dscTileIndex[i];
-		uint8 s = _curBlockCaps[t]->walls[_sceneDrawVar1];
+		uint8 s = _visibleBlocks[t]->walls[_sceneDrawVarDown];
 
 		int16 x1 = 0;
 		int16 x2 = 0;
@@ -1204,21 +1866,21 @@ void LoLEngine::drawSceneShapes() {
 
 		uint16 w = _wllWallFlags[s];
 
-		if (i == 16)
+		if (t == 16)
 			w |= 0x80;
 
-		drawIceShapes(t, 0);
+		drawBlockEffects(t, 0);
 
-		if (_curBlockCaps[t]->itemIndex && (w & 0x80))
-			drawMonstersAndItems(t);
+		if (_visibleBlocks[t]->assignedObjects && (w & 0x80))
+			drawBlockObjects(t);
 
-		drawIceShapes(t, 1);
+		drawBlockEffects(t, 1);
 
 		if (!(w & 8))
 			continue;
 
 		uint16 v = 20 * (s - _dscUnk2[s]);
-		
+
 		scaleLevelShapesDim(t, dimY1, dimY2, 13);
 		drawDoor(_doorShapes[_dscDoorShpIndex[s]], 0, t, 10, 0, -v, 2);
 		setLevelShapesDim(t, dimY1, dimY2, 13);
@@ -1236,7 +1898,7 @@ void LoLEngine::setLevelShapesDim(int index, int16 &x1, int16 &x2, int dim) {
 		int m = index * 18;
 
 		for (int i = 0; i < 18; i++) {
-			uint8 d = _curBlockCaps[i]->walls[_sceneDrawVar1];
+			uint8 d = _visibleBlocks[i]->walls[_sceneDrawVarDown];
 			uint8 a = _wllWallFlags[d];
 
 			if (a & 8) {
@@ -1249,7 +1911,7 @@ void LoLEngine::setLevelShapesDim(int index, int16 &x1, int16 &x2, int dim) {
 				}
 
 				t = _dscDim2[((m + i) << 1) + 1];
-				
+
 				if (t < x2) {
 					x2 = t;
 					if (!(a & 0x10))
@@ -1257,7 +1919,7 @@ void LoLEngine::setLevelShapesDim(int index, int16 &x1, int16 &x2, int dim) {
 				}
 			} else {
 				int t = _dscDim1[m + i];
-				
+
 				if (!_wllVmpMap[d] || t == -40)
 					continue;
 
@@ -1273,11 +1935,11 @@ void LoLEngine::setLevelShapesDim(int index, int16 &x1, int16 &x2, int dim) {
 				if (t < 0 && x1 < -t)
 					x1 = -t;
 			}
-			
+
 			if (x2 < x1)
 				break;
 		}
-		
+
 		x1 += 14;
 		x2 += 14;
 
@@ -1332,7 +1994,7 @@ void LoLEngine::drawDecorations(int index) {
 			continue;
 
 		uint8 d = (_currentDirection + _dscUnk1[s]) & 3;
-		int8 l = _wllShapeMap[_curBlockCaps[index]->walls[d]];
+		int8 l = _wllShapeMap[_visibleBlocks[index]->walls[d]];
 
 		uint8 *shapeData = 0;
 
@@ -1396,94 +2058,44 @@ void LoLEngine::drawDecorations(int index) {
 	}
 }
 
-void LoLEngine::drawIceShapes(int index, int iceShapeIndex) {
-	uint8 f = _curBlockCaps[index]->flags;
-	if (!(f & 0xf0))
-		return;
-}
-
-void LoLEngine::drawMonstersAndItems(int index) {
-
-
-}
-
-void LoLEngine::drawDoor(uint8 *shape, uint8 *table, int index, int unk2, int w, int h, int flags) {
-	uint8 c = _dscDoor1[(_currentDirection << 5) + unk2];
-	int r = (c / 5) + 5 * _dscDimMap[index];
-	uint16 d = _dscShapeOvlIndex[r];
-	uint16 t = (index << 5) + c;
-
-	_shpDmY = _dscDoorMonsterY[t] + 120;
-
-	if (flags & 1) {
-		// TODO
-	}
-
-	int u = 0;
-
-	if (flags & 2) {		
-		uint8 dimW = _dscDimMap[index];		
-		_dmScaleW = _dscDoorMonsterScaleTable[dimW << 1];
-		_dmScaleH = _dscDoorMonsterScaleTable[(dimW << 1) + 1];
-		u = _dscDoor4[dimW];
-	}
-
-	d += 2;
-
-	if (!_dmScaleW || !_dmScaleH)
+void LoLEngine::drawBlockEffects(int index, int type) {
+	static const uint16 yOffs[] = { 0xff, 0xff, 0x80, 0x80 };
+	uint8 flg = _visibleBlocks[index]->flags;
+	// flags: 0x10 = ice wall, 0x20 = teleporter, 0x40 = blue slime spot, 0x80 = blood spot
+	if (!(flg & 0xf0))
 		return;
 
-	int s = _screen->getShapeScaledHeight(shape, _dmScaleH) >> 1;
+	type = (type == 0) ? 2 : 0;
 
-	if (w)
-		w = (w * _dmScaleW) >> 8;
+	for (int i = 0; i < 2; i++, type++) {
+		if (!((0x10 << type) & flg))
+			continue;
 
-	if (h)
-		h = (h * _dmScaleH) >> 8;
+		uint16 x = 0x80;
+		uint16 y = yOffs[type];
+		uint16 drawFlag = (type == 3) ? 0x80 : 0x20;
+		uint8 *ovl = (type == 3) ? _screen->_grayOverlay : 0;
 
-	_shpDmX = _dscDoorMonsterX[t] + w + 200;
-	_shpDmY = _shpDmY + 4 - s + h - u;
+		calcCoordinatesAddDirectionOffset(x, y, _currentDirection);
 
-	if (d > 7)
-		d = 7;
+		x |= ((_visibleBlockIndex[index] & 0x1f) << 8);
+		y |= ((_visibleBlockIndex[index] & 0xffe0) << 3);
 
-	uint8 *ovl = _screen->getLevelOverlay(d);
-	int doorScaledWitdh = _screen->getShapeScaledWidth(shape, _dmScaleW);
-	
-	_shpDmX -= (doorScaledWitdh >> 1);
-	_shpDmY -= s;
-
-	drawDoorOrMonsterShape(shape, table, _shpDmX, _shpDmY, flags, ovl);
-}
-
-void LoLEngine::drawDoorOrMonsterShape(uint8 *shape, uint8 *table, int x, int y, int flags, const uint8 *ovl) {
-	int flg = 0;
-
-	if (flags & 0x10)
-		flg |= 1;
-
-	if (flags & 0x20)
-		flg |= 0x1000;
-
-	if (flags & 0x40)
-		flg |= 2;
-
-	if (flg & 0x1000) {
-		if (table)
-			_screen->drawShape(_sceneDrawPage1, shape, x, y, 13, flg | 0x9104, table, ovl, 1, _trueLightTable1, _trueLightTable2, _dmScaleW, _dmScaleH);			
-		else
-			_screen->drawShape(_sceneDrawPage1, shape, x, y, 13, flg | 0x1104, ovl, 1, _trueLightTable1, _trueLightTable2, _dmScaleW, _dmScaleH);			
-	} else {
-		if (table)
-			_screen->drawShape(_sceneDrawPage1, shape, x, y, 13, flg | 0x8104, table, ovl, 1, _dmScaleW, _dmScaleH);
-		else
-			_screen->drawShape(_sceneDrawPage1, shape, x, y, 13, flg | 0x104, ovl, 1, _dmScaleW, _dmScaleH);
+		drawItemOrMonster(_effectShapes[type], ovl, x, y, 0, (type == 1) ? -20 : 0, drawFlag, -1, false);
 	}
 }
 
-void LoLEngine::drawScriptShapes(int pageNum) {
-	// TODO
+void LoLEngine::drawSpecialGuiShape(int pageNum) {
+	if (!_specialGuiShape)
+		return;
+
+	_screen->drawShape(pageNum, _specialGuiShape, _specialGuiShapeX, _specialGuiShapeY, 2, 0);
+
+	if (_specialGuiShapeMirrorFlag & 1)
+		_screen->drawShape(pageNum, _specialGuiShape, _specialGuiShapeX + _specialGuiShape[3], _specialGuiShapeY, 2, 1);
 }
 
 } // end of namespace Kyra
+
+#endif // ENABLE_LOL
 

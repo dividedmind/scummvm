@@ -285,11 +285,8 @@ void OSystem_Dreamcast::setShakePos(int shake_pos)
   _current_shake_pos = shake_pos;
 }
 
-void OSystem_Dreamcast::updateScreen(void)
+void OSystem_Dreamcast::updateScreenTextures(void)
 {
-  struct polygon_list mypoly;
-  struct packed_colour_vertex_list myvertex;
-
   if (_screen_dirty) {
 
     _screen_buffer++;
@@ -328,6 +325,12 @@ void OSystem_Dreamcast::updateScreen(void)
 
     _overlay_dirty = false;
   }
+}
+
+void OSystem_Dreamcast::updateScreenPolygons(void)
+{
+  struct polygon_list mypoly;
+  struct packed_colour_vertex_list myvertex;
 
   // *((volatile unsigned int *)(void*)0xa05f8040) = 0x00ff00;
 
@@ -448,6 +451,21 @@ void OSystem_Dreamcast::updateScreen(void)
   ta_commit_frame();
 
   // *((volatile unsigned int *)(void*)0xa05f8040) = 0x0;
+
+  _last_screen_refresh = Timer();
+}
+
+void OSystem_Dreamcast::updateScreen(void)
+{
+  updateScreenTextures();
+  updateScreenPolygons();
+}
+
+void OSystem_Dreamcast::maybeRefreshScreen(void)
+{
+  unsigned int t = Timer();
+  if((int)(t-_last_screen_refresh) > USEC_TO_TIMER(30000))
+    updateScreenPolygons();
 }
 
 void OSystem_Dreamcast::drawMouse(int xdraw, int ydraw, int w, int h,
@@ -462,7 +480,6 @@ void OSystem_Dreamcast::drawMouse(int xdraw, int ydraw, int w, int h,
   _mouse_buffer &= NUM_BUFFERS-1;
 
   unsigned short *dst = (unsigned short *)mouse_tx[_mouse_buffer];
-  int y=0;
 
   if (visible && w && h && w<=MOUSE_W && h<=MOUSE_H)
     for (int y=0; y<h; y++) {
@@ -555,7 +572,7 @@ void OSystem_Dreamcast::clearOverlay()
   _overlay_dirty = true;
 }
 
-void OSystem_Dreamcast::grabOverlay(int16 *buf, int pitch)
+void OSystem_Dreamcast::grabOverlay(OverlayColor *buf, int pitch)
 {
   int h = OVL_H;
   unsigned short *src = overlay;
@@ -566,7 +583,7 @@ void OSystem_Dreamcast::grabOverlay(int16 *buf, int pitch)
   } while (--h);
 }
 
-void OSystem_Dreamcast::copyRectToOverlay(const int16 *buf, int pitch,
+void OSystem_Dreamcast::copyRectToOverlay(const OverlayColor *buf, int pitch,
 					  int x, int y, int w, int h)
 {
   if (w<1 || h<1)
@@ -623,12 +640,6 @@ Graphics::Surface *OSystem_Dreamcast::lockScreen()
 void OSystem_Dreamcast::unlockScreen()
 {
   // Force screen update
-  _screen_dirty = true;
-}
-
-void OSystem_Dreamcast::clearScreen()
-{
-  memset(screen, 0, SCREEN_W*SCREEN_H);
   _screen_dirty = true;
 }
 

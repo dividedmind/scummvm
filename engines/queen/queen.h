@@ -129,8 +129,7 @@ public:
 protected:
 
 	// Engine APIs
-	virtual Common::Error init();
-	virtual Common::Error go();
+	virtual Common::Error run();
 	virtual GUI::Debugger *getDebugger();
 	virtual bool hasFeature(EngineFeature f) const;
 	virtual void syncSoundSettings();
